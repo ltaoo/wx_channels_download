@@ -1,8 +1,3 @@
-import {
-  Button,
-  Input,
-  Pagination,
-} from "../components.js";
 import { AccountViewModel } from "./account.model.js";
 
 function AccountPageView(props) {

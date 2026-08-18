@@ -1,10 +1,4 @@
 import {
-  Button,
-  Input,
-  Textarea,
-} from "../components.js";
-
-import {
   FileHelperViewModel,
   event_target_element,
 } from "./filehelper.model.js";

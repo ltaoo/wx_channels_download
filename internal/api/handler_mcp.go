@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -12,12 +13,30 @@ import (
 
 	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/mcpserver"
+	"wx_channel/internal/services"
 )
 
 func (c *APIClient) new_mcp_handler() http.Handler {
+	log_path := ""
+	work_dir := ""
+	if c.cfg != nil {
+		log_path = c.cfg.LogPath
+		work_dir = c.cfg.WorkDir
+	}
+	data_reader := services.NewMCPDataReader(services.MCPDataReaderConfig{
+		DB:                   c.db,
+		DownloadTaskService:  c.download_task_service,
+		BrowseHistoryService: c.browse_history_service,
+		LogPath:              log_path,
+		WorkDir:              work_dir,
+		CertificateStatusReader: func(_ context.Context) (any, error) {
+			return c.certificateStatusData(), nil
+		},
+	})
 	server, err := mcpserver.NewServer(mcpserver.Config{
 		APIBaseURL: c.mcp_api_base_url(),
 		Version:    c.cfg.Version,
+		DataReader: data_reader,
 	})
 	if err != nil {
 		if c.logger != nil {
@@ -78,7 +97,7 @@ func (c *APIClient) mcp_status_data(request *http.Request) gin.H {
 		"status":    status,
 		"transport": "streamable_http",
 		"endpoint":  mcp_request_endpoint(request),
-		"tools":     []string{"get_platform_status", "fetch_content", "download_content", "decrypt_wxchannels_video"},
+		"tools":     mcpserver.ToolNames(),
 	}
 }
 

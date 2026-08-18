@@ -1,8 +1,3 @@
-import {
-  Button,
-  Input,
-  Pagination,
-} from "../components.js";
 import { BrowseHistoryViewModel } from "./browsehistory.model.js";
 
 function BrowseHistoryPageView(props) {

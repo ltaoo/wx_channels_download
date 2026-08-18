@@ -90,7 +90,6 @@ func NewAPIClient(
 		fs_service:             fs_service,
 		downloader:             downloader,
 	}
-	api_client.mcp_handler = api_client.new_mcp_handler()
 	api_client.scraper_job_service = services.NewScraperJobService(
 		nil,
 		scraper_ws_hub.broadcast_job_event,
@@ -101,6 +100,7 @@ func NewAPIClient(
 		db, &logger, downloader, hook_manager,
 		cfg.WorkDir, cfg.DownloadDir,
 	)
+	api_client.mcp_handler = api_client.new_mcp_handler()
 
 	api_client.broadcaster = new_task_broadcaster()
 	api_client.downloader.OnEvent(func(event hermes.EventType, data hermes.EventData) {

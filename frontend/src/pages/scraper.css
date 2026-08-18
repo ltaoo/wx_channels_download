@@ -306,6 +306,7 @@
 
 .wx-home-submit:disabled,
 .wx-home-download:disabled,
+.wx-home-third-party-download:disabled,
 .wx-home-cache-action:disabled,
 .wx-home-refresh:disabled,
 .wx-home-interrupt:disabled {
@@ -917,6 +918,7 @@
 }
 
 .wx-home-download,
+.wx-home-third-party-download,
 .wx-home-open-content {
   min-height: 34px;
   background: var(--dm-content-panel);
