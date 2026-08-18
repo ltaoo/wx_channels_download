@@ -168,7 +168,8 @@ func Start(cfg *config.Config) error {
 	downloader.SetPostprocessor(adapter.NewPlatformPostprocessor(b.DB, *logger, api_cfg.DownloadDir))
 
 	// --- API service ---
-	api_srv := api.NewAPIServer(api_cfg, logger, b.DB, static_assets, downloader, hook_manager)
+	update_service := new_update_service(api_cfg.Version, stop)
+	api_srv := api.NewAPIServer(api_cfg, logger, b.DB, static_assets, downloader, hook_manager, update_service)
 	api_srv.SubscribeEvents(bus)
 	publish_registered_adapter_statuses(bus)
 	// admin_srv := admin.NewAdminServer(cfg, b, bus)

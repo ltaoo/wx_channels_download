@@ -46,6 +46,28 @@ type Config struct {
 	DBPath     string
 }
 
+// UpdateSource represents one auto-update source. Its fields intentionally
+// match velo/updater/types.UpdateSource so the same YAML can be reused.
+type UpdateSource struct {
+	Type              string `json:"type" yaml:"type" mapstructure:"type"`
+	Priority          int    `json:"priority" yaml:"priority" mapstructure:"priority"`
+	GitHubRepo        string `json:"github_repo,omitempty" yaml:"github_repo,omitempty" mapstructure:"github_repo"`
+	GitHubToken       string `json:"github_token,omitempty" yaml:"github_token,omitempty" mapstructure:"github_token"`
+	ManifestURL       string `json:"manifest_url,omitempty" yaml:"manifest_url,omitempty" mapstructure:"manifest_url"`
+	SelfURL           string `json:"self_url,omitempty" yaml:"self_url,omitempty" mapstructure:"self_url"`
+	Enabled           bool   `json:"enabled" yaml:"enabled" mapstructure:"enabled"`
+	NeedCheckChecksum bool   `json:"need_check_checksum" yaml:"need_check_checksum" mapstructure:"need_check_checksum"`
+}
+
+// LoadUpdateSources decodes update.sources from the active Viper config.
+func LoadUpdateSources() ([]UpdateSource, error) {
+	var sources []UpdateSource
+	if err := viper.UnmarshalKey("update.sources", &sources); err != nil {
+		return nil, fmt.Errorf("decode update sources: %w", err)
+	}
+	return sources, nil
+}
+
 const EnvConfigPath = "WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH"
 
 func New(ver string, mode string, logger *zerolog.Logger, log_file *os.File, log_path string) *Config {

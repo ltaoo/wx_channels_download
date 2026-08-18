@@ -26,7 +26,6 @@ require (
 	github.com/Danny-Dasilva/CycleTLS/cycletls v1.0.23
 	github.com/adrg/xdg v0.4.0
 	github.com/andybalholm/brotli v1.1.1
-	github.com/blang/semver v3.5.1+incompatible
 	github.com/dop251/goja v0.0.0-20241024094426-79f3a7efcdbd
 	github.com/ebitengine/oto/v3 v3.2.0-alpha.4
 	github.com/expr-lang/expr v1.16.9
@@ -34,9 +33,8 @@ require (
 	github.com/gin-gonic/gin v1.9.1
 	github.com/glebarez/sqlite v1.11.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf
 	github.com/ltaoo/echo v0.12.1
-	github.com/ltaoo/velo v1.0.1
+	github.com/ltaoo/velo v1.1.1
 	github.com/pterm/pterm v0.12.50
 	github.com/qtgolang/SunnyNet v1.4.0
 	github.com/rs/zerolog v1.34.0
@@ -54,6 +52,7 @@ require (
 )
 
 require (
+	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/glebarez/go-sqlite v1.21.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -191,6 +190,7 @@ require (
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.11 // indirect
+	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect

@@ -50,6 +50,7 @@ type APIClient struct {
 	download_task_service  *services.DownloadTaskService
 	fs_service             *services.FSService
 	scraper_job_service    *services.ScraperJobService
+	update_service         *services.UpdateService
 }
 
 func NewAPIClient(
@@ -59,6 +60,7 @@ func NewAPIClient(
 	static_assets *webassets.Registry,
 	downloader *hermes.HermesEngine,
 	hook_manager *hermes.HookManager,
+	update_service *services.UpdateService,
 ) *APIClient {
 	logger := parent_logger.With().Str("component", "APIClient").Logger()
 	engine := gin.New()
@@ -89,6 +91,7 @@ func NewAPIClient(
 		browse_history_service: browse_history_service,
 		fs_service:             fs_service,
 		downloader:             downloader,
+		update_service:         update_service,
 	}
 	api_client.scraper_job_service = services.NewScraperJobService(
 		nil,
