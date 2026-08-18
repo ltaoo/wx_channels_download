@@ -28,7 +28,6 @@ require (
 	github.com/andybalholm/brotli v1.1.1
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/dop251/goja v0.0.0-20241024094426-79f3a7efcdbd
-	github.com/tetratelabs/wazero v1.7.3
 	github.com/ebitengine/oto/v3 v3.2.0-alpha.4
 	github.com/expr-lang/expr v1.16.9
 	github.com/fatih/color v1.16.0
@@ -36,7 +35,7 @@ require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf
-	github.com/ltaoo/echo v0.12.0
+	github.com/ltaoo/echo v0.12.1
 	github.com/ltaoo/velo v1.0.1
 	github.com/pterm/pterm v0.12.50
 	github.com/qtgolang/SunnyNet v1.4.0
@@ -44,6 +43,7 @@ require (
 	github.com/samber/lo v1.39.0
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.16.0
+	github.com/tetratelabs/wazero v1.7.3
 	github.com/tjfoc/gmsm v1.4.1
 	github.com/zeebo/blake3 v0.2.4
 	golang.org/x/crypto v0.46.0
@@ -60,7 +60,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
-	gorm.io/driver/sqlite v1.6.0
+	gorm.io/driver/sqlite v1.6.0 // indirect
 	modernc.org/libc v1.22.5 // indirect
 	modernc.org/mathutil v1.5.0 // indirect
 	modernc.org/memory v1.5.0 // indirect
@@ -69,8 +69,8 @@ require (
 require (
 	github.com/JohannesKaufmann/html-to-markdown v1.4.1
 	github.com/PuerkitoBio/goquery v1.8.1
-	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
+	github.com/microcosm-cc/bluemonday v1.0.27
 	golang.org/x/exp v0.0.0-20251113190631-e25ba8c21ef6 // indirect
 	golang.org/x/image v0.23.0
 )

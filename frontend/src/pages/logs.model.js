@@ -260,8 +260,23 @@ function normalize_logs_response(data, fallbackPage, fallbackSize) {
   const entries = rawEntries.map((item, index) =>
     normalize_log_entry(item, index + 1),
   );
+  const raw_files = Array.isArray(source.files)
+    ? source.files
+    : Array.isArray(source.Files)
+      ? source.Files
+      : [];
+  const files = raw_files.map((item) => {
+    const file = item && typeof item === "object" ? item : {};
+    return {
+      ...file,
+      name: first_non_empty(file.name, file.Name),
+      path: first_non_empty(file.path, file.Path),
+      size: number_or_default(first_non_empty(file.size, file.Size), 0),
+    };
+  });
   return {
     entries,
+    files,
     total: Math.max(
       0,
       number_or_default(
@@ -316,6 +331,7 @@ function LogsPageViewModel(props) {
   const format_json_ = ref(true);
   const auto_refresh_ = ref(false);
   const last_loaded_at_ = ref("");
+  const log_file_path_ = ref("");
   const json_preview_title_ = ref("JSON 预览");
   const json_preview_text_ = ref("");
   const ui = {
@@ -345,6 +361,10 @@ function LogsPageViewModel(props) {
     }),
     btn_refresh$: new Timeless.vm.ButtonCore({
       disabled: loading_.value,
+      variant: "outline",
+    }),
+    btn_copy_log_file_path$: new Timeless.vm.ButtonCore({
+      disabled: true,
       variant: "outline",
     }),
     checkbox_auto_refresh$: new Timeless.vm.CheckboxCore({
@@ -390,6 +410,15 @@ function LogsPageViewModel(props) {
       const checked = Boolean(value);
       if (ui.checkbox_auto_refresh$.checked !== checked) {
         ui.checkbox_auto_refresh$.setValue(checked, { silence: true });
+      }
+    },
+  });
+  log_file_path_.subscribe({
+    onChange(value) {
+      if (value) {
+        ui.btn_copy_log_file_path$.enable();
+      } else {
+        ui.btn_copy_log_file_path$.disable();
       }
     },
   });
@@ -511,6 +540,8 @@ function LogsPageViewModel(props) {
     }
     const data = result.data || {};
     entries_.as(data.entries || [], { reset: true });
+    const log_file = (data.files || []).find((file) => file && file.path);
+    log_file_path_.as(log_file ? String(log_file.path) : "");
     total_.as(data.total || 0);
     page_.as(data.page || requestedPage);
     page_size_.as(data.page_size || page_size_.value);
@@ -544,6 +575,27 @@ function LogsPageViewModel(props) {
     },
     refresh() {
       return load(page_.value);
+    },
+    copyLogFilePath() {
+      const log_file_path = String(log_file_path_.value || "").trim();
+      if (!log_file_path) {
+        if (window.DLUtils && DLUtils.toast) {
+          DLUtils.toast("日志文件路径不可用");
+        }
+        return false;
+      }
+      try {
+        props.app.copy(log_file_path);
+        if (window.DLUtils && DLUtils.toast) {
+          DLUtils.toast("日志文件路径已复制");
+        }
+        return true;
+      } catch {
+        if (window.DLUtils && DLUtils.toast) {
+          DLUtils.toast("复制失败");
+        }
+        return false;
+      }
     },
     search() {
       return load(1);
@@ -641,6 +693,7 @@ function LogsPageViewModel(props) {
     format_json: format_json_,
     auto_refresh: auto_refresh_,
     last_loaded_at: last_loaded_at_,
+    log_file_path: log_file_path_,
     json_preview_title: json_preview_title_,
     json_preview_text: json_preview_text_,
   };

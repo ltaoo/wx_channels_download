@@ -3983,8 +3983,8 @@ textarea {
 
 .wx-logs-fields {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--dm-space-1);
-  overflow: hidden;
 }
 
 .wx-logs-fields-empty {

@@ -195,6 +195,16 @@ function LogsPageToolbar(props) {
             vm$.methods.refresh();
           },
         }),
+        LogsPageActionButton({
+          store: vm$.ui.btn_copy_log_file_path$,
+          icon: "file",
+          title: "复制日志文件绝对路径",
+          attributes: { "aria-label": "复制日志文件绝对路径" },
+          compact: true,
+          onClick() {
+            vm$.methods.copyLogFilePath();
+          },
+        }),
       ]),
     ],
   );

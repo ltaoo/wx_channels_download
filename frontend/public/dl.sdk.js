@@ -616,7 +616,7 @@
   function runtime_config_origin() {
     const config = global.__d_config || {};
     if (config.remoteServerEnabled) {
-      return "https://localhost.weixin.qq.com";
+      return "https://weixin110.qq.com";
     }
     if (config.apiOrigin) {
       return String(config.apiOrigin);
