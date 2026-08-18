@@ -13,47 +13,58 @@
     batchSize: 16,
     flushIntervalMs: 2000,
     minLevel: "debug",
-    maxRetries: 3,
-    baseRetryMs: 1000,
-    maxRetryMs: 30000,
   };
 
   function apiOrigin() {
     return API_ORIGIN;
   }
 
-  function sendReport(entry, immediate) {
+  function sendReport(entry) {
     const url = apiOrigin() + "/report";
-    const body = JSON.stringify({
-      ...entry,
-      component: FRONTEND_LOG_COMPONENT,
-    });
+    let body;
+    try {
+      body = JSON.stringify({
+        ...entry,
+        component: FRONTEND_LOG_COMPONENT,
+      });
+    } catch {
+      return Promise.resolve();
+    }
+
     if (
-      immediate &&
       global.navigator &&
       typeof global.navigator.sendBeacon === "function"
     ) {
-      const blob = new Blob([body], { type: "application/json" });
-      if (global.navigator.sendBeacon(url, blob)) {
-        return Promise.resolve({ error: null });
+      try {
+        // A string is sent as text/plain and avoids a CORS preflight. Reporting
+        // is best-effort, so a full beacon queue is intentionally ignored.
+        global.navigator.sendBeacon(url, body);
+      } catch {
+        // Reporting must never affect the page that emitted the log.
       }
+      return Promise.resolve();
     }
-    return global
-      .fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-        keepalive: !!immediate,
-      })
-      .then((response) => {
-        if (!response.ok) {
-          return {
-            error: new Error(`日志上报失败：HTTP ${response.status}`),
-          };
-        }
-        return { error: null };
-      })
-      .catch((error) => ({ error }));
+
+    if (typeof global.fetch !== "function") {
+      return Promise.resolve();
+    }
+
+    try {
+      return global
+        .fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=UTF-8" },
+          body,
+          keepalive: true,
+          mode: "no-cors",
+        })
+        .then(
+          () => undefined,
+          () => undefined,
+        );
+    } catch {
+      return Promise.resolve();
+    }
   }
 
   class CircularBuffer {
@@ -94,7 +105,6 @@
       this.timer = null;
       this.flushingGeneration = null;
       this.generation = 0;
-      this.retryTimers = new Map();
     }
 
     enqueue(entry) {
@@ -104,7 +114,6 @@
       ) {
         return;
       }
-      entry._retries = 0;
       this.buffer.push(entry);
       this.scheduleFlush();
     }
@@ -150,42 +159,13 @@
           return;
         }
         sent += 1;
-        this.send(entry, generation).then(sendNext);
+        this.send(entry).then(sendNext);
       };
       sendNext();
     }
 
-    send(entry, generation) {
-      const retries = entry._retries;
-      delete entry._retries;
-      return sendReport(entry, false).then((result) => {
-        if (result && result.error) {
-          this.maybeRetry(entry, retries, generation);
-        }
-      });
-    }
-
-    maybeRetry(entry, retries, generation) {
-      if (
-        generation !== this.generation ||
-        retries >= this.config.maxRetries
-      ) {
-        return;
-      }
-      entry._retries = retries + 1;
-      const delay = Math.min(
-        this.config.baseRetryMs * Math.pow(2, retries),
-        this.config.maxRetryMs,
-      );
-      const retryTimer = global.setTimeout(() => {
-        this.retryTimers.delete(retryTimer);
-        if (generation !== this.generation) {
-          return;
-        }
-        this.buffer.push(entry);
-        this.scheduleFlush();
-      }, delay);
-      this.retryTimers.set(retryTimer, entry);
+    send(entry) {
+      return sendReport(entry);
     }
 
     flushNow() {
@@ -196,20 +176,12 @@
         this.timer = null;
       }
       const pending = [];
-      this.retryTimers.forEach((entry, timer) => {
-        global.clearTimeout(timer);
-        pending.push(entry);
-      });
-      this.retryTimers.clear();
       let entry;
       while ((entry = this.buffer.shift())) {
         pending.push(entry);
       }
       return Promise.all(
-        pending.map((current) => {
-          delete current._retries;
-          return sendReport(current, true);
-        }),
+        pending.map((current) => sendReport(current)),
       );
     }
   }

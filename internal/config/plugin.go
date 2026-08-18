@@ -68,6 +68,8 @@ func LoadPluginConfigs() {
 		for _, item := range p.ConfigSchema() {
 			prefixed := item
 			prefixed.Key = ns + "." + item.Key
+			prefixed.Source = ConfigFieldSourcePlugin
+			prefixed.Namespace = ns
 			Register(prefixed)
 		}
 		// Build scoped viper and apply config

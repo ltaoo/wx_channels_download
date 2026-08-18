@@ -1,3 +1,5 @@
+import { ThirdPartyDownloaderModel } from "@/third-party-downloader.model.js";
+
 const active_job_storage_key = "scraper.active_scraper_job_id";
 const platform_status_popover_hide_delay = 240;
 const home_api_origin =
@@ -159,6 +161,9 @@ const content_detail_field_names = {
 
 function ScraperPageViewModel(props) {
   const { client: home_http_client, downloader } = props;
+  const third_party_downloader$ = ThirdPartyDownloaderModel({
+    client: home_http_client,
+  });
 
   const url_ = ref("");
   const loading_ = ref(false);
@@ -474,6 +479,29 @@ function ScraperPageViewModel(props) {
     result_,
     normalize_download_info,
   );
+  const preferred_third_party_resource_ = computed(
+    normalized_download_info_,
+    (download_info) => {
+      const resources = Array.isArray(download_info.resources)
+        ? download_info.resources
+        : [];
+      return (
+        resources.find(
+          (resource) =>
+            resource.url &&
+            String(resource.kind || "")
+              .toLowerCase()
+              .includes("video"),
+        ) ||
+        resources.find((resource) => resource.url) ||
+        null
+      );
+    },
+  );
+  const third_party_download_disabled_ = computed(
+    preferred_third_party_resource_,
+    (resource) => !resource || !resource.url,
+  );
   const progress_visible_ = combine(
     { loading: loading_, progress: fetch_progress_ },
     (state) => Boolean(state.loading && state.progress),
@@ -649,6 +677,8 @@ function ScraperPageViewModel(props) {
       normalized_download_info_,
       (download_info) => download_info.resources,
     ),
+    preferred_third_party_resource: preferred_third_party_resource_,
+    third_party_download_disabled: third_party_download_disabled_,
     loading: download_preview_loading_,
     error: download_preview_error_,
     badge_text: combine(
@@ -955,6 +985,15 @@ function ScraperPageViewModel(props) {
         return create_download_task();
       },
     }),
+    btn_third_party_download$: new Timeless.vm.ButtonCore({
+      disabled: third_party_download_disabled_.value,
+      variant: "outline",
+      onClick() {
+        return third_party_downloader$.methods.open(
+          preferred_third_party_resource_.value || {},
+        );
+      },
+    }),
     btn_force_refresh$: new Timeless.vm.ButtonCore({
       disabled: cache_action_disabled_.value,
       variant: "outline",
@@ -1109,6 +1148,9 @@ function ScraperPageViewModel(props) {
   bind_ui_button_state(ui.btn_create_download_task$, {
     disabled: download_disabled_,
     loading: download_loading_,
+  });
+  bind_ui_button_state(ui.btn_third_party_download$, {
+    disabled: third_party_download_disabled_,
   });
   bind_ui_button_state(ui.btn_force_refresh$, {
     disabled: cache_action_disabled_,
@@ -1725,6 +1767,8 @@ function ScraperPageViewModel(props) {
     while (ui_source_unsubscribes_.length > 0) {
       ui_source_unsubscribes_.pop()();
     }
+    Object.values(ui).forEach((store) => store.destroy?.());
+    third_party_downloader$.methods.destroy();
   }
 
   async function submit(options = {}) {
@@ -2261,7 +2305,14 @@ function ScraperPageViewModel(props) {
     },
   };
 
-  return { state, ui, methods };
+  return {
+    state,
+    ui,
+    models: {
+      third_party_downloader: third_party_downloader$,
+    },
+    methods,
+  };
 }
 
 function first_non_empty(...values) {
@@ -2469,6 +2520,114 @@ function download_info_array(source, ...keys) {
   return Array.isArray(value) ? value : [];
 }
 
+function download_info_json_object(value) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
+  if (typeof value !== "string" || !value.trim()) {
+    return {};
+  }
+  try {
+    const parsed_value = JSON.parse(value);
+    return parsed_value &&
+      typeof parsed_value === "object" &&
+      !Array.isArray(parsed_value)
+      ? parsed_value
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function download_endpoint_header(headers, name) {
+  const header_map = download_info_json_object(headers);
+  const expected_name = String(name || "").toLowerCase();
+  const header_name = Object.keys(header_map).find(
+    (key) => String(key).toLowerCase() === expected_name,
+  );
+  return header_name ? String(header_map[header_name] || "") : "";
+}
+
+function download_endpoint_cookie(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const raw_value = value.trim();
+  if (!raw_value) return "";
+  try {
+    const parsed_value = JSON.parse(raw_value);
+    if (Array.isArray(parsed_value)) {
+      return parsed_value
+        .map((cookie) => {
+          const source = cookie && typeof cookie === "object" ? cookie : {};
+          const name = String(first_non_empty(source.name, source.Name)).trim();
+          const cookie_value = String(
+            first_non_empty(source.value, source.Value),
+          );
+          return name ? `${name}=${cookie_value}` : "";
+        })
+        .filter(Boolean)
+        .join("; ");
+    }
+    if (parsed_value && typeof parsed_value === "object") {
+      return Object.entries(parsed_value)
+        .map(([name, cookie_value]) => `${name}=${cookie_value}`)
+        .join("; ");
+    }
+  } catch {
+    // A plain Cookie header is already in the expected format.
+  }
+  return raw_value;
+}
+
+function normalize_download_endpoint(endpoint_value, index) {
+  const endpoint =
+    endpoint_value && typeof endpoint_value === "object" ? endpoint_value : {};
+  const endpoint_url = String(
+    first_non_empty(endpoint.url, endpoint.URL),
+  ).trim();
+  const protocol = String(
+    first_non_empty(
+      endpoint.protocol,
+      endpoint.Protocol,
+      endpoint_url.split(":", 1)[0],
+    ),
+  )
+    .replace(/:$/, "")
+    .toLowerCase();
+  const enabled_value = download_info_value(endpoint, "enabled", "Enabled");
+  const headers = download_info_value(endpoint, "headers", "Headers");
+  const supported_protocols = [
+    "http",
+    "https",
+    "ftp",
+    "sftp",
+    "magnet",
+    "ed2k",
+  ];
+  return {
+    key: `${endpoint_url}:${index}`,
+    url: endpoint_url,
+    protocol,
+    third_party_compatible: supported_protocols.includes(protocol),
+    enabled:
+      enabled_value === undefined || enabled_value === null
+        ? true
+        : Number(enabled_value) !== 0,
+    priority: number_or_default(
+      first_non_empty(endpoint.priority, endpoint.Priority),
+      0,
+    ),
+    referer: download_endpoint_header(headers, "referer"),
+    user_agent: download_endpoint_header(headers, "user-agent"),
+    cookie:
+      download_endpoint_header(headers, "cookie") ||
+      download_endpoint_cookie(
+        download_info_value(endpoint, "cookies", "Cookies"),
+      ),
+  };
+}
+
 function download_resource_icon(kind) {
   const normalized_kind = String(kind || "").toLowerCase();
   if (normalized_kind.includes("image")) {
@@ -2652,7 +2811,9 @@ function normalize_download_resource(resource_info, index, content_id) {
   const source =
     resource_info && typeof resource_info === "object" ? resource_info : {};
   const resource = download_info_object(source, "Resource", "resource");
-  const endpoints = download_info_array(source, "Endpoints", "endpoints");
+  const endpoints = download_info_array(source, "Endpoints", "endpoints")
+    .map(normalize_download_endpoint)
+    .filter((endpoint) => Boolean(endpoint.url));
   const content_assets = download_info_array(
     source,
     "ContentAssets",
@@ -2677,6 +2838,26 @@ function normalize_download_resource(resource_info, index, content_id) {
       content_id,
     ),
   );
+  const preferred_endpoint =
+    endpoints.find(
+      (endpoint) => endpoint.enabled && endpoint.third_party_compatible,
+    ) || {};
+  const extra = download_info_json_object(
+    first_non_empty(resource.extra, resource.Extra),
+  );
+  const decode_key = String(
+    first_non_empty(
+      extra.decode_key,
+      extra.DecodeKey,
+      resource.decode_key,
+      resource.DecodeKey,
+    ),
+  ).trim();
+  const suffix = suffix_map(kind);
+  const display_name =
+    suffix && !name.toLowerCase().endsWith(suffix.toLowerCase())
+      ? `${name}${suffix}`
+      : name;
   return {
     key: String(
       first_non_empty(
@@ -2687,7 +2868,7 @@ function normalize_download_resource(resource_info, index, content_id) {
     ),
     index_text: String(index + 1).padStart(2, "0"),
     name,
-    display_name: `${name}${suffix_map(kind)}`,
+    display_name,
     kind,
     icon: download_resource_icon(kind),
     meta_text: [
@@ -2700,6 +2881,14 @@ function normalize_download_resource(resource_info, index, content_id) {
     content_id: resource_content_id,
     content_assets,
     has_content_assets: content_assets.length > 0,
+    endpoints,
+    url: String(preferred_endpoint.url || ""),
+    filename: display_name,
+    referer: String(preferred_endpoint.referer || ""),
+    cookie: String(preferred_endpoint.cookie || ""),
+    user_agent: String(preferred_endpoint.user_agent || ""),
+    decode_key,
+    requires_decryption: Boolean(decode_key),
   };
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"wx_channel/cmd"
+	"wx_channel/internal/application"
 	"wx_channel/internal/config"
 )
 
@@ -25,10 +26,15 @@ func main() {
 		fmt.Printf("Failed to initialize logger: %v\n", err)
 		return
 	}
-	defer log_file.Close()
 	cfg := config.New(AppVer, Mode, logger, log_file, log_path)
-	if err := cmd.Execute(cfg); err != nil {
-		fmt.Printf("Failed to run: %v\n", err.Error())
+	run_err := cmd.Execute(cfg)
+	_ = log_file.Close()
+	if run_err != nil {
+		fmt.Printf("Failed to run: %v\n", run_err.Error())
+		return
+	}
+	if err := application.RestartIfRequested(); err != nil {
+		fmt.Printf("Failed to restart: %v\n", err.Error())
 	}
 }
 

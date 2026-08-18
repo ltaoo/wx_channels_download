@@ -98,12 +98,32 @@ func (c *api_client) get_platform_status(ctx context.Context) (json.RawMessage, 
 	return c.do_json(ctx, http.MethodGet, "/api/scraper/platform/status", nil)
 }
 
+func (c *api_client) get_config(ctx context.Context) (json.RawMessage, error) {
+	return c.do_json(ctx, http.MethodGet, "/api/config", nil)
+}
+
+func (c *api_client) update_config(ctx context.Context, values map[string]any) (json.RawMessage, error) {
+	return c.do_json(ctx, http.MethodPost, "/api/config", map[string]any{"values": values})
+}
+
+func (c *api_client) get_restart_status(ctx context.Context, restart_token string) (json.RawMessage, error) {
+	query := url.Values{"restart_token": []string{restart_token}}
+	return c.do_json(ctx, http.MethodGet, "/api/restart/status?"+query.Encode(), nil)
+}
+
 func (c *api_client) decrypt_wxchannels_video(ctx context.Context, file_path string, key string) (json.RawMessage, error) {
 	query := url.Values{
 		"filepath": []string{file_path},
 		"key":      []string{key},
 	}
 	return c.do_json(ctx, http.MethodPost, "/api/channels/decrypt?"+query.Encode(), nil)
+}
+
+func (c *api_client) get_wxchannels_api(ctx context.Context, path string, query url.Values) (json.RawMessage, error) {
+	if len(query) > 0 {
+		path += "?" + query.Encode()
+	}
+	return c.do_json(ctx, http.MethodGet, path, nil)
 }
 
 func (c *api_client) create_scraper_job(ctx context.Context, raw_url string, force_refresh bool) (*scraper_job, error) {

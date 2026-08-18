@@ -1,13 +1,3 @@
-import {
-  Button,
-  Checkbox,
-  Dialog,
-  DialogBody,
-  DialogTitle,
-  Input,
-  Pagination,
-} from "../components.js";
-
 import { LogsPageViewModel } from "./logs.model.js";
 
 function LogsPageView(props) {

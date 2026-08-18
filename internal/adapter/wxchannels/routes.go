@@ -210,7 +210,14 @@ func (r *WebsocketRoutes) HandleFetchInteractionedFeedList(ctx *gin.Context) {
 
 // HandleFetchFollowList fetches the user's following list.
 func (r *WebsocketRoutes) HandleFetchFollowList(ctx *gin.Context) {
-	result.Ok(ctx, nil)
+	next_marker := ctx.Query("next_marker")
+
+	resp, err := r.client.FetchChannelsFollowList(next_marker)
+	if err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	result.Ok(ctx, resp)
 }
 
 // HandleFetchPlayHistory fetches the user's watch history.
@@ -227,6 +234,17 @@ func (r *WebsocketRoutes) HandleFetchPlayHistory(ctx *gin.Context) {
 
 // HandleFetchFeedCommentList fetches the video comment list.
 func (r *WebsocketRoutes) HandleFetchFeedCommentList(ctx *gin.Context) {
+	oid := ctx.Query("oid")
+	nid := ctx.Query("nid")
+	comment_id := ctx.Query("comment_id")
+	next_marker := ctx.Query("next_marker")
+
+	resp, err := r.client.FetchChannelsFeedCommentList(oid, nid, comment_id, next_marker)
+	if err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	result.Ok(ctx, resp)
 }
 
 // HandleFetchFeedShareUrl fetches the video share link.
@@ -236,7 +254,12 @@ func (r *WebsocketRoutes) HandleFetchFeedShareUrl(ctx *gin.Context) {
 		result.Err(ctx, 400, "missing oid")
 		return
 	}
-	result.Err(ctx, 400, "need to process")
+	resp, err := r.client.FetchChannelsFeedShareUrl(oid)
+	if err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	result.Ok(ctx, resp)
 }
 
 // HandleFetchFeedProfile fetches details for a given video.

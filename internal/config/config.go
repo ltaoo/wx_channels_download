@@ -1,6 +1,9 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -8,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/adrg/xdg"
 	"github.com/rs/zerolog"
@@ -46,7 +50,31 @@ type Config struct {
 	DBPath     string
 }
 
+// UpdateSource represents one auto-update source. Its fields intentionally
+// match velo/updater/types.UpdateSource so the same YAML can be reused.
+type UpdateSource struct {
+	Type              string `json:"type" yaml:"type" mapstructure:"type"`
+	Priority          int    `json:"priority" yaml:"priority" mapstructure:"priority"`
+	GitHubRepo        string `json:"github_repo,omitempty" yaml:"github_repo,omitempty" mapstructure:"github_repo"`
+	GitHubToken       string `json:"github_token,omitempty" yaml:"github_token,omitempty" mapstructure:"github_token"`
+	ManifestURL       string `json:"manifest_url,omitempty" yaml:"manifest_url,omitempty" mapstructure:"manifest_url"`
+	SelfURL           string `json:"self_url,omitempty" yaml:"self_url,omitempty" mapstructure:"self_url"`
+	Enabled           bool   `json:"enabled" yaml:"enabled" mapstructure:"enabled"`
+	NeedCheckChecksum bool   `json:"need_check_checksum" yaml:"need_check_checksum" mapstructure:"need_check_checksum"`
+}
+
+// LoadUpdateSources decodes update.sources from the active Viper config.
+func LoadUpdateSources() ([]UpdateSource, error) {
+	var sources []UpdateSource
+	if err := viper.UnmarshalKey("update.sources", &sources); err != nil {
+		return nil, fmt.Errorf("decode update sources: %w", err)
+	}
+	return sources, nil
+}
+
 const EnvConfigPath = "WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH"
+
+var config_write_mu sync.Mutex
 
 func New(ver string, mode string, logger *zerolog.Logger, log_file *os.File, log_path string) *Config {
 	exe, _ := os.Executable()
@@ -481,6 +509,7 @@ func (c *Config) LoadConfig() error {
 		Description: "数据库密码",
 		Title:       "数据库密码",
 		Group:       "Database",
+		Sensitive:   true,
 	})
 	Register(ConfigField{
 		Key:         "db.filename",
@@ -539,6 +568,7 @@ func (c *Config) LoadConfig() error {
 		Description: "CookieCloud 密码，用于派生 Cookie 更新接口的解密密钥",
 		Title:       "CookieCloud 密码",
 		Group:       "Cookie",
+		Sensitive:   true,
 	})
 	Register(ConfigField{
 		Key:         "cookie.key",
@@ -547,6 +577,7 @@ func (c *Config) LoadConfig() error {
 		Description: "可选的 16 位 CookieCloud 解密密钥；配置后优先于 password",
 		Title:       "CookieCloud 密钥",
 		Group:       "Cookie",
+		Sensitive:   true,
 	})
 	Register(ConfigField{
 		Key:         "cloudflare.accountId",
@@ -565,6 +596,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "API Token",
 		Group:       "Cloudflare",
 		HotReload:   true,
+		Sensitive:   true,
 	})
 	Register(ConfigField{
 		Key:         "cloudflare.refreshToken",
@@ -574,6 +606,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "Refresh Token",
 		Group:       "Cloudflare",
 		HotReload:   true,
+		Sensitive:   true,
 	})
 	Register(ConfigField{
 		Key:         "cloudflare.adminToken",
@@ -583,6 +616,7 @@ func (c *Config) LoadConfig() error {
 		Title:       "Admin Token",
 		Group:       "Cloudflare",
 		HotReload:   true,
+		Sensitive:   true,
 	})
 	Register(ConfigField{
 		Key:         "cloudflare.workerName",
@@ -790,11 +824,92 @@ func (c *Config) Update(key string, value interface{}) {
 }
 
 func (c *Config) Save() error {
-	return viper.WriteConfigAs(c.FullPath)
+	config_write_mu.Lock()
+	defer config_write_mu.Unlock()
+	return c.save_atomic()
+}
+
+// UpdateAndSave applies a validated set of values and atomically persists the
+// resulting configuration file.
+func (c *Config) UpdateAndSave(values map[string]interface{}) error {
+	config_write_mu.Lock()
+	defer config_write_mu.Unlock()
+
+	previous_values := make(map[string]interface{}, len(values))
+	for key, value := range values {
+		previous_values[key] = viper.Get(key)
+		viper.Set(key, value)
+	}
+	if err := c.save_atomic(); err != nil {
+		for key, value := range previous_values {
+			viper.Set(key, value)
+		}
+		return err
+	}
+	c.Existing = true
+	return nil
+}
+
+func (c *Config) save_atomic() error {
+	config_path := strings.TrimSpace(c.FullPath)
+	if config_path == "" {
+		return fmt.Errorf("配置文件路径为空")
+	}
+	config_dir := filepath.Dir(config_path)
+	if err := os.MkdirAll(config_dir, 0755); err != nil {
+		return err
+	}
+	extension := filepath.Ext(config_path)
+	if extension == "" {
+		extension = ".yaml"
+	}
+	base_name := strings.TrimSuffix(filepath.Base(config_path), filepath.Ext(config_path))
+	temp_file, err := os.CreateTemp(config_dir, "."+base_name+"-*.tmp"+extension)
+	if err != nil {
+		return err
+	}
+	temp_path := temp_file.Name()
+	if err := temp_file.Close(); err != nil {
+		_ = os.Remove(temp_path)
+		return err
+	}
+	defer os.Remove(temp_path)
+
+	if info, stat_err := os.Stat(config_path); stat_err == nil {
+		if chmod_err := os.Chmod(temp_path, info.Mode().Perm()); chmod_err != nil {
+			return chmod_err
+		}
+	}
+	if err := viper.WriteConfigAs(temp_path); err != nil {
+		return err
+	}
+	return os.Rename(temp_path, config_path)
 }
 
 func (c *Config) GetAll() map[string]interface{} {
 	return viper.AllSettings()
+}
+
+// GetRaw returns the unprocessed value selected by Viper.
+func (c *Config) GetRaw(key string) interface{} {
+	return viper.Get(key)
+}
+
+// IsInConfig reports whether a value was explicitly present in config.yaml.
+func (c *Config) IsInConfig(key string) bool {
+	return viper.InConfig(key)
+}
+
+// Revision returns a stable digest of all registered raw configuration values.
+// It can be compared across processes without exposing sensitive values.
+func (c *Config) Revision() (string, error) {
+	values := viper.AllSettings()
+	data, err := json.Marshal(values)
+	if err != nil {
+		return "", fmt.Errorf("编码配置摘要失败: %w", err)
+	}
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:]), nil
 }
 
 func (c *Config) Get(key string) interface{} {

@@ -1,15 +1,4 @@
 import {
-  Button,
-  Dialog,
-  DialogBody,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  Input,
-  Textarea,
-  createButtonStore,
-} from "../components.js";
-import {
   DOWNLOAD_STATUS_COUNT_ITEMS,
   MaxRunning,
   format_download_percent,
@@ -106,18 +95,12 @@ function DownloadV2ActionButton(props) {
     icon,
     iconSize: icon_size,
     label,
-    onClick: on_click,
+    store,
     title,
-    variant,
   } = props;
   return Button(
     {
-      store: createButtonStore({
-        disabled: attributes && attributes.disabled,
-        onClick: on_click,
-        size: compact ? "sm" : "default",
-        variant: variant || "default",
-      }),
+      store,
       class: [
         "wx-dl-v2-action",
         compact ? "wx-content-action-compact" : "",
@@ -994,41 +977,29 @@ function DownloadV2StatusActions(props) {
     { class: "wx-dl-page-status-actions wx-dl-v2-page-status-actions" },
     [
       DownloadV2ActionButton({
+        store: vm$.ui.btn_refresh_tasks$,
         icon: "refresh-cw",
         label: "刷新",
-        variant: "outline",
-        onClick() {
-          vm$.methods.refreshTasks();
-        },
       }),
       Show({
         when: computed(running_count_, (count) => count < MaxRunning),
         ok() {
           return DownloadV2ActionButton({
+            store: vm$.ui.btn_start_all_tasks$,
             icon: "play",
             label: "全部开始",
-            variant: "primary",
-            onClick() {
-              vm$.methods.startAllTasks();
-            },
           });
         },
       }),
       DownloadV2ActionButton({
+        store: vm$.ui.btn_pause_all_tasks$,
         icon: "pause",
         label: "全部暂停",
-        variant: "outline",
-        onClick() {
-          vm$.methods.pauseAllTasks();
-        },
       }),
       DownloadV2ActionButton({
+        store: vm$.ui.btn_clear_tasks$,
         icon: "trash2",
         label: "清空记录",
-        variant: "danger",
-        onClick() {
-          vm$.methods.requestClearTasks(false);
-        },
       }),
     ],
   );
@@ -1064,15 +1035,12 @@ export function DownloadV2SelectionBar(props) {
             computed(selected_task_count_, (count) => `已选中 ${count} 个任务`),
           ]),
           DownloadV2ActionButton({
+            store: vm$.ui.btn_delete_selected_tasks$,
             icon: "trash2",
             label: computed(
               selected_task_count_,
               (count) => `删除选中 ${count}`,
             ),
-            variant: "danger",
-            onClick() {
-              vm$.methods.requestDeleteSelectedTasks(false);
-            },
           }),
         ],
       );

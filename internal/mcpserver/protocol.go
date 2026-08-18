@@ -36,11 +36,13 @@ type Config struct {
 	ErrorOutput  io.Writer
 	HTTPClient   *http.Client
 	PollInterval time.Duration
+	DataReader   DataReader
 }
 
 // Server implements the MCP stdio transport and exposes downloader tools.
 type Server struct {
 	api_client       *api_client
+	data_reader      DataReader
 	input            io.Reader
 	output           io.Writer
 	error_output     io.Writer
@@ -109,6 +111,7 @@ func NewServer(config Config) (*Server, error) {
 	}
 	return &Server{
 		api_client:   client,
+		data_reader:  config.DataReader,
 		input:        config.Input,
 		output:       config.Output,
 		error_output: config.ErrorOutput,
@@ -268,7 +271,7 @@ func (s *Server) server_info() map[string]any {
 }
 
 func server_instructions() string {
-	return "查询下载器平台状态、解析受支持平台的内容链接，并创建和启动内容下载任务。调用 download_content 前应先获得用户对下载操作的确认。微信视频号 fetch_content 结果包含可供 aria2 等第三方下载器使用的 download_resources；第三方下载完成后，仅在 requires_decryption 为 true 时使用 decode_key 调用 decrypt_wxchannels_video。解密会原地覆盖文件。"
+	return "查询下载器平台状态、解析受支持平台的内容链接，并创建和启动内容下载任务。调用 download_content 前应先获得用户对下载操作的确认。凡涉及下载文件的文件系统操作，包括重命名、移动、删除以及修改文件名或路径，都必须在同一业务流程中同步更新数据库中的 DownloadResource 表记录，禁止仅操作本地文件。若当前工具无法保证文件系统与 DownloadResource 记录一致，必须停止操作并明确告知用户暂不支持，不得使用其他本地文件工具绕过该约束。只读数据工具可查询下载任务及详情、账号、浏览记录、应用日志和代理证书状态；列表结果支持分页，应优先使用筛选参数限制返回量。微信视频号工具可搜索账号、查询账号视频与直播回放、赞或收藏的视频、关注账号、播放记录、视频详情、评论及分享链接；这些工具依赖已连接的视频号页面，调用前可先使用 get_wxchannels_status。分页时把上一次响应的 lastBuffer 原样传给 next_marker。微信视频号 fetch_content 结果包含可供 aria2 等第三方下载器使用的 download_resources；第三方下载完成后，仅在 requires_decryption 为 true 时使用 decode_key 调用 decrypt_wxchannels_video。解密会原地覆盖文件。"
 }
 
 func (s *Server) is_modern_request(request rpc_request) bool {

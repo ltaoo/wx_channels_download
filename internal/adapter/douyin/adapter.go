@@ -253,6 +253,7 @@ func (h *handler) build_download_task_from_model_data(model_data *douyin_model_d
 			Protocol: douyin_endpoint_protocol(model_data.video_url),
 			URL:      model_data.video_url,
 			Enabled:  1,
+			Headers:  douyin_video_endpoint_headers(),
 		}
 		resources = append(resources, &adapter.ResourceInfo{
 			Resource:  video_resource,
@@ -410,6 +411,7 @@ func douyin_album_resource_infos(model_data *douyin_model_data, content_id strin
 			Protocol: douyin_endpoint_protocol(image.live_photo.URL),
 			URL:      image.live_photo.URL,
 			Enabled:  1,
+			Headers:  douyin_video_endpoint_headers(),
 		}
 		resources = append(resources, &adapter.ResourceInfo{
 			Resource:  live_resource,

@@ -11,10 +11,10 @@ download:
   defaultActionWhenExisting: ""
   maxRunning: 3
   remoteServer:
-    enabled: true
+    enabled: false
     protocol: "http"
-    hostname: "127.0.0.1"
-    port: 2032
+    hostname: "192.168.1.2"
+    port: 2022
 
 api:
   protocol: "http"
@@ -50,6 +50,15 @@ cookie:
   key: ""
 
 update:
+  sources:
+    - type: github
+      priority: 1
+      github_repo: ltaoo/wx_channels_download
+      github_token: ""
+      manifest_url: ""
+      self_url: ""
+      enabled: true
+      need_check_checksum: false
   proxy: ""
   mirror: ""
 

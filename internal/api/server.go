@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"wx_channel/internal/events"
+	"wx_channel/internal/services"
 	"wx_channel/internal/webassets"
 	"wx_channel/pkg/hermes"
 )
@@ -29,11 +30,13 @@ func NewAPIServer(
 	cfg *APIConfig,
 	logger *zerolog.Logger,
 	db *gorm.DB,
-	staticAssets *webassets.Registry,
+	static_assets *webassets.Registry,
 	downloader *hermes.HermesEngine,
-	hookManager *hermes.HookManager,
+	hook_manager *hermes.HookManager,
+	update_service *services.UpdateService,
+	restart_service *services.ApplicationRestartService,
 ) *APIServer {
-	client := NewAPIClient(cfg, logger, db, staticAssets, downloader, hookManager)
+	client := NewAPIClient(cfg, logger, db, static_assets, downloader, hook_manager, update_service, restart_service)
 	logger.Info().
 		Str("listen_addr", cfg.Hostname+":"+strconv.Itoa(cfg.Port)).
 		Msg("api server configured")

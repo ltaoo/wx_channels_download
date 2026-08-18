@@ -96,16 +96,4 @@ func (c *ChannelsPluginConfig) ApplyConfig(sub *config.SubViper) error {
 
 func init() {
 	config.RegisterPlugin(&ChannelsPluginConfig{})
-
-	// Legacy alias for backward compatibility; registered with its flat key directly
-	// to avoid the namespace auto-prefix applied by LoadPluginConfigs.
-	config.Register(config.ConfigField{
-		Key:         "channel.disableLocationToHome",
-		Type:        config.ConfigTypeBool,
-		Default:     false,
-		Description: "是否禁止从视频号详情页重定向到首页（视频号默认行为）",
-		Title:       "禁止重定向",
-		Group:       "Channels",
-		HotReload:   true,
-	})
 }

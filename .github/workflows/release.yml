@@ -78,6 +78,12 @@ jobs:
           go run github.com/tc-hib/go-winres@latest make --in ./build/winres.json --arch amd64
           go run github.com/tc-hib/go-winres@latest make --in ./build/winres.json --arch arm64
 
+      - name: Minify embedded JavaScript
+        run: |
+          set -e
+          cd build/tools
+          go run ./cmd/buildgo -root ../.. -minify-only
+
       # TODO: Temporarily disabled macOS notarization
       # - name: Install rcodesign
       #   run: |

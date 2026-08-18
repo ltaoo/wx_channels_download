@@ -49,6 +49,14 @@ type decrypt_wxchannels_video_arguments struct {
 	Key      string `json:"key"`
 }
 
+type update_config_arguments struct {
+	Values map[string]any `json:"values"`
+}
+
+type get_restart_status_arguments struct {
+	RestartToken string `json:"restart_token"`
+}
+
 type wxchannels_download_preview struct {
 	Resources []wxchannels_download_resource_info `json:"Resources"`
 }
@@ -86,7 +94,68 @@ func tool_error_result(err error) map[string]any {
 }
 
 func tool_definitions() []any {
-	return []any{
+	definitions := []any{
+		map[string]any{
+			"name":        "get_config",
+			"title":       "获取应用配置",
+			"description": "获取 config.yaml 的可配置字段、类型、说明、当前值和解析后的生效值。application_fields 是 internal/config/config.go 注册的应用配置，plugin_fields 是 adapter 插件配置，fields 是两者的兼容合集。敏感字段只返回是否已配置，不返回明文。修改前应先调用此工具确认字段名称和允许值。",
+			"inputSchema": map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+			},
+			"annotations": map[string]any{
+				"readOnlyHint":    true,
+				"destructiveHint": false,
+				"idempotentHint":  true,
+				"openWorldHint":   false,
+			},
+		},
+		map[string]any{
+			"name":        "update_config",
+			"title":       "修改应用配置并重启",
+			"description": "批量修改 get_config 返回的非只读配置字段。配置保存成功后只代表重启已安排，不代表重启已完成；必须保存返回的 restart_token，在连接恢复后调用 get_restart_status，且仅当 status=completed、restart_completed=true、config_applied=true 时才能告诉用户重启完成且配置生效。当前 MCP 连接可能短暂断开；相同值不会触发重启。",
+			"inputSchema": map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"properties": map[string]any{
+					"values": map[string]any{
+						"type":                 "object",
+						"description":          "配置键到新值的映射；键必须来自 get_config，值必须符合对应字段类型。",
+						"additionalProperties": true,
+						"minProperties":        1,
+					},
+				},
+				"required": []string{"values"},
+			},
+			"annotations": map[string]any{
+				"readOnlyHint":    false,
+				"destructiveHint": true,
+				"idempotentHint":  true,
+				"openWorldHint":   false,
+			},
+		},
+		map[string]any{
+			"name":        "get_restart_status",
+			"title":       "确认应用重启与配置生效",
+			"description": "使用 update_config 返回的 restart_token 确认重启结果。status=pending 表示仍是旧进程，必须在连接恢复后重试；status=failed 表示重启请求失败；status=config_mismatch 表示已重启但配置不一致；只有 status=completed、restart_completed=true、config_applied=true 才能向用户确认重启完成且新配置已生效。",
+			"inputSchema": map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"properties": map[string]any{
+					"restart_token": map[string]any{
+						"type":        "string",
+						"description": "update_config 返回的重启确认令牌。",
+					},
+				},
+				"required": []string{"restart_token"},
+			},
+			"annotations": map[string]any{
+				"readOnlyHint":    true,
+				"destructiveHint": false,
+				"idempotentHint":  true,
+				"openWorldHint":   false,
+			},
+		},
 		map[string]any{
 			"name":        "get_platform_status",
 			"title":       "获取平台状态",
@@ -240,10 +309,35 @@ func tool_definitions() []any {
 			},
 		},
 	}
+	definitions = append(definitions, wxchannels_tool_definitions()...)
+	return append(definitions, data_tool_definitions()...)
+}
+
+// ToolNames returns the MCP tool names exposed by this server.
+func ToolNames() []string {
+	definitions := tool_definitions()
+	names := make([]string, 0, len(definitions))
+	for _, definition := range definitions {
+		tool, ok := definition.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := tool["name"].(string)
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 func (s *Server) call_tool(ctx context.Context, params call_tool_params) (map[string]any, error) {
 	switch params.Name {
+	case "get_config":
+		return s.get_config(ctx)
+	case "update_config":
+		return s.update_config(ctx, params.Arguments)
+	case "get_restart_status":
+		return s.get_restart_status(ctx, params.Arguments)
 	case "get_platform_status":
 		return s.get_platform_status(ctx)
 	case "fetch_content":
@@ -252,9 +346,80 @@ func (s *Server) call_tool(ctx context.Context, params call_tool_params) (map[st
 		return s.download_content(ctx, params.Arguments)
 	case "decrypt_wxchannels_video":
 		return s.decrypt_wxchannels_video(ctx, params.Arguments)
+	case "get_wxchannels_status":
+		return s.get_wxchannels_status(ctx)
+	case "search_wxchannels_accounts":
+		return s.search_wxchannels_accounts(ctx, params.Arguments)
+	case "get_wxchannels_account_videos":
+		return s.get_wxchannels_account_videos(ctx, params.Arguments)
+	case "get_wxchannels_live_replays":
+		return s.get_wxchannels_live_replays(ctx, params.Arguments)
+	case "get_wxchannels_interacted_videos":
+		return s.get_wxchannels_interacted_videos(ctx, params.Arguments)
+	case "get_wxchannels_followed_accounts":
+		return s.get_wxchannels_followed_accounts(ctx, params.Arguments)
+	case "get_wxchannels_play_history":
+		return s.get_wxchannels_play_history(ctx, params.Arguments)
+	case "get_wxchannels_video_profile":
+		return s.get_wxchannels_video_profile(ctx, params.Arguments)
+	case "get_wxchannels_video_comments":
+		return s.get_wxchannels_video_comments(ctx, params.Arguments)
+	case "get_wxchannels_video_share_url":
+		return s.get_wxchannels_video_share_url(ctx, params.Arguments)
+	case "get_download_tasks":
+		return s.get_download_tasks(ctx, params.Arguments)
+	case "get_download_task_detail":
+		return s.get_download_task_detail(ctx, params.Arguments)
+	case "get_accounts":
+		return s.get_accounts(ctx, params.Arguments)
+	case "get_browse_history":
+		return s.get_browse_history(ctx, params.Arguments)
+	case "get_logs":
+		return s.get_logs(ctx, params.Arguments)
+	case "get_certificate_status":
+		return s.get_certificate_status(ctx)
 	default:
 		return nil, fmt.Errorf("%w: %s", err_unknown_tool, params.Name)
 	}
+}
+
+func (s *Server) get_config(ctx context.Context) (map[string]any, error) {
+	raw_config, err := s.api_client.get_config(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return successful_tool_result(raw_json_value(raw_config))
+}
+
+func (s *Server) update_config(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+	var arguments update_config_arguments
+	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
+		return nil, err
+	}
+	if len(arguments.Values) == 0 {
+		return nil, fmt.Errorf("values 至少需要包含一个配置项")
+	}
+	raw_result, err := s.api_client.update_config(ctx, arguments.Values)
+	if err != nil {
+		return nil, err
+	}
+	return successful_tool_result(raw_json_value(raw_result))
+}
+
+func (s *Server) get_restart_status(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+	var arguments get_restart_status_arguments
+	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
+		return nil, err
+	}
+	arguments.RestartToken = strings.TrimSpace(arguments.RestartToken)
+	if arguments.RestartToken == "" {
+		return nil, fmt.Errorf("restart_token 不能为空")
+	}
+	raw_result, err := s.api_client.get_restart_status(ctx, arguments.RestartToken)
+	if err != nil {
+		return nil, err
+	}
+	return successful_tool_result(raw_json_value(raw_result))
 }
 
 func (s *Server) get_platform_status(ctx context.Context) (map[string]any, error) {

@@ -124,6 +124,15 @@ export default defineConfig(async () => {
           text: "功能",
           items: [
             { text: "API", link: "/feature/api" },
+            {
+              text: "MCP",
+              link: "/feature/mcp",
+              items: [
+                { text: "启用", link: "/feature/mcp#启用" },
+                { text: "命令", link: "/feature/mcp#命令" },
+                { text: "常用场景", link: "/feature/mcp#常用场景" },
+              ],
+            },
             { text: "指定文件名", link: "/feature/filename" },
             {
               text: "视频号",

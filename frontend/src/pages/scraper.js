@@ -1,13 +1,4 @@
-import {
-  Button,
-  Dialog,
-  DialogBody,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  Input,
-  Popover,
-} from "../components.js";
+import { ThirdPartyDownloaderPanel } from "@/third-party-downloader.js";
 
 import { ScraperPageViewModel } from "./scraper.model.js";
 
@@ -106,6 +97,9 @@ function ScraperPageView(props) {
       ]),
       ScraperCacheContentDialog({ store: vm$ }),
       TaskOverwriteConfirmDialog({ store: vm$ }),
+      ThirdPartyDownloaderPanel({
+        store: vm$.models.third_party_downloader,
+      }),
     ],
   );
 }
@@ -1624,6 +1618,21 @@ function ScraperDownloadInfo(props) {
                 ]);
               },
             }),
+            Button(
+              {
+                store: vm$.ui.btn_third_party_download$,
+                class:
+                  "wx-content-action wx-home-third-party-download dm-button dm-button--outline dm-focus-ring",
+                attributes: {
+                  type: "button",
+                  title: "使用 DownloadResource endpoint 创建三方下载任务",
+                },
+              },
+              [
+                Timeless.Icon({ name: "hard-drive", size: 16 }),
+                View({ class: "wx-content-action-label" }, ["三方下载"]),
+              ],
+            ),
             Button(
               {
                 store: vm$.ui.btn_create_download_task$,

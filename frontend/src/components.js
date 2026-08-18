@@ -71,30 +71,316 @@ function dispose_owned_store(store) {
   }
 }
 
-export function createButtonStore(props = {}) {
-  const disabled = props.disabled;
-  const loading = props.loading;
-  const store = new vm.ButtonCore({
-    disabled: Boolean(source_value(disabled, false)),
-    loading: Boolean(source_value(loading, false)),
-    variant: props.variant || "default",
-    size: props.size || "default",
-    onClick: props.onClick,
-  });
-  const unlistens = [];
-  const disabled_unlisten = subscribe_source(disabled, (value) => {
-    if (value) {
-      store.disable();
-    } else {
-      store.enable();
+export function LoadingView() {
+  return View(
+    {
+      class:
+        "route-loading dm-page dm-grid dm-place-center dm-text-muted dm-p-8",
+      role: "status",
+    },
+    ["页面加载中…"],
+  );
+}
+
+/**
+ * @param {Error} error
+ * @param {string} view_name
+ */
+export function ErrorFallbackView(error, view_name) {
+  return View(
+    {
+      class: "route-error dm-page dm-grid dm-place-center dm-p-8",
+      attributes: { role: "alert" },
+    },
+    [
+      View({ class: "route-error-card" }, [
+        View(
+          {
+            class: "route-error-card__icon",
+            attributes: { "aria-hidden": "true" },
+          },
+          [Runtime.Icon({ name: "circle-alert", size: 24 })],
+        ),
+        View({ class: "route-error-card__content" }, [
+          View({ as: "strong", class: "route-error-card__title" }, [
+            "页面加载失败",
+          ]),
+          View({ as: "span", class: "route-error-card__context" }, [
+            view_name || "未知页面",
+          ]),
+        ]),
+        View({ as: "pre", class: "route-error-card__detail" }, [
+          error.message,
+        ]),
+      ]),
+    ],
+  );
+}
+
+function lazy_img_dom_element(event) {
+  let target = event && event.target ? event.target : event;
+  for (let depth = 0; depth < 4; depth += 1) {
+    if (
+      target &&
+      target.nodeType === 1 &&
+      typeof target.addEventListener === "function"
+    ) {
+      return target;
     }
+    if (target && typeof target.get$elm === "function") {
+      target = target.get$elm();
+      continue;
+    }
+    if (target && target.$elm) {
+      target = target.$elm;
+      continue;
+    }
+    break;
+  }
+  return null;
+}
+
+function lazy_img_source(value) {
+  const resolved = source_value(value, "");
+  if (resolved === null || resolved === undefined) {
+    return "";
+  }
+  return String(resolved).trim();
+}
+
+function create_lazy_img_model(props) {
+  let image = null;
+  let settled = false;
+  let current_src = lazy_img_source(props.src);
+  let current_srcset = lazy_img_source(props.srcset);
+  const failed_ = ref(false);
+  const unlistens = [];
+
+  function handle_load(event) {
+    settled = true;
+    image?.setAttribute("data-lazy-img-state", "loaded");
+    failed_.as(false);
+    if (typeof props.onLoad === "function") {
+      props.onLoad(event);
+    }
+  }
+
+  function handle_error(event) {
+    settled = true;
+    image?.setAttribute("data-lazy-img-state", "error");
+    failed_.as(true);
+    if (typeof props.onError === "function") {
+      props.onError(event);
+    }
+  }
+
+  function reset_failure() {
+    settled = false;
+    failed_.as(false);
+  }
+
+  function detach_image() {
+    if (!image) return;
+    image.removeEventListener("load", handle_load);
+    image.removeEventListener("error", handle_error);
+    image = null;
+    settled = false;
+  }
+
+  const src_unlisten = subscribe_source(props.src, (value) => {
+    current_src = lazy_img_source(value);
+    reset_failure();
   });
-  const loading_unlisten = subscribe_source(loading, (value) => {
-    store.setLoading(Boolean(value));
+  const srcset_unlisten = subscribe_source(props.srcset, (value) => {
+    current_srcset = lazy_img_source(value);
+    reset_failure();
   });
-  if (disabled_unlisten) unlistens.push(disabled_unlisten);
-  if (loading_unlisten) unlistens.push(loading_unlisten);
-  return own_store_bindings(store, unlistens);
+  if (src_unlisten) unlistens.push(src_unlisten);
+  if (srcset_unlisten) unlistens.push(srcset_unlisten);
+
+  return {
+    state: {
+      failed: failed_,
+    },
+    methods: {
+      mount(event) {
+        image = lazy_img_dom_element(event);
+        if (image) {
+          image.setAttribute("data-lazy-img-state", "loading");
+          image.addEventListener("load", handle_load);
+          image.addEventListener("error", handle_error);
+          if (image.complete && (current_src || current_srcset)) {
+            const mounted_image = image;
+            queueMicrotask(() => {
+              if (image !== mounted_image || settled) return;
+              if (mounted_image.naturalWidth > 0) {
+                handle_load({ target: mounted_image });
+              } else {
+                handle_error({ target: mounted_image });
+              }
+            });
+          }
+        }
+        if (typeof props.onMounted === "function") {
+          props.onMounted(event);
+        }
+      },
+      load: handle_load,
+      error: handle_error,
+      unmount_image: detach_image,
+      destroy() {
+        detach_image();
+        while (unlistens.length > 0) {
+          const unlisten = unlistens.pop();
+          if (typeof unlisten === "function") unlisten();
+        }
+        failed_.destroy?.();
+        if (typeof props.onUnmounted === "function") {
+          props.onUnmounted();
+        }
+      },
+    },
+  };
+}
+
+function lazy_img_attributes(props) {
+  const attributes = { ...(props.attributes || {}) };
+  delete attributes.src;
+  delete attributes.srcset;
+  const image_attributes = {
+    alt:
+      props.alt === undefined
+        ? attributes.alt === undefined
+          ? ""
+          : attributes.alt
+        : props.alt,
+    width: props.width,
+    height: props.height,
+    loading: props.loading || "lazy",
+    decoding: props.decoding,
+    crossorigin: props.crossOrigin,
+    sizes: props.sizes,
+    referrerpolicy: props.referrerPolicy,
+    fetchpriority: props.fetchPriority,
+    usemap: props.useMap,
+    ismap: props.isMap,
+  };
+  Object.entries(image_attributes).forEach(([name, value]) => {
+    if (value !== undefined) attributes[name] = value;
+  });
+  return attributes;
+}
+
+function lazy_img_failure_attributes(props) {
+  const attributes = { ...(props.attributes || {}) };
+  const alt = lazy_img_source(
+    props.alt === undefined ? attributes.alt : props.alt,
+  );
+  [
+    "src",
+    "srcset",
+    "alt",
+    "loading",
+    "decoding",
+    "crossorigin",
+    "sizes",
+    "referrerpolicy",
+    "fetchpriority",
+    "usemap",
+    "ismap",
+  ].forEach((name) => delete attributes[name]);
+  attributes["data-lazy-img-state"] = "error";
+  attributes.role = attributes.role || "img";
+  attributes["aria-label"] =
+    attributes["aria-label"] ||
+    (alt ? `${alt}（图片加载失败）` : "图片加载失败");
+  attributes.title = attributes.title || "图片加载失败";
+  return attributes;
+}
+
+export function LazyImg(props = {}) {
+  const {
+    src,
+    srcset,
+    alt,
+    width,
+    height,
+    loading,
+    decoding,
+    crossOrigin,
+    sizes,
+    referrerPolicy,
+    fetchPriority,
+    useMap,
+    isMap,
+    onLoad,
+    onError,
+    onMounted,
+    onUnmounted,
+    attributes,
+    ...rest
+  } = props;
+  const image_src = src === undefined ? attributes && attributes.src : src;
+  const image_srcset =
+    srcset === undefined ? attributes && attributes.srcset : srcset;
+  const model = create_lazy_img_model({
+    src: image_src,
+    srcset: image_srcset,
+    onLoad,
+    onError,
+    onMounted,
+    onUnmounted,
+  });
+
+  return Fragment(
+    {
+      onUnmounted() {
+        model.methods.destroy();
+      },
+    },
+    [
+      Show({
+        when: model.state.failed,
+        ok() {
+          return View(
+            {
+              ...rest,
+              class: static_classes([rest.class, "dm-lazy-img-error"]),
+              attributes: lazy_img_failure_attributes({ attributes, alt }),
+            },
+            [Runtime.Icon({ name: "file", size: 18 })],
+          );
+        },
+        else() {
+          return Runtime.Img({
+            ...rest,
+            src: image_src,
+            srcset: image_srcset,
+            attributes: lazy_img_attributes({
+              attributes,
+              alt,
+              width,
+              height,
+              loading,
+              decoding,
+              crossOrigin,
+              sizes,
+              referrerPolicy,
+              fetchPriority,
+              useMap,
+              isMap,
+            }),
+            onMounted(event) {
+              model.methods.mount(event);
+            },
+            onUnmounted() {
+              model.methods.unmount_image();
+            },
+          });
+        },
+      }),
+    ],
+  );
 }
 
 export function createInputStore(props = {}) {
@@ -1064,7 +1350,7 @@ function pagination_source(value, fallback) {
     : ref(value === undefined ? fallback : value);
 }
 
-export function Pagination(props = {}) {
+function create_pagination_model(props) {
   const page_ = pagination_source(props.page, 1);
   const page_count_ = pagination_source(props.pageCount, 1);
   const loading_ = pagination_source(props.loading, false);
@@ -1090,6 +1376,68 @@ export function Pagination(props = {}) {
         Number(state.pageCount) || 1,
       )}`,
   );
+  const ui = {
+    next_button$: new vm.ButtonCore({
+      variant: "outline",
+      size: "icon-sm",
+      disabled: Boolean(next_disabled_.value),
+      onClick() {
+        if (typeof props.onNext === "function") {
+          return props.onNext();
+        }
+        return null;
+      },
+    }),
+    previous_button$: new vm.ButtonCore({
+      variant: "outline",
+      size: "icon-sm",
+      disabled: Boolean(previous_disabled_.value),
+      onClick() {
+        if (typeof props.onPrevious === "function") {
+          return props.onPrevious();
+        }
+        return null;
+      },
+    }),
+  };
+  const unlistens = [
+    next_disabled_.subscribe({
+      onChange(value) {
+        if (value) {
+          ui.next_button$.disable();
+        } else {
+          ui.next_button$.enable();
+        }
+      },
+    }),
+    previous_disabled_.subscribe({
+      onChange(value) {
+        if (value) {
+          ui.previous_button$.disable();
+        } else {
+          ui.previous_button$.enable();
+        }
+      },
+    }),
+  ];
+
+  return {
+    state: { page_text: page_text_ },
+    ui,
+    methods: {
+      destroy() {
+        unlistens.forEach((unlisten) => unlisten?.());
+        Object.values(ui).forEach((store) => store.destroy?.());
+        previous_disabled_.destroy?.();
+        next_disabled_.destroy?.();
+        page_text_.destroy?.();
+      },
+    },
+  };
+}
+
+export function Pagination(props = {}) {
+  const model = create_pagination_model(props);
   return View(
     {
       as: "nav",
@@ -1097,6 +1445,12 @@ export function Pagination(props = {}) {
       attributes: {
         "aria-label": props.ariaLabel || "分页",
         ...(props.attributes || {}),
+      },
+      onUnmounted() {
+        model.methods.destroy();
+        if (typeof props.onUnmounted === "function") {
+          props.onUnmounted();
+        }
       },
     },
     [
@@ -1110,16 +1464,7 @@ export function Pagination(props = {}) {
       View({ class: "dm-pagination__controls" }, [
         Button(
           {
-            store: createButtonStore({
-              variant: "outline",
-              size: "icon-sm",
-              disabled: previous_disabled_,
-              onClick() {
-                if (typeof props.onPrevious === "function") {
-                  props.onPrevious();
-                }
-              },
-            }),
+            store: model.ui.previous_button$,
             class: "dm-pagination__button",
             attributes: {
               type: "button",
@@ -1134,20 +1479,11 @@ export function Pagination(props = {}) {
             class: "dm-pagination__page",
             attributes: { "aria-live": "polite", "aria-atomic": "true" },
           },
-          [page_text_],
+          [model.state.page_text],
         ),
         Button(
           {
-            store: createButtonStore({
-              variant: "outline",
-              size: "icon-sm",
-              disabled: next_disabled_,
-              onClick() {
-                if (typeof props.onNext === "function") {
-                  props.onNext();
-                }
-              },
-            }),
+            store: model.ui.next_button$,
             class: "dm-pagination__button",
             attributes: {
               type: "button",

@@ -158,6 +158,58 @@ function resource_file_url(resource) {
   return local_path ? `/api/file?path=${encodeURIComponent(local_path)}` : "";
 }
 
+function object_value(source, ...keys) {
+  if (!source || typeof source !== "object") return undefined;
+  for (const key of keys) {
+    if (source[key] !== undefined && source[key] !== null) {
+      return source[key];
+    }
+  }
+  return undefined;
+}
+
+function content_cover_url(content) {
+  const source = content && typeof content === "object" ? content : {};
+  const content_record = object_value(source, "content", "Content");
+  const assets = object_value(content_record, "assets", "Assets");
+  const resources = Array.isArray(source.resources) ? source.resources : [];
+  const resources_by_id = new Map(
+    resources.map((resource) => [
+      String(object_value(resource, "id", "ID") || ""),
+      resource,
+    ]),
+  );
+
+  for (const asset of Array.isArray(assets) ? assets : []) {
+    const role = String(object_value(asset, "role", "Role") || "")
+      .trim()
+      .toLowerCase();
+    if (role !== "cover") continue;
+
+    const linked_resources = object_value(
+      asset,
+      "download_resources",
+      "DownloadResources",
+    );
+    for (const linked_resource of Array.isArray(linked_resources)
+      ? linked_resources
+      : []) {
+      const resource_id = String(
+        object_value(linked_resource, "id", "ID") || "",
+      );
+      const resource = resources_by_id.get(resource_id) || linked_resource;
+      const asset_url = resource_file_url(resource);
+      if (resource.exists === true && asset_url) {
+        return asset_url;
+      }
+    }
+  }
+
+  return String(
+    first_non_empty(source.cover_url, source.CoverURL, source.coverUrl),
+  ).trim();
+}
+
 function platform_name(content) {
   if (content && content.platform_name) {
     return content.platform_name;
@@ -502,6 +554,7 @@ function ContentDetailViewModel(props) {
       }
     },
     sourceURL: content_source_url,
+    coverURL: content_cover_url,
     resourceFileURL: resource_file_url,
     platformName: platform_name,
     typeLabel: content_type_label,

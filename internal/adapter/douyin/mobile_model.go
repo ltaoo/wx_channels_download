@@ -630,6 +630,32 @@ func douyin_no_watermark_url(video_url string) string {
 	return strings.Replace(strings.TrimSpace(video_url), "/playwm/", "/play/", 1)
 }
 
+// douyin_video_endpoint_headers mirrors the browser navigation request used
+// when opening an aweme.snssdk.com play URL directly. These headers are stored
+// on the endpoint so both Hermes' browser-fingerprint probe and its standard
+// HTTP Range requests use the same request shape. Accept-Encoding is omitted
+// intentionally because Hermes requires identity encoding for byte ranges.
+func douyin_video_endpoint_headers() string {
+	headers := map[string]string{
+		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+		"Accept-Language":           "zh-CN,zh;q=0.9",
+		"Cache-Control":             "no-cache",
+		"Pragma":                    "no-cache",
+		"Priority":                  "u=0, i",
+		"Sec-Ch-Ua":                 `"Not=A?Brand";v="99", "Google Chrome";v="151", "Chromium";v="151"`,
+		"Sec-Ch-Ua-Mobile":          "?0",
+		"Sec-Ch-Ua-Platform":        `"macOS"`,
+		"Sec-Fetch-Dest":            "document",
+		"Sec-Fetch-Mode":            "navigate",
+		"Sec-Fetch-Site":            "none",
+		"Sec-Fetch-User":            "?1",
+		"Upgrade-Insecure-Requests": "1",
+		"User-Agent":                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+	}
+	encoded, _ := json.Marshal(headers)
+	return string(encoded)
+}
+
 func douyin_dimension_string(dimension int) string {
 	if dimension <= 0 {
 		return ""

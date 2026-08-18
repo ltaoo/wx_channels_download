@@ -6,6 +6,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Download & Manage</title>
   <base href="/" />
+  <script type="importmap">
+    {
+      "imports": {
+        "@/": "./src/"
+      }
+    }
+  </script>
   <link rel="icon" href="/favicon.ico?v=__WX_DOWNLOAD_VERSION__" type="image/x-icon" />
   <link href="src/style.css?v=__WX_DOWNLOAD_VERSION__" rel="stylesheet" />
   <script>!function () { try { var d = document.documentElement; var e = localStorage.getItem('theme'); var resolved; if ('system' === e || !e) { var t = '(prefers-color-scheme: dark)', m = window.matchMedia(t); resolved = (m.media !== t || m.matches) ? 'dark' : 'light' } else { resolved = e } d.style.colorScheme = resolved; if (resolved === 'dark') { d.classList.add('dark') } else { d.classList.remove('dark') } } catch (e) { } }()</script>
