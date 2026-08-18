@@ -11,24 +11,15 @@ download:
   defaultActionWhenExisting: ""
   maxRunning: 3
   remoteServer:
-    enabled: false
+    enabled: true
     protocol: "http"
-    hostname: "192.168.1.2"
-    port: 2022
+    hostname: "127.0.0.1"
+    port: 2032
 
 api:
   protocol: "http"
   hostname: "127.0.0.1"
   port: 2022
-
-cookie:
-  uuid: ""
-  password: ""
-  key: ""
-
-update:
-  proxy: ""
-  mirror: ""
 
 db:
   type: "sqlite"
@@ -52,6 +43,15 @@ proxy:
   defaultInterface: ""
   skipInstallRootCert: false
   upstreamProxy: ""
+
+cookie:
+  uuid: ""
+  password: ""
+  key: ""
+
+update:
+  proxy: ""
+  mirror: ""
 
 channels:
   enabled: true
