@@ -2271,7 +2271,7 @@ function DownloadTaskCard(props) {
                       ok() {
                         return [
                           Timeless.Icon({
-                            name: "file-symlink",
+                            name: "external-link",
                             size: 20,
                           }),
                         ];

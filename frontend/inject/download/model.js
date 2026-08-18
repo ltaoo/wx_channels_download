@@ -500,6 +500,8 @@ function number_or_fallback(value, fallback) {
 
 function DownloaderPanelViewModel(props = {}) {
   const WEBSOCKET_RETRY_INTERVAL = 5000;
+  const WEBSOCKET_PROBE_INTERVAL = 10000;
+  const WEBSOCKET_PROBE_TIMEOUT = 5000;
   const ITEM_HEIGHT = Number(props.itemHeight) || 82;
   const ITEM_TITLE_LINE_HEIGHT = 20;
   const ITEM_STATUS_LINE_HEIGHT = 18;
@@ -729,6 +731,8 @@ function DownloaderPanelViewModel(props = {}) {
   let websocket_reconnect_promise_ = null;
   let websocket_retry_timer_ = null;
   let websocket_connection_attempt_ = 0;
+  let websocket_probe_timer_ = null;
+  let websocket_probe_controller_ = null;
 
   function cancel_websocket_retry() {
     if (websocket_retry_timer_ === null) {
@@ -755,6 +759,91 @@ function DownloaderPanelViewModel(props = {}) {
         },
       );
     }, WEBSOCKET_RETRY_INTERVAL);
+  }
+
+  function cancel_websocket_probe() {
+    if (websocket_probe_timer_ !== null) {
+      clearTimeout(websocket_probe_timer_);
+      websocket_probe_timer_ = null;
+    }
+    if (websocket_probe_controller_ !== null) {
+      websocket_probe_controller_.abort();
+      websocket_probe_controller_ = null;
+    }
+  }
+
+  function download_service_probe_url() {
+    const url = new URL("/api/status", APIOrigin);
+    url.searchParams.set("download_service_probe", String(Date.now()));
+    return url.href;
+  }
+
+  async function probe_download_service(signal) {
+    try {
+      const response = await fetch(download_service_probe_url(), {
+        method: "GET",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+        signal,
+      });
+      if (!response.ok) {
+        return {
+          available: false,
+          error: new Error(
+            `download service probe failed with HTTP ${response.status}`,
+          ),
+          status: response.status,
+        };
+      }
+      const payload = await response.json();
+      if (!payload || Number(payload.code) !== 0 || !payload.data) {
+        return {
+          available: false,
+          error: new Error("download service probe returned invalid data"),
+          status: response.status,
+        };
+      }
+      return { available: true, status: response.status };
+    } catch (error) {
+      return {
+        available: false,
+        error:
+          error instanceof Error
+            ? error
+            : new Error("download service probe failed"),
+        status: 0,
+      };
+    }
+  }
+
+  function schedule_websocket_probe(ws, on_result, delay) {
+    cancel_websocket_probe();
+    if (websocket_ !== ws || ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    websocket_probe_timer_ = setTimeout(async () => {
+      websocket_probe_timer_ = null;
+      if (websocket_ !== ws || ws.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      const controller = new AbortController();
+      websocket_probe_controller_ = controller;
+      const timeout_timer = setTimeout(
+        () => controller.abort(),
+        WEBSOCKET_PROBE_TIMEOUT,
+      );
+      const result = await probe_download_service(controller.signal);
+      clearTimeout(timeout_timer);
+      if (websocket_probe_controller_ !== controller) {
+        return;
+      }
+      websocket_probe_controller_ = null;
+      if (websocket_ !== ws || ws.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      on_result(result);
+    }, Math.max(0, Number(delay) || 0));
   }
 
   function set_websocket_connected(connected) {
@@ -2561,6 +2650,58 @@ function DownloaderPanelViewModel(props = {}) {
         }
         websocket_ = ws;
         let opened = false;
+        let confirmed = false;
+        const handle_probe_result = (probe_result) => {
+          if (websocket_ !== ws) {
+            return;
+          }
+          if (probe_result && probe_result.available) {
+            websocket_connecting_.as(false);
+            set_websocket_connected(true);
+            if (!confirmed) {
+              confirmed = true;
+              add_connection_log_context(WXU.log.Info())
+                .Int("ready_state", ws.readyState)
+                .Int("elapsed_ms", Date.now() - connection_started_at)
+                .Msg("download websocket connection confirmed");
+              resolve(true);
+            }
+            schedule_websocket_probe(
+              ws,
+              handle_probe_result,
+              WEBSOCKET_PROBE_INTERVAL,
+            );
+            return;
+          }
+          const probe_error =
+            probe_result && probe_result.error instanceof Error
+              ? probe_result.error
+              : new Error("download service is unavailable");
+          websocket_ = null;
+          cancel_websocket_probe();
+          websocket_connecting_.as(false);
+          set_websocket_connected(false);
+          schedule_websocket_retry();
+          add_connection_log_context(WXU.log.Error(probe_error))
+            .Int("ready_state", ws.readyState)
+            .Int("elapsed_ms", Date.now() - connection_started_at)
+            .Int("probe_status", Number(probe_result && probe_result.status))
+            .Int("probe_timeout_ms", WEBSOCKET_PROBE_TIMEOUT)
+            .Bool("retry_scheduled", websocket_retry_timer_ !== null)
+            .Msg("download service probe failed");
+          WXU.log.flushNow();
+          if (!confirmed) {
+            reject(probe_error);
+          }
+          try {
+            ws.close(4000, "download service probe failed");
+          } catch (error) {
+            add_connection_log_context(WXU.log.Error(error))
+              .Int("ready_state", ws.readyState)
+              .Msg("close unavailable download websocket failed");
+            WXU.log.flushNow();
+          }
+        };
         ws.onopen = () => {
           if (websocket_ !== ws) {
             add_connection_log_context(WXU.log.Warn())
@@ -2577,15 +2718,13 @@ function DownloaderPanelViewModel(props = {}) {
             return;
           }
           opened = true;
-          websocket_connecting_.as(false);
-          set_websocket_connected(true);
+          schedule_websocket_probe(ws, handle_probe_result, 0);
           add_connection_log_context(WXU.log.Info())
             .Int("ready_state", ws.readyState)
             .Int("elapsed_ms", Date.now() - connection_started_at)
             .Str("protocol", ws.protocol || "")
             .Str("extensions", ws.extensions || "")
             .Msg("download websocket connection opened");
-          resolve(true);
         };
         ws.onclose = (event) => {
           const is_current_connection = websocket_ === ws;
@@ -2610,6 +2749,7 @@ function DownloaderPanelViewModel(props = {}) {
             return;
           }
           websocket_ = null;
+          cancel_websocket_probe();
           websocket_connecting_.as(false);
           set_websocket_connected(false);
           schedule_websocket_retry();
@@ -2617,7 +2757,7 @@ function DownloaderPanelViewModel(props = {}) {
             .Bool("retry_scheduled", websocket_retry_timer_ !== null)
             .Int("retry_interval_ms", WEBSOCKET_RETRY_INTERVAL)
             .Msg("download websocket connection closed");
-          if (opened) {
+          if (confirmed) {
             WXU.error({
               msg: `download websocket connection closed.`,
               source: "frontend/inject/download/model.js:connect",
@@ -2638,6 +2778,7 @@ function DownloaderPanelViewModel(props = {}) {
               .Msg("ignore stale download websocket error event");
             return;
           }
+          cancel_websocket_probe();
           websocket_connecting_.as(false);
           set_websocket_connected(false);
           schedule_websocket_retry();
@@ -2660,7 +2801,7 @@ function DownloaderPanelViewModel(props = {}) {
             .Int("retry_interval_ms", WEBSOCKET_RETRY_INTERVAL)
             .Msg("download websocket connection error");
           WXU.log.flushNow();
-          if (!opened) {
+          if (!confirmed) {
             websocket_ = null;
             reject(event_error);
             try {
@@ -3426,6 +3567,7 @@ function DownloaderPanelViewModel(props = {}) {
     },
     clean() {
       cancel_websocket_retry();
+      cancel_websocket_probe();
       resetVirtualTasks();
       status_counts_.as(empty_download_status_counts());
     },

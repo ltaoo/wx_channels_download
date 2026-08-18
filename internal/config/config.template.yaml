@@ -11,10 +11,10 @@ download:
   defaultActionWhenExisting: ""
   maxRunning: 3
   remoteServer:
-    enabled: true
+    enabled: false
     protocol: "http"
-    hostname: "127.0.0.1"
-    port: 2032
+    hostname: "192.168.1.2"
+    port: 2022
 
 api:
   protocol: "http"
