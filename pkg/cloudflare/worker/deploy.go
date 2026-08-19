@@ -240,6 +240,53 @@ func (c *Client) EnableSubdomain(
 	return nil
 }
 
+// GetSubdomain returns the account-level workers.dev subdomain.
+func (c *Client) GetSubdomain(
+	request_context context.Context,
+	account_id string,
+	auth_token string,
+) (string, error) {
+	endpoint := fmt.Sprintf(
+		"%s/accounts/%s/workers/subdomain",
+		c.base_url,
+		url.PathEscape(strings.TrimSpace(account_id)),
+	)
+	request, err := http.NewRequestWithContext(request_context, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", fmt.Errorf("创建 Worker 子域名请求失败: %w", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+strings.TrimSpace(auth_token))
+	response_body, status_code, err := c.do(request)
+	if err != nil {
+		return "", fmt.Errorf("查询 Worker 子域名失败: %w", err)
+	}
+	var result struct {
+		Success bool `json:"success"`
+		Result  struct {
+			Subdomain string `json:"subdomain"`
+		} `json:"result"`
+		Errors []struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(response_body, &result); err != nil {
+		return "", fmt.Errorf("解析 Worker 子域名响应失败: %w", err)
+	}
+	if status_code < http.StatusOK || status_code >= http.StatusMultipleChoices || !result.Success {
+		message := strings.TrimSpace(string(response_body))
+		if len(result.Errors) > 0 && result.Errors[0].Message != "" {
+			message = result.Errors[0].Message
+		}
+		return "", fmt.Errorf("Cloudflare API 返回 %d: %s", status_code, message)
+	}
+	subdomain := strings.TrimSpace(result.Result.Subdomain)
+	if subdomain == "" {
+		return "", errors.New("Cloudflare API 返回了空的 Worker 子域名")
+	}
+	return subdomain, nil
+}
+
 func validate_deploy_body(deploy_body DeployBody) error {
 	if strings.TrimSpace(deploy_body.AccountID) == "" {
 		return errors.New("Cloudflare account id is required")

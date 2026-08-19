@@ -274,14 +274,14 @@ func create_interceptor_plugins(cfg *interceptor_settings) []*proxy.Plugin {
 					frontend.AppendScripts(&injected, crossorigin_attr, url_build("/inject/error.js", version_query))
 				}
 				frontend.AppendStylesheets(&injected, "", url_build("/inject/components.css", version_query))
-				frontend.AppendStylesheets(&injected, "", url_build("/public/timeless/0.31.2/timeless.weui.css"))
+				frontend.AppendStylesheets(&injected, "", url_build("/public/timeless/0.31.4/timeless.weui.css"))
 				frontend.AppendScripts(
 					&injected,
 					crossorigin_attr,
-					url_build("/public/timeless/0.31.2/timeless.umd.min.js"),
-					url_build("/public/timeless/0.31.2/timeless.weui.umd.min.js"),
-					url_build("/public/timeless/0.31.2/timeless.dom.umd.min.js"),
-					url_build("/public/timeless/0.31.2/timeless.web.umd.min.js"),
+					url_build("/public/timeless/0.31.4/timeless.umd.min.js"),
+					url_build("/public/timeless/0.31.4/timeless.weui.umd.min.js"),
+					url_build("/public/timeless/0.31.4/timeless.dom.umd.min.js"),
+					url_build("/public/timeless/0.31.4/timeless.web.umd.min.js"),
 				)
 				frontend_config := make(map[string]any, len(variables)+2)
 				for key, value := range variables {

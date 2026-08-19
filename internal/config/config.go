@@ -654,6 +654,14 @@ func (c *Config) LoadConfig() error {
 		Group:       "Hub",
 	})
 	Register(ConfigField{
+		Key:         "hub.deploy.pagesProjectName",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "Hub 管理页面的 Cloudflare Pages 项目名；留空时使用 <workerName>-admin",
+		Title:       "Hub Pages 项目名",
+		Group:       "Hub",
+	})
+	Register(ConfigField{
 		Key:         "hub.deploy.token",
 		Type:        ConfigTypeString,
 		Default:     "",

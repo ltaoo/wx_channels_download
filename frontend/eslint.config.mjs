@@ -6,7 +6,7 @@ export default [
     ignores: ["public/**", "docs/**", "dist/**", "node_modules/**"],
   },
   {
-    files: ["src/**/*.js", "hub/admin/public/app.js", "hub/admin/functions/**/*.js"],
+    files: ["src/**/*.js"],
     languageOptions: {
       ecmaVersion: 2021,
       sourceType: "module",

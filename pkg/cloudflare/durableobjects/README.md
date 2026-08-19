@@ -12,4 +12,4 @@
 
 `Deploy` 将调用方提供的 JavaScript、Durable Object 声明和 Secrets 通过 Cloudflare REST API 上传，不负责编译具体应用源码。
 
-当前 Task Hub 的原生 JavaScript 源码位于 `frontend/hub/index.js`，其部署参数和 `deploy hub` 子命令由 `cmd/deploy.go` 维护。
+当前 Task Hub 的原生 JavaScript 源码和 Worker + Pages 部署编排分别位于 `internal/workers/hub/index.js`、`internal/workers/hub/deploy.go`；`cmd/deploy.go` 只负责读取 CLI 配置、调用 `hub.Deploy` 和展示结果。

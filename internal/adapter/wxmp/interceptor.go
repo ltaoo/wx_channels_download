@@ -92,11 +92,11 @@ func create_official_account_interceptor_plugin(cfg *wxmp.OfficialAccountConfig,
 			if cfg.DebugShowError {
 				frontend.AppendScripts(&injected, script_attr, url_build("/inject/error.js", version_query))
 			}
-			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.2/timeless.umd.min.js", version_query))
-			frontend.AppendStylesheets(&injected, style_attr, url_build("/public/timeless/0.31.2/timeless.weui.css", version_query))
-			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.2/timeless.weui.umd.min.js", version_query))
-			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.2/timeless.dom.umd.min.js", version_query))
-			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.2/timeless.web.umd.min.js", version_query))
+			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.4/timeless.umd.min.js", version_query))
+			frontend.AppendStylesheets(&injected, style_attr, url_build("/public/timeless/0.31.4/timeless.weui.css", version_query))
+			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.4/timeless.weui.umd.min.js", version_query))
+			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.4/timeless.dom.umd.min.js", version_query))
+			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.4/timeless.web.umd.min.js", version_query))
 			frontend.AppendStylesheets(&injected, style_attr, url_build("/inject/components.css"))
 			frontend_config := make(map[string]any, len(variables)+2)
 			cfg_byte, _ := json.Marshal(cfg)
