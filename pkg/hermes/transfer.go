@@ -79,13 +79,11 @@ func (d *HermesEngine) download_file(
 		if err := context.Cause(ctx); err != nil {
 			return err
 		}
-		// Start with a Range request whenever the source supports it. The custom
-		// HTTP fingerprint client buffers non-Range responses completely, which
-		// prevents progress from advancing until the network transfer has ended.
-		// Range requests use the streaming HTTP path and also support resuming.
+		// Start with a Range request whenever the source supports it so interrupted
+		// downloads can resume from their durable offset.
 		use_range := prepared.SupportsRange && prepared.Size > 0
 		request := ReadRequest{OffsetStart: downloaded, OffsetEnd: prepared.Size - 1, UseRange: use_range}
-		reader, err := driver.Open(ctx, endpoint, request)
+		reader, err := d.open_with_limit(ctx, driver, endpoint, request)
 		if err != nil {
 			if !wait_for_retry(ctx, attempt) {
 				return context.Cause(ctx)
@@ -549,7 +547,7 @@ func (d *HermesEngine) download_segment(
 			Int64("offset", segment.OffsetStart+downloaded).
 			Int64("remaining", segment.Size-downloaded).
 			Msg("seg: Open() starting")
-		reader, err := driver.Open(ctx, endpoint, request)
+		reader, err := d.open_with_limit(ctx, driver, endpoint, request)
 		open_elapsed := time.Since(open_start)
 		if err != nil {
 			last_err = err
@@ -603,6 +601,7 @@ func (d *HermesEngine) download_segment(
 					if expected > elapsed {
 						select {
 						case <-ctx.Done():
+							reader.Close()
 							progress_ch <- segment_progress{slot: slot, downloaded: downloaded, err: context.Cause(ctx)}
 							return
 						case <-time.After(expected - elapsed):

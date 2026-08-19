@@ -1,7 +1,6 @@
 package protocol
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,22 +17,17 @@ import (
 	"wx_channel/pkg/hermes"
 )
 
-// HTTPDriver is the HTTP/HTTPS protocol driver that uses clawreq (CycleTLS) to
-// provide Chrome 112 JA3/uTLS fingerprints, avoiding detection as a Go HTTP client.
-// Uses a client pool to support concurrent HTTP Range requests, eliminating serial
-// bottlenecks caused by single-client mutex locks.
+// HTTPDriver is the HTTP/HTTPS protocol driver. Responses remain streaming so
+// large downloads do not need to be fully buffered in memory. Requests retain
+// browser-like headers while using context-aware net/http transports.
 type HTTPDriver struct {
 	mu        sync.Mutex
-	pools     map[string]chan *clawreq.Client
 	std_https map[string]*http.Client
 }
-
-const http_driver_pool_size = 3
 
 // NewHTTPDriver creates a new HTTP protocol driver instance.
 func NewHTTPDriver() *HTTPDriver {
 	return &HTTPDriver{
-		pools:     make(map[string]chan *clawreq.Client),
 		std_https: make(map[string]*http.Client),
 	}
 }
@@ -46,14 +40,25 @@ const prepare_probe_size = 512
 
 // Prepare probes the resource for size, Range capability, Content-Type, and first 512 bytes (for magic bytes detection).
 func (d *HTTPDriver) Prepare(ctx context.Context, endpoint hermes.Endpoint) (hermes.PreparedResource, error) {
-	resp, err := d.do(ctx, endpoint, clawreq.WithHeader("Range", fmt.Sprintf("bytes=0-%d", prepare_probe_size-1)))
+	req, err := d.new_request(ctx, endpoint)
 	if err != nil {
 		return hermes.PreparedResource{}, err
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", prepare_probe_size-1))
+	resp, err := d.do_stream(req, endpoint)
+	if err != nil {
+		return hermes.PreparedResource{}, err
+	}
+	defer resp.Body.Close()
+
+	probe_data, err := io.ReadAll(io.LimitReader(resp.Body, prepare_probe_size))
+	if err != nil {
+		return hermes.PreparedResource{}, fmt.Errorf("read HTTP probe: %w", err)
 	}
 
 	prepared := hermes.PreparedResource{
 		ContentType: resp.Header.Get("Content-Type"),
-		ProbeData:   resp.Body,
+		ProbeData:   probe_data,
 	}
 	if resp.StatusCode == http.StatusPartialContent {
 		start, end, total, ok := parse_content_range(resp.Header.Get("Content-Range"))
@@ -79,7 +84,7 @@ func (d *HTTPDriver) Prepare(ctx context.Context, endpoint hermes.Endpoint) (her
 		}
 		return prepared, nil
 	}
-	return hermes.PreparedResource{}, probe_response_status_error(resp.StatusCode, resp.Header, len(resp.Body))
+	return hermes.PreparedResource{}, probe_response_status_error(resp.StatusCode, resp.Header, len(probe_data))
 }
 
 func probe_response_status_error(status_code int, headers http.Header, body_bytes int) error {
@@ -98,9 +103,6 @@ func probe_response_status_error(status_code int, headers http.Header, body_byte
 }
 
 // Open downloads a resource according to ReadRequest and returns a readable data stream.
-// For Range requests (segmented downloads), uses the net/http standard library directly to
-// return resp.Body for streaming reads, enabling real-time progress events in the download loop.
-// For non-Range requests, still uses clawreq to preserve browser fingerprint.
 func (d *HTTPDriver) Open(ctx context.Context, endpoint hermes.Endpoint, request hermes.ReadRequest) (io.ReadCloser, error) {
 	if request.UseRange {
 		return d.open_range(ctx, endpoint, request)
@@ -108,32 +110,14 @@ func (d *HTTPDriver) Open(ctx context.Context, endpoint hermes.Endpoint, request
 	return d.open_full(ctx, endpoint)
 }
 
-// openRange uses the net/http standard library for Range requests, returning streaming resp.Body.
-// WeChat CDN Range requests do not require browser fingerprint masking; the standard library suffices for real-time progress.
+// open_range returns a streaming response for a byte-range request.
 func (d *HTTPDriver) open_range(ctx context.Context, endpoint hermes.Endpoint, request hermes.ReadRequest) (io.ReadCloser, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.URL, nil)
+	req, err := d.new_request(ctx, endpoint)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", request.OffsetStart, request.OffsetEnd))
-	req.Header.Set("Accept-Encoding", "identity")
-	req.Header.Set("Accept", "*/*")
-	for key, value := range endpoint.Headers {
-		req.Header.Set(key, value)
-	}
-	if endpoint.Cookies != "" {
-		req.Header.Set("Cookie", endpoint.Cookies)
-	}
-
-	proxy_url, err := endpoint.ProxyServer.URL()
-	if err != nil {
-		return nil, err
-	}
-	client, err := d.standard_http_client(proxy_url)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := client.Do(req)
+	resp, err := d.do_stream(req, endpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -177,72 +161,81 @@ func full_range_response_matches_request(resp *http.Response, request hermes.Rea
 	return resp.ContentLength == request.OffsetEnd+1
 }
 
-// openFull downloads the full resource via clawreq (non-Range) to preserve browser fingerprint.
+// open_full returns the response body directly so the caller can consume and
+// persist the download incrementally.
 func (d *HTTPDriver) open_full(ctx context.Context, endpoint hermes.Endpoint) (io.ReadCloser, error) {
-	resp, err := d.do(ctx, endpoint)
+	req, err := d.new_request(ctx, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := d.do_stream(req, endpoint)
 	if err != nil {
 		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		resp.Body.Close()
 		return nil, fmt.Errorf("server returned error status code: %d", resp.StatusCode)
 	}
-	return io.NopCloser(bytes.NewReader(resp.Body)), nil
+	return resp.Body, nil
 }
 
-// do sends a GET request. Overrides the default Accept header (removes image/webp)
-// to prevent servers like WeChat CDN from transcoding images to webp format.
-// Uses a client pool for concurrent HTTP requests; each goroutine gets an independent client from the pool.
-func (d *HTTPDriver) do(ctx context.Context, endpoint hermes.Endpoint, opts ...clawreq.RequestOption) (*clawreq.Response, error) {
-	all_opts := make([]clawreq.RequestOption, 0, len(opts)+len(endpoint.Headers)+3)
-	all_opts = append(all_opts, clawreq.WithHeader("Accept-Encoding", "identity"))
-	all_opts = append(all_opts, clawreq.WithHeader("Accept", "*/*"))
+func (d *HTTPDriver) new_request(ctx context.Context, endpoint hermes.Endpoint) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.URL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = clawreq.DefaultHeaders(clawreq.ProfileChrome)
+	// Avoid transparent compression and image transcoding so byte ranges and
+	// persisted file types continue to refer to the original representation.
+	req.Header.Set("Accept-Encoding", "identity")
+	req.Header.Set("Accept", "*/*")
 	for key, value := range endpoint.Headers {
-		all_opts = append(all_opts, clawreq.WithHeader(key, value))
+		req.Header.Set(key, value)
 	}
 	if endpoint.Cookies != "" {
-		all_opts = append(all_opts, clawreq.WithCookie(endpoint.Cookies))
+		req.Header.Set("Cookie", endpoint.Cookies)
 	}
-	all_opts = append(all_opts, opts...)
+	return req, nil
+}
 
+func (d *HTTPDriver) do_stream(req *http.Request, endpoint hermes.Endpoint) (*http.Response, error) {
 	proxy_url, err := endpoint.ProxyServer.URL()
 	if err != nil {
 		return nil, err
 	}
-	pool, err := d.browser_client_pool(proxy_url)
+	client, err := d.standard_http_client(proxy_url)
 	if err != nil {
 		return nil, err
 	}
-	client := <-pool
-	defer func() { pool <- client }()
-	return client.Do(ctx, "GET", endpoint.URL, nil, all_opts...)
-}
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != http.StatusForbidden {
+		return resp, err
+	}
 
-func (d *HTTPDriver) browser_client_pool(raw_proxy_url string) (chan *clawreq.Client, error) {
-	proxy_url, _, err := normalize_proxy_url(raw_proxy_url)
+	// A CDN may bind a rejected redirect or challenge to the current transport.
+	// Discard that response and retry the original entry URL once through a new
+	// transport, which forces fresh DNS, TCP and TLS state without disabling
+	// connection reuse for successful requests.
+	if resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	client.CloseIdleConnections()
+
+	retry_client, retry_transport, err := new_isolated_http_client(proxy_url)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create fresh HTTP transport after status 403: %w", err)
 	}
-
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if pool := d.pools[proxy_url]; pool != nil {
-		return pool, nil
+	retry_req := req.Clone(req.Context())
+	retry_resp, err := retry_client.Do(retry_req)
+	if err != nil {
+		retry_transport.CloseIdleConnections()
+		return nil, fmt.Errorf("retry HTTP request with fresh transport after status 403: %w", err)
 	}
-
-	pool := make(chan *clawreq.Client, http_driver_pool_size)
-	for i := 0; i < http_driver_pool_size; i++ {
-		client, err := clawreq.New(clawreq.Config{
-			Profile:         clawreq.ProfileChrome,
-			ProxyURL:        proxy_url,
-			FollowRedirects: true,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("create HTTP client: %w", err)
-		}
-		pool <- client
+	retry_resp.Body = &isolated_response_body{
+		ReadCloser: retry_resp.Body,
+		transport:  retry_transport,
 	}
-	d.pools[proxy_url] = pool
-	return pool, nil
+	return retry_resp, nil
 }
 
 func (d *HTTPDriver) standard_http_client(raw_proxy_url string) (*http.Client, error) {
@@ -257,24 +250,54 @@ func (d *HTTPDriver) standard_http_client(raw_proxy_url string) (*http.Client, e
 		return client, nil
 	}
 
+	transport := new_standard_http_transport(parsed_proxy_url)
+	client := &http.Client{Transport: transport}
+	d.std_https[proxy_url] = client
+	return client, nil
+}
+
+func new_isolated_http_client(raw_proxy_url string) (*http.Client, *http.Transport, error) {
+	_, parsed_proxy_url, err := normalize_proxy_url(raw_proxy_url)
+	if err != nil {
+		return nil, nil, err
+	}
+	transport := new_standard_http_transport(parsed_proxy_url)
+	return &http.Client{Transport: transport}, transport, nil
+}
+
+func new_standard_http_transport(parsed_proxy_url *url.URL) *http.Transport {
 	transport := &http.Transport{
 		ForceAttemptHTTP2: true,
 		DialContext: (&net.Dialer{
 			Timeout:   5 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 32,
-		MaxConnsPerHost:     0, // no limit, let MaxIdleConnsPerHost govern reuse
-		IdleConnTimeout:     90 * time.Second,
-		TLSHandshakeTimeout: 10 * time.Second,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   32,
+		MaxConnsPerHost:       0, // no limit, let MaxIdleConnsPerHost govern reuse
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
 	}
 	if parsed_proxy_url != nil {
 		transport.Proxy = http.ProxyURL(parsed_proxy_url)
 	}
-	client := &http.Client{Timeout: 300 * time.Second, Transport: transport}
-	d.std_https[proxy_url] = client
-	return client, nil
+	return transport
+}
+
+type isolated_response_body struct {
+	io.ReadCloser
+	close_once sync.Once
+	close_err  error
+	transport  *http.Transport
+}
+
+func (r *isolated_response_body) Close() error {
+	r.close_once.Do(func() {
+		r.close_err = r.ReadCloser.Close()
+		r.transport.CloseIdleConnections()
+	})
+	return r.close_err
 }
 
 func normalize_proxy_url(raw_proxy_url string) (string, *url.URL, error) {

@@ -154,9 +154,12 @@ func Start(cfg *config.Config) error {
 		Store:  task_store,
 		Logger: logger,
 		Config: hermes.HermesEngineConfig{
-			MaxConcurrent:    api_cfg.MaxRunning,
-			FilenameTemplate: api_cfg.FilenameTemplate,
-			BasePath:         api_cfg.DownloadDir,
+			MaxConcurrent:         api_cfg.MaxRunning,
+			ResourceConcurrency:   api_cfg.ResourceConcurrency,
+			SegmentConcurrency:    api_cfg.SegmentConcurrency,
+			ConnectionConcurrency: api_cfg.ConnectionConcurrency,
+			FilenameTemplate:      api_cfg.FilenameTemplate,
+			BasePath:              api_cfg.DownloadDir,
 			// SpeedLimit:       500 * 1024,
 		},
 	})

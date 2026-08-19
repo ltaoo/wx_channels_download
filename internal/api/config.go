@@ -17,6 +17,9 @@ type APIConfig struct {
 	DownloadDir               string
 	PlayDoneAudio             bool
 	MaxRunning                int // maximum number of concurrent download tasks
+	ResourceConcurrency       int // maximum number of resources across running tasks
+	SegmentConcurrency        int // maximum number of segments inside each resource
+	ConnectionConcurrency     int // maximum number of protocol connections across running tasks
 	Protocol                  string
 	Hostname                  string
 	Port                      int
@@ -48,28 +51,40 @@ func NewAPIConfig(c *config.Config) *APIConfig {
 		fmt.Printf("Warning: Failed to create download directory: %s, error: %v\n", dir, err)
 	}
 	cloudflare_sph_cookie := c.GetString("cloudflare.sphCookie")
+	resource_concurrency := c.GetInt("download.resourceConcurrency")
+	if resource_concurrency <= 0 {
+		resource_concurrency = 5
+	}
+	segment_concurrency := c.GetInt("download.segmentConcurrency")
+	if segment_concurrency <= 0 {
+		segment_concurrency = 5
+	}
+	connection_concurrency := c.GetInt("download.connectionConcurrency")
 
 	api_cfg := &APIConfig{
-		Version:              c.Version,
-		Mode:                 c.Mode,
-		Original:             c,
-		RootDir:              c.RootDir,
-		WorkDir:              c.WorkDir,
-		LogPath:              c.LogPath(),
-		DownloadDir:          dir,
-		PlayDoneAudio:        c.GetBool("download.playDoneAudio"),
-		MaxRunning:           3,
-		Protocol:             c.GetString("api.protocol"),
-		Hostname:             c.GetString("api.hostname"),
-		Port:                 c.GetInt("api.port"),
-		RemoteServerEnabled:  c.GetBool("download.remoteServer.enabled"),
-		RemoteServerProtocol: c.GetString("download.remoteServer.protocol"),
-		RemoteServerHostname: c.GetString("download.remoteServer.hostname"),
-		RemoteServerPort:     c.GetInt("download.remoteServer.port"),
-		CloudflareSphCookie:  cloudflare_sph_cookie,
-		CookieUUID:           c.GetString("cookie.uuid"),
-		CookiePassword:       c.GetString("cookie.password"),
-		CookieKey:            c.GetString("cookie.key"),
+		Version:               c.Version,
+		Mode:                  c.Mode,
+		Original:              c,
+		RootDir:               c.RootDir,
+		WorkDir:               c.WorkDir,
+		LogPath:               c.LogPath(),
+		DownloadDir:           dir,
+		PlayDoneAudio:         c.GetBool("download.playDoneAudio"),
+		MaxRunning:            3,
+		ResourceConcurrency:   resource_concurrency,
+		SegmentConcurrency:    segment_concurrency,
+		ConnectionConcurrency: connection_concurrency,
+		Protocol:              c.GetString("api.protocol"),
+		Hostname:              c.GetString("api.hostname"),
+		Port:                  c.GetInt("api.port"),
+		RemoteServerEnabled:   c.GetBool("download.remoteServer.enabled"),
+		RemoteServerProtocol:  c.GetString("download.remoteServer.protocol"),
+		RemoteServerHostname:  c.GetString("download.remoteServer.hostname"),
+		RemoteServerPort:      c.GetInt("download.remoteServer.port"),
+		CloudflareSphCookie:   cloudflare_sph_cookie,
+		CookieUUID:            c.GetString("cookie.uuid"),
+		CookiePassword:        c.GetString("cookie.password"),
+		CookieKey:             c.GetString("cookie.key"),
 
 		FilenameTemplate:          c.GetString("download.filenameTemplate"),
 		DefaultActionWhenExisting: c.GetString("download.defaultActionWhenExisting"),
