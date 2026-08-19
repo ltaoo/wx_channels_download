@@ -272,7 +272,7 @@ type ContentListItem struct {
 	Accounts      []ContentAccountRecord      `json:"accounts"`
 	Influencers   []ContentInfluencerRecord   `json:"influencers"`
 	DownloadTasks []ContentDownloadTaskRecord `json:"download_tasks"`
-	Resources     []ContentResourceRecord     `json:"resources"`
+	FileCount     int64                       `json:"file_count"`
 }
 
 const (
@@ -333,6 +333,7 @@ type ContentRelationListResult struct {
 type ContentDetailItem struct {
 	ContentListItem
 	Content    model.Content             `json:"content"`
+	Resources  []ContentResourceRecord   `json:"resources"`
 	DetailType string                    `json:"detail_type"`
 	Detail     any                       `json:"detail"`
 	Relations  ContentRelationListResult `json:"relations"`
@@ -356,10 +357,10 @@ func sort_content_resources_by_created_at_desc(resources []ContentResourceRecord
 	})
 }
 
-// load_content_relations loads accounts, influencers, download tasks, and
-// resources for the given content IDs. It is shared by ListContents and
-// GetContentDetail.
-func (s *ContentService) load_content_relations(content_ids []string) (
+// load_content_relations loads accounts, influencers, download tasks, and,
+// when requested, resources for the given content IDs. It is shared by
+// ListContents and GetContentDetail.
+func (s *ContentService) load_content_relations(content_ids []string, include_resources bool) (
 	map[string][]ContentAccountRecord,
 	map[string][]ContentInfluencerRecord,
 	map[string][]ContentDownloadTaskRecord,
@@ -527,6 +528,9 @@ func (s *ContentService) load_content_relations(content_ids []string) (
 				UpdatedAt:    task.UpdatedAt,
 			},
 		)
+	}
+	if !include_resources {
+		return accounts_by_content_id, influencers_by_content_id, download_tasks_by_content_id, resources_by_content_id, nil
 	}
 
 	var resources []model.DownloadResource
@@ -1203,7 +1207,7 @@ func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem
 		return nil, err
 	}
 
-	accounts_by_content_id, influencers_by_content_id, download_tasks_by_content_id, resources_by_content_id, err := s.load_content_relations([]string{content.Id})
+	accounts_by_content_id, influencers_by_content_id, download_tasks_by_content_id, resources_by_content_id, err := s.load_content_relations([]string{content.Id}, true)
 	if err != nil {
 		return nil, err
 	}
@@ -1263,9 +1267,10 @@ func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem
 			Accounts:      accounts,
 			Influencers:   influencers,
 			DownloadTasks: download_tasks,
-			Resources:     resources,
+			FileCount:     int64(len(resources)),
 		},
 		Content:    content,
+		Resources:  resources,
 		DetailType: detail_type,
 		Detail:     detail,
 		Relations:  *relations,
@@ -1308,14 +1313,6 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 
 	build_query := func() *gorm.DB {
 		query := s.db.Model(&model.Content{})
-		if scope == ContentListScopeTask {
-			query = query.Where(`EXISTS (
-				SELECT 1
-				FROM download_task
-				WHERE download_task.content_id = content.id
-					AND download_task.deleted_at IS NULL
-			)`)
-		}
 		if content_type := strings.TrimSpace(options.Type); content_type != "" {
 			query = query.Where("content.type = ?", content_type)
 		}
@@ -1357,9 +1354,27 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 		content_ids = append(content_ids, content.Id)
 	}
 
-	accounts_by_content_id, influencers_by_content_id, download_tasks_by_content_id, resources_by_content_id, err := s.load_content_relations(content_ids)
+	accounts_by_content_id, influencers_by_content_id, download_tasks_by_content_id, _, err := s.load_content_relations(content_ids, false)
 	if err != nil {
 		return nil, err
+	}
+	file_counts_by_content_id := make(map[string]int64, len(content_ids))
+	if len(content_ids) > 0 {
+		type content_file_count_row struct {
+			ContentID string `gorm:"column:content_id"`
+			Count     int64  `gorm:"column:count"`
+		}
+		var file_count_rows []content_file_count_row
+		if err := s.db.Model(&model.DownloadResource{}).
+			Select("content_id, COUNT(*) AS count").
+			Where("content_id IN ? AND deleted_at IS NULL", content_ids).
+			Group("content_id").
+			Scan(&file_count_rows).Error; err != nil {
+			return nil, err
+		}
+		for _, file_count_row := range file_count_rows {
+			file_counts_by_content_id[file_count_row.ContentID] = file_count_row.Count
+		}
 	}
 
 	list := make([]ContentListItem, 0, len(contents))
@@ -1380,10 +1395,6 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 		if download_tasks == nil {
 			download_tasks = make([]ContentDownloadTaskRecord, 0)
 		}
-		resource_list := resources_by_content_id[content.Id]
-		if resource_list == nil {
-			resource_list = make([]ContentResourceRecord, 0)
-		}
 		list = append(list, ContentListItem{
 			ID:            content.Id,
 			PlatformID:    content.PlatformId,
@@ -1403,7 +1414,7 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 			Accounts:      accounts,
 			Influencers:   influencers,
 			DownloadTasks: download_tasks,
-			Resources:     resource_list,
+			FileCount:     file_counts_by_content_id[content.Id],
 		})
 	}
 
