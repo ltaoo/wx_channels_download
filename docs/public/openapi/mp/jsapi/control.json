@@ -1,0 +1,105 @@
+{
+  "title": "Bridge 控制操作",
+  "description": "查询能力、等待 Bridge Ready，或调用无参数的 WeixinJSBridge.call。invoke 方法请直接选择其他分类。",
+  "oneOf": [
+    {
+      "title": "capabilities — 查询运行时能力",
+      "type": "object",
+      "required": [
+        "operation"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "capabilities"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "example": {
+        "operation": "capabilities"
+      }
+    },
+    {
+      "title": "ready — 等待 WeixinJSBridgeReady",
+      "type": "object",
+      "required": [
+        "operation"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "ready"
+          ]
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120000,
+          "default": 15000
+        }
+      },
+      "additionalProperties": false,
+      "example": {
+        "operation": "ready",
+        "timeout_ms": 15000
+      }
+    },
+    {
+      "title": "call — 无参数、无回调调用",
+      "description": "调用 WeixinJSBridge.call(method)。服务端允许的方法名与 invoke 相同，但 call 不传 args，也不会等待原生回调；实际只应对客户端明确支持 call 的方法使用。关闭窗口时优先使用 invoke + closeWindow，以便获取结果。",
+      "type": "object",
+      "required": [
+        "operation",
+        "method"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "call"
+          ]
+        },
+        "method": {
+          "oneOf": [
+            {
+              "$ref": "./network_auth.json#/properties/method"
+            },
+            {
+              "$ref": "./page_navigation.json#/properties/method"
+            },
+            {
+              "$ref": "./mini_program_finder.json#/properties/method"
+            },
+            {
+              "$ref": "./contact_share_card.json#/properties/method"
+            },
+            {
+              "$ref": "./media_audio.json#/properties/method"
+            },
+            {
+              "$ref": "./ad_download_app.json#/properties/method"
+            },
+            {
+              "$ref": "./reporting.json#/properties/method"
+            }
+          ]
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120000,
+          "default": 15000
+        }
+      },
+      "additionalProperties": false,
+      "example": {
+        "operation": "call",
+        "method": "closeWindow",
+        "timeout_ms": 15000
+      }
+    }
+  ]
+}

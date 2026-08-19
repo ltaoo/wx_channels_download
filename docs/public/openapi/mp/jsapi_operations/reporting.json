@@ -1,0 +1,54 @@
+{
+  "post": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "调用微信 JSAPI - 日志与上报",
+    "operationId": "invoke_wechat_jsapi_reporting",
+    "description": "键值上报、广告数据上报和客户端日志能力。",
+    "parameters": [
+      {
+        "$ref": "../jsapi_common.json#/token_parameter"
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "../jsapi/reporting.json"
+          },
+          "examples": {
+            "kv_report": {
+              "summary": "键值数据上报",
+              "value": {
+                "operation": "invoke",
+                "method": "kvReport",
+                "args": {
+                  "logId": 100000,
+                  "value": "key=value"
+                }
+              }
+            },
+            "log": {
+              "summary": "写入客户端日志",
+              "value": {
+                "operation": "invoke",
+                "method": "log",
+                "args": {
+                  "level": "info",
+                  "msg": "external JSAPI test"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "$ref": "../jsapi_common.json#/success_response"
+      }
+    }
+  }
+}

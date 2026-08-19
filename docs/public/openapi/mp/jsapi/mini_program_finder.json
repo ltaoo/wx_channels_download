@@ -1,0 +1,389 @@
+{
+  "title": "小程序、视频号、搜索与企业微信 JSAPI",
+  "description": "operation 固定为 invoke。小程序用户名通常是 gh_ 开头的原始 ID，而不是公众号 AppID；具体可用性取决于客户端版本和页面场景。",
+  "type": "object",
+  "required": [
+    "operation",
+    "method",
+    "args"
+  ],
+  "properties": {
+    "operation": {
+      "type": "string",
+      "enum": [
+        "invoke"
+      ],
+      "default": "invoke"
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "batchPreloadMiniProgram",
+        "handleEcsAction",
+        "openEmbeddedWeApp",
+        "openFinderTopicView",
+        "openFinderView",
+        "openWXSearchHalfPage",
+        "openWXSearchPage",
+        "openWeApp",
+        "predownloadMiniProgramPackage",
+        "preloadMiniProgramContacts",
+        "preloadMiniProgramEnv",
+        "wwapp2.openMPURLInWechat"
+      ]
+    },
+    "args": {
+      "oneOf": [
+        {
+          "title": "batchPreloadMiniProgram.args",
+          "description": "批量预加载小程序。当前页面只将该方法列入客户端白名单，没有固定字段调用样例；常见入口字段为 userNames。",
+          "type": "object",
+          "properties": {
+            "userNames": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "userNames": [
+              "gh_xxxxxxxx@app"
+            ]
+          }
+        },
+        {
+          "title": "handleEcsAction.args",
+          "description": "action=openEcs 时传 ecsJumpInfoBase64；action=checkAction 时通过 params 检查 openEcs 是否可用。",
+          "type": "object",
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "checkAction",
+                "openEcs"
+              ]
+            },
+            "ecsJumpInfoBase64": {
+              "type": "string",
+              "format": "byte"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "type": "string",
+                  "enum": [
+                    "isActionAvailable"
+                  ]
+                },
+                "actionName": {
+                  "type": "string",
+                  "enum": [
+                    "openEcs"
+                  ]
+                },
+                "actionVersion": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "action": "checkAction",
+            "params": {
+              "method": "isActionAvailable",
+              "actionName": "openEcs",
+              "actionVersion": "1"
+            }
+          }
+        },
+        {
+          "title": "openEmbeddedWeApp.args",
+          "description": "打开内嵌小程序。该私有能力在当前页面只出现在白名单中，字段契约随客户端变化；以下字段采用小程序跳转通用命名。",
+          "type": "object",
+          "properties": {
+            "userName": {
+              "type": "string"
+            },
+            "relativeURL": {
+              "type": "string"
+            },
+            "scene": {
+              "type": "integer"
+            },
+            "appVersion": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "userName": "gh_xxxxxxxx@app",
+            "relativeURL": "pages/index/index.html?from=mp",
+            "scene": 1058,
+            "appVersion": 1
+          }
+        },
+        {
+          "title": "openFinderTopicView.args",
+          "description": "打开视频号话题页。当前页面仅暴露方法名，没有可确认的稳定字段契约。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {}
+        },
+        {
+          "title": "openFinderView.args",
+          "description": "打开视频号内容。extInfo.action=openFinderFeed 时可指定 feedID、nonceID 和场景编号。",
+          "type": "object",
+          "required": [
+            "extInfo"
+          ],
+          "properties": {
+            "extInfo": {
+              "type": "object",
+              "required": [
+                "action",
+                "feedID"
+              ],
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "openFinderFeed"
+                  ]
+                },
+                "feedID": {
+                  "type": "string"
+                },
+                "nonceID": {
+                  "type": "string"
+                },
+                "notGetReleatedList": {
+                  "type": "integer"
+                },
+                "shareScene": {
+                  "type": "integer"
+                },
+                "commentScene": {
+                  "type": "integer"
+                },
+                "requestScene": {
+                  "type": "integer"
+                },
+                "reportExtraInfo": {
+                  "type": "string",
+                  "description": "JSON 字符串"
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "extInfo": {
+              "action": "openFinderFeed",
+              "feedID": "finder_feed_id",
+              "nonceID": "finder_username",
+              "notGetReleatedList": 0,
+              "shareScene": 25,
+              "commentScene": 26,
+              "requestScene": 27,
+              "reportExtraInfo": "{}"
+            }
+          }
+        },
+        {
+          "title": "openWXSearchHalfPage.args",
+          "description": "打开微信搜一搜半屏页。query 为关键词；thirdExtParam 在当前文章中是 encodeURIComponent 后的 JSON 字符串。其他半屏参数按客户端版本透传。",
+          "type": "object",
+          "required": [
+            "query"
+          ],
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "thirdExtParam": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "query": "微信 JSAPI",
+            "thirdExtParam": "%7B%22aiH5Title%22%3A%22%E7%A4%BA%E4%BE%8B%E6%96%87%E7%AB%A0%22%7D"
+          }
+        },
+        {
+          "title": "openWXSearchPage.args",
+          "description": "打开微信搜一搜完整页面。参数结构与 openWXSearchHalfPage 相同。",
+          "type": "object",
+          "required": [
+            "query"
+          ],
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "thirdExtParam": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "query": "微信 JSAPI",
+            "thirdExtParam": "%7B%7D"
+          }
+        },
+        {
+          "title": "openWeApp.args",
+          "description": "打开小程序。userName、relativeURL、scene 和 appVersion 是当前文章实际使用的核心字段。",
+          "type": "object",
+          "required": [
+            "userName",
+            "relativeURL"
+          ],
+          "properties": {
+            "userName": {
+              "type": "string",
+              "description": "小程序原始 ID，通常以 @app 结尾"
+            },
+            "relativeURL": {
+              "type": "string",
+              "description": "小程序相对页面路径；当前代码会补 .html"
+            },
+            "scene": {
+              "type": "integer"
+            },
+            "sceneNote": {
+              "type": "string"
+            },
+            "appVersion": {
+              "type": "integer",
+              "default": 1
+            },
+            "sourceAppId": {
+              "type": "string"
+            },
+            "privateExtraData": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "userName": "gh_xxxxxxxx@app",
+            "relativeURL": "pages/index/index.html?from=mp",
+            "scene": 1058,
+            "sceneNote": "mp:wx1234567890abcdef:article",
+            "appVersion": 1,
+            "sourceAppId": "wx1234567890abcdef"
+          }
+        },
+        {
+          "title": "predownloadMiniProgramPackage.args",
+          "description": "预下载小程序包。当前页面只将方法列入白名单，以下 userName/appVersion 为常见客户端字段。",
+          "type": "object",
+          "properties": {
+            "userName": {
+              "type": "string"
+            },
+            "appVersion": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "userName": "gh_xxxxxxxx@app",
+            "appVersion": 1
+          }
+        },
+        {
+          "title": "preloadMiniProgramContacts.args",
+          "description": "预加载小程序联系人信息。",
+          "type": "object",
+          "required": [
+            "userNames"
+          ],
+          "properties": {
+            "userNames": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "userNames": [
+              "gh_xxxxxxxx@app"
+            ]
+          }
+        },
+        {
+          "title": "preloadMiniProgramEnv.args",
+          "description": "预加载小程序运行环境。",
+          "type": "object",
+          "required": [
+            "userNames"
+          ],
+          "properties": {
+            "userNames": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "userNames": [
+              "gh_xxxxxxxx@app"
+            ]
+          }
+        },
+        {
+          "title": "wwapp2.openMPURLInWechat.args",
+          "description": "在企业微信移动端跳转到微信并打开公众号 URL。企业微信版本需支持该私有能力。",
+          "type": "object",
+          "required": [
+            "mpURL"
+          ],
+          "properties": {
+            "mpURL": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "additionalProperties": false,
+          "example": {
+            "mpURL": "https://mp.weixin.qq.com/s/example"
+          }
+        }
+      ]
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 120000,
+      "default": 15000
+    }
+  },
+  "example": {
+    "operation": "invoke",
+    "method": "openWeApp",
+    "args": {
+      "userName": "gh_xxxxxxxx@app",
+      "relativeURL": "pages/index/index.html?from=mp",
+      "scene": 1058,
+      "appVersion": 1
+    }
+  }
+}

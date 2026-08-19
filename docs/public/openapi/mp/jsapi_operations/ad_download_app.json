@@ -1,0 +1,54 @@
+{
+  "post": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "调用微信 JSAPI - 广告、下载与应用",
+    "operationId": "invoke_wechat_jsapi_ad_download_app",
+    "description": "广告组件、客户端下载任务、应用安装状态和第三方应用启动能力。",
+    "parameters": [
+      {
+        "$ref": "../jsapi_common.json#/token_parameter"
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "../jsapi/ad_download_app.json"
+          },
+          "examples": {
+            "query_download_task": {
+              "summary": "查询客户端下载任务",
+              "value": {
+                "operation": "invoke",
+                "method": "queryDownloadTask",
+                "args": {
+                  "download_id": "client-download-id"
+                }
+              }
+            },
+            "launch_application": {
+              "summary": "启动第三方应用",
+              "value": {
+                "operation": "invoke",
+                "method": "launchApplication",
+                "args": {
+                  "packageName": "com.example.app",
+                  "schemeUrl": "example://open",
+                  "parameter": "from=wechat"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "$ref": "../jsapi_common.json#/success_response"
+      }
+    }
+  }
+}

@@ -141,6 +141,33 @@
     "/api/mp/article/list": {
       "$ref": "./mp/article_list.json"
     },
+    "/api/mp/jsapi/control": {
+      "$ref": "./mp/jsapi_operations/control.json"
+    },
+    "/api/mp/jsapi/network_auth": {
+      "$ref": "./mp/jsapi_operations/network_auth.json"
+    },
+    "/api/mp/jsapi/page_navigation": {
+      "$ref": "./mp/jsapi_operations/page_navigation.json"
+    },
+    "/api/mp/jsapi/mini_program_finder": {
+      "$ref": "./mp/jsapi_operations/mini_program_finder.json"
+    },
+    "/api/mp/jsapi/contact_share_card": {
+      "$ref": "./mp/jsapi_operations/contact_share_card.json"
+    },
+    "/api/mp/jsapi/media_audio": {
+      "$ref": "./mp/jsapi_operations/media_audio.json"
+    },
+    "/api/mp/jsapi/ad_download_app": {
+      "$ref": "./mp/jsapi_operations/ad_download_app.json"
+    },
+    "/api/mp/jsapi/reporting": {
+      "$ref": "./mp/jsapi_operations/reporting.json"
+    },
+    "/api/mp/jsapi/events": {
+      "$ref": "./mp/jsapi_operations/events.json"
+    },
     "/api/mp/download_all": {
       "$ref": "./mp/download_all.json"
     }

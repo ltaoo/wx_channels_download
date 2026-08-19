@@ -1,0 +1,63 @@
+{
+  "post": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "调用微信 JSAPI - 联系人、卡券与分享",
+    "operationId": "invoke_wechat_jsapi_contact_share_card",
+    "description": "公众号联系人、微信卡券、客服会话、电话邮件和社交分享能力。",
+    "parameters": [
+      {
+        "$ref": "../jsapi_common.json#/token_parameter"
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "../jsapi/contact_share_card.json"
+          },
+          "examples": {
+            "open_card_detail": {
+              "summary": "打开已领取卡券详情",
+              "value": {
+                "operation": "invoke",
+                "method": "openCardDetail",
+                "args": {
+                  "card_list": [
+                    {
+                      "card_id": "p_card_id",
+                      "code": "user_card_code"
+                    }
+                  ]
+                },
+                "timeout_ms": 15000
+              }
+            },
+            "batch_add_card": {
+              "summary": "批量领取卡券",
+              "value": {
+                "operation": "invoke",
+                "method": "batchAddCard",
+                "args": {
+                  "card_list": [
+                    {
+                      "card_id": "p_card_id",
+                      "card_ext": "{\"timestamp\":\"1760000000\",\"nonce_str\":\"random\",\"signature\":\"sha1-signature\"}"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "$ref": "../jsapi_common.json#/success_response"
+      }
+    }
+  }
+}

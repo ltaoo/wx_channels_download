@@ -1,0 +1,222 @@
+{
+  "title": "网络、鉴权与页面数据 JSAPI",
+  "description": "operation 固定为 invoke。每个 args 变体的标题就是对应 method；标为“版本相关”的字段在当前页面源码中没有稳定契约，只能原样透传。",
+  "type": "object",
+  "required": [
+    "operation",
+    "method",
+    "args"
+  ],
+  "properties": {
+    "operation": {
+      "type": "string",
+      "enum": [
+        "invoke"
+      ],
+      "default": "invoke"
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "H5ExtTransfer",
+        "calRqt",
+        "currentMpInfo",
+        "getNetworkType",
+        "handleDeviceInfo",
+        "notifyPageInfo",
+        "request",
+        "updatePageAuth",
+        "webTransfer",
+        "writeCommData"
+      ]
+    },
+    "args": {
+      "oneOf": [
+        {
+          "title": "H5ExtTransfer.args",
+          "description": "客户端 H5 扩展传输参数。当前页面只暴露方法名，没有公开字段契约；传入字段会原样交给 Bridge。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {}
+        },
+        {
+          "title": "calRqt.args",
+          "description": "客户端请求校验计算参数，字段和结果随微信版本变化。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {}
+        },
+        {
+          "title": "currentMpInfo.args",
+          "description": "把当前公众号与文章顶栏信息同步给客户端。",
+          "type": "object",
+          "required": [
+            "userName",
+            "brandName",
+            "title"
+          ],
+          "properties": {
+            "userName": {
+              "type": "string",
+              "description": "公众号原始 ID/用户名"
+            },
+            "brandName": {
+              "type": "string",
+              "description": "公众号显示名称"
+            },
+            "title": {
+              "type": "string",
+              "description": "文章标题"
+            },
+            "brandIcon": {
+              "type": "string",
+              "description": "公众号头像 URL"
+            },
+            "itemShowType": {
+              "type": "integer"
+            },
+            "isPaySubscribe": {
+              "type": "boolean"
+            },
+            "topBarStyle": {
+              "type": "integer"
+            },
+            "topBarShowed": {
+              "type": "boolean"
+            },
+            "disableShowFinderLiveTopBar": {
+              "type": "integer"
+            },
+            "brandServiceType": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "userName": "gh_xxxxxxxx",
+            "brandName": "示例公众号",
+            "title": "示例文章",
+            "brandIcon": "https://mmbiz.qpic.cn/example/132",
+            "itemShowType": 0,
+            "topBarStyle": 1,
+            "topBarShowed": true
+          }
+        },
+        {
+          "title": "getNetworkType.args",
+          "description": "无参数。result.err_msg 常见值为 network_type:wifi、network_type:wwan、network_type:edge 或 network_type:fail。",
+          "type": "object",
+          "maxProperties": 0,
+          "additionalProperties": false,
+          "example": {}
+        },
+        {
+          "title": "handleDeviceInfo.args",
+          "description": "action=getSafeAreaInsets 获取安全区；action=getUIParams 获取客户端 UI 参数。",
+          "type": "object",
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "getSafeAreaInsets",
+                "getUIParams"
+              ]
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "action": "getSafeAreaInsets"
+          }
+        },
+        {
+          "title": "notifyPageInfo.args",
+          "description": "页面信息通知参数。该能力不等待页面安全鉴权；字段契约由客户端版本决定。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {}
+        },
+        {
+          "title": "request.args",
+          "description": "由微信客户端发起 HTTP 请求。此能力可能使用客户端会话，必须限制 API Token。result 通常包含 statusCode、data、header 和 err_msg。",
+          "type": "object",
+          "required": [
+            "url",
+            "method"
+          ],
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "method": {
+              "type": "string",
+              "enum": [
+                "GET",
+                "POST",
+                "PUT",
+                "DELETE",
+                "PATCH",
+                "HEAD"
+              ]
+            },
+            "data": {
+              "description": "请求体；可为字符串、对象或数组"
+            },
+            "header": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "url": "https://mp.weixin.qq.com/mp/profile_ext?action=home",
+            "method": "GET",
+            "data": {},
+            "header": {
+              "Accept": "application/json"
+            }
+          }
+        },
+        {
+          "title": "updatePageAuth.args",
+          "description": "无参数。重新触发页面鉴权，成功结果通常带 fullUrl，可从中读取新的 pass_ticket。",
+          "type": "object",
+          "maxProperties": 0,
+          "additionalProperties": false,
+          "example": {}
+        },
+        {
+          "title": "webTransfer.args",
+          "description": "客户端 Web 数据传输参数。当前页面没有公开稳定字段契约。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {}
+        },
+        {
+          "title": "writeCommData.args",
+          "description": "向客户端通信通道写入数据。字段依赖调用该能力的客户端模块。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {}
+        }
+      ]
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 120000,
+      "default": 15000
+    }
+  },
+  "example": {
+    "operation": "invoke",
+    "method": "getNetworkType",
+    "args": {},
+    "timeout_ms": 15000
+  }
+}

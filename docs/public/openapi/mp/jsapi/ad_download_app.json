@@ -1,0 +1,277 @@
+{
+  "title": "广告、下载、安装与外部应用 JSAPI",
+  "description": "operation 固定为 invoke。这组能力来自公众号广告组件的私有白名单，参数契约高度依赖微信平台和版本。文档列出可识别的通用字段，但不把版本相关字段标成稳定必填项。",
+  "type": "object",
+  "required": [
+    "operation",
+    "method",
+    "args"
+  ],
+  "properties": {
+    "operation": {
+      "type": "string",
+      "enum": [
+        "invoke"
+      ],
+      "default": "invoke"
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "addDownloadTask",
+        "addDownloadTaskStraight",
+        "downloadAppInternal",
+        "getAdIdInfo",
+        "getInstallState",
+        "getOAID",
+        "handleAdAction",
+        "installDownloadTask",
+        "launch3rdApp",
+        "launchApplication",
+        "openADCanvas",
+        "pauseDownloadTask",
+        "queryDownloadTask",
+        "resumeDownloadTask",
+        "saveWaid"
+      ]
+    },
+    "args": {
+      "oneOf": [
+        {
+          "title": "addDownloadTask.args",
+          "description": "创建客户端下载任务。常见字段包括下载 URL、任务标题、包名和文件校验值；实际字段名由广告组件下发。",
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "download_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "title": {
+              "type": "string"
+            },
+            "package_name": {
+              "type": "string"
+            },
+            "md5": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "download_url": "https://example.com/app.apk",
+            "title": "示例应用",
+            "package_name": "com.example.app",
+            "md5": "file-md5"
+          }
+        },
+        {
+          "title": "addDownloadTaskStraight.args",
+          "description": "不经过中间确认流程直接创建下载任务，字段与 addDownloadTask 相同。是否仍弹出系统确认由客户端决定。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {
+            "download_url": "https://example.com/app.apk",
+            "title": "示例应用",
+            "package_name": "com.example.app"
+          }
+        },
+        {
+          "title": "downloadAppInternal.args",
+          "description": "使用微信内部应用下载流程。当前文章只暴露方法名，参数由广告落地页动态下发。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {
+            "download_url": "https://example.com/app.apk",
+            "package_name": "com.example.app"
+          }
+        },
+        {
+          "title": "getAdIdInfo.args",
+          "description": "读取客户端可提供的广告标识信息。通常无参数或传广告场景信息。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {}
+        },
+        {
+          "title": "getInstallState.args",
+          "description": "查询应用是否已安装。Android 常用 packageName/package_name；iOS 可能使用 scheme。",
+          "type": "object",
+          "properties": {
+            "packageName": {
+              "type": "string"
+            },
+            "package_name": {
+              "type": "string"
+            },
+            "scheme": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "packageName": "com.example.app"
+          }
+        },
+        {
+          "title": "getOAID.args",
+          "description": "获取 Android OAID。通常不需要参数；属于设备广告标识敏感能力。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {}
+        },
+        {
+          "title": "handleAdAction.args",
+          "description": "执行广告组件定义的复合动作。action 和其余字段由广告数据动态下发，当前页面没有固定枚举。",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "action": "client-defined-action"
+          }
+        },
+        {
+          "title": "installDownloadTask.args",
+          "description": "安装已下载任务。任务标识可能使用 download_id、task_id 或客户端回调返回的字段。",
+          "type": "object",
+          "properties": {
+            "download_id": {
+              "type": "string"
+            },
+            "task_id": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "download_id": "client-download-id"
+          }
+        },
+        {
+          "title": "launch3rdApp.args",
+          "description": "启动第三方 App。旧版客户端常用 appID、messageExt 和 extInfo。",
+          "type": "object",
+          "properties": {
+            "appID": {
+              "type": "string"
+            },
+            "messageExt": {
+              "type": "string"
+            },
+            "extInfo": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "appID": "third-party-app-id",
+            "messageExt": "",
+            "extInfo": ""
+          }
+        },
+        {
+          "title": "launchApplication.args",
+          "description": "启动指定应用或 URL Scheme。Android 常用 packageName，iOS 常用 schemeUrl。",
+          "type": "object",
+          "properties": {
+            "packageName": {
+              "type": "string"
+            },
+            "schemeUrl": {
+              "type": "string"
+            },
+            "parameter": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "packageName": "com.example.app",
+            "schemeUrl": "example://open",
+            "parameter": "from=wechat"
+          }
+        },
+        {
+          "title": "openADCanvas.args",
+          "description": "打开广告 Canvas 落地页。canvasId、url 和广告追踪字段由广告数据下发。",
+          "type": "object",
+          "properties": {
+            "canvasId": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "canvasId": "ad-canvas-id",
+            "url": "https://mp.weixin.qq.com/promotion/example"
+          }
+        },
+        {
+          "title": "pauseDownloadTask.args",
+          "description": "暂停下载任务。任务标识字段沿用 addDownloadTask 的回调结果。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {
+            "download_id": "client-download-id"
+          }
+        },
+        {
+          "title": "queryDownloadTask.args",
+          "description": "查询下载任务状态。任务标识字段沿用 addDownloadTask 的回调结果。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {
+            "download_id": "client-download-id"
+          }
+        },
+        {
+          "title": "resumeDownloadTask.args",
+          "description": "恢复下载任务。任务标识字段沿用 addDownloadTask 的回调结果。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {
+            "download_id": "client-download-id"
+          }
+        },
+        {
+          "title": "saveWaid.args",
+          "description": "保存微信广告设备标识 WAID。字段契约属于广告组件私有协议。",
+          "type": "object",
+          "properties": {
+            "waid": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "waid": "client-waid"
+          }
+        }
+      ]
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 120000,
+      "default": 15000
+    }
+  },
+  "example": {
+    "operation": "invoke",
+    "method": "getInstallState",
+    "args": {
+      "packageName": "com.example.app"
+    }
+  }
+}
