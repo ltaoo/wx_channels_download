@@ -2,6 +2,7 @@ package api
 
 import (
 	"bufio"
+	"container/heap"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,16 +27,42 @@ const (
 )
 
 type api_log_entry struct {
-	Index     int                    `json:"index"`
-	File      string                 `json:"file"`
-	Component string                 `json:"component"`
-	Source    string                 `json:"source"`
-	Time      string                 `json:"time"`
-	Level     string                 `json:"level"`
-	Message   string                 `json:"message"`
-	Raw       string                 `json:"raw"`
-	JSON      map[string]interface{} `json:"json,omitempty"`
-	Formatted string                 `json:"formatted,omitempty"`
+	Index     int    `json:"index"`
+	File      string `json:"file"`
+	Component string `json:"component"`
+	Source    string `json:"source"`
+	Time      string `json:"time"`
+	Level     string `json:"level"`
+	Message   string `json:"message"`
+	Raw       string `json:"raw"`
+	sort_time time.Time
+	has_time  bool
+}
+
+type api_log_entry_heap []api_log_entry
+
+func (entries api_log_entry_heap) Len() int {
+	return len(entries)
+}
+
+func (entries api_log_entry_heap) Less(first_index, second_index int) bool {
+	return api_log_entry_newer(entries[second_index], entries[first_index])
+}
+
+func (entries api_log_entry_heap) Swap(first_index, second_index int) {
+	entries[first_index], entries[second_index] = entries[second_index], entries[first_index]
+}
+
+func (entries *api_log_entry_heap) Push(value interface{}) {
+	*entries = append(*entries, value.(api_log_entry))
+}
+
+func (entries *api_log_entry_heap) Pop() interface{} {
+	old_entries := *entries
+	last_index := len(old_entries) - 1
+	entry := old_entries[last_index]
+	*entries = old_entries[:last_index]
+	return entry
 }
 
 type api_log_file_info struct {
@@ -61,37 +88,29 @@ func (c *APIClient) handle_logs(ctx *gin.Context) {
 	keyword := strings.ToLower(strings.TrimSpace(query.Get("keyword")))
 	source_filter := strings.ToLower(strings.TrimSpace(query.Get("source")))
 	levels := parse_log_level_filter(query.Get("levels"))
-	format_json := parse_log_bool(query.Get("format_json"))
 
 	files := c.discover_log_files()
-	entries := make([]api_log_entry, 0, page_size)
+	retention_limit := page * page_size
+	entries := make(api_log_entry_heap, 0, page_size)
 	total := 0
 	seq := 0
 	for _, file := range files {
-		lines, err := tail_log_lines(file.Path, max_bytes)
-		if err != nil {
-			continue
-		}
-		for _, line := range lines {
-			entry := parse_log_line(file, line, format_json)
+		err := scan_tail_log_lines(file.Path, max_bytes, func(line string) {
+			entry := parse_log_line(file, line)
 			if !match_log_entry(entry, levels, keyword, source_filter) {
-				continue
+				return
 			}
 			seq++
 			entry.Index = seq
 			total++
-			entries = append(entries, entry)
+			retain_api_log_entry(&entries, entry, retention_limit)
+		})
+		if err != nil {
+			continue
 		}
 	}
 
-	sort.SliceStable(entries, func(i, j int) bool {
-		ti, ei := time.Parse(time.RFC3339Nano, entries[i].Time)
-		tj, ej := time.Parse(time.RFC3339Nano, entries[j].Time)
-		if ei == nil && ej == nil && !ti.Equal(tj) {
-			return ti.After(tj)
-		}
-		return entries[i].Index > entries[j].Index
-	})
+	sort_log_entries(entries)
 	page_count := 1
 	if total > 0 {
 		page_count = (total + page_size - 1) / page_size
@@ -111,7 +130,6 @@ func (c *APIClient) handle_logs(ctx *gin.Context) {
 	for i := range entries {
 		entries[i].Index = offset + i + 1
 	}
-
 	result.Ok(ctx, gin.H{
 		"entries":   entries,
 		"files":     files,
@@ -120,6 +138,46 @@ func (c *APIClient) handle_logs(ctx *gin.Context) {
 		"page_size": page_size,
 		"limit":     page_size,
 	})
+}
+
+func sort_log_entries(entries []api_log_entry) {
+	for entry_index := range entries {
+		prepare_api_log_entry_sort(&entries[entry_index])
+	}
+	sort.SliceStable(entries, func(first_index, second_index int) bool {
+		return api_log_entry_newer(entries[first_index], entries[second_index])
+	})
+}
+
+func prepare_api_log_entry_sort(entry *api_log_entry) {
+	entry.has_time = false
+	parsed_time, err := time.Parse(time.RFC3339Nano, entry.Time)
+	if err == nil {
+		entry.sort_time = parsed_time
+		entry.has_time = true
+	}
+}
+
+func api_log_entry_newer(first api_log_entry, second api_log_entry) bool {
+	if first.has_time && second.has_time && !first.sort_time.Equal(second.sort_time) {
+		return first.sort_time.After(second.sort_time)
+	}
+	return first.Index > second.Index
+}
+
+func retain_api_log_entry(entries *api_log_entry_heap, entry api_log_entry, limit int) {
+	if limit <= 0 {
+		return
+	}
+	prepare_api_log_entry_sort(&entry)
+	if entries.Len() < limit {
+		heap.Push(entries, entry)
+		return
+	}
+	if api_log_entry_newer(entry, (*entries)[0]) {
+		(*entries)[0] = entry
+		heap.Fix(entries, 0)
+	}
 }
 
 func (c *APIClient) discover_log_files() []api_log_file_info {
@@ -144,23 +202,23 @@ func (c *APIClient) discover_log_files() []api_log_file_info {
 	}}
 }
 
-func tail_log_lines(path string, max_bytes int) ([]string, error) {
+func scan_tail_log_lines(path string, max_bytes int, visit_line func(string)) error {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	start := int64(0)
 	if info.Size() > int64(max_bytes) {
 		start = info.Size() - int64(max_bytes)
 	}
 	if _, err := file.Seek(start, io.SeekStart); err != nil {
-		return nil, err
+		return err
 	}
 	reader := bufio.NewReader(file)
 	if start > 0 {
@@ -169,20 +227,19 @@ func tail_log_lines(path string, max_bytes int) ([]string, error) {
 
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	lines := []string{}
 	for scanner.Scan() {
 		line := strings.TrimRight(scanner.Text(), "\r\n")
 		if strings.TrimSpace(line) != "" {
-			lines = append(lines, line)
+			visit_line(line)
 		}
 	}
 	if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
-		return nil, err
+		return err
 	}
-	return lines, nil
+	return nil
 }
 
-func parse_log_line(file api_log_file_info, raw string, format_json bool) api_log_entry {
+func parse_log_line(file api_log_file_info, raw string) api_log_entry {
 	entry := api_log_entry{
 		Source:  source_from_log_file(file.Name),
 		Level:   "info",
@@ -191,7 +248,6 @@ func parse_log_line(file api_log_file_info, raw string, format_json bool) api_lo
 	}
 	var obj map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &obj); err == nil {
-		entry.JSON = obj
 		if value := log_string_field(obj, "time", "timestamp"); value != "" {
 			entry.Time = value
 		}
@@ -209,11 +265,6 @@ func parse_log_line(file api_log_file_info, raw string, format_json bool) api_lo
 		}
 		if value := log_string_field(obj, "service", "component", "Client"); value != "" {
 			entry.Source = value
-		}
-		if format_json {
-			if data, err := json.MarshalIndent(obj, "", "  "); err == nil {
-				entry.Formatted = string(data)
-			}
 		}
 		return entry
 	}
@@ -280,21 +331,69 @@ func parse_log_level_filter(raw string) map[string]bool {
 }
 
 func match_log_entry(entry api_log_entry, levels map[string]bool, keyword string, source string) bool {
-	if len(levels) > 0 && !levels[strings.ToLower(entry.Level)] {
-		return false
+	if len(levels) > 0 {
+		if !levels[entry.Level] && !levels[strings.ToLower(entry.Level)] {
+			return false
+		}
 	}
 	if source != "" &&
 		source != "all" &&
-		!strings.Contains(strings.ToLower(entry.Source), source) &&
-		!strings.Contains(strings.ToLower(entry.File), source) &&
-		!strings.Contains(strings.ToLower(entry.Component), source) {
+		!contains_normalized_log_text(entry.Source, source) &&
+		!contains_normalized_log_text(entry.File, source) &&
+		!contains_normalized_log_text(entry.Component, source) {
 		return false
 	}
 	if keyword == "" {
 		return true
 	}
-	haystack := strings.ToLower(entry.Raw + "\n" + entry.Message + "\n" + entry.Source + "\n" + entry.File + "\n" + entry.Component)
-	return strings.Contains(haystack, keyword)
+	if contains_normalized_log_text(entry.Raw, keyword) {
+		return true
+	}
+	if entry.Message != entry.Raw && contains_normalized_log_text(entry.Message, keyword) {
+		return true
+	}
+	return contains_normalized_log_text(entry.Source, keyword) ||
+		contains_normalized_log_text(entry.File, keyword) ||
+		contains_normalized_log_text(entry.Component, keyword)
+}
+
+func contains_normalized_log_text(text string, normalized_query string) bool {
+	if normalized_query == "" {
+		return true
+	}
+	if len(normalized_query) > len(text) {
+		return false
+	}
+	query_is_ascii := true
+	for query_index := 0; query_index < len(normalized_query); query_index++ {
+		if normalized_query[query_index] >= 0x80 {
+			query_is_ascii = false
+			break
+		}
+	}
+	if !query_is_ascii {
+		return strings.Contains(strings.ToLower(text), normalized_query)
+	}
+	if strings.Contains(text, normalized_query) {
+		return true
+	}
+	for text_index := 0; text_index <= len(text)-len(normalized_query); text_index++ {
+		matched := true
+		for query_index := 0; query_index < len(normalized_query); query_index++ {
+			text_byte := text[text_index+query_index]
+			if text_byte >= 'A' && text_byte <= 'Z' {
+				text_byte += 'a' - 'A'
+			}
+			if text_byte != normalized_query[query_index] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
 }
 
 func bounded_log_int(raw string, fallback int, min int, max int) int {
@@ -309,13 +408,4 @@ func bounded_log_int(raw string, fallback int, min int, max int) int {
 		return max
 	}
 	return number
-}
-
-func parse_log_bool(raw string) bool {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
-	}
 }

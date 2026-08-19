@@ -200,7 +200,30 @@ function export_entries(entries) {
 
 function normalize_log_entry(raw, fallbackIndex) {
   const source = raw && typeof raw === "object" ? raw : {};
-  const json = first_non_empty(source.json, source.JSON, null);
+  const raw_log = first_non_empty(
+    source.raw,
+    source.Raw,
+    source.message,
+    source.Message,
+  );
+  let json = first_non_empty(source.json, source.JSON, null);
+  if (!json && typeof raw_log === "string") {
+    const normalized_raw = raw_log.trim();
+    if (normalized_raw.startsWith("{") && normalized_raw.endsWith("}")) {
+      try {
+        const parsed_json = JSON.parse(normalized_raw);
+        if (
+          parsed_json &&
+          typeof parsed_json === "object" &&
+          !Array.isArray(parsed_json)
+        ) {
+          json = parsed_json;
+        }
+      } catch {
+        json = null;
+      }
+    }
+  }
   const file = first_non_empty(
     source.file,
     source.File,
@@ -237,14 +260,8 @@ function normalize_log_entry(raw, fallbackIndex) {
       source.raw,
       source.Raw,
     ),
-    raw: first_non_empty(
-      source.raw,
-      source.Raw,
-      source.message,
-      source.Message,
-    ),
+    raw: raw_log,
     json,
-    formatted: first_non_empty(source.formatted, source.Formatted),
   };
 }
 
@@ -328,7 +345,6 @@ function LogsPageViewModel(props) {
   const keyword_ = ref("");
   const source_ = ref("all");
   const level_ = ref("all");
-  const format_json_ = ref(true);
   const auto_refresh_ = ref(false);
   const last_loaded_at_ = ref("");
   const log_file_path_ = ref("");
@@ -517,7 +533,6 @@ function LogsPageViewModel(props) {
         source: source_.value,
         page: requestedPage,
         page_size: page_size_.value,
-        format_json: format_json_.value,
       });
     } catch (error) {
       if (sequence === request_sequence) {
@@ -565,7 +580,6 @@ function LogsPageViewModel(props) {
     ui.select_source$.setValue("all");
     level_.as("all");
     ui.select_level$.setValue("all");
-    format_json_.as(true);
     return load(1);
   }
 
@@ -601,10 +615,6 @@ function LogsPageViewModel(props) {
       return load(1);
     },
     setKeyword: set_keyword,
-    setFormatJson(value) {
-      format_json_.as(Boolean(value));
-      return load(page_.value);
-    },
     setAutoRefresh: set_auto_refresh,
     resetFilters: reset_filters,
     previousPage() {
@@ -690,7 +700,6 @@ function LogsPageViewModel(props) {
     keyword: keyword_,
     source: source_,
     level: level_,
-    format_json: format_json_,
     auto_refresh: auto_refresh_,
     last_loaded_at: last_loaded_at_,
     log_file_path: log_file_path_,
