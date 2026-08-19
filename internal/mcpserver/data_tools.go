@@ -47,13 +47,12 @@ type BrowseHistoryListQuery struct {
 
 // LogListQuery describes a read-only application log query.
 type LogListQuery struct {
-	Page       int
-	PageSize   int
-	MaxBytes   int
-	Keyword    string
-	Source     string
-	Levels     []string
-	FormatJSON bool
+	Page     int
+	PageSize int
+	MaxBytes int
+	Keyword  string
+	Source   string
+	Levels   []string
 }
 
 // DataReader supplies process-local read access for MCP data tools. The
@@ -96,13 +95,12 @@ type browse_history_list_arguments struct {
 }
 
 type log_list_arguments struct {
-	Page       int      `json:"page"`
-	PageSize   int      `json:"page_size"`
-	MaxBytes   int      `json:"max_bytes"`
-	Keyword    string   `json:"keyword"`
-	Source     string   `json:"source"`
-	Levels     []string `json:"levels"`
-	FormatJSON bool     `json:"format_json"`
+	Page     int      `json:"page"`
+	PageSize int      `json:"page_size"`
+	MaxBytes int      `json:"max_bytes"`
+	Keyword  string   `json:"keyword"`
+	Source   string   `json:"source"`
+	Levels   []string `json:"levels"`
 }
 
 func data_tool_definitions() []any {
@@ -217,11 +215,6 @@ func data_tool_definitions() []any {
 						"description": "日志级别列表，例如 debug、info、warn、error。",
 						"uniqueItems": true,
 						"items":       map[string]any{"type": "string", "minLength": 1},
-					},
-					"format_json": map[string]any{
-						"type":        "boolean",
-						"default":     false,
-						"description": "是否为 JSON 日志附加格式化文本。",
 					},
 				},
 			},
@@ -424,13 +417,12 @@ func (s *Server) get_logs(ctx context.Context, raw_arguments json.RawMessage) (m
 		return nil, fmt.Errorf("max_bytes 必须在 %d 到 %d 之间", 64*1024, max_log_max_bytes)
 	}
 	query := LogListQuery{
-		Page:       page,
-		PageSize:   page_size,
-		MaxBytes:   max_bytes,
-		Keyword:    strings.TrimSpace(arguments.Keyword),
-		Source:     strings.TrimSpace(arguments.Source),
-		Levels:     normalize_string_list(arguments.Levels),
-		FormatJSON: arguments.FormatJSON,
+		Page:     page,
+		PageSize: page_size,
+		MaxBytes: max_bytes,
+		Keyword:  strings.TrimSpace(arguments.Keyword),
+		Source:   strings.TrimSpace(arguments.Source),
+		Levels:   normalize_string_list(arguments.Levels),
 	}
 	if s.data_reader != nil {
 		value, read_err := s.data_reader.ListLogs(ctx, query)
@@ -440,13 +432,12 @@ func (s *Server) get_logs(ctx context.Context, raw_arguments json.RawMessage) (m
 		return successful_tool_result(value)
 	}
 	values := url.Values{
-		"page":        []string{strconv.Itoa(query.Page)},
-		"page_size":   []string{strconv.Itoa(query.PageSize)},
-		"max_bytes":   []string{strconv.Itoa(query.MaxBytes)},
-		"keyword":     []string{query.Keyword},
-		"source":      []string{query.Source},
-		"levels":      []string{strings.Join(query.Levels, ",")},
-		"format_json": []string{strconv.FormatBool(query.FormatJSON)},
+		"page":      []string{strconv.Itoa(query.Page)},
+		"page_size": []string{strconv.Itoa(query.PageSize)},
+		"max_bytes": []string{strconv.Itoa(query.MaxBytes)},
+		"keyword":   []string{query.Keyword},
+		"source":    []string{query.Source},
+		"levels":    []string{strings.Join(query.Levels, ",")},
 	}
 	return s.call_read_api(ctx, http.MethodGet, "/api/logs?"+values.Encode(), nil)
 }

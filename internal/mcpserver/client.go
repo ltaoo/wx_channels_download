@@ -148,6 +148,12 @@ func (c *api_client) wait_scraper_job(ctx context.Context, job *scraper_job) (*s
 	if job == nil || strings.TrimSpace(job.ID) == "" {
 		return nil, fmt.Errorf("抓取任务响应缺少 id")
 	}
+	var poll_timer *time.Timer
+	defer func() {
+		if poll_timer != nil {
+			poll_timer.Stop()
+		}
+	}()
 	current_job := job
 	for {
 		switch current_job.Status {
@@ -162,10 +168,15 @@ func (c *api_client) wait_scraper_job(ctx context.Context, job *scraper_job) (*s
 			return nil, new_tool_execution_error(value_or_default(current_job.Error, "抓取任务已中断"), raw_json_value(current_job.Progress))
 		}
 
+		if poll_timer == nil {
+			poll_timer = time.NewTimer(c.poll_interval)
+		} else {
+			poll_timer.Reset(c.poll_interval)
+		}
 		select {
 		case <-ctx.Done():
 			return nil, new_tool_execution_error("等待抓取任务超时或已取消: "+ctx.Err().Error(), raw_json_value(current_job.Progress))
-		case <-time.After(c.poll_interval):
+		case <-poll_timer.C:
 		}
 		next_job, err := c.get_scraper_job(ctx, current_job.ID)
 		if err != nil {
@@ -191,6 +202,12 @@ func (c *api_client) create_download_task(ctx context.Context, body any) (*downl
 }
 
 func (c *api_client) wait_download_task(ctx context.Context, task_id int) (*download_task, error) {
+	var poll_timer *time.Timer
+	defer func() {
+		if poll_timer != nil {
+			poll_timer.Stop()
+		}
+	}()
 	for {
 		query := url.Values{"task_id": []string{strconv.Itoa(task_id)}}
 		raw_data, err := c.do_json(ctx, http.MethodGet, "/api/v1/download_task/list?"+query.Encode(), nil)
@@ -213,10 +230,15 @@ func (c *api_client) wait_download_task(ctx context.Context, task_id int) (*down
 			return nil, new_tool_execution_error(message, task)
 		}
 
+		if poll_timer == nil {
+			poll_timer = time.NewTimer(c.poll_interval)
+		} else {
+			poll_timer.Reset(c.poll_interval)
+		}
 		select {
 		case <-ctx.Done():
 			return nil, new_tool_execution_error("等待下载完成超时或已取消: "+ctx.Err().Error(), task)
-		case <-time.After(c.poll_interval):
+		case <-poll_timer.C:
 		}
 	}
 }
