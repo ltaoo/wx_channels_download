@@ -78,6 +78,12 @@ function PreviewHeaderView(props) {
             [task.content_type],
           )
         : null,
+      Number.isFinite(props.fileCount)
+        ? View(
+            { class: "wx-preview-badge dm-badge dm-badge--info" },
+            [`文件 (${props.fileCount})`],
+          )
+        : null,
     ].filter(Boolean)),
   ].filter(Boolean));
 }
@@ -208,9 +214,258 @@ function PreviewFileGridView(props) {
   ]);
 }
 
+function PreviewGalleryPlaceholderView(props) {
+  const vm$ = props.store;
+  const file = props.file;
+  return View({ class: "wx-preview-gallery-placeholder" }, [
+    View({ class: "wx-preview-gallery-placeholder-icon" }, [
+      vm$.methods.fileTypeIcon(file.file_type),
+    ]),
+    View(
+      {
+        class: "wx-preview-gallery-placeholder-name",
+        attributes: { title: file.name },
+      },
+      [file.name],
+    ),
+    View({ class: "wx-preview-gallery-placeholder-message" }, [
+      file.exists
+        ? "此文件类型无法在画廊中直接预览，请打开文件查看。"
+        : "文件尚未下载、下载未完成，或本地文件已被删除。",
+    ]),
+  ]);
+}
+
+function PreviewGalleryMediaView(props) {
+  const vm$ = props.store;
+  const file = props.file;
+  const url = vm$.methods.fileURL(file);
+  if (!file.exists) {
+    return PreviewGalleryPlaceholderView({ store: vm$, file });
+  }
+  if (file.file_type === "image") {
+    return Timeless.Img({
+      class: "wx-preview-gallery-image",
+      src: url,
+      alt: file.name,
+      attributes: { loading: "eager" },
+    });
+  }
+  if (file.file_type === "video") {
+    return Timeless.Video({
+      class: "wx-preview-gallery-video",
+      src: url,
+      controls: true,
+      playsInline: true,
+      preload: "metadata",
+    });
+  }
+  if (file.file_type === "audio") {
+    return View({ class: "wx-preview-gallery-audio-stage" }, [
+      View({ class: "wx-preview-gallery-audio-icon" }, [
+        vm$.methods.fileTypeIcon(file.file_type),
+      ]),
+      Timeless.Audio({
+        class: "wx-preview-gallery-audio",
+        src: url,
+        controls: true,
+        preload: "metadata",
+      }),
+    ]);
+  }
+  if (["html", "pdf"].includes(file.file_type)) {
+    return Timeless.Webview({
+      class: "wx-preview-gallery-document",
+      href: url,
+      attributes: {
+        title: file.name,
+        loading: "eager",
+        ...(file.file_type === "html"
+          ? { sandbox: "allow-same-origin" }
+          : {}),
+      },
+    });
+  }
+  return PreviewGalleryPlaceholderView({ store: vm$, file });
+}
+
+function PreviewGalleryStageView(props) {
+  const vm$ = props.store;
+  const file = props.file;
+  const meta = [
+    vm$.methods.fileTypeLabel(file.file_type),
+    vm$.methods.formatBytes(file.size),
+    file.exists ? file.status : "文件不存在",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return View(
+    {
+      class: `wx-preview-gallery-stage is-${file.file_type}`,
+    },
+    [
+      View({ class: "wx-preview-gallery-viewport" }, [
+        PreviewGalleryMediaView({ store: vm$, file }),
+      ]),
+      View({ class: "wx-preview-gallery-caption" }, [
+        View({ class: "wx-preview-gallery-caption-icon" }, [
+          vm$.methods.fileTypeIcon(file.file_type),
+        ]),
+        View({ class: "wx-preview-gallery-caption-main" }, [
+          View(
+            {
+              class: "wx-preview-gallery-name",
+              attributes: { title: file.name },
+            },
+            [file.name],
+          ),
+          View({ class: "wx-preview-gallery-meta" }, [meta]),
+        ]),
+        file.exists
+          ? View(
+              {
+                as: "button",
+                class:
+                  "wx-preview-gallery-open dm-button dm-focus-ring",
+                attributes: {
+                  type: "button",
+                  title: `打开 ${file.name}`,
+                  "aria-label": `打开 ${file.name}`,
+                },
+                onClick() {
+                  vm$.methods.openPreview(file);
+                },
+              },
+              [
+                Timeless.Icon({ name: "external-link", size: 15 }),
+                View({}, ["打开"]),
+              ],
+            )
+          : null,
+      ].filter(Boolean)),
+    ],
+  );
+}
+
+function PreviewGalleryFileView(props) {
+  const vm$ = props.store;
+  const file = props.file;
+  return View(
+    {
+      as: "button",
+      class: computed(vm$.state.gallery_file, (selected_file) =>
+        [
+          "wx-preview-gallery-file dm-focus-ring",
+          selected_file === file ? "is-selected" : "",
+          file.exists ? "" : "is-missing",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      ),
+      attributes: {
+        type: "button",
+        title: file.name,
+        disabled: !file.exists,
+        "aria-pressed": computed(
+          vm$.state.gallery_file,
+          (selected_file) => (selected_file === file ? "true" : "false"),
+        ),
+      },
+      onClick() {
+        vm$.methods.selectGalleryFile(file);
+      },
+    },
+    [
+      View({ class: "wx-preview-gallery-file-thumb" }, [
+        PreviewFileThumbnail({ store: vm$, file }),
+      ]),
+      View({ class: "wx-preview-gallery-file-main" }, [
+        View(
+          {
+            class: "wx-preview-gallery-file-name",
+            attributes: { title: file.name },
+          },
+          [file.name],
+        ),
+        View({ class: "wx-preview-gallery-file-meta" }, [
+          [
+            vm$.methods.fileTypeLabel(file.file_type),
+            vm$.methods.formatBytes(file.size),
+            file.exists ? file.status : "文件不存在",
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        ]),
+      ]),
+    ],
+  );
+}
+
+function PreviewFileGalleryView(props) {
+  const vm$ = props.store;
+  const files = props.files;
+  if (files.length === 0) {
+    return View({ class: "wx-preview-gallery dm-container" }, [
+      PreviewStateView({ message: "暂无文件" }),
+    ]);
+  }
+  return View(
+    {
+      class: [
+        "wx-preview-gallery dm-container",
+        files.length === 1 ? "is-single" : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+      role: "region",
+      attributes: { "aria-label": "文件画廊" },
+    },
+    [
+      View({ class: "wx-preview-gallery-stage-list" }, [
+        For({
+          each: files,
+          render(file_) {
+            const file =
+              file_ && file_.value !== undefined ? file_.value : file_;
+            return Show({
+              when: computed(
+                vm$.state.gallery_file,
+                (selected_file) => selected_file === file,
+              ),
+              ok() {
+                return PreviewGalleryStageView({ store: vm$, file });
+              },
+            });
+          },
+        }),
+      ]),
+      files.length > 1
+        ? View({ class: "wx-preview-gallery-file-list-wrap" }, [
+            View({ class: "wx-preview-gallery-file-list" }, [
+              For({
+                each: files,
+                render(file_) {
+                  const file =
+                    file_ && file_.value !== undefined ? file_.value : file_;
+                  return PreviewGalleryFileView({ store: vm$, file });
+                },
+              }),
+            ]),
+          ])
+        : null,
+    ].filter(Boolean),
+  );
+}
+
 function PreviewTaskBodyView(props) {
   const vm$ = props.store;
   const task = props.task;
+  if (props.fileView === "gallery") {
+    return [
+      PreviewHeaderView({ task, fileCount: task.files.length }),
+      PreviewFileGalleryView({ store: vm$, files: task.files }),
+    ];
+  }
   const existing_files = task.files.filter((file) => file.exists);
   const single_file = existing_files.length === 1 ? existing_files[0] : null;
   return [
@@ -339,13 +594,15 @@ function PreviewOverlayMediaView(props) {
       autoplay: true,
     });
   }
-  if (file.file_type === "html") {
+  if (["html", "pdf"].includes(file.file_type)) {
     return Timeless.Webview({
       class: "wx-preview-overlay-frame",
       href: url,
       attributes: {
-        sandbox: "allow-same-origin",
         title: file.name,
+        ...(file.file_type === "html"
+          ? { sandbox: "allow-same-origin" }
+          : {}),
       },
     });
   }
@@ -465,6 +722,7 @@ function PreviewPageView(props) {
                   return PreviewTaskBodyView({
                     store: vm$,
                     task: vm$.state.task.value,
+                    fileView: props.fileView,
                   });
                 },
               });

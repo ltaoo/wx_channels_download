@@ -377,6 +377,7 @@ function DownloadV2Model(props = {}) {
     taskPreviewDrawer$: new Timeless.vm.DialogCore({
       title: "任务详情",
       closeable: true,
+      footer: false,
     }),
     deleteConfirmDialog$: new Timeless.vm.DialogCore({
       onOk() {

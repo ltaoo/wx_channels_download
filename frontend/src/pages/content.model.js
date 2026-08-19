@@ -355,6 +355,7 @@ function ContentViewModel(props) {
     contentDetailDrawer$: new Timeless.vm.DialogCore({
       title: "内容详情",
       closeable: true,
+      footer: false,
     }),
   };
 

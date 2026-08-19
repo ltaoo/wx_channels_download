@@ -7,7 +7,7 @@ function ContentDetailDrawer(props) {
     {
       store: vm$.ui.contentDetailDrawer$,
       class: "wx-content-detail-drawer",
-      style: { width: "min(1120px, 100vw)" },
+      style: { width: "min(max(560px, 80vw), 100vw)" },
     },
     [
       ContentDetailPageView({

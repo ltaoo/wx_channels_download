@@ -21,13 +21,14 @@ function DownloadV2TaskPreviewDrawer(props) {
     {
       store: vm$.ui.taskPreviewDrawer$,
       class: "wx-dl-preview-drawer",
-      style: { width: "min(max(560px, 60vw), 100vw)" },
+      style: { width: "min(max(560px, 80vw), 100vw)" },
     },
-    [
+    () => [
       PreviewPageView({
         app: props.app,
         client: props.client,
         embedded: true,
+        fileView: "gallery",
         taskId: vm$.state.preview_task_id,
       }),
     ],
