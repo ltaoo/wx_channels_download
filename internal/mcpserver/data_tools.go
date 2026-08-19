@@ -55,8 +55,8 @@ type LogListQuery struct {
 	Levels   []string
 }
 
-// DataReader supplies process-local read access for MCP data tools. The
-// embedded MCP server uses the application's DB and runtime services; stdio
+// DataReader is the consumer-side interface used by MCP data tools. The
+// application adapts its transport-neutral DataQueryService to this interface;
 // servers may omit it and fall back to the downloader HTTP API.
 type DataReader interface {
 	ListDownloadTasks(ctx context.Context, query DownloadTaskListQuery) (any, error)

@@ -10,16 +10,28 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"wx_channel/internal/application"
 	"wx_channel/internal/mcpserver"
 )
 
 var mcp_api_base_url string
+var mcp_standalone bool
 
 var mcp_cmd = &cobra.Command{
 	Use:   "mcp",
 	Short: "运行 MCP stdio server",
-	Long:  "通过 stdio 运行 MCP server，连接到已启动的下载器 API",
+	Long:  "通过 stdio 运行 MCP server；可连接已启动的下载器 API，或使用 --standalone 在进程内启动只读查询与抓取服务",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if mcp_standalone {
+			if strings.TrimSpace(mcp_api_base_url) != "" {
+				return fmt.Errorf("--standalone 与 --api-base-url 不能同时使用")
+			}
+			return application.ServeMCPStdio(cmd.Context(), Cfg, application.MCPStdioConfig{
+				Input:       cmd.InOrStdin(),
+				Output:      cmd.OutOrStdout(),
+				ErrorOutput: cmd.ErrOrStderr(),
+			})
+		}
 		api_base_url := strings.TrimSpace(mcp_api_base_url)
 		if api_base_url == "" {
 			api_base_url = configured_api_base_url()
@@ -39,6 +51,12 @@ var mcp_cmd = &cobra.Command{
 }
 
 func init() {
+	mcp_cmd.Flags().BoolVar(
+		&mcp_standalone,
+		"standalone",
+		false,
+		"不启动 API server，在当前进程中提供数据库查询、证书状态和页面抓取工具",
+	)
 	mcp_cmd.Flags().StringVar(
 		&mcp_api_base_url,
 		"api-base-url",

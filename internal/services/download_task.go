@@ -789,7 +789,7 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 
 	stage = "start_download_task"
 	if body.AutoStart == nil || *body.AutoStart {
-		if err := s.start_created_download_task(task.Id); err != nil {
+		if err := s.StartCreatedTask(task.Id); err != nil {
 			return nil, fmt.Errorf("启动下载任务失败: %w", err)
 		}
 		task.Status = model.TaskStatusPreparing
@@ -973,7 +973,7 @@ func (s *DownloadTaskService) CreateTaskByURL(body CreateDownloadTaskByURLBody) 
 	s.logger.Info().Int("task_id", task.Id).Str("url", body.URL).Str("download_dir", download_dir).Msg("URL download task written to database")
 
 	if body.AutoStart == nil || *body.AutoStart {
-		if err := s.start_created_download_task(task.Id); err != nil {
+		if err := s.StartCreatedTask(task.Id); err != nil {
 			return nil, fmt.Errorf("启动下载任务失败: %w", err)
 		}
 		task.Status = model.TaskStatusPreparing
@@ -1079,6 +1079,54 @@ func (s *DownloadTaskService) ResumeTask(task_id int) (*model.DownloadTask, erro
 	task.Status = model.TaskStatusPreparing
 
 	return &task, nil
+}
+
+// RetryTask resets and starts a failed or cancelled download task.
+func (s *DownloadTaskService) RetryTask(task_id int) (*model.DownloadTask, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("应用未初始化，数据库不可用")
+	}
+	if s.downloader == nil {
+		return nil, fmt.Errorf("下载器未初始化")
+	}
+
+	var task model.DownloadTask
+	if err := s.db.Where("id = ?", task_id).First(&task).Error; err != nil {
+		return nil, fmt.Errorf("下载任务不存在")
+	}
+	if task.Status != model.TaskStatusFailed && task.Status != model.TaskStatusCancelled {
+		return nil, fmt.Errorf("当前状态不允许重试")
+	}
+
+	s.logger.Info().Int("task_id", task_id).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("retrying download task")
+	if err := s.db.Model(&task).Updates(map[string]any{
+		"error_message": "",
+		"status":        model.TaskStatusWaiting,
+		"updated_at":    time.Now().UnixMilli(),
+	}).Error; err != nil {
+		return nil, fmt.Errorf("重置下载任务失败: %w", err)
+	}
+	task.Status = model.TaskStatusWaiting
+	task.ErrorMessage = ""
+
+	if err := s.downloader.StartTask(task.Id); err != nil {
+		s.logger.Error().Int("task_id", task_id).Err(err).Msg("failed to retry download task")
+		return &task, fmt.Errorf("重试下载任务失败: %w", err)
+	}
+	task.Status = model.TaskStatusPreparing
+	s.logger.Info().Int("task_id", task_id).Str("status", "preparing").Msg("download task retried")
+	return &task, nil
+}
+
+// CancelTask removes a task from the download engine without changing database records.
+func (s *DownloadTaskService) CancelTask(task_id int) error {
+	if s == nil || s.downloader == nil {
+		return fmt.Errorf("下载器未初始化")
+	}
+	s.logger.Info().Int("task_id", task_id).Msg("stopping Hermes download job")
+	s.downloader.DeleteTask(task_id)
+	s.logger.Info().Int("task_id", task_id).Msg("Hermes delete call completed")
+	return nil
 }
 
 // DeleteTask deletes a download task and returns the deleted task's record.
@@ -1190,6 +1238,9 @@ func (s *DownloadTaskService) StartAllTasks(status string) (int, int, error) {
 	if s.db == nil {
 		return 0, 0, fmt.Errorf("应用未初始化，数据库不可用")
 	}
+	if s.downloader == nil {
+		return 0, 0, fmt.Errorf("下载器未初始化")
+	}
 
 	query := s.db.Where("deleted_at IS NULL")
 	switch status {
@@ -1210,11 +1261,16 @@ func (s *DownloadTaskService) StartAllTasks(status string) (int, int, error) {
 	}
 
 	var started int
+	available := s.downloader.MaxConcurrent() - s.downloader.RunningTaskCount()
 	for _, task := range tasks {
+		if available <= 0 {
+			break
+		}
 		if err := s.downloader.StartTask(task.Id); err != nil {
 			continue
 		}
 		started++
+		available--
 	}
 
 	return started, len(tasks), nil
@@ -3093,7 +3149,8 @@ func (s *DownloadTaskService) delete_task_with_files(task_id int) error {
 	}).Error
 }
 
-func (s *DownloadTaskService) start_created_download_task(task_id int) error {
+// StartCreatedTask hands a newly persisted task to the download scheduler.
+func (s *DownloadTaskService) StartCreatedTask(task_id int) error {
 	if s.downloader == nil {
 		s.logger.Error().Int("task_id", task_id).Msg("Hermes downloader not initialized, unable to start download task")
 		return fmt.Errorf("Hermes 下载器未初始化")

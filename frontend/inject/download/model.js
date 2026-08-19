@@ -3268,35 +3268,20 @@ function DownloaderPanelViewModel(props = {}) {
     },
     async createDownloadTaskInDuplicate(body) {
       const started_at = Date.now();
-      var r;
-      try {
-        r = await reqs.task.createFromPlatform.run(body);
-      } catch (error) {
-        WXU.log
-          .Error(error)
-          .Str("file", "frontend/inject/download/model.js")
-          .Int("elapsed_ms", Date.now() - started_at)
-          .Msg("[downloader.create] duplicate request threw");
-        return [error, null];
-      }
+      var r = await reqs.task.createFromPlatform.run(body);
       WXU.log
         .Info()
         .Str("file", "frontend/inject/download/model.js")
         .Int("elapsed_ms", Date.now() - started_at)
-        .JSON("error", r && r.error ? r.error : null)
-        .JSON("data", r && typeof r.data !== "undefined" ? r.data : null)
+        .JSON("error", r.error)
+        .JSON("data", r.data)
         .Msg("[downloader.create] duplicate request completed");
-      if (r && r.error) {
-        return [r.error, null];
-      }
-      if (!r || !r.data || typeof r.data !== "object") {
-        const error = new Error("创建下载任务接口未返回有效数据");
+      if (r.error) {
         WXU.log
-          .Error(error)
+          .Info()
           .Str("file", "frontend/inject/download/model.js")
-          .JSON("response", r ?? null)
-          .Msg("[downloader.create] duplicate request returned invalid data");
-        return [error, null];
+          .Msg("[downloader.create] duplicate request failed");
+        return [r.error, null];
       }
       const data = r.data;
       return [null, data];

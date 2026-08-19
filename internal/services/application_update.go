@@ -50,8 +50,8 @@ type UpdateAsset struct {
 	Size        int64
 }
 
-// UpdateServiceOptions supplies application-specific update capabilities.
-type UpdateServiceOptions struct {
+// ApplicationUpdateServiceOptions supplies application-specific update capabilities.
+type ApplicationUpdateServiceOptions struct {
 	CurrentVersion  string
 	Repository      string
 	OperatingSystem string
@@ -64,8 +64,8 @@ type UpdateServiceOptions struct {
 	RestartService  *ApplicationRestartService
 }
 
-// UpdateService coordinates update checks, downloads, progress, and restarts.
-type UpdateService struct {
+// ApplicationUpdateService coordinates application update checks, downloads, progress, and restarts.
+type ApplicationUpdateService struct {
 	mu                 sync.RWMutex
 	current_version    string
 	repository         string
@@ -83,8 +83,8 @@ type UpdateService struct {
 	restart_delay      time.Duration
 }
 
-// NewUpdateService creates an update service from application-provided adapters.
-func NewUpdateService(options UpdateServiceOptions) *UpdateService {
+// NewApplicationUpdateService creates an application update service from application-provided adapters.
+func NewApplicationUpdateService(options ApplicationUpdateServiceOptions) *ApplicationUpdateService {
 	operating_system := options.OperatingSystem
 	if operating_system == "" {
 		operating_system = runtime.GOOS
@@ -102,7 +102,7 @@ func NewUpdateService(options UpdateServiceOptions) *UpdateService {
 		executable_fn = os.Executable
 	}
 
-	return &UpdateService{
+	return &ApplicationUpdateService{
 		current_version:    options.CurrentVersion,
 		repository:         options.Repository,
 		operating_system:   operating_system,
@@ -118,7 +118,7 @@ func NewUpdateService(options UpdateServiceOptions) *UpdateService {
 }
 
 // Check checks the configured release source for a compatible newer version.
-func (s *UpdateService) Check(ctx context.Context) (UpdateStatus, error) {
+func (s *ApplicationUpdateService) Check(ctx context.Context) (UpdateStatus, error) {
 	s.mu.Lock()
 	if s.status.Status == "downloading" || s.status.Status == "ready" || s.status.Status == "restarting" {
 		status := s.status
@@ -180,7 +180,7 @@ func (s *UpdateService) Check(ctx context.Context) (UpdateStatus, error) {
 }
 
 // Start begins downloading and applying the selected update.
-func (s *UpdateService) Start() (UpdateStatus, error) {
+func (s *ApplicationUpdateService) Start() (UpdateStatus, error) {
 	s.mu.Lock()
 	if s.status.Status == "downloading" || s.status.Status == "ready" || s.status.Status == "restarting" {
 		status := s.status
@@ -214,14 +214,14 @@ func (s *UpdateService) Start() (UpdateStatus, error) {
 }
 
 // Status returns the latest update state snapshot.
-func (s *UpdateService) Status() UpdateStatus {
+func (s *ApplicationUpdateService) Status() UpdateStatus {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.status
 }
 
 // Restart requests process replacement after the HTTP response can be returned.
-func (s *UpdateService) Restart() (UpdateStatus, error) {
+func (s *ApplicationUpdateService) Restart() (UpdateStatus, error) {
 	s.mu.Lock()
 	if s.status.Status == "restarting" && s.restart_scheduled {
 		status := s.status
@@ -262,7 +262,7 @@ func (s *UpdateService) Restart() (UpdateStatus, error) {
 	return status, nil
 }
 
-func (s *UpdateService) run_download(release UpdateRelease, asset UpdateAsset) {
+func (s *ApplicationUpdateService) run_download(release UpdateRelease, asset UpdateAsset) {
 	exe_path, err := s.executable_fn()
 	if err == nil {
 		err = s.download_update_fn(
@@ -290,7 +290,7 @@ func (s *UpdateService) run_download(release UpdateRelease, asset UpdateAsset) {
 	s.mu.Unlock()
 }
 
-func (s *UpdateService) update_progress(progress *hermes.TaskProgress) {
+func (s *ApplicationUpdateService) update_progress(progress *hermes.TaskProgress) {
 	if progress == nil {
 		return
 	}
@@ -310,7 +310,7 @@ func (s *UpdateService) update_progress(progress *hermes.TaskProgress) {
 	}
 }
 
-func (s *UpdateService) set_error(err error) (UpdateStatus, error) {
+func (s *ApplicationUpdateService) set_error(err error) (UpdateStatus, error) {
 	s.mu.Lock()
 	s.status.Status = "error"
 	s.status.Speed = 0

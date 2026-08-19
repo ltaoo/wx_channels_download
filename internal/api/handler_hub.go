@@ -32,10 +32,6 @@ type hub_status_response struct {
 }
 
 func (c *APIClient) handle_hub_status(ctx *gin.Context) {
-	if c.hub_config_error != nil {
-		result.Err(ctx, 503, c.hub_config_error.Error())
-		return
-	}
 	snapshot, err := c.hub_service.Status(ctx.Query("hub"))
 	if err != nil {
 		result.Err(ctx, hub_selection_error_code(ctx.Query("hub")), err.Error())
@@ -67,9 +63,6 @@ func (c *APIClient) handle_hub_wxchannels_submit(ctx *gin.Context) {
 		result.Err(ctx, 400, "url 不能为空")
 		return
 	}
-	if c.reject_hub_config_error(ctx, request.Hub) {
-		return
-	}
 	hub_name, task, err := c.hub_service.SubmitWXChannelsTask(ctx.Request.Context(), request)
 	if err != nil {
 		result.Err(ctx, hub_operation_error_code(request.Hub, err), err.Error())
@@ -93,9 +86,6 @@ func (c *APIClient) handle_hub_download_submit(ctx *gin.Context) {
 		result.Err(ctx, 400, "request 和 url_request 必须且只能提供一个")
 		return
 	}
-	if c.reject_hub_config_error(ctx, request.Hub) {
-		return
-	}
 	hub_name, task, err := c.hub_service.SubmitDownloadTask(ctx.Request.Context(), request)
 	if err != nil {
 		result.Err(ctx, hub_operation_error_code(request.Hub, err), err.Error())
@@ -106,9 +96,6 @@ func (c *APIClient) handle_hub_download_submit(ctx *gin.Context) {
 
 func (c *APIClient) handle_hub_task_get(ctx *gin.Context) {
 	requested_hub := ctx.Query("hub")
-	if c.reject_hub_config_error(ctx, requested_hub) {
-		return
-	}
 	hub_name, task, err := c.hub_service.GetTask(ctx.Request.Context(), requested_hub, ctx.Param("id"))
 	if err != nil {
 		result.Err(ctx, hub_operation_error_code(requested_hub, err), err.Error())
@@ -119,9 +106,6 @@ func (c *APIClient) handle_hub_task_get(ctx *gin.Context) {
 
 func (c *APIClient) handle_hub_task_list(ctx *gin.Context) {
 	requested_hub := ctx.Query("hub")
-	if c.reject_hub_config_error(ctx, requested_hub) {
-		return
-	}
 	limit := 50
 	if value := strings.TrimSpace(ctx.Query("limit")); value != "" {
 		parsed, err := strconv.Atoi(value)
@@ -148,14 +132,6 @@ func hub_operation_error_code(requested_name string, err error) int {
 		return hub_selection_error_code(requested_name)
 	}
 	return 502
-}
-
-func (c *APIClient) reject_hub_config_error(ctx *gin.Context, requested_name string) bool {
-	if c == nil || c.hub_config_error == nil {
-		return false
-	}
-	result.Err(ctx, hub_selection_error_code(requested_name), c.hub_config_error.Error())
-	return true
 }
 
 func hub_selection_error_code(requested_name string) int {

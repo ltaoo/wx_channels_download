@@ -10,6 +10,12 @@ type Event interface {
 // Handler is a function that handles an event.
 type Handler func(Event)
 
+// Publisher is the narrow event capability used by components that do not
+// need to subscribe to the application event bus.
+type Publisher interface {
+	Publish(Event)
+}
+
 // Bus is a simple synchronous event bus.
 type Bus struct {
 	mu       sync.RWMutex

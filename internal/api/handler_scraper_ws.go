@@ -35,6 +35,16 @@ var scraper_ws_upgrader = websocket.Upgrader{
 
 var scraper_ws_hub = new_scraper_ws_pool()
 
+// BroadcastScraperJobEvent adapts scraper service events to API WebSocket clients.
+func BroadcastScraperJobEvent(job *services.ScraperFetchJob, event *services.ScraperFetchJobEvent) {
+	scraper_ws_hub.broadcast_job_event(job, event)
+}
+
+// BroadcastPlatformStatus pushes a changed platform state to API WebSocket clients.
+func BroadcastPlatformStatus(status *events.PlatformStatusChanged) {
+	scraper_ws_hub.broadcast_platform_status(status)
+}
+
 type scraper_ws_pool struct {
 	mu      sync.RWMutex
 	clients map[*scraper_ws_client]struct{}
@@ -166,11 +176,10 @@ func (c *APIClient) add_scraper_ws_client(client *scraper_ws_client) {
 
 func (c *APIClient) scraper_platform_status_snapshots() []events.PlatformStatusChanged {
 	descriptors := adapter.StatusDescriptors()
+	current_statuses := c.runtime_status_service.PlatformStatuses()
 	statuses := make([]events.PlatformStatusChanged, 0, len(descriptors))
-	c.platform_status_mu.RLock()
-	defer c.platform_status_mu.RUnlock()
 	for _, descriptor := range descriptors {
-		status, exists := c.platform_statuses[descriptor.Key]
+		status, exists := current_statuses[descriptor.Key]
 		if !exists {
 			status = events.PlatformStatusChanged{
 				Platform:  descriptor.Platform,

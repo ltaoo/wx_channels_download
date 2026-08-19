@@ -1,16 +1,16 @@
-package api
+package services
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
 
 	"wx_channel/internal/config"
 	"wx_channel/internal/hub"
-	"wx_channel/internal/services"
 )
 
 var hub_instance_name_pattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
@@ -31,28 +31,7 @@ type hub_instance_settings struct {
 	Capabilities       hub_instance_capabilities `json:"capabilities"`
 }
 
-func (c *APIClient) configure_hub_service() {
-	if c == nil {
-		return
-	}
-	var application_config *config.Config
-	if c.cfg != nil {
-		application_config = c.cfg.Original
-	}
-	named_configs, default_name, err := load_hub_configs(application_config)
-	if err != nil {
-		c.hub_config_error = err
-		return
-	}
-	c.hub_service = services.NewHubService(services.HubServiceOptions{
-		Configs:             named_configs,
-		DefaultName:         default_name,
-		DownloadTaskService: c.download_task_service,
-		Logger:              c.logger,
-	})
-}
-
-func load_hub_configs(application_config *config.Config) ([]services.NamedHubConfig, string, error) {
+func load_hub_configs(application_config *config.Config) ([]NamedHubConfig, string, error) {
 	if application_config == nil {
 		return nil, "", nil
 	}
@@ -63,12 +42,12 @@ func load_hub_configs(application_config *config.Config) ([]services.NamedHubCon
 	return resolve_hub_configs(settings, application_config.GetString("hub.defaultInstance"))
 }
 
-func resolve_hub_configs(settings []hub_instance_settings, requested_default_name string) ([]services.NamedHubConfig, string, error) {
+func resolve_hub_configs(settings []hub_instance_settings, requested_default_name string) ([]NamedHubConfig, string, error) {
 	if len(settings) == 0 {
 		return nil, "", nil
 	}
 
-	named_configs := make([]services.NamedHubConfig, 0, len(settings))
+	named_configs := make([]NamedHubConfig, 0, len(settings))
 	seen_names := make(map[string]struct{}, len(settings))
 	seen_registrations := make(map[string]string, len(settings))
 	first_enabled_name := ""
@@ -106,6 +85,10 @@ func resolve_hub_configs(settings []hub_instance_settings, requested_default_nam
 			if hub_config.URL == "" {
 				return nil, "", fmt.Errorf("hub.instances[%d] %q 缺少 url", index, instance_name)
 			}
+			parsed_url, err := url.Parse(hub_config.URL)
+			if err != nil || parsed_url.Host == "" || (parsed_url.Scheme != "http" && parsed_url.Scheme != "https") {
+				return nil, "", fmt.Errorf("hub.instances[%d] %q 的 url 必须是 HTTP 或 HTTPS URL", index, instance_name)
+			}
 			if hub_config.HubID == "" {
 				return nil, "", fmt.Errorf("hub.instances[%d] %q 缺少 id", index, instance_name)
 			}
@@ -128,7 +111,7 @@ func resolve_hub_configs(settings []hub_instance_settings, requested_default_nam
 			}
 			seen_registrations[registration_key] = instance_name
 		}
-		named_configs = append(named_configs, services.NamedHubConfig{Name: instance_name, Config: hub_config})
+		named_configs = append(named_configs, NamedHubConfig{Name: instance_name, Config: hub_config})
 	}
 
 	default_name := strings.TrimSpace(requested_default_name)

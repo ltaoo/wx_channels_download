@@ -1,12 +1,9 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
-	"sync"
-	"sync/atomic"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -17,44 +14,34 @@ import (
 	"wx_channel/internal/services"
 	"wx_channel/internal/webassets"
 	"wx_channel/pkg/clawreq"
-	"wx_channel/pkg/hermes"
 )
 
 type APIClient struct {
-	downloader    *hermes.HermesEngine
-	broadcaster   *task_broadcaster
-	file_helper   *FileHelperHandler
-	cfg           *APIConfig
-	engine        *gin.Engine
-	db            *gorm.DB
-	logger        *zerolog.Logger
-	http_handler  http.Handler
-	static_assets *webassets.Registry
-	mcp_handler   http.Handler
-	mcp_enabled   atomic.Bool
-
-	bus                 *events.Bus
-	proxy_status_mu     sync.RWMutex
-	cached_proxy_status string
-	cached_proxy_addr   string
-	svc_status_mu       sync.RWMutex
-	svc_statuses        map[string]events.ServiceStatusChanged
-	platform_status_mu  sync.RWMutex
-	platform_statuses   map[string]events.PlatformStatusChanged
+	download_task_broadcaster *DownloadTaskBroadcaster
+	file_helper               *FileHelperHandler
+	cfg                       *APIConfig
+	engine                    *gin.Engine
+	db                        *gorm.DB
+	logger                    *zerolog.Logger
+	http_handler              http.Handler
+	static_assets             *webassets.Registry
+	event_publisher           events.Publisher
+	runtime_status_service    *services.RuntimeStatusService
 
 	claw_client *clawreq.Client
 
 	// Services
-	account_service        *services.AccountService
-	content_service        *services.ContentService
-	browse_history_service *services.BrowseService
-	download_task_service  *services.DownloadTaskService
-	fs_service             *services.FSService
-	scraper_job_service    *services.ScraperJobService
-	update_service         *services.UpdateService
-	restart_service        *services.ApplicationRestartService
-	hub_service            *services.HubService
-	hub_config_error       error
+	account_service             *services.AccountService
+	content_service             *services.ContentService
+	browse_history_service      *services.BrowseService
+	download_task_service       *services.DownloadTaskService
+	fs_service                  *services.FSService
+	scraper_job_service         *services.ScraperJobService
+	application_update_service  *services.ApplicationUpdateService
+	application_restart_service *services.ApplicationRestartService
+	hub_service                 *services.HubService
+	certificate_service         *services.CertificateService
+	mcp_service                 *services.MCPService
 }
 
 func NewAPIClient(
@@ -62,10 +49,20 @@ func NewAPIClient(
 	parent_logger *zerolog.Logger,
 	db *gorm.DB,
 	static_assets *webassets.Registry,
-	downloader *hermes.HermesEngine,
-	hook_manager *hermes.HookManager,
-	update_service *services.UpdateService,
-	restart_service *services.ApplicationRestartService,
+	download_task_broadcaster *DownloadTaskBroadcaster,
+	event_publisher events.Publisher,
+	runtime_status_service *services.RuntimeStatusService,
+	account_service *services.AccountService,
+	content_service *services.ContentService,
+	browse_history_service *services.BrowseService,
+	download_task_service *services.DownloadTaskService,
+	fs_service *services.FSService,
+	scraper_job_service *services.ScraperJobService,
+	hub_service *services.HubService,
+	certificate_service *services.CertificateService,
+	mcp_service *services.MCPService,
+	application_update_service *services.ApplicationUpdateService,
+	application_restart_service *services.ApplicationRestartService,
 ) *APIClient {
 	logger := parent_logger.With().Str("component", "APIClient").Logger()
 	engine := gin.New()
@@ -76,56 +73,27 @@ func NewAPIClient(
 		gin.Recovery(),
 	)
 
-	// Initialize services
-	account_service := services.NewAccountService(db)
-	content_service := services.NewContentService(db)
-	browse_history_service := services.NewBrowseService(db, logger)
-	fs_service := services.NewFSService()
-	if static_assets == nil {
-		static_assets = webassets.NewRegistry()
-	}
-
 	api_client := &APIClient{
-		cfg:                    cfg,
-		engine:                 engine,
-		db:                     db,
-		logger:                 &logger,
-		static_assets:          static_assets,
-		account_service:        account_service,
-		content_service:        content_service,
-		browse_history_service: browse_history_service,
-		fs_service:             fs_service,
-		downloader:             downloader,
-		update_service:         update_service,
-		restart_service:        restart_service,
+		cfg:                         cfg,
+		engine:                      engine,
+		db:                          db,
+		logger:                      &logger,
+		static_assets:               static_assets,
+		download_task_broadcaster:   download_task_broadcaster,
+		event_publisher:             event_publisher,
+		runtime_status_service:      runtime_status_service,
+		account_service:             account_service,
+		content_service:             content_service,
+		browse_history_service:      browse_history_service,
+		fs_service:                  fs_service,
+		scraper_job_service:         scraper_job_service,
+		application_update_service:  application_update_service,
+		application_restart_service: application_restart_service,
+		download_task_service:       download_task_service,
+		hub_service:                 hub_service,
+		certificate_service:         certificate_service,
+		mcp_service:                 mcp_service,
 	}
-	api_client.scraper_job_service = services.NewScraperJobService(
-		nil,
-		scraper_ws_hub.broadcast_job_event,
-		&logger,
-	)
-
-	api_client.download_task_service = services.NewDownloadTaskService(
-		db, &logger, downloader, hook_manager,
-		cfg.WorkDir, cfg.DownloadDir,
-	)
-	api_client.configure_hub_service()
-	api_client.mcp_handler = api_client.new_mcp_handler()
-
-	api_client.broadcaster = new_task_broadcaster()
-	api_client.downloader.OnEvent(func(event hermes.EventType, data hermes.EventData) {
-		task_id, progress, finished_resources, ok := download_task_event_data(event, data)
-		if !ok {
-			return
-		}
-		logger.Info().Int("task_id", task_id).Str("event", string(event)).Msg("Hermes task event")
-		api_client.broadcaster.notify(api_client, task_id, event, progress, finished_resources)
-		if event == hermes.EventFinished && api_client.bus != nil {
-			go func() {
-				api_client.bus.Publish(events.DownloadTaskFinished{TaskID: task_id})
-			}()
-		}
-	})
 
 	// // Set file transfer helper Channels auto-download callback
 	// api_client.file_helper.SetFinderAutoDownloadCallback(api_client.auto_create_channels_task)
@@ -135,131 +103,6 @@ func NewAPIClient(
 	api_client.SetupRoutes()
 	// api_client.http_handler = api_client.build_http_handler()
 	return api_client
-}
-
-func download_task_event_data(event hermes.EventType, data hermes.EventData) (int, *hermes.TaskProgress, []hermes.TaskFinishedResource, bool) {
-	switch event {
-	// Task creation.
-	case hermes.EventCreated:
-		event_data, ok := data.(hermes.TaskCreatedEventData)
-		return event_data.TaskID, nil, nil, ok
-
-	// Task completion, including unsuccessful terminal states.
-	case hermes.EventFinished:
-		event_data, ok := data.(hermes.TaskFinishedEventData)
-		return event_data.TaskID, nil, event_data.Resources, ok
-	case hermes.EventFailed:
-		event_data, ok := data.(hermes.TaskFailedEventData)
-		return event_data.TaskID, nil, nil, ok
-	case hermes.EventDeleted:
-		event_data, ok := data.(hermes.TaskDeletedEventData)
-		return event_data.TaskID, nil, nil, ok
-
-	// Task progress includes start/resume, pause, and byte progress updates.
-	case hermes.EventStarted:
-		event_data, ok := data.(hermes.TaskStartedEventData)
-		return event_data.TaskID, nil, nil, ok
-	case hermes.EventPreparing:
-		event_data, ok := data.(hermes.TaskPreparingEventData)
-		return event_data.TaskID, nil, nil, ok
-	case hermes.EventPaused:
-		event_data, ok := data.(hermes.TaskPausedEventData)
-		return event_data.TaskID, nil, nil, ok
-	case hermes.EventProgress:
-		event_data, ok := data.(hermes.TaskProgressEventData)
-		return event_data.TaskID, event_data.Progress, nil, ok && event_data.Progress != nil
-	default:
-		return 0, nil, nil, false
-	}
-}
-
-func (c *APIClient) SubscribeEvents(bus *events.Bus) {
-	c.bus = bus
-	bus.Subscribe(events.TypeProxyStatusChanged, func(e events.Event) {
-		ev, ok := e.(events.ProxyStatusChanged)
-		if !ok {
-			return
-		}
-		c.proxy_status_mu.Lock()
-		c.cached_proxy_status = ev.Status
-		c.cached_proxy_addr = ev.Addr
-		c.proxy_status_mu.Unlock()
-	})
-	bus.Subscribe(events.TypeServiceStatusChanged, func(e events.Event) {
-		ev, ok := e.(events.ServiceStatusChanged)
-		if !ok {
-			return
-		}
-		c.svc_status_mu.Lock()
-		if c.svc_statuses == nil {
-			c.svc_statuses = make(map[string]events.ServiceStatusChanged)
-		}
-		c.svc_statuses[ev.Name] = ev
-		c.svc_status_mu.Unlock()
-	})
-	bus.Subscribe(events.TypeScraperFetchProgress, func(e events.Event) {
-		progress, ok := e.(events.ScraperFetchProgress)
-		if !ok {
-			return
-		}
-		c.scraper_job_service.UpdateProgress(progress)
-	})
-	bus.Subscribe(events.TypePlatformStatusChanged, func(e events.Event) {
-		status, ok := e.(events.PlatformStatusChanged)
-		if !ok {
-			return
-		}
-		var valid bool
-		status, valid = normalize_platform_status(status)
-		if !valid {
-			return
-		}
-
-		c.platform_status_mu.Lock()
-		if c.platform_statuses == nil {
-			c.platform_statuses = make(map[string]events.PlatformStatusChanged)
-		}
-		previous_status, exists := c.platform_statuses[status.Key]
-		if exists &&
-			previous_status.Available == status.Available &&
-			previous_status.Status == status.Status &&
-			previous_status.Name == status.Name &&
-			previous_status.Reason == status.Reason {
-			c.platform_status_mu.Unlock()
-			return
-		}
-		c.platform_statuses[status.Key] = status
-		c.platform_status_mu.Unlock()
-		scraper_ws_hub.broadcast_platform_status(&status)
-	})
-}
-
-func normalize_platform_status(status events.PlatformStatusChanged) (events.PlatformStatusChanged, bool) {
-	status.Platform = strings.TrimSpace(status.Platform)
-	status.Key = strings.TrimSpace(status.Key)
-	status.Name = strings.TrimSpace(status.Name)
-	status.Status = strings.TrimSpace(status.Status)
-	status.Reason = strings.TrimSpace(status.Reason)
-	if status.Platform == "" {
-		return status, false
-	}
-	if status.Key == "" {
-		status.Key = status.Platform
-	}
-	if status.Status == "" {
-		if status.Available {
-			status.Status = "available"
-		} else {
-			status.Status = "unavailable"
-		}
-	}
-	switch status.Status {
-	case "available":
-		status.Available = true
-	case "checking", "unavailable":
-		status.Available = false
-	}
-	return status, true
 }
 
 type APIClientWSMessage struct {
@@ -284,38 +127,11 @@ type ClientWebsocketResponse struct {
 }
 
 func (c *APIClient) service_statuses_map() map[string]string {
-	c.svc_status_mu.RLock()
-	defer c.svc_status_mu.RUnlock()
-	result := make(map[string]string, len(c.svc_statuses))
-	for name, s := range c.svc_statuses {
-		result[name] = s.Status
-	}
-	return result
-}
-
-func (c *APIClient) Start() error {
-	if c.hub_config_error != nil {
-		return c.hub_config_error
-	}
-	if c.hub_service != nil {
-		return c.hub_service.Start(context.Background())
-	}
-	return nil
+	return c.runtime_status_service.ServiceStatuses()
 }
 
 func (c *APIClient) Stop() error {
-	if c.hub_service != nil {
-		c.hub_service.Close()
-	}
-	if c.scraper_job_service != nil {
-		c.scraper_job_service.InterruptAll()
-	}
 	v1_task_hub.close_all()
-	// Match the previous shutdown behavior: request all tasks to pause, but do
-	// not hold up the service shutdown while task goroutines finish.
-	if c.downloader != nil {
-		c.downloader.RequestPauseAllTask()
-	}
 	return nil
 }
 

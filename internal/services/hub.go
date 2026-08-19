@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"wx_channel/internal/adapter"
+	"wx_channel/internal/config"
 	"wx_channel/internal/hub"
 )
 
@@ -22,6 +23,7 @@ type NamedHubConfig struct {
 
 // HubServiceOptions contains the dependencies and configuration for HubService.
 type HubServiceOptions struct {
+	ApplicationConfig   *config.Config
 	Configs             []NamedHubConfig
 	DefaultName         string
 	DownloadTaskService *DownloadTaskService
@@ -98,6 +100,7 @@ type HubService struct {
 	default_name          string
 	download_task_service *DownloadTaskService
 	logger                zerolog.Logger
+	config_error          error
 	wxchannels_mu         sync.Mutex
 }
 
@@ -107,14 +110,24 @@ func NewHubService(options HubServiceOptions) *HubService {
 	if options.Logger != nil {
 		logger = options.Logger.With().Str("component", "hub_service").Logger()
 	}
+	named_configs := options.Configs
+	default_name := options.DefaultName
+	var config_error error
+	if options.ApplicationConfig != nil {
+		named_configs, default_name, config_error = load_hub_configs(options.ApplicationConfig)
+		if config_error != nil {
+			logger.Error().Err(config_error).Msg("Hub 配置无效，Hub 服务将保持不可用")
+		}
+	}
 	service := &HubService{
-		clients:               make(map[string]*hub.Client, len(options.Configs)),
-		order:                 make([]string, 0, len(options.Configs)),
-		default_name:          strings.TrimSpace(options.DefaultName),
+		clients:               make(map[string]*hub.Client, len(named_configs)),
+		order:                 make([]string, 0, len(named_configs)),
+		default_name:          strings.TrimSpace(default_name),
 		download_task_service: options.DownloadTaskService,
 		logger:                logger,
+		config_error:          config_error,
 	}
-	for _, named_config := range options.Configs {
+	for _, named_config := range named_configs {
 		hub_name := named_config.Name
 		service.order = append(service.order, hub_name)
 		service.clients[hub_name] = hub.NewClient(
@@ -171,6 +184,9 @@ func (s *HubService) Status(requested_name string) (HubStatusSnapshot, error) {
 	}
 	if s == nil {
 		return snapshot, &hub_selection_error{message: "Hub 未配置"}
+	}
+	if s.config_error != nil {
+		return snapshot, &hub_selection_error{message: s.config_error.Error()}
 	}
 	snapshot.DefaultHub = s.default_name
 	snapshot.Hubs = make([]HubNamedStatus, 0, len(s.order))
@@ -271,6 +287,9 @@ func (s *HubService) ListTasks(request_context context.Context, requested_name s
 func (s *HubService) resolve_client(requested_name string) (string, *hub.Client, error) {
 	if s == nil {
 		return "", nil, &hub_selection_error{message: "Hub 未配置"}
+	}
+	if s.config_error != nil {
+		return "", nil, &hub_selection_error{message: s.config_error.Error()}
 	}
 	hub_name := strings.TrimSpace(requested_name)
 	if hub_name == "" {

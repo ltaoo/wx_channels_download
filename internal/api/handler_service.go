@@ -25,11 +25,11 @@ func (c *APIClient) handle_service_start(ctx *gin.Context) {
 		result.Err(ctx, 400, "service is required")
 		return
 	}
-	if c.bus == nil {
+	if c.event_publisher == nil {
 		result.Err(ctx, 500, "event bus not initialized")
 		return
 	}
-	c.bus.Publish(events.ServiceCommand{Name: name, Action: "start"})
+	c.event_publisher.Publish(events.ServiceCommand{Name: name, Action: "start"})
 	result.Ok(ctx, c.service_statuses_map())
 }
 
@@ -43,11 +43,11 @@ func (c *APIClient) handle_service_stop(ctx *gin.Context) {
 		result.Err(ctx, 400, "api service cannot stop itself from HTTP")
 		return
 	}
-	if c.bus == nil {
+	if c.event_publisher == nil {
 		result.Err(ctx, 500, "event bus not initialized")
 		return
 	}
-	c.bus.Publish(events.ServiceCommand{Name: name, Action: "stop"})
+	c.event_publisher.Publish(events.ServiceCommand{Name: name, Action: "stop"})
 	result.Ok(ctx, c.service_statuses_map())
 }
 

@@ -148,6 +148,12 @@ func Start(cfg *config.Config) error {
 
 	// --- Database store ---
 	task_store := database.NewDBTaskStore(b.DB, logger)
+	account_service := services.NewAccountService(b.DB)
+	content_service := services.NewContentService(b.DB)
+	browse_history_service := services.NewBrowseService(b.DB, *logger)
+	fs_service := services.NewFSService()
+	certificate_service := services.NewCertificateService(cfg)
+	scraper_job_service := services.NewScraperJobService(nil, api.BroadcastScraperJobEvent, logger)
 
 	// --- Download engine ---
 	downloader := hermes.New(hermes.HermesNewConfig{
@@ -169,6 +175,46 @@ func Start(cfg *config.Config) error {
 	downloader.RegisterProtocol(protocol.NewFileDriver())
 	downloader.SetHooks(hook_manager)
 	downloader.SetPostprocessor(adapter.NewPlatformPostprocessor(b.DB, *logger, api_cfg.DownloadDir))
+	download_task_service := services.NewDownloadTaskService(
+		b.DB,
+		logger,
+		downloader,
+		hook_manager,
+		cfg.WorkDir,
+		api_cfg.DownloadDir,
+	)
+	runtime_status_service := services.NewRuntimeStatusService()
+	download_task_broadcaster := api.NewDownloadTaskBroadcaster(b.DB, logger, download_task_service)
+	downloader.OnEvent(func(event hermes.EventType, data hermes.EventData) {
+		task_id, progress, finished_resources, ok := download_task_event_data(event, data)
+		if !ok {
+			return
+		}
+		logger.Info().Int("task_id", task_id).Str("event", string(event)).Msg("Hermes task event")
+		download_task_broadcaster.Notify(task_id, event, progress, finished_resources)
+		if event == hermes.EventFinished {
+			go bus.Publish(events.DownloadTaskFinished{TaskID: task_id})
+		}
+	})
+	hub_service := services.NewHubService(services.HubServiceOptions{
+		ApplicationConfig:   cfg,
+		DownloadTaskService: download_task_service,
+		Logger:              logger,
+	})
+	data_service := services.NewDataQueryService(services.DataQueryServiceConfig{
+		DB:                   b.DB,
+		AccountService:       account_service,
+		DownloadTaskService:  download_task_service,
+		BrowseHistoryService: browse_history_service,
+		CertificateService:   certificate_service,
+		LogPath:              api_cfg.LogPath,
+		WorkDir:              api_cfg.WorkDir,
+	})
+	mcp_service, err := new_mcp_service(api_cfg, data_service, scraper_job_service)
+	if err != nil {
+		task_store.Shutdown()
+		return fmt.Errorf("failed to initialize MCP service: %w", err)
+	}
 
 	// --- API service ---
 	restart_service := services.NewApplicationRestartService(services.ApplicationRestartServiceOptions{
@@ -176,9 +222,67 @@ func Start(cfg *config.Config) error {
 			return restart_current_process(stop)
 		},
 	})
-	update_service := new_update_service(api_cfg.Version, restart_service)
-	api_srv := api.NewAPIServer(api_cfg, logger, b.DB, static_assets, downloader, hook_manager, update_service, restart_service)
-	api_srv.SubscribeEvents(bus)
+	application_update_service := new_application_update_service(api_cfg.Version, restart_service)
+	api_srv := api.NewAPIServer(
+		api_cfg,
+		logger,
+		b.DB,
+		static_assets,
+		download_task_broadcaster,
+		bus,
+		runtime_status_service,
+		account_service,
+		content_service,
+		browse_history_service,
+		download_task_service,
+		fs_service,
+		scraper_job_service,
+		hub_service,
+		certificate_service,
+		mcp_service,
+		application_update_service,
+		restart_service,
+	)
+	bus.Subscribe(events.TypeProxyStatusChanged, func(event events.Event) {
+		status, ok := event.(events.ProxyStatusChanged)
+		if ok {
+			runtime_status_service.UpdateProxyStatus(status)
+		}
+	})
+	bus.Subscribe(events.TypeServiceStatusChanged, func(event events.Event) {
+		status, ok := event.(events.ServiceStatusChanged)
+		if ok {
+			runtime_status_service.UpdateServiceStatus(status)
+		}
+	})
+	bus.Subscribe(events.TypeScraperFetchProgress, func(event events.Event) {
+		progress, ok := event.(events.ScraperFetchProgress)
+		if ok {
+			scraper_job_service.UpdateProgress(progress)
+		}
+	})
+	bus.Subscribe(events.TypePlatformStatusChanged, func(event events.Event) {
+		status, ok := event.(events.PlatformStatusChanged)
+		if !ok {
+			return
+		}
+		status, changed := runtime_status_service.UpdatePlatformStatus(status)
+		if changed {
+			api.BroadcastPlatformStatus(&status)
+		}
+	})
+	bus.Subscribe(events.TypeServiceCommand, func(event events.Event) {
+		command, ok := event.(events.ServiceCommand)
+		if !ok || command.Name != "api" {
+			return
+		}
+		switch command.Action {
+		case "start":
+			_ = api_srv.Start()
+		case "stop":
+			_ = api_srv.Stop()
+		}
+	})
 	publish_registered_adapter_statuses(bus)
 	// admin_srv := admin.NewAdminServer(cfg, b, bus)
 	if cfg.GlobalScriptPath != "" {
@@ -221,6 +325,7 @@ func Start(cfg *config.Config) error {
 	}
 
 	var cleanup_once sync.Once
+	hub_started := false
 	api_started := false
 	interceptor_start_attempted := false
 	cleanup := func() {
@@ -233,6 +338,10 @@ func Start(cfg *config.Config) error {
 					color.Red(fmt.Sprintf("Failed to stop proxy service: %v\n", err))
 				}
 			}
+			if hub_started {
+				hub_service.Close()
+			}
+			scraper_job_service.InterruptAll()
 			for i := len(adapter_handles) - 1; i >= 0; i-- {
 				adapter_handles[i].Stop()
 			}
@@ -241,6 +350,9 @@ func Start(cfg *config.Config) error {
 					color.Red(fmt.Sprintf("Failed to stop API service: %v\n", err))
 				}
 			}
+			// Match the previous shutdown behavior: request all tasks to pause, but do
+			// not hold up shutdown while task goroutines finish.
+			downloader.RequestPauseAllTask()
 			task_store.Shutdown()
 			// if err := admin_srv.Stop(); err != nil {
 			// 	color.Red(fmt.Sprintf("Failed to stop GUI/Admin service: %v\n", err))
@@ -256,7 +368,10 @@ func Start(cfg *config.Config) error {
 	// 	return
 	// }
 	// color.Green(fmt.Sprintf("GUI/Admin service started successfully, address: %v", admin_srv.Addr()))
-	api_srv.APIClient.StartMCPServer()
+	hub_started = true
+	if err := hub_service.Start(ctx); err != nil {
+		logger.Error().Err(err).Msg("Hub 服务启动失败，应用将继续启动")
+	}
 	if err := api_srv.Start(); err != nil {
 		cleanup()
 		return fmt.Errorf("failed to start API service: %w", err)
@@ -369,5 +484,36 @@ func publish_registered_adapter_statuses(bus *events.Bus) {
 			Available: false,
 			Reason:    "等待 adapter 状态上报",
 		})
+	}
+}
+
+func download_task_event_data(event hermes.EventType, data hermes.EventData) (int, *hermes.TaskProgress, []hermes.TaskFinishedResource, bool) {
+	switch event {
+	case hermes.EventCreated:
+		event_data, ok := data.(hermes.TaskCreatedEventData)
+		return event_data.TaskID, nil, nil, ok
+	case hermes.EventFinished:
+		event_data, ok := data.(hermes.TaskFinishedEventData)
+		return event_data.TaskID, nil, event_data.Resources, ok
+	case hermes.EventFailed:
+		event_data, ok := data.(hermes.TaskFailedEventData)
+		return event_data.TaskID, nil, nil, ok
+	case hermes.EventDeleted:
+		event_data, ok := data.(hermes.TaskDeletedEventData)
+		return event_data.TaskID, nil, nil, ok
+	case hermes.EventStarted:
+		event_data, ok := data.(hermes.TaskStartedEventData)
+		return event_data.TaskID, nil, nil, ok
+	case hermes.EventPreparing:
+		event_data, ok := data.(hermes.TaskPreparingEventData)
+		return event_data.TaskID, nil, nil, ok
+	case hermes.EventPaused:
+		event_data, ok := data.(hermes.TaskPausedEventData)
+		return event_data.TaskID, nil, nil, ok
+	case hermes.EventProgress:
+		event_data, ok := data.(hermes.TaskProgressEventData)
+		return event_data.TaskID, event_data.Progress, nil, ok && event_data.Progress != nil
+	default:
+		return 0, nil, nil, false
 	}
 }

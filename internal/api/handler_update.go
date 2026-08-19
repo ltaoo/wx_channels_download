@@ -7,7 +7,7 @@ import (
 )
 
 func (c *APIClient) handle_update_check(ctx *gin.Context) {
-	service := c.update_service
+	service := c.application_update_service
 	if service == nil {
 		result.Err(ctx, 503, "更新服务未初始化")
 		return
@@ -21,7 +21,7 @@ func (c *APIClient) handle_update_check(ctx *gin.Context) {
 }
 
 func (c *APIClient) handle_update_status(ctx *gin.Context) {
-	service := c.update_service
+	service := c.application_update_service
 	if service == nil {
 		result.Err(ctx, 503, "更新服务未初始化")
 		return
@@ -30,7 +30,7 @@ func (c *APIClient) handle_update_status(ctx *gin.Context) {
 }
 
 func (c *APIClient) handle_update_download(ctx *gin.Context) {
-	service := c.update_service
+	service := c.application_update_service
 	if service == nil {
 		result.Err(ctx, 503, "更新服务未初始化")
 		return
@@ -44,7 +44,7 @@ func (c *APIClient) handle_update_download(ctx *gin.Context) {
 }
 
 func (c *APIClient) handle_update_restart(ctx *gin.Context) {
-	service := c.update_service
+	service := c.application_update_service
 	if service == nil {
 		result.Err(ctx, 503, "更新服务未初始化")
 		return

@@ -18,10 +18,9 @@ import (
 	"gorm.io/gorm"
 
 	"wx_channel/internal/database/model"
-	"wx_channel/internal/mcpserver"
 )
 
-var default_mcp_browse_platform_ids = []string{
+var default_data_browse_platform_ids = []string{
 	"wxchannels",
 	"wxmp",
 	"zhihu",
@@ -31,34 +30,81 @@ var default_mcp_browse_platform_ids = []string{
 	"weibo",
 }
 
-// MCPDataReaderConfig contains the application services and runtime paths used
-// by the MCP read-only data tools.
-type MCPDataReaderConfig struct {
-	DB                      *gorm.DB
-	DownloadTaskService     *DownloadTaskService
-	BrowseHistoryService    *BrowseService
-	LogPath                 string
-	WorkDir                 string
-	CertificateStatusReader func(context.Context) (any, error)
+const (
+	default_data_page_size     = 20
+	max_data_page_size         = 200
+	default_data_log_page_size = 300
+	max_data_log_page_size     = 2000
+	default_data_log_max_bytes = 2 * 1024 * 1024
+	max_data_log_max_bytes     = 10 * 1024 * 1024
+)
+
+// DownloadTaskListQuery describes a read-only download task query.
+type DownloadTaskListQuery struct {
+	Page         int
+	PageSize     int
+	Statuses     []int
+	ParentTaskID int
+	RootTaskID   int
 }
 
-// MCPDataReader implements mcpserver.DataReader without depending on the API
-// transport layer.
-type MCPDataReader struct {
-	db                        *gorm.DB
-	download_task_service     *DownloadTaskService
-	browse_history_service    *BrowseService
-	log_path                  string
-	work_dir                  string
-	certificate_status_reader func(context.Context) (any, error)
+// AccountListQuery describes a read-only account query.
+type AccountListQuery struct {
+	Page      int
+	PageSize  int
+	Keyword   string
+	AccountID string
 }
 
-type mcp_download_task_status_count struct {
+// BrowseHistoryListQuery describes a read-only browse history query.
+type BrowseHistoryListQuery struct {
+	Page        int
+	PageSize    int
+	Keyword     string
+	Username    string
+	PlatformIDs []string
+}
+
+// LogListQuery describes a read-only application log query.
+type LogListQuery struct {
+	Page     int
+	PageSize int
+	MaxBytes int
+	Keyword  string
+	Source   string
+	Levels   []string
+}
+
+// DataQueryServiceConfig contains the application services and runtime paths
+// used by transport-independent read-only queries.
+type DataQueryServiceConfig struct {
+	DB                   *gorm.DB
+	AccountService       *AccountService
+	DownloadTaskService  *DownloadTaskService
+	BrowseHistoryService *BrowseService
+	CertificateService   *CertificateService
+	LogPath              string
+	WorkDir              string
+}
+
+// DataQueryService exposes application data independently of HTTP, MCP, or CLI
+// transports.
+type DataQueryService struct {
+	db                     *gorm.DB
+	account_service        *AccountService
+	download_task_service  *DownloadTaskService
+	browse_history_service *BrowseService
+	certificate_service    *CertificateService
+	log_path               string
+	work_dir               string
+}
+
+type data_download_task_status_count struct {
 	Status int   `gorm:"column:status"`
 	Count  int64 `gorm:"column:count"`
 }
 
-type mcp_download_task_file struct {
+type data_download_task_file struct {
 	DownloadTaskFileRecord
 	LocalPath string `json:"local_path"`
 	FileType  string `json:"file_type"`
@@ -66,7 +112,7 @@ type mcp_download_task_file struct {
 	Exists    bool   `json:"exists"`
 }
 
-type mcp_log_entry struct {
+type data_log_entry struct {
 	Index     int    `json:"index"`
 	File      string `json:"file"`
 	Component string `json:"component"`
@@ -79,25 +125,25 @@ type mcp_log_entry struct {
 	has_time  bool
 }
 
-type mcp_log_entry_heap []mcp_log_entry
+type data_log_entry_heap []data_log_entry
 
-func (entries mcp_log_entry_heap) Len() int {
+func (entries data_log_entry_heap) Len() int {
 	return len(entries)
 }
 
-func (entries mcp_log_entry_heap) Less(first_index, second_index int) bool {
-	return mcp_log_entry_newer(entries[second_index], entries[first_index])
+func (entries data_log_entry_heap) Less(first_index, second_index int) bool {
+	return data_log_entry_newer(entries[second_index], entries[first_index])
 }
 
-func (entries mcp_log_entry_heap) Swap(first_index, second_index int) {
+func (entries data_log_entry_heap) Swap(first_index, second_index int) {
 	entries[first_index], entries[second_index] = entries[second_index], entries[first_index]
 }
 
-func (entries *mcp_log_entry_heap) Push(value interface{}) {
-	*entries = append(*entries, value.(mcp_log_entry))
+func (entries *data_log_entry_heap) Push(value interface{}) {
+	*entries = append(*entries, value.(data_log_entry))
 }
 
-func (entries *mcp_log_entry_heap) Pop() interface{} {
+func (entries *data_log_entry_heap) Pop() interface{} {
 	old_entries := *entries
 	last_index := len(old_entries) - 1
 	entry := old_entries[last_index]
@@ -105,37 +151,52 @@ func (entries *mcp_log_entry_heap) Pop() interface{} {
 	return entry
 }
 
-type mcp_log_file_info struct {
+type data_log_file_info struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
 	Size int64  `json:"size"`
 }
 
-type mcp_download_task_account_row struct {
+type data_download_task_account_row struct {
 	AccountID  string `gorm:"column:account_id"`
 	Nickname   string `gorm:"column:nickname"`
 	AvatarURL  string `gorm:"column:avatar_url"`
 	ExternalID string `gorm:"column:external_id"`
 }
 
-// NewMCPDataReader constructs the process-local MCP data reader.
-func NewMCPDataReader(config MCPDataReaderConfig) *MCPDataReader {
-	return &MCPDataReader{
-		db:                        config.DB,
-		download_task_service:     config.DownloadTaskService,
-		browse_history_service:    config.BrowseHistoryService,
-		log_path:                  strings.TrimSpace(config.LogPath),
-		work_dir:                  strings.TrimSpace(config.WorkDir),
-		certificate_status_reader: config.CertificateStatusReader,
+// NewDataQueryService constructs the process-local application data service.
+func NewDataQueryService(config DataQueryServiceConfig) *DataQueryService {
+	return &DataQueryService{
+		db:                     config.DB,
+		account_service:        config.AccountService,
+		download_task_service:  config.DownloadTaskService,
+		browse_history_service: config.BrowseHistoryService,
+		certificate_service:    config.CertificateService,
+		log_path:               strings.TrimSpace(config.LogPath),
+		work_dir:               strings.TrimSpace(config.WorkDir),
 	}
 }
 
-func (r *MCPDataReader) ListDownloadTasks(ctx context.Context, input mcpserver.DownloadTaskListQuery) (any, error) {
+func (r *DataQueryService) ListDownloadTasks(ctx context.Context, input DownloadTaskListQuery) (any, error) {
 	if r == nil || r.db == nil || r.download_task_service == nil {
 		return nil, errors.New("下载任务数据库服务未初始化")
 	}
+	page, page_size, err := normalize_data_query_page(input.Page, input.PageSize, default_data_page_size, 100)
+	if err != nil {
+		return nil, err
+	}
+	input.Page = page
+	input.PageSize = page_size
+	if input.ParentTaskID < 0 || input.RootTaskID < 0 {
+		return nil, fmt.Errorf("parent_task_id 和 root_task_id 不能为负数")
+	}
+	for _, status := range input.Statuses {
+		if status < 0 || status > 7 {
+			return nil, fmt.Errorf("任务状态必须在 0 到 7 之间")
+		}
+	}
 	db := r.db.WithContext(ctx)
-	filtered_query := mcp_download_task_base_query(db, input)
+	filtered_query := data_download_task_base_query(db, input)
 	if len(input.Statuses) == 1 {
 		filtered_query = filtered_query.Where("status = ?", input.Statuses[0])
 	} else if len(input.Statuses) > 1 {
@@ -147,8 +208,8 @@ func (r *MCPDataReader) ListDownloadTasks(ctx context.Context, input mcpserver.D
 		return nil, fmt.Errorf("查询下载任务总数失败: %w", err)
 	}
 
-	var status_rows []mcp_download_task_status_count
-	if err := mcp_download_task_base_query(db, input).
+	var status_rows []data_download_task_status_count
+	if err := data_download_task_base_query(db, input).
 		Select("status, COUNT(*) AS count").
 		Group("status").
 		Scan(&status_rows).Error; err != nil {
@@ -180,7 +241,7 @@ func (r *MCPDataReader) ListDownloadTasks(ctx context.Context, input mcpserver.D
 	}, nil
 }
 
-func (r *MCPDataReader) GetDownloadTaskDetail(ctx context.Context, task_id int) (any, error) {
+func (r *DataQueryService) GetDownloadTaskDetail(ctx context.Context, task_id int) (any, error) {
 	if r == nil || r.db == nil || r.download_task_service == nil {
 		return nil, errors.New("下载任务数据库服务未初始化")
 	}
@@ -212,7 +273,7 @@ func (r *MCPDataReader) GetDownloadTaskDetail(ctx context.Context, task_id int) 
 				"source_url":   content.SourceURL,
 				"publish_time": publish_time,
 			}
-			var account_rows []mcp_download_task_account_row
+			var account_rows []data_download_task_account_row
 			if err := db.Table("content_account").
 				Select("content_account.account_id, account.nickname, account.avatar_url, account.external_id").
 				Joins("JOIN account ON account.id = content_account.account_id").
@@ -232,15 +293,15 @@ func (r *MCPDataReader) GetDownloadTaskDetail(ctx context.Context, task_id int) 
 		}
 	}
 
-	files := make([]mcp_download_task_file, 0, len(record.Files))
+	files := make([]data_download_task_file, 0, len(record.Files))
 	for _, file := range record.Files {
 		local_path := filepath.Join(file.DownloadDir, file.Name)
 		_, stat_err := os.Stat(local_path)
-		files = append(files, mcp_download_task_file{
+		files = append(files, data_download_task_file{
 			DownloadTaskFileRecord: file,
 			LocalPath:              local_path,
-			FileType:               mcp_file_type_by_ext(file.Name),
-			FileURL:                mcp_api_file_url(local_path),
+			FileType:               data_file_type_by_ext(file.Name),
+			FileURL:                data_api_file_url(local_path),
 			Exists:                 stat_err == nil,
 		})
 	}
@@ -275,13 +336,17 @@ func (r *MCPDataReader) GetDownloadTaskDetail(ctx context.Context, task_id int) 
 	}, nil
 }
 
-func (r *MCPDataReader) ListAccounts(ctx context.Context, input mcpserver.AccountListQuery) (any, error) {
-	if r == nil || r.db == nil {
-		return nil, errors.New("数据库未初始化")
+func (r *DataQueryService) ListAccounts(ctx context.Context, input AccountListQuery) (any, error) {
+	if r == nil || r.account_service == nil {
+		return nil, errors.New("账号服务未初始化")
 	}
-	page_result, err := NewAccountService(r.db).ListAccounts(ctx, AccountListInput{
-		Page:      input.Page,
-		PageSize:  input.PageSize,
+	page, page_size, err := normalize_data_query_page(input.Page, input.PageSize, 24, max_data_page_size)
+	if err != nil {
+		return nil, err
+	}
+	page_result, err := r.account_service.ListAccounts(ctx, AccountListInput{
+		Page:      page,
+		PageSize:  page_size,
 		Keyword:   input.Keyword,
 		AccountID: input.AccountID,
 	})
@@ -317,16 +382,20 @@ func (r *MCPDataReader) ListAccounts(ctx context.Context, input mcpserver.Accoun
 	}, nil
 }
 
-func (r *MCPDataReader) ListBrowseHistory(ctx context.Context, input mcpserver.BrowseHistoryListQuery) (any, error) {
+func (r *DataQueryService) ListBrowseHistory(ctx context.Context, input BrowseHistoryListQuery) (any, error) {
 	if r == nil || r.browse_history_service == nil {
 		return nil, errors.New("浏览记录数据库服务未初始化")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	page, page_size, err := normalize_data_query_page(input.Page, input.PageSize, default_data_page_size, max_data_page_size)
+	if err != nil {
+		return nil, err
+	}
 	platform_ids := input.PlatformIDs
 	if len(platform_ids) == 0 {
-		platform_ids = append([]string(nil), default_mcp_browse_platform_ids...)
+		platform_ids = append([]string(nil), default_data_browse_platform_ids...)
 	}
 	var username *string
 	if input.Username != "" {
@@ -336,8 +405,8 @@ func (r *MCPDataReader) ListBrowseHistory(ctx context.Context, input mcpserver.B
 	result, err := r.browse_history_service.ListPlatforms(
 		platform_ids,
 		username,
-		input.Page,
-		input.PageSize,
+		page,
+		page_size,
 		input.Keyword,
 	)
 	if err != nil {
@@ -346,9 +415,21 @@ func (r *MCPDataReader) ListBrowseHistory(ctx context.Context, input mcpserver.B
 	return result, nil
 }
 
-func (r *MCPDataReader) ListLogs(ctx context.Context, input mcpserver.LogListQuery) (any, error) {
+func (r *DataQueryService) ListLogs(ctx context.Context, input LogListQuery) (any, error) {
 	if r == nil {
 		return nil, errors.New("配置未初始化")
+	}
+	page, page_size, err := normalize_data_query_page(input.Page, input.PageSize, default_data_log_page_size, max_data_log_page_size)
+	if err != nil {
+		return nil, err
+	}
+	input.Page = page
+	input.PageSize = page_size
+	if input.MaxBytes == 0 {
+		input.MaxBytes = default_data_log_max_bytes
+	}
+	if input.MaxBytes < 64*1024 || input.MaxBytes > max_data_log_max_bytes {
+		return nil, fmt.Errorf("max_bytes 必须在 %d 到 %d 之间", 64*1024, max_data_log_max_bytes)
 	}
 	levels := make(map[string]bool, len(input.Levels))
 	for _, level := range input.Levels {
@@ -361,22 +442,22 @@ func (r *MCPDataReader) ListLogs(ctx context.Context, input mcpserver.LogListQue
 	source := strings.ToLower(strings.TrimSpace(input.Source))
 	files := r.discover_log_files()
 	retention_limit := input.Page * input.PageSize
-	entries := make(mcp_log_entry_heap, 0, input.PageSize)
+	entries := make(data_log_entry_heap, 0, input.PageSize)
 	total := 0
 	sequence := 0
 	for _, file := range files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		err := mcp_scan_tail_log_lines(ctx, file.Path, input.MaxBytes, func(line string) {
-			entry := mcp_parse_log_line(file, line)
-			if !mcp_match_log_entry(entry, levels, keyword, source) {
+		err := data_scan_tail_log_lines(ctx, file.Path, input.MaxBytes, func(line string) {
+			entry := data_parse_log_line(file, line)
+			if !data_match_log_entry(entry, levels, keyword, source) {
 				return
 			}
 			sequence++
 			entry.Index = sequence
 			total++
-			retain_mcp_log_entry(&entries, entry, retention_limit)
+			retain_data_log_entry(&entries, entry, retention_limit)
 		})
 		if err != nil {
 			if context_err := ctx.Err(); context_err != nil {
@@ -386,12 +467,11 @@ func (r *MCPDataReader) ListLogs(ctx context.Context, input mcpserver.LogListQue
 		}
 	}
 
-	mcp_sort_log_entries(entries)
+	data_sort_log_entries(entries)
 	page_count := 1
 	if total > 0 {
 		page_count = (total + input.PageSize - 1) / input.PageSize
 	}
-	page := input.Page
 	if page > page_count {
 		page = page_count
 	}
@@ -417,16 +497,16 @@ func (r *MCPDataReader) ListLogs(ctx context.Context, input mcpserver.LogListQue
 	}, nil
 }
 
-func mcp_sort_log_entries(entries []mcp_log_entry) {
+func data_sort_log_entries(entries []data_log_entry) {
 	for entry_index := range entries {
-		prepare_mcp_log_entry_sort(&entries[entry_index])
+		prepare_data_log_entry_sort(&entries[entry_index])
 	}
 	sort.SliceStable(entries, func(first_index, second_index int) bool {
-		return mcp_log_entry_newer(entries[first_index], entries[second_index])
+		return data_log_entry_newer(entries[first_index], entries[second_index])
 	})
 }
 
-func prepare_mcp_log_entry_sort(entry *mcp_log_entry) {
+func prepare_data_log_entry_sort(entry *data_log_entry) {
 	entry.has_time = false
 	parsed_time, err := time.Parse(time.RFC3339Nano, entry.Time)
 	if err == nil {
@@ -435,39 +515,39 @@ func prepare_mcp_log_entry_sort(entry *mcp_log_entry) {
 	}
 }
 
-func mcp_log_entry_newer(first mcp_log_entry, second mcp_log_entry) bool {
+func data_log_entry_newer(first data_log_entry, second data_log_entry) bool {
 	if first.has_time && second.has_time && !first.sort_time.Equal(second.sort_time) {
 		return first.sort_time.After(second.sort_time)
 	}
 	return first.Index > second.Index
 }
 
-func retain_mcp_log_entry(entries *mcp_log_entry_heap, entry mcp_log_entry, limit int) {
+func retain_data_log_entry(entries *data_log_entry_heap, entry data_log_entry, limit int) {
 	if limit <= 0 {
 		return
 	}
-	prepare_mcp_log_entry_sort(&entry)
+	prepare_data_log_entry_sort(&entry)
 	if entries.Len() < limit {
 		heap.Push(entries, entry)
 		return
 	}
-	if mcp_log_entry_newer(entry, (*entries)[0]) {
+	if data_log_entry_newer(entry, (*entries)[0]) {
 		(*entries)[0] = entry
 		heap.Fix(entries, 0)
 	}
 }
 
-func (r *MCPDataReader) GetCertificateStatus(ctx context.Context) (any, error) {
-	if r == nil || r.certificate_status_reader == nil {
+func (r *DataQueryService) GetCertificateStatus(ctx context.Context) (any, error) {
+	if r == nil || r.certificate_service == nil {
 		return nil, errors.New("证书状态服务未初始化")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return r.certificate_status_reader(ctx)
+	return r.certificate_service.Status(), nil
 }
 
-func mcp_download_task_base_query(db *gorm.DB, input mcpserver.DownloadTaskListQuery) *gorm.DB {
+func data_download_task_base_query(db *gorm.DB, input DownloadTaskListQuery) *gorm.DB {
 	query := db.Model(&model.DownloadTask{}).Where("deleted_at IS NULL")
 	if input.ParentTaskID > 0 {
 		query = query.Where("parent_task_id = ?", input.ParentTaskID)
@@ -478,7 +558,7 @@ func mcp_download_task_base_query(db *gorm.DB, input mcpserver.DownloadTaskListQ
 	return query
 }
 
-func (r *MCPDataReader) discover_log_files() []mcp_log_file_info {
+func (r *DataQueryService) discover_log_files() []data_log_file_info {
 	log_path := strings.TrimSpace(r.log_path)
 	if log_path == "" {
 		return nil
@@ -490,14 +570,14 @@ func (r *MCPDataReader) discover_log_files() []mcp_log_file_info {
 	if err != nil || info.IsDir() {
 		return nil
 	}
-	return []mcp_log_file_info{{
+	return []data_log_file_info{{
 		Name: filepath.Base(log_path),
 		Path: log_path,
 		Size: info.Size(),
 	}}
 }
 
-func mcp_scan_tail_log_lines(ctx context.Context, path string, max_bytes int, visit_line func(string)) error {
+func data_scan_tail_log_lines(ctx context.Context, path string, max_bytes int, visit_line func(string)) error {
 	file, err := os.Open(path)
 	if err != nil {
 		return err
@@ -537,40 +617,40 @@ func mcp_scan_tail_log_lines(ctx context.Context, path string, max_bytes int, vi
 	return nil
 }
 
-func mcp_parse_log_line(file mcp_log_file_info, raw string) mcp_log_entry {
-	entry := mcp_log_entry{
-		Source:  mcp_source_from_log_file(file.Name),
+func data_parse_log_line(file data_log_file_info, raw string) data_log_entry {
+	entry := data_log_entry{
+		Source:  data_source_from_log_file(file.Name),
 		Level:   "info",
 		Message: raw,
 		Raw:     raw,
 	}
 	var object map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &object); err == nil {
-		if value := mcp_log_string_field(object, "time", "timestamp"); value != "" {
+		if value := data_log_string_field(object, "time", "timestamp"); value != "" {
 			entry.Time = value
 		}
-		if value := mcp_log_string_field(object, "level"); value != "" {
+		if value := data_log_string_field(object, "level"); value != "" {
 			entry.Level = strings.ToLower(value)
 		}
-		if value := mcp_log_string_field(object, "message", "msg"); value != "" {
+		if value := data_log_string_field(object, "message", "msg"); value != "" {
 			entry.Message = value
 		}
-		if value := mcp_log_string_field(object, "file"); value != "" {
+		if value := data_log_string_field(object, "file"); value != "" {
 			entry.File = value
 		}
-		if value := mcp_log_string_field(object, "component"); value != "" {
+		if value := data_log_string_field(object, "component"); value != "" {
 			entry.Component = value
 		}
-		if value := mcp_log_string_field(object, "service", "component", "Client"); value != "" {
+		if value := data_log_string_field(object, "service", "component", "Client"); value != "" {
 			entry.Source = value
 		}
 		return entry
 	}
-	entry.Level = mcp_infer_text_log_level(raw)
+	entry.Level = data_infer_text_log_level(raw)
 	return entry
 }
 
-func mcp_log_string_field(object map[string]interface{}, keys ...string) string {
+func data_log_string_field(object map[string]interface{}, keys ...string) string {
 	for _, key := range keys {
 		if value, ok := object[key]; ok && value != nil {
 			return strings.TrimSpace(strings.Trim(strings.TrimSpace(fmt.Sprint(value)), `"`))
@@ -586,11 +666,11 @@ func mcp_log_string_field(object map[string]interface{}, keys ...string) string 
 	return ""
 }
 
-func mcp_source_from_log_file(name string) string {
+func data_source_from_log_file(name string) string {
 	return strings.TrimSuffix(name, filepath.Ext(name))
 }
 
-func mcp_infer_text_log_level(raw string) string {
+func data_infer_text_log_level(raw string) string {
 	text := strings.ToLower(raw)
 	if strings.Contains(text, "error") || strings.Contains(text, "[error]") || strings.Contains(text, "失败") {
 		return "error"
@@ -604,7 +684,7 @@ func mcp_infer_text_log_level(raw string) string {
 	return "info"
 }
 
-func mcp_match_log_entry(entry mcp_log_entry, levels map[string]bool, keyword string, source string) bool {
+func data_match_log_entry(entry data_log_entry, levels map[string]bool, keyword string, source string) bool {
 	if len(levels) > 0 {
 		if !levels[entry.Level] && !levels[strings.ToLower(entry.Level)] {
 			return false
@@ -612,26 +692,26 @@ func mcp_match_log_entry(entry mcp_log_entry, levels map[string]bool, keyword st
 	}
 	if source != "" &&
 		source != "all" &&
-		!mcp_contains_normalized_log_text(entry.Source, source) &&
-		!mcp_contains_normalized_log_text(entry.File, source) &&
-		!mcp_contains_normalized_log_text(entry.Component, source) {
+		!data_contains_normalized_log_text(entry.Source, source) &&
+		!data_contains_normalized_log_text(entry.File, source) &&
+		!data_contains_normalized_log_text(entry.Component, source) {
 		return false
 	}
 	if keyword == "" {
 		return true
 	}
-	if mcp_contains_normalized_log_text(entry.Raw, keyword) {
+	if data_contains_normalized_log_text(entry.Raw, keyword) {
 		return true
 	}
-	if entry.Message != entry.Raw && mcp_contains_normalized_log_text(entry.Message, keyword) {
+	if entry.Message != entry.Raw && data_contains_normalized_log_text(entry.Message, keyword) {
 		return true
 	}
-	return mcp_contains_normalized_log_text(entry.Source, keyword) ||
-		mcp_contains_normalized_log_text(entry.File, keyword) ||
-		mcp_contains_normalized_log_text(entry.Component, keyword)
+	return data_contains_normalized_log_text(entry.Source, keyword) ||
+		data_contains_normalized_log_text(entry.File, keyword) ||
+		data_contains_normalized_log_text(entry.Component, keyword)
 }
 
-func mcp_contains_normalized_log_text(text string, normalized_query string) bool {
+func data_contains_normalized_log_text(text string, normalized_query string) bool {
 	if normalized_query == "" {
 		return true
 	}
@@ -670,7 +750,23 @@ func mcp_contains_normalized_log_text(text string, normalized_query string) bool
 	return false
 }
 
-func mcp_file_type_by_ext(name string) string {
+func normalize_data_query_page(page int, page_size int, default_page_size int, maximum_page_size int) (int, int, error) {
+	if page == 0 {
+		page = 1
+	}
+	if page_size == 0 {
+		page_size = default_page_size
+	}
+	if page < 1 {
+		return 0, 0, fmt.Errorf("page 必须是正整数")
+	}
+	if page_size < 1 || page_size > maximum_page_size {
+		return 0, 0, fmt.Errorf("page_size 必须在 1 到 %d 之间", maximum_page_size)
+	}
+	return page, page_size, nil
+}
+
+func data_file_type_by_ext(name string) string {
 	extension := strings.ToLower(filepath.Ext(name))
 	switch extension {
 	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp":
@@ -690,7 +786,7 @@ func mcp_file_type_by_ext(name string) string {
 	}
 }
 
-func mcp_api_file_url(path string) string {
+func data_api_file_url(path string) string {
 	values := url.Values{}
 	values.Set("path", path)
 	return "/api/file?" + values.Encode()

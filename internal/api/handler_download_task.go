@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 
 	"wx_channel/internal/adapter"
 	result "wx_channel/internal/apiresult"
@@ -140,23 +139,6 @@ func (c *APIClient) resolve_download_dir(requested string) (string, error) {
 // download_task_download_dir returns the task download root directory.
 func download_task_download_dir(download_dir string) string {
 	return download_dir
-}
-
-// startCreatedDownloadTask hands the newly created task off to Hermes for scheduling.
-// Hermes manages all internal state (connections, status changes, logging) via the
-// Store interface and triggers broadcasts through the EventHandler callback.
-func (c *APIClient) startCreatedDownloadTask(taskID int) error {
-	if c.downloader == nil {
-		c.logger.Error().Int("task_id", taskID).Msg("Hermes download engine not initialized, cannot start download task")
-		return fmt.Errorf("Hermes 下载器未初始化")
-	}
-	c.logger.Info().Int("task_id", taskID).Msg("Submitting download task to Hermes scheduler")
-	if err := c.downloader.StartCreatedTask(taskID); err != nil {
-		c.logger.Error().Int("task_id", taskID).Err(err).Msg("Hermes scheduler failed to start download task")
-		return err
-	}
-	c.logger.Info().Int("task_id", taskID).Msg("Download task submitted to Hermes scheduling queue")
-	return nil
 }
 
 // prepareDownloadTaskSingle previews a single platform download task (no DB write, no download start).
@@ -530,7 +512,7 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 					if id > 0 {
 						ids = append(ids, id)
 						if body.AutoStart != nil && !*body.AutoStart {
-							c.broadcast_download_task_create(id)
+							c.download_task_broadcaster.broadcast_download_task_create(id)
 							manual_start_count++
 						}
 					}
@@ -561,13 +543,13 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 			ids = append(ids, data.ID)
 			success_count++
 			if body.AutoStart != nil && !*body.AutoStart {
-				c.broadcast_download_task_create(data.ID)
+				c.download_task_broadcaster.broadcast_download_task_create(data.ID)
 				manual_start_count++
 			}
 		}
 	}
 	if manual_start_count > 0 {
-		c.broadcast_download_task_stats()
+		c.download_task_broadcaster.broadcast_download_task_stats()
 	}
 
 	c.logger.Info().
@@ -706,7 +688,7 @@ func (c *APIClient) createDownloadTaskByURLSingle(body CreateDownloadTaskByURLBo
 
 	// Hand off to scheduler when requested. Otherwise the persisted task remains waiting.
 	if body.AutoStart == nil || *body.AutoStart {
-		if err := c.startCreatedDownloadTask(task.Id); err != nil {
+		if err := c.download_task_service.StartCreatedTask(task.Id); err != nil {
 			return nil, fmt.Errorf("启动下载任务失败: %w", err)
 		}
 		task.Status = model.TaskStatusPreparing // Hermes has written to DB; here we only update the in-memory variable for the response
@@ -750,14 +732,14 @@ func (c *APIClient) handle_create_download_task_by_url(ctx *gin.Context) {
 			success_count++
 			if body.AutoStart != nil && !*body.AutoStart {
 				if task, ok := data["task"].(model.DownloadTask); ok {
-					c.broadcast_download_task_create(task.Id)
+					c.download_task_broadcaster.broadcast_download_task_create(task.Id)
 					manual_start_count++
 				}
 			}
 		}
 	}
 	if manual_start_count > 0 {
-		c.broadcast_download_task_stats()
+		c.download_task_broadcaster.broadcast_download_task_stats()
 	}
 
 	c.logger.Info().
@@ -820,14 +802,15 @@ func (c *APIClient) handle_start_download_task(ctx *gin.Context) {
 
 		c.logger.Info().Str("api", "POST /api/v1/download_task/start").Int("task_id", task_id).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("Starting download task")
 
-		if err := c.downloader.StartTask(task.Id); err != nil {
+		started_task, err := c.download_task_service.StartTask(task.Id)
+		if err != nil {
 			c.logger.Error().Int("task_id", task_id).Err(err).Msg("Failed to start download task")
-			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "启动下载任务失败: " + err.Error()})
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": err.Error()})
 			continue
 		}
 		c.logger.Info().Int("task_id", task_id).Str("status", "preparing").Msg("Download task started")
 
-		task.Status = model.TaskStatusPreparing
+		task = *started_task
 		tasks_by_id[task_id] = task
 		results = append(results, gin.H{"task_id": task_id, "success": true, "task": task, "status_text": "preparing"})
 	}
@@ -892,12 +875,6 @@ func (c *APIClient) handle_pause_download_task(ctx *gin.Context) {
 		result.Err(ctx, 500, "查询下载任务失败: "+query_err.Error())
 		return
 	}
-	stream_task_ids, query_err := c.load_stream_task_id_set(tasks_by_id)
-	if query_err != nil {
-		result.Err(ctx, 500, "查询直播下载任务失败: "+query_err.Error())
-		return
-	}
-
 	results := make([]gin.H, 0, len(body.TaskIDs))
 	for _, task_id := range body.TaskIDs {
 		if task_id <= 0 {
@@ -916,65 +893,25 @@ func (c *APIClient) handle_pause_download_task(ctx *gin.Context) {
 			continue
 		}
 
-		if _, is_stream := stream_task_ids[task.Id]; is_stream {
-			if err := c.downloader.StopTask(task.Id); err != nil {
-				results = append(results, gin.H{"task_id": task_id, "success": false, "error": "停止直播录制失败: " + err.Error()})
-				continue
+		paused_task, is_stream, err := c.download_task_service.PauseTask(task.Id)
+		if err != nil {
+			failure := gin.H{"task_id": task_id, "success": false, "error": err.Error()}
+			if paused_task != nil {
+				failure["task"] = *paused_task
 			}
-			if err := c.db.Where("id = ?", task_id).First(&task).Error; err != nil {
-				results = append(results, gin.H{"task_id": task_id, "success": false, "error": "读取直播录制最终状态失败: " + err.Error()})
-				continue
-			}
-			tasks_by_id[task_id] = task
-			if task.Status != model.TaskStatusFinished {
-				message := strings.TrimSpace(task.ErrorMessage)
-				if message == "" {
-					message = fmt.Sprintf("收尾后的任务状态异常: %d", task.Status)
-				}
-				results = append(results, gin.H{"task_id": task_id, "success": false, "task": task, "error": "直播录制收尾失败: " + message})
-				continue
-			}
-			results = append(results, gin.H{"task_id": task_id, "success": true, "task": task, "status_text": "finished"})
+			results = append(results, failure)
 			continue
 		}
-
-		c.downloader.PauseTask(task.Id)
-
-		task.Status = model.TaskStatusPaused
+		task = *paused_task
 		tasks_by_id[task_id] = task
-		results = append(results, gin.H{"task_id": task_id, "success": true, "task": task, "status_text": "paused"})
+		status_text := "paused"
+		if is_stream {
+			status_text = "finished"
+		}
+		results = append(results, gin.H{"task_id": task_id, "success": true, "task": task, "status_text": status_text})
 	}
 
 	result.Ok(ctx, gin.H{"results": results})
-}
-
-func (c *APIClient) load_stream_task_id_set(tasks_by_id map[int]model.DownloadTask) (map[int]struct{}, error) {
-	stream_task_ids := make(map[int]struct{})
-	if len(tasks_by_id) == 0 {
-		return stream_task_ids, nil
-	}
-
-	task_ids := make([]int, 0, len(tasks_by_id))
-	for task_id := range tasks_by_id {
-		task_ids = append(task_ids, task_id)
-	}
-	for batch_start := 0; batch_start < len(task_ids); batch_start += download_task_lookup_batch_size {
-		batch_end := batch_start + download_task_lookup_batch_size
-		if batch_end > len(task_ids) {
-			batch_end = len(task_ids)
-		}
-		var batch_stream_task_ids []int
-		if err := c.db.Model(&model.DownloadResource{}).
-			Distinct("task_id").
-			Where("task_id IN ? AND UPPER(type) = ?", task_ids[batch_start:batch_end], model.ResourceTypeStream).
-			Pluck("task_id", &batch_stream_task_ids).Error; err != nil {
-			return nil, err
-		}
-		for _, task_id := range batch_stream_task_ids {
-			stream_task_ids[task_id] = struct{}{}
-		}
-	}
-	return stream_task_ids, nil
 }
 
 // handle_resume_download_task batch-resumes download tasks.
@@ -1018,16 +955,12 @@ func (c *APIClient) handle_resume_download_task(ctx *gin.Context) {
 			continue
 		}
 
-		if !c.downloader.HasAvailableSlot() {
-			results = append(results, gin.H{"task_id": task_id, "success": false, "error": fmt.Sprintf("exceeds maximum concurrent download tasks (%d)", c.downloader.MaxConcurrent())})
+		resumed_task, err := c.download_task_service.ResumeTask(task.Id)
+		if err != nil {
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": err.Error()})
 			continue
 		}
-
-		if err := c.downloader.StartTask(task.Id); err != nil {
-			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "恢复下载任务失败: " + err.Error()})
-			continue
-		}
-		task.Status = model.TaskStatusPreparing
+		task = *resumed_task
 		tasks_by_id[task_id] = task
 		results = append(results, gin.H{"task_id": task_id, "success": true, "task": task, "status_text": "preparing"})
 	}
@@ -1060,17 +993,6 @@ func (c *APIClient) handle_retry_download_task(ctx *gin.Context) {
 		result.Err(ctx, 500, "查询下载任务失败: "+query_err.Error())
 		return
 	}
-	retry_task_ids := make([]int, 0, len(tasks_by_id))
-	for task_id, task := range tasks_by_id {
-		if task.Status == model.TaskStatusFailed || task.Status == model.TaskStatusCancelled {
-			retry_task_ids = append(retry_task_ids, task_id)
-		}
-	}
-	if err := c.reset_download_tasks_for_retry(retry_task_ids, time.Now().UnixMilli()); err != nil {
-		result.Err(ctx, 500, "重置下载任务失败: "+err.Error())
-		return
-	}
-
 	results := make([]gin.H, 0, len(body.TaskIDs))
 	for _, task_id := range body.TaskIDs {
 		if task_id <= 0 {
@@ -1093,47 +1015,20 @@ func (c *APIClient) handle_retry_download_task(ctx *gin.Context) {
 
 		c.logger.Info().Str("api", "POST /api/v1/download_task/retry").Int("task_id", task_id).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("Retrying download task")
 
-		task.Status = model.TaskStatusWaiting
-		task.ErrorMessage = ""
-		tasks_by_id[task_id] = task
-
-		if err := c.downloader.StartTask(task.Id); err != nil {
+		retried_task, err := c.download_task_service.RetryTask(task.Id)
+		if err != nil {
 			c.logger.Error().Int("task_id", task_id).Err(err).Msg("Failed to retry download task")
-			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "重试下载任务失败: " + err.Error()})
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": err.Error()})
 			continue
 		}
 		c.logger.Info().Int("task_id", task_id).Str("status", "preparing").Msg("Download task retried")
 
-		task.Status = model.TaskStatusPreparing
+		task = *retried_task
 		tasks_by_id[task_id] = task
 		results = append(results, gin.H{"task_id": task_id, "success": true, "task": task, "status_text": "preparing"})
 	}
 
 	result.Ok(ctx, gin.H{"results": results})
-}
-
-func (c *APIClient) reset_download_tasks_for_retry(task_ids []int, updated_at int64) error {
-	if len(task_ids) == 0 {
-		return nil
-	}
-	return c.db.Transaction(func(tx *gorm.DB) error {
-		for batch_start := 0; batch_start < len(task_ids); batch_start += download_task_lookup_batch_size {
-			batch_end := batch_start + download_task_lookup_batch_size
-			if batch_end > len(task_ids) {
-				batch_end = len(task_ids)
-			}
-			if err := tx.Model(&model.DownloadTask{}).
-				Where("id IN ?", task_ids[batch_start:batch_end]).
-				Updates(map[string]any{
-					"error_message": "",
-					"status":        model.TaskStatusWaiting,
-					"updated_at":    updated_at,
-				}).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	})
 }
 
 // handle_delete_download_task batch-deletes download tasks.
@@ -1167,7 +1062,7 @@ func (c *APIClient) handle_delete_download_task(ctx *gin.Context) {
 		}
 	}
 	if successful_deletions > 0 {
-		c.broadcast_download_task_stats()
+		c.download_task_broadcaster.broadcast_download_task_stats()
 	}
 
 	result.Ok(ctx, gin.H{"results": results})
@@ -1230,13 +1125,10 @@ func (c *APIClient) deleteSingleDownloadTask(taskID int, deleteFiles bool) gin.H
 
 	now := time.Now().UnixMilli()
 
-	if c.downloader == nil {
-		c.logger.Error().Int("task_id", task.Id).Msg("Download task deletion failed because Hermes engine is unavailable")
-		return gin.H{"task_id": taskID, "success": false, "error": "下载器未初始化"}
+	if err := c.download_task_service.CancelTask(task.Id); err != nil {
+		c.logger.Error().Int("task_id", task.Id).Err(err).Msg("Download task deletion failed because Hermes engine is unavailable")
+		return gin.H{"task_id": taskID, "success": false, "error": err.Error()}
 	}
-	c.logger.Info().Int("task_id", task.Id).Msg("Stopping Hermes download job before soft deletion")
-	c.downloader.DeleteTask(task.Id)
-	c.logger.Info().Int("task_id", task.Id).Msg("Hermes delete call completed")
 	if deleteFiles {
 		c.logger.Info().Int("task_id", task.Id).Bool("local_file_cleanup_attempted", true).Msg("Starting associated local file cleanup")
 		if err := c.deleteDownloadTaskLocalFiles(task, resources); err != nil {
@@ -1287,7 +1179,7 @@ func (c *APIClient) deleteSingleDownloadTask(taskID int, deleteFiles bool) gin.H
 		c.logger.Warn().Int("task_id", task.Id).Msg("Download task deletion found no associated resources to cascade")
 	}
 
-	c.broadcast_download_task_delete([]int{task.Id})
+	c.download_task_broadcaster.broadcast_download_task_delete([]int{task.Id})
 	c.logger.Info().Int("task_id", task.Id).Msg("Download task deletion broadcast emitted")
 	c.logDownloadTaskLocalFiles(task, resources, "after_delete")
 	c.logger.Info().
@@ -1779,50 +1671,17 @@ func buildResourceTree(resources []gin.H) *ResourceTreeNode {
 // handle_start_all_download_task batch-starts download tasks.
 // POST /api/v1/download_task/start_all
 func (c *APIClient) handle_start_all_download_task(ctx *gin.Context) {
-	if c.db == nil {
-		result.Err(ctx, 500, "应用未初始化，数据库不可用")
-		return
-	}
-
 	var body struct {
 		Status string `json:"status"`
 	}
 	ctx.ShouldBindJSON(&body)
 
-	query := c.db.Where("deleted_at IS NULL")
-	switch body.Status {
-	case "waiting":
-		query = query.Where("status = ?", model.TaskStatusWaiting)
-	case "paused":
-		query = query.Where("status = ?", model.TaskStatusPaused)
-	case "failed":
-		query = query.Where("status = ?", model.TaskStatusFailed)
-	default:
-		// Start all startable tasks
-		query = query.Where("status IN (?, ?, ?)",
-			model.TaskStatusWaiting, model.TaskStatusPaused, model.TaskStatusFailed)
-	}
-
-	var tasks []model.DownloadTask
-	if err := query.Find(&tasks).Error; err != nil {
-		result.Err(ctx, 500, "查询下载任务失败: "+err.Error())
+	started, total, err := c.download_task_service.StartAllTasks(body.Status)
+	if err != nil {
+		result.Err(ctx, 500, err.Error())
 		return
 	}
-
-	var started int
-	available := c.downloader.MaxConcurrent() - c.downloader.RunningTaskCount()
-	for _, task := range tasks {
-		if available <= 0 {
-			break
-		}
-		if err := c.downloader.StartTask(task.Id); err != nil {
-			continue
-		}
-		started++
-		available--
-	}
-
-	result.Ok(ctx, gin.H{"started": started, "total": len(tasks)})
+	result.Ok(ctx, gin.H{"started": started, "total": total})
 }
 
 // handle_pause_all_download_task batch-pauses download tasks.
@@ -1857,39 +1716,12 @@ func (c *APIClient) handle_pause_all_download_task(ctx *gin.Context) {
 		result.Err(ctx, 500, "查询下载任务失败: "+err.Error())
 		return
 	}
-	tasks_by_id := make(map[int]model.DownloadTask, len(tasks))
-	for _, task := range tasks {
-		tasks_by_id[task.Id] = task
-	}
-	stream_task_ids, query_err := c.load_stream_task_id_set(tasks_by_id)
-	if query_err != nil {
-		result.Err(ctx, 500, "查询直播下载任务失败: "+query_err.Error())
-		return
-	}
-
 	var paused int
 	var failures []gin.H
 	for _, task := range tasks {
-		if _, is_stream := stream_task_ids[task.Id]; is_stream {
-			if err := c.downloader.StopTask(task.Id); err != nil {
-				failures = append(failures, gin.H{"task_id": task.Id, "error": err.Error()})
-				continue
-			}
-			var stopped_task model.DownloadTask
-			if err := c.db.Where("id = ?", task.Id).First(&stopped_task).Error; err != nil {
-				failures = append(failures, gin.H{"task_id": task.Id, "error": err.Error()})
-				continue
-			}
-			if stopped_task.Status != model.TaskStatusFinished {
-				message := strings.TrimSpace(stopped_task.ErrorMessage)
-				if message == "" {
-					message = fmt.Sprintf("收尾后的任务状态异常: %d", stopped_task.Status)
-				}
-				failures = append(failures, gin.H{"task_id": task.Id, "error": message})
-				continue
-			}
-		} else {
-			c.downloader.PauseTask(task.Id)
+		if _, _, err := c.download_task_service.PauseTask(task.Id); err != nil {
+			failures = append(failures, gin.H{"task_id": task.Id, "error": err.Error()})
+			continue
 		}
 		paused++
 	}
@@ -1965,7 +1797,7 @@ func (c *APIClient) clear_download_task_records(task_ids []int, delete_files boo
 		}
 	}
 	if cleared > 0 {
-		c.broadcast_download_task_stats()
+		c.download_task_broadcaster.broadcast_download_task_stats()
 	}
 	return cleared, results
 }

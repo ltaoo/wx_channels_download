@@ -59,8 +59,8 @@ type update_manifest_asset struct {
 	Name     string `json:"name"`
 }
 
-func new_update_service(current_version string, restart_service *services.ApplicationRestartService) *services.UpdateService {
-	return services.NewUpdateService(services.UpdateServiceOptions{
+func new_application_update_service(current_version string, restart_service *services.ApplicationRestartService) *services.ApplicationUpdateService {
+	return services.NewApplicationUpdateService(services.ApplicationUpdateServiceOptions{
 		CurrentVersion: current_version,
 		Repository:     update_repository,
 		FetchReleases:  fetch_service_update_releases,
