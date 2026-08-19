@@ -59,6 +59,37 @@ func (r *Routes) handle_fetch_article_list(ctx *gin.Context) {
 	result.Ok(ctx, data)
 }
 
+func (r *Routes) handle_fetch_page_content(ctx *gin.Context) {
+	if !r.server.ValidateToken(ctx.Query("token")) {
+		write_api_error(ctx, api_code_token_invalid)
+		return
+	}
+	data, err := r.server.FetchPageContent(ctx.Query("url"))
+	if err != nil {
+		write_client_error(ctx, err, api_code_fetch_page_content)
+		return
+	}
+	result.Ok(ctx, data)
+}
+
+func (r *Routes) handle_jsapi(ctx *gin.Context) {
+	if !r.server.ValidateToken(ctx.Query("token")) {
+		write_api_error(ctx, api_code_token_invalid)
+		return
+	}
+	var body wxmp.JSAPIRequest
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		write_api_error(ctx, api_code_invalid_params)
+		return
+	}
+	data, err := r.server.CallJSAPI(body)
+	if err != nil {
+		write_client_error(ctx, err, api_code_jsapi)
+		return
+	}
+	result.Ok(ctx, data)
+}
+
 func (r *Routes) handle_fetch_list(ctx *gin.Context) {
 	token := ctx.Query("token")
 	if !r.server.ValidateToken(token) {

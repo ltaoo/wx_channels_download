@@ -1122,6 +1122,156 @@ WAIT_RESP:
 		return nil, new_scraper_error(ErrorKindTimeout, ErrorMessage(ErrorKindTimeout), nil)
 	}
 }
+
+type frontend_fetch_page_content_response struct {
+	ErrCode int                      `json:"errCode"`
+	ErrMsg  string                   `json:"errMsg"`
+	Data    FetchPageContentResponse `json:"data"`
+}
+
+const (
+	jsapi_default_timeout_ms = 15000
+	jsapi_event_timeout_ms   = 30000
+	jsapi_max_timeout_ms     = 120000
+)
+
+type frontend_jsapi_response struct {
+	ErrCode int             `json:"errCode"`
+	ErrMsg  string          `json:"errMsg"`
+	Data    json.RawMessage `json:"data"`
+}
+
+// FetchPageContent asks a connected official-account page to fetch one page
+// with its browser session and return the response HTML.
+func (c *OfficialAccountServer) FetchPageContent(raw_url string) (*FetchPageContentResponse, error) {
+	target_url := strings.TrimSpace(raw_url)
+	if target_url == "" {
+		return nil, new_scraper_error(ErrorKindMissingURL, ErrorMessage(ErrorKindMissingURL), nil)
+	}
+	parsed_url, err := url.Parse(target_url)
+	if err != nil ||
+		(parsed_url.Scheme != "http" && parsed_url.Scheme != "https") ||
+		!strings.EqualFold(parsed_url.Hostname(), "mp.weixin.qq.com") {
+		if err == nil {
+			err = fmt.Errorf("unsupported wxmp page URL: %s", target_url)
+		}
+		return nil, new_scraper_error(ErrorKindInvalidArgument, ErrorMessage(ErrorKindInvalidArgument), err)
+	}
+	response, err := c.RequestFrontend(
+		"key:fetch_page_content",
+		FetchPageContentParams{URL: target_url},
+		20*time.Second,
+	)
+	if err != nil {
+		return nil, err
+	}
+	var frontend_response frontend_fetch_page_content_response
+	if err := json.Unmarshal(response.Data, &frontend_response); err != nil {
+		return nil, new_scraper_error(ErrorKindDataParse, ErrorMessage(ErrorKindDataParse), err)
+	}
+	if frontend_response.ErrCode != 0 {
+		response_err := errors.New(strings.TrimSpace(frontend_response.ErrMsg))
+		return nil, new_scraper_error(
+			ErrorKindFetchPageContent,
+			ErrorMessage(ErrorKindFetchPageContent),
+			response_err,
+		)
+	}
+	return &frontend_response.Data, nil
+}
+
+// CallJSAPI forwards an invoke, call, ready, capability query, or event-wait
+// operation to a connected WeChat official-account page.
+func (c *OfficialAccountServer) CallJSAPI(request JSAPIRequest) (json.RawMessage, error) {
+	request.Operation = strings.ToLower(strings.TrimSpace(request.Operation))
+	if request.Operation == "" {
+		request.Operation = "invoke"
+	}
+	if request.Operation == "on" {
+		request.Operation = "wait_event"
+	}
+	if request.Operation == "remove" {
+		request.Operation = "remove_event"
+	}
+	request.Method = strings.TrimSpace(request.Method)
+	request.Event = strings.TrimSpace(request.Event)
+
+	switch request.Operation {
+	case "capabilities", "ready":
+	case "invoke", "call":
+		if request.Method == "" {
+			return nil, new_scraper_error(
+				ErrorKindInvalidArgument,
+				ErrorMessage(ErrorKindInvalidArgument),
+				errors.New("missing JSAPI method"),
+			)
+		}
+	case "wait_event", "remove_event":
+		if request.Event == "" {
+			return nil, new_scraper_error(
+				ErrorKindInvalidArgument,
+				ErrorMessage(ErrorKindInvalidArgument),
+				errors.New("missing JSAPI event"),
+			)
+		}
+	default:
+		return nil, new_scraper_error(
+			ErrorKindInvalidArgument,
+			ErrorMessage(ErrorKindInvalidArgument),
+			fmt.Errorf("unsupported JSAPI operation: %s", request.Operation),
+		)
+	}
+	if len(request.Args) > 0 && !json.Valid(request.Args) {
+		return nil, new_scraper_error(
+			ErrorKindInvalidArgument,
+			ErrorMessage(ErrorKindInvalidArgument),
+			errors.New("invalid JSAPI args JSON"),
+		)
+	}
+
+	default_timeout_ms := jsapi_default_timeout_ms
+	if request.Operation == "wait_event" {
+		default_timeout_ms = jsapi_event_timeout_ms
+	}
+	if request.TimeoutMS <= 0 {
+		request.TimeoutMS = default_timeout_ms
+	}
+	if request.TimeoutMS > jsapi_max_timeout_ms {
+		request.TimeoutMS = jsapi_max_timeout_ms
+	}
+
+	response_timeout := time.Duration(request.TimeoutMS+2000) * time.Millisecond
+	response, err := c.RequestFrontend("key:jsapi", request, response_timeout)
+	if err != nil {
+		return nil, err
+	}
+	var frontend_response frontend_jsapi_response
+	if err := json.Unmarshal(response.Data, &frontend_response); err != nil {
+		return nil, new_scraper_error(ErrorKindDataParse, ErrorMessage(ErrorKindDataParse), err)
+	}
+	if frontend_response.ErrCode != 0 {
+		frontend_error_message := strings.TrimSpace(frontend_response.ErrMsg)
+		if frontend_error_message == "" {
+			frontend_error_message = fmt.Sprintf("frontend JSAPI error: %d", frontend_response.ErrCode)
+		}
+		public_error_message := fmt.Sprintf(
+			"%s [%d]: %s",
+			ErrorMessage(ErrorKindJSAPI),
+			frontend_response.ErrCode,
+			frontend_error_message,
+		)
+		return nil, new_scraper_error(
+			ErrorKindJSAPI,
+			public_error_message,
+			errors.New(frontend_error_message),
+		)
+	}
+	if len(frontend_response.Data) == 0 {
+		return json.RawMessage("null"), nil
+	}
+	return frontend_response.Data, nil
+}
+
 func (c *OfficialAccountServer) ListClients() []*WebsocketClient {
 	c.ws_mu.RLock()
 	clients := make([]*WebsocketClient, 0, len(c.ws_clients))

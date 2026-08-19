@@ -9,6 +9,27 @@ import (
 	"unicode"
 )
 
+type FetchPageContentParams struct {
+	URL string `json:"url"`
+}
+
+type FetchPageContentResponse struct {
+	URL        string `json:"url"`
+	StatusCode int    `json:"status_code"`
+	Content    string `json:"content"`
+}
+
+// JSAPIRequest describes one operation forwarded to a connected WeChat
+// official-account page. Args is kept as raw JSON so native JSAPI-specific
+// payloads can pass through without losing fields or numeric types.
+type JSAPIRequest struct {
+	Operation string          `json:"operation"`
+	Method    string          `json:"method,omitempty"`
+	Event     string          `json:"event,omitempty"`
+	Args      json.RawMessage `json:"args,omitempty"`
+	TimeoutMS int             `json:"timeout_ms,omitempty"`
+}
+
 type FlexibleInt int64
 
 func (v *FlexibleInt) UnmarshalJSON(data []byte) error {
