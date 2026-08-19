@@ -39,6 +39,7 @@ type DownloadTaskService struct {
 const (
 	download_task_persistence_batch_size = 50
 	duplicate_query_batch_size           = 500
+	clear_task_batch_size                = 500
 )
 
 func NewDownloadTaskService(
@@ -1286,33 +1287,70 @@ func (s *DownloadTaskService) ClearTasks(delete_files bool) (int, error) {
 		return 0, fmt.Errorf("查询下载任务失败: %w", err)
 	}
 
-	now := time.Now().UnixMilli()
-	var cleared int
-
+	task_ids := make([]int, 0, len(tasks))
 	for _, task := range tasks {
 		s.downloader.DeleteTask(task.Id)
-
-		s.db.Model(&task).Update("deleted_at", now)
-
-		s.db.Model(&model.DownloadResource{}).Where("task_id = ?", task.Id).Update("deleted_at", now)
-
-		var resource_ids []int
-		s.db.Model(&model.DownloadResource{}).Where("task_id = ?", task.Id).Pluck("id", &resource_ids)
-		if len(resource_ids) > 0 {
-			s.db.Model(&model.DownloadEndpoint{}).Where("resource_id IN ?", resource_ids).Update("deleted_at", now)
-			s.db.Model(&model.DownloadSegment{}).Where("resource_id IN ?", resource_ids).Update("deleted_at", now)
-
-			var endpoint_ids []int
-			s.db.Model(&model.DownloadEndpoint{}).Where("resource_id IN ?", resource_ids).Pluck("id", &endpoint_ids)
-			if len(endpoint_ids) > 0 {
-				s.db.Model(&model.DownloadConnection{}).Where("endpoint_id IN ?", endpoint_ids).Update("deleted_at", now)
-			}
-		}
-
-		cleared++
+		task_ids = append(task_ids, task.Id)
+	}
+	if len(task_ids) == 0 {
+		return 0, nil
 	}
 
-	return cleared, nil
+	if err := s.soft_delete_task_graph(task_ids, time.Now().UnixMilli()); err != nil {
+		return 0, fmt.Errorf("清理下载任务失败: %w", err)
+	}
+
+	return len(task_ids), nil
+}
+
+func (s *DownloadTaskService) soft_delete_task_graph(task_ids []int, deleted_at int64) error {
+	if len(task_ids) == 0 {
+		return nil
+	}
+
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		for batch_start := 0; batch_start < len(task_ids); batch_start += clear_task_batch_size {
+			batch_end := batch_start + clear_task_batch_size
+			if batch_end > len(task_ids) {
+				batch_end = len(task_ids)
+			}
+			batch_task_ids := task_ids[batch_start:batch_end]
+
+			resource_ids_query := tx.Model(&model.DownloadResource{}).
+				Select("id").
+				Where("task_id IN ?", batch_task_ids)
+			endpoint_ids_query := tx.Model(&model.DownloadEndpoint{}).
+				Select("id").
+				Where("resource_id IN (?)", resource_ids_query)
+
+			if err := tx.Model(&model.DownloadConnection{}).
+				Where("endpoint_id IN (?)", endpoint_ids_query).
+				Update("deleted_at", deleted_at).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&model.DownloadSegment{}).
+				Where("resource_id IN (?)", resource_ids_query).
+				Update("deleted_at", deleted_at).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&model.DownloadEndpoint{}).
+				Where("resource_id IN (?)", resource_ids_query).
+				Update("deleted_at", deleted_at).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&model.DownloadResource{}).
+				Where("task_id IN ?", batch_task_ids).
+				Update("deleted_at", deleted_at).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&model.DownloadTask{}).
+				Where("id IN ?", batch_task_ids).
+				Update("deleted_at", deleted_at).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // BuildTaskRecord builds the DownloadTaskRecord for a single task.
@@ -3243,27 +3281,31 @@ func MapResourceTaskStatus(status int) int {
 
 // ComputeEffectiveTaskStatus derives the effective task status from the database status and file states.
 func ComputeEffectiveTaskStatus(db_status int, files []DownloadTaskFileRecord) int {
+	finished_count := 0
+	has_downloading := false
+	for _, file := range files {
+		switch file.Status {
+		case "finished":
+			finished_count++
+		case "downloading":
+			has_downloading = true
+		}
+	}
+	return ComputeEffectiveTaskStatusFromSummary(db_status, len(files), finished_count, has_downloading)
+}
+
+// ComputeEffectiveTaskStatusFromSummary derives task status without requiring
+// callers on progress hot paths to allocate complete file records.
+func ComputeEffectiveTaskStatusFromSummary(db_status int, file_count int, finished_count int, has_downloading bool) int {
 	switch db_status {
 	case model.TaskStatusPaused, model.TaskStatusFinished, model.TaskStatusFailed,
 		model.TaskStatusCancelled, model.TaskStatusMerging:
 		return db_status
 	}
-	if len(files) == 0 {
+	if file_count == 0 {
 		return db_status
 	}
-	all_finished := true
-	has_downloading := false
-	for _, f := range files {
-		switch f.Status {
-		case "finished":
-		case "downloading":
-			has_downloading = true
-			all_finished = false
-		default:
-			all_finished = false
-		}
-	}
-	if all_finished {
+	if finished_count == file_count {
 		return model.TaskStatusFinished
 	}
 	if has_downloading {

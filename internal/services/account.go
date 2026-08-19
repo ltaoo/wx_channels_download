@@ -1,7 +1,10 @@
 package services
 
 import (
+	"context"
+	"fmt"
 	"strconv"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -13,10 +16,135 @@ type AccountService struct {
 	db *gorm.DB
 }
 
+const default_account_page_size = 24
+
 func NewAccountService(db *gorm.DB) *AccountService {
 	return &AccountService{
 		db: db,
 	}
+}
+
+type AccountListInput struct {
+	Page      int
+	PageSize  int
+	Keyword   string
+	AccountID string
+}
+
+type AccountListItem struct {
+	Account      model.Account
+	ContentCount int64
+}
+
+type AccountListPage struct {
+	List     []AccountListItem
+	Total    int64
+	Page     int
+	PageSize int
+}
+
+type account_content_count_row struct {
+	AccountID    string `gorm:"column:account_id"`
+	ContentCount int64  `gorm:"column:content_count"`
+}
+
+// ListAccounts loads one account page and its association counts with three
+// SQL statements regardless of the number of accounts in the page.
+func (s *AccountService) ListAccounts(ctx context.Context, input AccountListInput) (*AccountListPage, error) {
+	if s == nil || s.db == nil {
+		return nil, ErrDBNotInitialized
+	}
+	page := input.Page
+	if page <= 0 {
+		page = 1
+	}
+	page_size := input.PageSize
+	if page_size <= 0 {
+		page_size = default_account_page_size
+	}
+	if page_size > 200 {
+		page_size = 200
+	}
+
+	db := s.db.WithContext(ctx)
+	account_query := db.Model(&model.Account{})
+	account_id := strings.TrimSpace(input.AccountID)
+	if account_id != "" {
+		account_query = account_query.Where("id = ?", account_id)
+	}
+	keyword := strings.TrimSpace(input.Keyword)
+	if keyword != "" {
+		pattern := "%" + keyword + "%"
+		account_query = account_query.Where(
+			"id LIKE ? OR external_id LIKE ? OR alias LIKE ? OR nickname LIKE ?",
+			pattern,
+			pattern,
+			pattern,
+			pattern,
+		)
+	}
+
+	var total int64
+	if err := account_query.Count(&total).Error; err != nil {
+		return nil, fmt.Errorf("查询账号总数失败: %w", err)
+	}
+	page_count := 1
+	if total > 0 {
+		page_count = int((total + int64(page_size) - 1) / int64(page_size))
+	}
+	if page > page_count {
+		page = page_count
+	}
+
+	var accounts []model.Account
+	if err := account_query.
+		Order("created_at DESC, id DESC").
+		Limit(page_size).
+		Offset((page - 1) * page_size).
+		Find(&accounts).Error; err != nil {
+		return nil, fmt.Errorf("查询账号失败: %w", err)
+	}
+
+	result_page := &AccountListPage{
+		List:     make([]AccountListItem, len(accounts)),
+		Total:    total,
+		Page:     page,
+		PageSize: page_size,
+	}
+	if len(accounts) == 0 {
+		return result_page, nil
+	}
+
+	account_ids := make([]string, len(accounts))
+	account_indexes := make(map[string]int, len(accounts))
+	for account_index := range accounts {
+		account := accounts[account_index]
+		account_ids[account_index] = account.Id
+		account_indexes[account.Id] = account_index
+		result_page.List[account_index] = AccountListItem{
+			Account: account,
+		}
+	}
+
+	var content_count_rows []account_content_count_row
+	if err := db.
+		Table("content_account").
+		Select("account_id, COUNT(*) AS content_count").
+		Where("account_id IN ?", account_ids).
+		Group("account_id").
+		Scan(&content_count_rows).Error; err != nil {
+		return nil, fmt.Errorf("查询账号关联内容数量失败: %w", err)
+	}
+
+	for _, content_count_row := range content_count_rows {
+		account_index, exists := account_indexes[content_count_row.AccountID]
+		if !exists {
+			continue
+		}
+		result_page.List[account_index].ContentCount = content_count_row.ContentCount
+	}
+
+	return result_page, nil
 }
 
 type Influencer struct {

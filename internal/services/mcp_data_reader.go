@@ -2,6 +2,7 @@ package services
 
 import (
 	"bufio"
+	"container/heap"
 	"context"
 	"encoding/json"
 	"errors"
@@ -66,16 +67,42 @@ type mcp_download_task_file struct {
 }
 
 type mcp_log_entry struct {
-	Index     int                    `json:"index"`
-	File      string                 `json:"file"`
-	Component string                 `json:"component"`
-	Source    string                 `json:"source"`
-	Time      string                 `json:"time"`
-	Level     string                 `json:"level"`
-	Message   string                 `json:"message"`
-	Raw       string                 `json:"raw"`
-	JSON      map[string]interface{} `json:"json,omitempty"`
-	Formatted string                 `json:"formatted,omitempty"`
+	Index     int    `json:"index"`
+	File      string `json:"file"`
+	Component string `json:"component"`
+	Source    string `json:"source"`
+	Time      string `json:"time"`
+	Level     string `json:"level"`
+	Message   string `json:"message"`
+	Raw       string `json:"raw"`
+	sort_time time.Time
+	has_time  bool
+}
+
+type mcp_log_entry_heap []mcp_log_entry
+
+func (entries mcp_log_entry_heap) Len() int {
+	return len(entries)
+}
+
+func (entries mcp_log_entry_heap) Less(first_index, second_index int) bool {
+	return mcp_log_entry_newer(entries[second_index], entries[first_index])
+}
+
+func (entries mcp_log_entry_heap) Swap(first_index, second_index int) {
+	entries[first_index], entries[second_index] = entries[second_index], entries[first_index]
+}
+
+func (entries *mcp_log_entry_heap) Push(value interface{}) {
+	*entries = append(*entries, value.(mcp_log_entry))
+}
+
+func (entries *mcp_log_entry_heap) Pop() interface{} {
+	old_entries := *entries
+	last_index := len(old_entries) - 1
+	entry := old_entries[last_index]
+	*entries = old_entries[:last_index]
+	return entry
 }
 
 type mcp_log_file_info struct {
@@ -89,12 +116,6 @@ type mcp_download_task_account_row struct {
 	Nickname   string `gorm:"column:nickname"`
 	AvatarURL  string `gorm:"column:avatar_url"`
 	ExternalID string `gorm:"column:external_id"`
-}
-
-type mcp_account_content_row struct {
-	ContentID string `gorm:"column:content_id"`
-	AccountID string `gorm:"column:account_id"`
-	Role      string `gorm:"column:role"`
 }
 
 // NewMCPDataReader constructs the process-local MCP data reader.
@@ -258,65 +279,19 @@ func (r *MCPDataReader) ListAccounts(ctx context.Context, input mcpserver.Accoun
 	if r == nil || r.db == nil {
 		return nil, errors.New("数据库未初始化")
 	}
-	db := r.db.WithContext(ctx)
-	account_query := db.Model(&model.Account{})
-	if input.AccountID != "" {
-		account_query = account_query.Where("id = ?", input.AccountID)
-	}
-	if input.Keyword != "" {
-		pattern := "%" + input.Keyword + "%"
-		account_query = account_query.Where(
-			"id LIKE ? OR external_id LIKE ? OR alias LIKE ? OR nickname LIKE ?",
-			pattern,
-			pattern,
-			pattern,
-			pattern,
-		)
+	page_result, err := NewAccountService(r.db).ListAccounts(ctx, AccountListInput{
+		Page:      input.Page,
+		PageSize:  input.PageSize,
+		Keyword:   input.Keyword,
+		AccountID: input.AccountID,
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	var total int64
-	if err := account_query.Count(&total).Error; err != nil {
-		return nil, fmt.Errorf("查询账号总数失败: %w", err)
-	}
-	page_count := 1
-	if total > 0 {
-		page_count = int((total + int64(input.PageSize) - 1) / int64(input.PageSize))
-	}
-	page := input.Page
-	if page > page_count {
-		page = page_count
-	}
-
-	var accounts []model.Account
-	if err := account_query.
-		Order("created_at DESC, id DESC").
-		Limit(input.PageSize).
-		Offset((page - 1) * input.PageSize).
-		Find(&accounts).Error; err != nil {
-		return nil, fmt.Errorf("查询账号失败: %w", err)
-	}
-
-	list := make([]map[string]any, 0, len(accounts))
-	for _, account := range accounts {
-		var content_rows []mcp_account_content_row
-		_ = db.Table("content_account").
-			Select("content_account.content_id, content_account.account_id, content_account.role").
-			Joins("JOIN content ON content.id = content_account.content_id").
-			Where("content_account.account_id = ?", account.Id).
-			Order("COALESCE(content.publish_time, content.updated_at, content.created_at) DESC").
-			Limit(24).
-			Scan(&content_rows).Error
-
-		var content_count int64
-		_ = db.Table("content_account").Where("account_id = ?", account.Id).Count(&content_count).Error
-		content_accounts := make([]map[string]any, 0, len(content_rows))
-		for _, row := range content_rows {
-			content_accounts = append(content_accounts, map[string]any{
-				"content_id": row.ContentID,
-				"account_id": row.AccountID,
-				"role":       row.Role,
-			})
-		}
+	list := make([]map[string]any, 0, len(page_result.List))
+	for _, item := range page_result.List {
+		account := item.Account
 		list = append(list, map[string]any{
 			"id":               account.Id,
 			"platform_id":      account.PlatformId,
@@ -329,16 +304,16 @@ func (r *MCPDataReader) ListAccounts(ctx context.Context, input mcpserver.Accoun
 			"follower_count":   account.FollowerCount,
 			"created_at":       account.CreatedAt,
 			"updated_at":       account.UpdatedAt,
-			"content_count":    content_count,
-			"has_content":      content_count > 0,
-			"content_accounts": content_accounts,
+			"content_count":    item.ContentCount,
+			"has_content":      item.ContentCount > 0,
+			"content_accounts": item.ContentCount,
 		})
 	}
 	return map[string]any{
 		"list":      list,
-		"total":     total,
-		"page":      page,
-		"page_size": input.PageSize,
+		"total":     page_result.Total,
+		"page":      page_result.Page,
+		"page_size": page_result.PageSize,
 	}, nil
 }
 
@@ -385,37 +360,33 @@ func (r *MCPDataReader) ListLogs(ctx context.Context, input mcpserver.LogListQue
 	keyword := strings.ToLower(strings.TrimSpace(input.Keyword))
 	source := strings.ToLower(strings.TrimSpace(input.Source))
 	files := r.discover_log_files()
-	entries := make([]mcp_log_entry, 0, input.PageSize)
+	retention_limit := input.Page * input.PageSize
+	entries := make(mcp_log_entry_heap, 0, input.PageSize)
 	total := 0
 	sequence := 0
 	for _, file := range files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		lines, err := mcp_tail_log_lines(file.Path, input.MaxBytes)
-		if err != nil {
-			continue
-		}
-		for _, line := range lines {
-			entry := mcp_parse_log_line(file, line, input.FormatJSON)
+		err := mcp_scan_tail_log_lines(ctx, file.Path, input.MaxBytes, func(line string) {
+			entry := mcp_parse_log_line(file, line)
 			if !mcp_match_log_entry(entry, levels, keyword, source) {
-				continue
+				return
 			}
 			sequence++
 			entry.Index = sequence
 			total++
-			entries = append(entries, entry)
+			retain_mcp_log_entry(&entries, entry, retention_limit)
+		})
+		if err != nil {
+			if context_err := ctx.Err(); context_err != nil {
+				return nil, context_err
+			}
+			continue
 		}
 	}
 
-	sort.SliceStable(entries, func(first_index int, second_index int) bool {
-		first_time, first_err := time.Parse(time.RFC3339Nano, entries[first_index].Time)
-		second_time, second_err := time.Parse(time.RFC3339Nano, entries[second_index].Time)
-		if first_err == nil && second_err == nil && !first_time.Equal(second_time) {
-			return first_time.After(second_time)
-		}
-		return entries[first_index].Index > entries[second_index].Index
-	})
+	mcp_sort_log_entries(entries)
 	page_count := 1
 	if total > 0 {
 		page_count = (total + input.PageSize - 1) / input.PageSize
@@ -444,6 +415,46 @@ func (r *MCPDataReader) ListLogs(ctx context.Context, input mcpserver.LogListQue
 		"page_size": input.PageSize,
 		"limit":     input.PageSize,
 	}, nil
+}
+
+func mcp_sort_log_entries(entries []mcp_log_entry) {
+	for entry_index := range entries {
+		prepare_mcp_log_entry_sort(&entries[entry_index])
+	}
+	sort.SliceStable(entries, func(first_index, second_index int) bool {
+		return mcp_log_entry_newer(entries[first_index], entries[second_index])
+	})
+}
+
+func prepare_mcp_log_entry_sort(entry *mcp_log_entry) {
+	entry.has_time = false
+	parsed_time, err := time.Parse(time.RFC3339Nano, entry.Time)
+	if err == nil {
+		entry.sort_time = parsed_time
+		entry.has_time = true
+	}
+}
+
+func mcp_log_entry_newer(first mcp_log_entry, second mcp_log_entry) bool {
+	if first.has_time && second.has_time && !first.sort_time.Equal(second.sort_time) {
+		return first.sort_time.After(second.sort_time)
+	}
+	return first.Index > second.Index
+}
+
+func retain_mcp_log_entry(entries *mcp_log_entry_heap, entry mcp_log_entry, limit int) {
+	if limit <= 0 {
+		return
+	}
+	prepare_mcp_log_entry_sort(&entry)
+	if entries.Len() < limit {
+		heap.Push(entries, entry)
+		return
+	}
+	if mcp_log_entry_newer(entry, (*entries)[0]) {
+		(*entries)[0] = entry
+		heap.Fix(entries, 0)
+	}
 }
 
 func (r *MCPDataReader) GetCertificateStatus(ctx context.Context) (any, error) {
@@ -486,23 +497,23 @@ func (r *MCPDataReader) discover_log_files() []mcp_log_file_info {
 	}}
 }
 
-func mcp_tail_log_lines(path string, max_bytes int) ([]string, error) {
+func mcp_scan_tail_log_lines(ctx context.Context, path string, max_bytes int, visit_line func(string)) error {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	start := int64(0)
 	if info.Size() > int64(max_bytes) {
 		start = info.Size() - int64(max_bytes)
 	}
 	if _, err := file.Seek(start, io.SeekStart); err != nil {
-		return nil, err
+		return err
 	}
 	reader := bufio.NewReader(file)
 	if start > 0 {
@@ -511,20 +522,22 @@ func mcp_tail_log_lines(path string, max_bytes int) ([]string, error) {
 
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	lines := []string{}
 	for scanner.Scan() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		line := strings.TrimRight(scanner.Text(), "\r\n")
 		if strings.TrimSpace(line) != "" {
-			lines = append(lines, line)
+			visit_line(line)
 		}
 	}
 	if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
-		return nil, err
+		return err
 	}
-	return lines, nil
+	return nil
 }
 
-func mcp_parse_log_line(file mcp_log_file_info, raw string, format_json bool) mcp_log_entry {
+func mcp_parse_log_line(file mcp_log_file_info, raw string) mcp_log_entry {
 	entry := mcp_log_entry{
 		Source:  mcp_source_from_log_file(file.Name),
 		Level:   "info",
@@ -533,7 +546,6 @@ func mcp_parse_log_line(file mcp_log_file_info, raw string, format_json bool) mc
 	}
 	var object map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &object); err == nil {
-		entry.JSON = object
 		if value := mcp_log_string_field(object, "time", "timestamp"); value != "" {
 			entry.Time = value
 		}
@@ -551,11 +563,6 @@ func mcp_parse_log_line(file mcp_log_file_info, raw string, format_json bool) mc
 		}
 		if value := mcp_log_string_field(object, "service", "component", "Client"); value != "" {
 			entry.Source = value
-		}
-		if format_json {
-			if data, err := json.MarshalIndent(object, "", "  "); err == nil {
-				entry.Formatted = string(data)
-			}
 		}
 		return entry
 	}
@@ -598,21 +605,69 @@ func mcp_infer_text_log_level(raw string) string {
 }
 
 func mcp_match_log_entry(entry mcp_log_entry, levels map[string]bool, keyword string, source string) bool {
-	if len(levels) > 0 && !levels[strings.ToLower(entry.Level)] {
-		return false
+	if len(levels) > 0 {
+		if !levels[entry.Level] && !levels[strings.ToLower(entry.Level)] {
+			return false
+		}
 	}
 	if source != "" &&
 		source != "all" &&
-		!strings.Contains(strings.ToLower(entry.Source), source) &&
-		!strings.Contains(strings.ToLower(entry.File), source) &&
-		!strings.Contains(strings.ToLower(entry.Component), source) {
+		!mcp_contains_normalized_log_text(entry.Source, source) &&
+		!mcp_contains_normalized_log_text(entry.File, source) &&
+		!mcp_contains_normalized_log_text(entry.Component, source) {
 		return false
 	}
 	if keyword == "" {
 		return true
 	}
-	haystack := strings.ToLower(entry.Raw + "\n" + entry.Message + "\n" + entry.Source + "\n" + entry.File + "\n" + entry.Component)
-	return strings.Contains(haystack, keyword)
+	if mcp_contains_normalized_log_text(entry.Raw, keyword) {
+		return true
+	}
+	if entry.Message != entry.Raw && mcp_contains_normalized_log_text(entry.Message, keyword) {
+		return true
+	}
+	return mcp_contains_normalized_log_text(entry.Source, keyword) ||
+		mcp_contains_normalized_log_text(entry.File, keyword) ||
+		mcp_contains_normalized_log_text(entry.Component, keyword)
+}
+
+func mcp_contains_normalized_log_text(text string, normalized_query string) bool {
+	if normalized_query == "" {
+		return true
+	}
+	if len(normalized_query) > len(text) {
+		return false
+	}
+	query_is_ascii := true
+	for query_index := 0; query_index < len(normalized_query); query_index++ {
+		if normalized_query[query_index] >= 0x80 {
+			query_is_ascii = false
+			break
+		}
+	}
+	if !query_is_ascii {
+		return strings.Contains(strings.ToLower(text), normalized_query)
+	}
+	if strings.Contains(text, normalized_query) {
+		return true
+	}
+	for text_index := 0; text_index <= len(text)-len(normalized_query); text_index++ {
+		matched := true
+		for query_index := 0; query_index < len(normalized_query); query_index++ {
+			text_byte := text[text_index+query_index]
+			if text_byte >= 'A' && text_byte <= 'Z' {
+				text_byte += 'a' - 'A'
+			}
+			if text_byte != normalized_query[query_index] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
 }
 
 func mcp_file_type_by_ext(name string) string {

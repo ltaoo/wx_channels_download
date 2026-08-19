@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"wx_channel/internal/adapter"
 	result "wx_channel/internal/apiresult"
@@ -20,6 +21,8 @@ import (
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/services"
 )
+
+const download_task_lookup_batch_size = 500
 
 // CreateDownloadTaskRequest is the request body for creating download tasks.
 type CreateDownloadTaskRequest struct {
@@ -875,42 +878,84 @@ func (c *APIClient) handle_start_download_task(ctx *gin.Context) {
 
 	c.logger.Info().Str("api", "POST /api/v1/download_task/start").Int("task_count", len(body.TaskIDs)).Msg("Received batch start download task request")
 
+	tasks_by_id, query_err := c.load_download_tasks_by_id(body.TaskIDs)
+	if query_err != nil {
+		result.Err(ctx, 500, "查询下载任务失败: "+query_err.Error())
+		return
+	}
+
 	results := make([]gin.H, 0, len(body.TaskIDs))
-	for _, taskID := range body.TaskIDs {
-		if taskID <= 0 {
-			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "task_id 无效"})
+	for _, task_id := range body.TaskIDs {
+		if task_id <= 0 {
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "task_id 无效"})
 			continue
 		}
 
-		var task model.DownloadTask
-		if err := c.db.Where("id = ?", taskID).First(&task).Error; err != nil {
-			c.logger.Warn().Str("api", "POST /api/v1/download_task/start").Int("task_id", taskID).Msg("Task not found")
-			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "下载任务不存在"})
+		task, exists := tasks_by_id[task_id]
+		if !exists {
+			c.logger.Warn().Str("api", "POST /api/v1/download_task/start").Int("task_id", task_id).Msg("Task not found")
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "下载任务不存在"})
 			continue
 		}
 
 		if task.Status != model.TaskStatusWaiting &&
 			task.Status != model.TaskStatusPaused &&
 			task.Status != model.TaskStatusFailed {
-			c.logger.Warn().Str("api", "POST /api/v1/download_task/start").Int("task_id", taskID).Int("current_status", task.Status).Msg("Current status does not allow start")
-			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "当前状态不允许启动"})
+			c.logger.Warn().Str("api", "POST /api/v1/download_task/start").Int("task_id", task_id).Int("current_status", task.Status).Msg("Current status does not allow start")
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "当前状态不允许启动"})
 			continue
 		}
 
-		c.logger.Info().Str("api", "POST /api/v1/download_task/start").Int("task_id", taskID).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("Starting download task")
+		c.logger.Info().Str("api", "POST /api/v1/download_task/start").Int("task_id", task_id).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("Starting download task")
 
 		if err := c.downloader.StartTask(task.Id); err != nil {
-			c.logger.Error().Int("task_id", taskID).Err(err).Msg("Failed to start download task")
-			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "启动下载任务失败: " + err.Error()})
+			c.logger.Error().Int("task_id", task_id).Err(err).Msg("Failed to start download task")
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "启动下载任务失败: " + err.Error()})
 			continue
 		}
-		c.logger.Info().Int("task_id", taskID).Str("status", "preparing").Msg("Download task started")
+		c.logger.Info().Int("task_id", task_id).Str("status", "preparing").Msg("Download task started")
 
 		task.Status = model.TaskStatusPreparing
-		results = append(results, gin.H{"task_id": taskID, "success": true, "task": task, "status_text": "preparing"})
+		tasks_by_id[task_id] = task
+		results = append(results, gin.H{"task_id": task_id, "success": true, "task": task, "status_text": "preparing"})
 	}
 
 	result.Ok(ctx, gin.H{"results": results})
+}
+
+func (c *APIClient) load_download_tasks_by_id(task_ids []int) (map[int]model.DownloadTask, error) {
+	tasks_by_id := make(map[int]model.DownloadTask, len(task_ids))
+	if len(task_ids) == 0 {
+		return tasks_by_id, nil
+	}
+
+	unique_task_ids := make([]int, 0, len(task_ids))
+	seen_task_ids := make(map[int]struct{}, len(task_ids))
+	for _, task_id := range task_ids {
+		if task_id <= 0 {
+			continue
+		}
+		if _, exists := seen_task_ids[task_id]; exists {
+			continue
+		}
+		seen_task_ids[task_id] = struct{}{}
+		unique_task_ids = append(unique_task_ids, task_id)
+	}
+
+	for batch_start := 0; batch_start < len(unique_task_ids); batch_start += download_task_lookup_batch_size {
+		batch_end := batch_start + download_task_lookup_batch_size
+		if batch_end > len(unique_task_ids) {
+			batch_end = len(unique_task_ids)
+		}
+		var tasks []model.DownloadTask
+		if err := c.db.Where("id IN ?", unique_task_ids[batch_start:batch_end]).Find(&tasks).Error; err != nil {
+			return nil, err
+		}
+		for _, task := range tasks {
+			tasks_by_id[task.Id] = task
+		}
+	}
+	return tasks_by_id, nil
 }
 
 // handle_pause_download_task batch-pauses download tasks.
@@ -930,52 +975,94 @@ func (c *APIClient) handle_pause_download_task(ctx *gin.Context) {
 		return
 	}
 
+	tasks_by_id, query_err := c.load_download_tasks_by_id(body.TaskIDs)
+	if query_err != nil {
+		result.Err(ctx, 500, "查询下载任务失败: "+query_err.Error())
+		return
+	}
+	stream_task_ids, query_err := c.load_stream_task_id_set(tasks_by_id)
+	if query_err != nil {
+		result.Err(ctx, 500, "查询直播下载任务失败: "+query_err.Error())
+		return
+	}
+
 	results := make([]gin.H, 0, len(body.TaskIDs))
-	for _, taskID := range body.TaskIDs {
-		if taskID <= 0 {
-			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "task_id 无效"})
+	for _, task_id := range body.TaskIDs {
+		if task_id <= 0 {
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "task_id 无效"})
 			continue
 		}
 
-		var task model.DownloadTask
-		if err := c.db.Where("id = ?", taskID).First(&task).Error; err != nil {
-			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "下载任务不存在"})
+		task, exists := tasks_by_id[task_id]
+		if !exists {
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "下载任务不存在"})
 			continue
 		}
 
 		if task.Status != model.TaskStatusPreparing && task.Status != model.TaskStatusDownloading {
-			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "当前状态不允许暂停"})
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "当前状态不允许暂停"})
 			continue
 		}
 
-		if c.hasStreamResources(task.Id) {
+		if _, is_stream := stream_task_ids[task.Id]; is_stream {
 			if err := c.downloader.StopTask(task.Id); err != nil {
-				results = append(results, gin.H{"task_id": taskID, "success": false, "error": "停止直播录制失败: " + err.Error()})
+				results = append(results, gin.H{"task_id": task_id, "success": false, "error": "停止直播录制失败: " + err.Error()})
 				continue
 			}
-			if err := c.db.Where("id = ?", taskID).First(&task).Error; err != nil {
-				results = append(results, gin.H{"task_id": taskID, "success": false, "error": "读取直播录制最终状态失败: " + err.Error()})
+			if err := c.db.Where("id = ?", task_id).First(&task).Error; err != nil {
+				results = append(results, gin.H{"task_id": task_id, "success": false, "error": "读取直播录制最终状态失败: " + err.Error()})
 				continue
 			}
+			tasks_by_id[task_id] = task
 			if task.Status != model.TaskStatusFinished {
 				message := strings.TrimSpace(task.ErrorMessage)
 				if message == "" {
 					message = fmt.Sprintf("收尾后的任务状态异常: %d", task.Status)
 				}
-				results = append(results, gin.H{"task_id": taskID, "success": false, "task": task, "error": "直播录制收尾失败: " + message})
+				results = append(results, gin.H{"task_id": task_id, "success": false, "task": task, "error": "直播录制收尾失败: " + message})
 				continue
 			}
-			results = append(results, gin.H{"task_id": taskID, "success": true, "task": task, "status_text": "finished"})
+			results = append(results, gin.H{"task_id": task_id, "success": true, "task": task, "status_text": "finished"})
 			continue
 		}
 
 		c.downloader.PauseTask(task.Id)
 
 		task.Status = model.TaskStatusPaused
-		results = append(results, gin.H{"task_id": taskID, "success": true, "task": task, "status_text": "paused"})
+		tasks_by_id[task_id] = task
+		results = append(results, gin.H{"task_id": task_id, "success": true, "task": task, "status_text": "paused"})
 	}
 
 	result.Ok(ctx, gin.H{"results": results})
+}
+
+func (c *APIClient) load_stream_task_id_set(tasks_by_id map[int]model.DownloadTask) (map[int]struct{}, error) {
+	stream_task_ids := make(map[int]struct{})
+	if len(tasks_by_id) == 0 {
+		return stream_task_ids, nil
+	}
+
+	task_ids := make([]int, 0, len(tasks_by_id))
+	for task_id := range tasks_by_id {
+		task_ids = append(task_ids, task_id)
+	}
+	for batch_start := 0; batch_start < len(task_ids); batch_start += download_task_lookup_batch_size {
+		batch_end := batch_start + download_task_lookup_batch_size
+		if batch_end > len(task_ids) {
+			batch_end = len(task_ids)
+		}
+		var batch_stream_task_ids []int
+		if err := c.db.Model(&model.DownloadResource{}).
+			Distinct("task_id").
+			Where("task_id IN ? AND UPPER(type) = ?", task_ids[batch_start:batch_end], model.ResourceTypeStream).
+			Pluck("task_id", &batch_stream_task_ids).Error; err != nil {
+			return nil, err
+		}
+		for _, task_id := range batch_stream_task_ids {
+			stream_task_ids[task_id] = struct{}{}
+		}
+	}
+	return stream_task_ids, nil
 }
 
 // handle_resume_download_task batch-resumes download tasks.
@@ -995,35 +1082,42 @@ func (c *APIClient) handle_resume_download_task(ctx *gin.Context) {
 		return
 	}
 
+	tasks_by_id, query_err := c.load_download_tasks_by_id(body.TaskIDs)
+	if query_err != nil {
+		result.Err(ctx, 500, "查询下载任务失败: "+query_err.Error())
+		return
+	}
+
 	results := make([]gin.H, 0, len(body.TaskIDs))
-	for _, taskID := range body.TaskIDs {
-		if taskID <= 0 {
-			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "task_id 无效"})
+	for _, task_id := range body.TaskIDs {
+		if task_id <= 0 {
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "task_id 无效"})
 			continue
 		}
 
-		var task model.DownloadTask
-		if err := c.db.Where("id = ?", taskID).First(&task).Error; err != nil {
-			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "下载任务不存在"})
+		task, exists := tasks_by_id[task_id]
+		if !exists {
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "下载任务不存在"})
 			continue
 		}
 
 		if task.Status != model.TaskStatusPaused {
-			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "当前状态不允许恢复"})
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "当前状态不允许恢复"})
 			continue
 		}
 
 		if !c.downloader.HasAvailableSlot() {
-			results = append(results, gin.H{"task_id": taskID, "success": false, "error": fmt.Sprintf("exceeds maximum concurrent download tasks (%d)", c.downloader.MaxConcurrent())})
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": fmt.Sprintf("exceeds maximum concurrent download tasks (%d)", c.downloader.MaxConcurrent())})
 			continue
 		}
 
 		if err := c.downloader.StartTask(task.Id); err != nil {
-			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "恢复下载任务失败: " + err.Error()})
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "恢复下载任务失败: " + err.Error()})
 			continue
 		}
 		task.Status = model.TaskStatusPreparing
-		results = append(results, gin.H{"task_id": taskID, "success": true, "task": task, "status_text": "preparing"})
+		tasks_by_id[task_id] = task
+		results = append(results, gin.H{"task_id": task_id, "success": true, "task": task, "status_text": "preparing"})
 	}
 
 	result.Ok(ctx, gin.H{"results": results})
@@ -1049,45 +1143,85 @@ func (c *APIClient) handle_retry_download_task(ctx *gin.Context) {
 
 	c.logger.Info().Str("api", "POST /api/v1/download_task/retry").Int("task_count", len(body.TaskIDs)).Msg("Received batch retry download task request")
 
+	tasks_by_id, query_err := c.load_download_tasks_by_id(body.TaskIDs)
+	if query_err != nil {
+		result.Err(ctx, 500, "查询下载任务失败: "+query_err.Error())
+		return
+	}
+	retry_task_ids := make([]int, 0, len(tasks_by_id))
+	for task_id, task := range tasks_by_id {
+		if task.Status == model.TaskStatusFailed || task.Status == model.TaskStatusCancelled {
+			retry_task_ids = append(retry_task_ids, task_id)
+		}
+	}
+	if err := c.reset_download_tasks_for_retry(retry_task_ids, time.Now().UnixMilli()); err != nil {
+		result.Err(ctx, 500, "重置下载任务失败: "+err.Error())
+		return
+	}
+
 	results := make([]gin.H, 0, len(body.TaskIDs))
-	for _, taskID := range body.TaskIDs {
-		if taskID <= 0 {
-			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "task_id 无效"})
+	for _, task_id := range body.TaskIDs {
+		if task_id <= 0 {
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "task_id 无效"})
 			continue
 		}
 
-		var task model.DownloadTask
-		if err := c.db.Where("id = ?", taskID).First(&task).Error; err != nil {
-			c.logger.Warn().Str("api", "POST /api/v1/download_task/retry").Int("task_id", taskID).Msg("Task not found")
-			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "下载任务不存在"})
+		task, exists := tasks_by_id[task_id]
+		if !exists {
+			c.logger.Warn().Str("api", "POST /api/v1/download_task/retry").Int("task_id", task_id).Msg("Task not found")
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "下载任务不存在"})
 			continue
 		}
 
 		if task.Status != model.TaskStatusFailed && task.Status != model.TaskStatusCancelled {
-			c.logger.Warn().Str("api", "POST /api/v1/download_task/retry").Int("task_id", taskID).Int("current_status", task.Status).Msg("Current status does not allow retry")
-			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "当前状态不允许重试"})
+			c.logger.Warn().Str("api", "POST /api/v1/download_task/retry").Int("task_id", task_id).Int("current_status", task.Status).Msg("Current status does not allow retry")
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "当前状态不允许重试"})
 			continue
 		}
 
-		c.logger.Info().Str("api", "POST /api/v1/download_task/retry").Int("task_id", taskID).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("Retrying download task")
+		c.logger.Info().Str("api", "POST /api/v1/download_task/retry").Int("task_id", task_id).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("Retrying download task")
 
-		// Clear error state before retrying
-		now := time.Now().UnixMilli()
-		c.db.Model(&task).Updates(map[string]any{"error_message": "", "status": model.TaskStatusWaiting, "updated_at": now})
+		task.Status = model.TaskStatusWaiting
+		task.ErrorMessage = ""
+		tasks_by_id[task_id] = task
 
 		if err := c.downloader.StartTask(task.Id); err != nil {
-			c.logger.Error().Int("task_id", taskID).Err(err).Msg("Failed to retry download task")
-			results = append(results, gin.H{"task_id": taskID, "success": false, "error": "重试下载任务失败: " + err.Error()})
+			c.logger.Error().Int("task_id", task_id).Err(err).Msg("Failed to retry download task")
+			results = append(results, gin.H{"task_id": task_id, "success": false, "error": "重试下载任务失败: " + err.Error()})
 			continue
 		}
-		c.logger.Info().Int("task_id", taskID).Str("status", "preparing").Msg("Download task retried")
+		c.logger.Info().Int("task_id", task_id).Str("status", "preparing").Msg("Download task retried")
 
 		task.Status = model.TaskStatusPreparing
-		task.ErrorMessage = ""
-		results = append(results, gin.H{"task_id": taskID, "success": true, "task": task, "status_text": "preparing"})
+		tasks_by_id[task_id] = task
+		results = append(results, gin.H{"task_id": task_id, "success": true, "task": task, "status_text": "preparing"})
 	}
 
 	result.Ok(ctx, gin.H{"results": results})
+}
+
+func (c *APIClient) reset_download_tasks_for_retry(task_ids []int, updated_at int64) error {
+	if len(task_ids) == 0 {
+		return nil
+	}
+	return c.db.Transaction(func(tx *gorm.DB) error {
+		for batch_start := 0; batch_start < len(task_ids); batch_start += download_task_lookup_batch_size {
+			batch_end := batch_start + download_task_lookup_batch_size
+			if batch_end > len(task_ids) {
+				batch_end = len(task_ids)
+			}
+			if err := tx.Model(&model.DownloadTask{}).
+				Where("id IN ?", task_ids[batch_start:batch_end]).
+				Updates(map[string]any{
+					"error_message": "",
+					"status":        model.TaskStatusWaiting,
+					"updated_at":    updated_at,
+				}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // handle_delete_download_task batch-deletes download tasks.
@@ -1811,24 +1945,33 @@ func (c *APIClient) handle_pause_all_download_task(ctx *gin.Context) {
 		result.Err(ctx, 500, "查询下载任务失败: "+err.Error())
 		return
 	}
+	tasks_by_id := make(map[int]model.DownloadTask, len(tasks))
+	for _, task := range tasks {
+		tasks_by_id[task.Id] = task
+	}
+	stream_task_ids, query_err := c.load_stream_task_id_set(tasks_by_id)
+	if query_err != nil {
+		result.Err(ctx, 500, "查询直播下载任务失败: "+query_err.Error())
+		return
+	}
 
 	var paused int
 	var failures []gin.H
 	for _, task := range tasks {
-		if c.hasStreamResources(task.Id) {
+		if _, is_stream := stream_task_ids[task.Id]; is_stream {
 			if err := c.downloader.StopTask(task.Id); err != nil {
 				failures = append(failures, gin.H{"task_id": task.Id, "error": err.Error()})
 				continue
 			}
-			var stoppedTask model.DownloadTask
-			if err := c.db.Where("id = ?", task.Id).First(&stoppedTask).Error; err != nil {
+			var stopped_task model.DownloadTask
+			if err := c.db.Where("id = ?", task.Id).First(&stopped_task).Error; err != nil {
 				failures = append(failures, gin.H{"task_id": task.Id, "error": err.Error()})
 				continue
 			}
-			if stoppedTask.Status != model.TaskStatusFinished {
-				message := strings.TrimSpace(stoppedTask.ErrorMessage)
+			if stopped_task.Status != model.TaskStatusFinished {
+				message := strings.TrimSpace(stopped_task.ErrorMessage)
 				if message == "" {
-					message = fmt.Sprintf("收尾后的任务状态异常: %d", stoppedTask.Status)
+					message = fmt.Sprintf("收尾后的任务状态异常: %d", stopped_task.Status)
 				}
 				failures = append(failures, gin.H{"task_id": task.Id, "error": message})
 				continue

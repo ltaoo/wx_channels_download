@@ -22,6 +22,8 @@ type DBTaskStore struct {
 	logger *zerolog.Logger
 }
 
+const persistence_batch_size = 50
+
 func NewDBTaskStore(db *gorm.DB, logger *zerolog.Logger) *DBTaskStore {
 	return &DBTaskStore{db: db, logger: logger}
 }
@@ -168,59 +170,74 @@ func (s *DBTaskStore) UpdateStatus(task_id int, status int) error {
 
 func (s *DBTaskStore) ActivateTask(task_id int) error {
 	now := time.Now().UnixMilli()
-
-	// Get all endpoints for this task.
-	var endpoints []model.DownloadEndpoint
-	if err := s.db.Where("resource_id IN (SELECT id FROM download_resource WHERE task_id = ?)", task_id).Find(&endpoints).Error; err != nil {
-		return err
-	}
-
-	// Create connections for endpoints that don't have one yet.
-	for _, ep := range endpoints {
-		var count int64
-		if err := s.db.Model(&model.DownloadConnection{}).Where("endpoint_id = ?", ep.Id).Count(&count).Error; err != nil {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var endpoints []model.DownloadEndpoint
+		if err := tx.
+			Where("resource_id IN (SELECT id FROM download_resource WHERE task_id = ?)", task_id).
+			Find(&endpoints).Error; err != nil {
 			return err
 		}
-		if count == 0 {
+
+		endpoint_ids := make([]int, 0, len(endpoints))
+		for endpoint_index := range endpoints {
+			endpoint_ids = append(endpoint_ids, endpoints[endpoint_index].Id)
+		}
+		existing_endpoint_ids := make(map[int]struct{}, len(endpoint_ids))
+		if len(endpoint_ids) > 0 {
+			var persisted_endpoint_ids []int
+			if err := tx.Model(&model.DownloadConnection{}).
+				Where("endpoint_id IN ?", endpoint_ids).
+				Pluck("endpoint_id", &persisted_endpoint_ids).Error; err != nil {
+				return err
+			}
+			for _, endpoint_id := range persisted_endpoint_ids {
+				existing_endpoint_ids[endpoint_id] = struct{}{}
+			}
+		}
+
+		connections := make([]model.DownloadConnection, 0, len(endpoints))
+		for endpoint_index := range endpoints {
+			endpoint := endpoints[endpoint_index]
+			if _, exists := existing_endpoint_ids[endpoint.Id]; exists {
+				continue
+			}
 			host := ""
-			if parsed_url, err := url.Parse(ep.URL); err == nil {
+			if parsed_url, err := url.Parse(endpoint.URL); err == nil {
 				host = parsed_url.Host
 			}
-			conn := model.DownloadConnection{
-				EndpointId: ep.Id,
-				WorkerId:   "worker-" + strconv.Itoa(ep.Id),
+			connection := model.DownloadConnection{
+				EndpointId: endpoint.Id,
+				WorkerId:   "worker-" + strconv.Itoa(endpoint.Id),
 				Host:       host,
 				Status:     1,
 				Bytes:      0,
 				Speed:      0,
 				LastActive: now,
 			}
-			conn.CreatedAt = now
-			conn.UpdatedAt = now
-			if err := s.db.Create(&conn).Error; err != nil {
+			connection.CreatedAt = now
+			connection.UpdatedAt = now
+			connections = append(connections, connection)
+		}
+		if len(connections) > 0 {
+			if err := tx.CreateInBatches(&connections, persistence_batch_size).Error; err != nil {
 				return err
 			}
 		}
-	}
 
-	// Set start_time for all resources.
-	if err := s.db.Model(&model.DownloadResource{}).
-		Where("task_id = ? AND start_time IS NULL", task_id).
-		Updates(map[string]any{"start_time": now, "updated_at": now}).Error; err != nil {
-		return err
-	}
-
-	// Activate all endpoints.
-	if err := s.db.Model(&model.DownloadEndpoint{}).
-		Where("resource_id IN (SELECT id FROM download_resource WHERE task_id = ?)", task_id).
-		Updates(map[string]any{"status": 1, "updated_at": now}).Error; err != nil {
-		return err
-	}
-
-	// Activate all connections.
-	return s.db.Model(&model.DownloadConnection{}).
-		Where("endpoint_id IN (SELECT id FROM download_endpoint WHERE resource_id IN (SELECT id FROM download_resource WHERE task_id = ?))", task_id).
-		Updates(map[string]any{"status": 1, "last_active": now, "updated_at": now}).Error
+		if err := tx.Model(&model.DownloadResource{}).
+			Where("task_id = ? AND start_time IS NULL", task_id).
+			Updates(map[string]any{"start_time": now, "updated_at": now}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.DownloadEndpoint{}).
+			Where("resource_id IN (SELECT id FROM download_resource WHERE task_id = ?)", task_id).
+			Updates(map[string]any{"status": 1, "updated_at": now}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&model.DownloadConnection{}).
+			Where("endpoint_id IN (SELECT id FROM download_endpoint WHERE resource_id IN (SELECT id FROM download_resource WHERE task_id = ?))", task_id).
+			Updates(map[string]any{"status": 1, "last_active": now, "updated_at": now}).Error
+	})
 }
 
 func (s *DBTaskStore) UpdateProgress(task_id int, downloaded int64, speed int64) error {
@@ -367,17 +384,57 @@ func (s *DBTaskStore) UpdateResourceSegmentProgress(resource_id int, segment_id 
 func (s *DBTaskStore) UpdateAggregateResourceProgress(resource_id int, updates []hermes.SegmentProgressUpdate, downloaded int64, speed int64) error {
 	now := time.Now().UnixMilli()
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		for _, update := range updates {
-			if update.SegmentID <= 0 {
-				continue
-			}
-			if err := tx.Exec(`UPDATE download_segment SET downloaded = ?, updated_at = ? WHERE id = ?`,
-				update.Downloaded, now, update.SegmentID).Error; err != nil {
-				return err
-			}
+		if err := update_segment_progress_batch(tx, updates, now); err != nil {
+			return err
 		}
 		return s.updateResourceProgress(tx, resource_id, downloaded, speed, now)
 	})
+}
+
+func update_segment_progress_batch(db *gorm.DB, updates []hermes.SegmentProgressUpdate, now int64) error {
+	normalized_updates := make([]hermes.SegmentProgressUpdate, 0, len(updates))
+	update_indexes := make(map[int]int, len(updates))
+	for _, update := range updates {
+		if update.SegmentID <= 0 {
+			continue
+		}
+		if update_index, exists := update_indexes[update.SegmentID]; exists {
+			normalized_updates[update_index].Downloaded = update.Downloaded
+			continue
+		}
+		update_indexes[update.SegmentID] = len(normalized_updates)
+		normalized_updates = append(normalized_updates, update)
+	}
+
+	for batch_start := 0; batch_start < len(normalized_updates); batch_start += persistence_batch_size {
+		batch_end := batch_start + persistence_batch_size
+		if batch_end > len(normalized_updates) {
+			batch_end = len(normalized_updates)
+		}
+		batch := normalized_updates[batch_start:batch_end]
+		var query strings.Builder
+		query.Grow(96 + len(batch)*24)
+		query.WriteString("UPDATE download_segment SET downloaded = CASE id")
+		query_args := make([]any, 0, len(batch)*3+1)
+		for _, update := range batch {
+			query.WriteString(" WHEN ? THEN ?")
+			query_args = append(query_args, update.SegmentID, update.Downloaded)
+		}
+		query.WriteString(" ELSE downloaded END, updated_at = ? WHERE id IN (")
+		query_args = append(query_args, now)
+		for update_index, update := range batch {
+			if update_index > 0 {
+				query.WriteByte(',')
+			}
+			query.WriteByte('?')
+			query_args = append(query_args, update.SegmentID)
+		}
+		query.WriteByte(')')
+		if err := db.Exec(query.String(), query_args...).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *DBTaskStore) UpdateResourceSizeByID(resource_id int, size int64) error {
@@ -445,33 +502,38 @@ func (s *DBTaskStore) RecordError(task_id int, err_msg string) error {
 
 func (s *DBTaskStore) CreateSegments(resource_id int, url string, ranges []hermes.SegmentRange) ([]int, error) {
 	now := time.Now().UnixMilli()
-	var ids []int
+	segments := make([]model.DownloadSegment, len(ranges))
+	for range_index := range ranges {
+		range_info := ranges[range_index]
+		segments[range_index] = model.DownloadSegment{
+			ResourceId:  resource_id,
+			Index:       range_info.Index,
+			URL:         url,
+			OffsetStart: range_info.OffsetStart,
+			OffsetEnd:   range_info.OffsetEnd,
+			Size:        range_info.Size,
+			Downloaded:  0,
+			Status:      1,
+			Timestamps:  model.Timestamps{CreatedAt: now, UpdatedAt: now},
+		}
+	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Unscoped().Where("resource_id = ?", resource_id).Delete(&model.DownloadSegment{}).Error; err != nil {
 			return err
 		}
-		for _, r := range ranges {
-			seg := model.DownloadSegment{
-				ResourceId:  resource_id,
-				Index:       r.Index,
-				URL:         url,
-				OffsetStart: r.OffsetStart,
-				OffsetEnd:   r.OffsetEnd,
-				Size:        r.Size,
-				Downloaded:  0,
-				Status:      1,
-			}
-			seg.CreatedAt = now
-			seg.UpdatedAt = now
-			if err := tx.Create(&seg).Error; err != nil {
+		if len(segments) > 0 {
+			if err := tx.CreateInBatches(&segments, persistence_batch_size).Error; err != nil {
 				return err
 			}
-			ids = append(ids, seg.Id)
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
+	}
+	ids := make([]int, len(segments))
+	for segment_index := range segments {
+		ids[segment_index] = segments[segment_index].Id
 	}
 	return ids, nil
 }
@@ -489,46 +551,115 @@ func (s *DBTaskStore) SyncStreamSegments(resource_id int, stream_url string, seg
 	if resource_id <= 0 || len(segments) == 0 {
 		return nil
 	}
+	normalized_states := make([]hermes.StreamSegmentState, 0, len(segments))
+	state_indexes := make(map[int]int, len(segments))
+	for _, state := range segments {
+		if state_index, exists := state_indexes[state.Index]; exists {
+			normalized_states[state_index] = state
+			continue
+		}
+		state_indexes[state.Index] = len(normalized_states)
+		normalized_states = append(normalized_states, state)
+	}
+
 	now := time.Now().UnixMilli()
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		for _, state := range segments {
+		tx = tx.Session(&gorm.Session{DisableNestedTransaction: true})
+		var persisted_segments []model.DownloadSegment
+		if err := tx.
+			Select("id", "resource_id", "`index`", "url", "size", "downloaded", "status").
+			Where("resource_id = ?", resource_id).
+			Find(&persisted_segments).Error; err != nil {
+			return err
+		}
+		persisted_by_index := make(map[int]model.DownloadSegment, len(persisted_segments))
+		for _, persisted_segment := range persisted_segments {
+			persisted_by_index[persisted_segment.Index] = persisted_segment
+		}
+
+		new_segments := make([]model.DownloadSegment, 0, len(normalized_states))
+		changed_segments := make([]model.DownloadSegment, 0, len(normalized_states))
+		for _, state := range normalized_states {
 			status := 1
 			if state.Complete {
 				status = 2
 			}
-			var segment model.DownloadSegment
-			err := tx.Where("resource_id = ? AND `index` = ?", resource_id, state.Index).First(&segment).Error
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				segment = model.DownloadSegment{
+			persisted_segment, exists := persisted_by_index[state.Index]
+			if !exists {
+				new_segments = append(new_segments, model.DownloadSegment{
 					ResourceId: resource_id,
 					Index:      state.Index,
 					URL:        stream_url,
 					Size:       state.Size,
 					Downloaded: state.Downloaded,
 					Status:     status,
-				}
-				segment.CreatedAt = now
-				segment.UpdatedAt = now
-				if err := tx.Create(&segment).Error; err != nil {
-					return err
-				}
+					Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},
+				})
 				continue
 			}
-			if err != nil {
-				return err
+			if persisted_segment.URL == stream_url &&
+				persisted_segment.Size == state.Size &&
+				persisted_segment.Downloaded == state.Downloaded &&
+				persisted_segment.Status == status {
+				continue
 			}
-			if err := tx.Model(&segment).Updates(map[string]any{
-				"url":        stream_url,
-				"size":       state.Size,
-				"downloaded": state.Downloaded,
-				"status":     status,
-				"updated_at": now,
-			}).Error; err != nil {
+			persisted_segment.URL = stream_url
+			persisted_segment.Size = state.Size
+			persisted_segment.Downloaded = state.Downloaded
+			persisted_segment.Status = status
+			changed_segments = append(changed_segments, persisted_segment)
+		}
+
+		if len(new_segments) > 0 {
+			if err := tx.CreateInBatches(&new_segments, persistence_batch_size).Error; err != nil {
 				return err
 			}
 		}
-		return nil
+		return update_stream_segments_batch(tx, changed_segments, stream_url, now)
 	})
+}
+
+func update_stream_segments_batch(db *gorm.DB, segments []model.DownloadSegment, stream_url string, now int64) error {
+	for batch_start := 0; batch_start < len(segments); batch_start += persistence_batch_size {
+		batch_end := batch_start + persistence_batch_size
+		if batch_end > len(segments) {
+			batch_end = len(segments)
+		}
+		batch := segments[batch_start:batch_end]
+		var query strings.Builder
+		query.Grow(160 + len(batch)*64)
+		query.WriteString("UPDATE download_segment SET url = ?, size = CASE id")
+		query_args := make([]any, 0, len(batch)*7+2)
+		query_args = append(query_args, stream_url)
+		for _, segment := range batch {
+			query.WriteString(" WHEN ? THEN ?")
+			query_args = append(query_args, segment.Id, segment.Size)
+		}
+		query.WriteString(" ELSE size END, downloaded = CASE id")
+		for _, segment := range batch {
+			query.WriteString(" WHEN ? THEN ?")
+			query_args = append(query_args, segment.Id, segment.Downloaded)
+		}
+		query.WriteString(" ELSE downloaded END, status = CASE id")
+		for _, segment := range batch {
+			query.WriteString(" WHEN ? THEN ?")
+			query_args = append(query_args, segment.Id, segment.Status)
+		}
+		query.WriteString(" ELSE status END, updated_at = ? WHERE id IN (")
+		query_args = append(query_args, now)
+		for segment_index, segment := range batch {
+			if segment_index > 0 {
+				query.WriteByte(',')
+			}
+			query.WriteByte('?')
+			query_args = append(query_args, segment.Id)
+		}
+		query.WriteByte(')')
+		if err := db.Exec(query.String(), query_args...).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *DBTaskStore) UpdateStreamDuration(resource_id int, duration_seconds int64) error {

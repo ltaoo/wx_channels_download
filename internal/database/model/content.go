@@ -305,7 +305,7 @@ const (
 )
 
 type ContentAccount struct {
-	ContentId string `gorm:"primaryKey;index:idx_content_account_account" json:"content_id"`
+	ContentId string `gorm:"primaryKey" json:"content_id"`
 	AccountId string `gorm:"primaryKey;index:idx_content_account_account" json:"account_id"`
 	Role      string `json:"role"`
 	CreatedAt int64  `json:"created_at"`

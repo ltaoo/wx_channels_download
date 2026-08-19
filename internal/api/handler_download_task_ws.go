@@ -16,11 +16,12 @@ import (
 )
 
 const (
-	download_task_ws_create = "task_create"
-	download_task_ws_upsert = "task_upsert"
-	download_task_ws_update = "task_update"
-	download_task_ws_delete = "task_delete"
-	download_task_ws_stats  = "task_stats"
+	download_task_ws_create    = "task_create"
+	download_task_ws_upsert    = "task_upsert"
+	download_task_ws_update    = "task_update"
+	download_task_ws_delete    = "task_delete"
+	download_task_ws_stats     = "task_stats"
+	task_ws_linear_match_limit = 8
 
 	// progress_throttle is the minimum interval between progress broadcasts
 	// for a single task. Lower values give smoother UI updates.
@@ -151,7 +152,7 @@ func (b *task_broadcaster) notify(c *APIClient, task_id int, event hermes.EventT
 		}
 		b.mu.Unlock()
 		if is_progress {
-			c.logger.Info().
+			c.logger.Debug().
 				Int("task_id", task_id).
 				Int64("dl", dl).
 				Int64("spd", spd).
@@ -164,7 +165,7 @@ func (b *task_broadcaster) notify(c *APIClient, task_id int, event hermes.EventT
 		if prev, ok := b.last[task_id]; ok && time.Since(prev) < progress_throttle {
 			b.mu.Unlock()
 			if is_progress {
-				c.logger.Info().
+				c.logger.Debug().
 					Int("task_id", task_id).
 					Int64("dl", dl).
 					Int64("spd", spd).
@@ -180,7 +181,7 @@ func (b *task_broadcaster) notify(c *APIClient, task_id int, event hermes.EventT
 	b.mu.Unlock()
 
 	if is_progress {
-		c.logger.Info().
+		c.logger.Debug().
 			Int("task_id", task_id).
 			Int64("dl", dl).
 			Int64("spd", spd).
@@ -191,9 +192,13 @@ func (b *task_broadcaster) notify(c *APIClient, task_id int, event hermes.EventT
 }
 
 func (b *task_broadcaster) run_task_broadcast(c *APIClient, task_id int, req task_broadcast_request) {
+	terminal_seen := false
 	for {
 		is_progress := req.event == hermes.EventProgress && req.progress != nil
 		is_terminal := is_terminal_task_event(req.event)
+		if is_terminal {
+			terminal_seen = true
+		}
 		switch {
 		case req.event == hermes.EventCreated:
 			c.broadcast_download_task_create(task_id)
@@ -218,23 +223,36 @@ func (b *task_broadcaster) run_task_broadcast(c *APIClient, task_id int, req tas
 			c.broadcast_download_task_stats()
 		}
 
-		b.mu.Lock()
-		pending_requests := b.pending[task_id]
-		if len(pending_requests) == 0 {
-			delete(b.active, task_id)
-			b.mu.Unlock()
+		next_request, has_next := b.complete_task_broadcast(task_id, terminal_seen)
+		if !has_next {
 			return
 		}
-		next := pending_requests[0]
-		if len(pending_requests) == 1 {
-			delete(b.pending, task_id)
-		} else {
-			b.pending[task_id] = pending_requests[1:]
-		}
-		b.last[task_id] = time.Now()
-		b.mu.Unlock()
-		req = next
+		req = next_request
 	}
+}
+
+func (b *task_broadcaster) complete_task_broadcast(task_id int, terminal_seen bool) (task_broadcast_request, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	pending_requests := b.pending[task_id]
+	if len(pending_requests) == 0 {
+		delete(b.active, task_id)
+		delete(b.pending, task_id)
+		if terminal_seen {
+			delete(b.last, task_id)
+		}
+		return task_broadcast_request{}, false
+	}
+
+	next_request := pending_requests[0]
+	if len(pending_requests) == 1 {
+		delete(b.pending, task_id)
+	} else {
+		b.pending[task_id] = pending_requests[1:]
+	}
+	b.last[task_id] = time.Now()
+	return next_request, true
 }
 
 // DownloadTaskWSUpdate is a lightweight patch for an existing task. Stable
@@ -306,6 +324,17 @@ func (h *task_ws_pool) remove(client *v1_task_client) {
 	}
 }
 
+func (h *task_ws_pool) has_task_subscriber(task_id int) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for client := range h.clients {
+		if client.task_id == 0 || client.task_id == task_id {
+			return true
+		}
+	}
+	return false
+}
+
 // close_all asks every download task WebSocket writer to send a normal close
 // frame, then removes the clients so the pool can be reused after a restart.
 func (h *task_ws_pool) close_all() {
@@ -323,21 +352,41 @@ func (h *task_ws_pool) BroadcastTasks(task_ids []int, payload DownloadTaskWSMess
 	if err != nil {
 		return
 	}
-	task_id_set := make(map[int]bool, len(task_ids))
-	for _, id := range task_ids {
-		task_id_set[id] = true
+	var task_id_set map[int]struct{}
+	if len(task_ids) > task_ws_linear_match_limit {
+		task_id_set = make(map[int]struct{}, len(task_ids))
+		for _, task_id := range task_ids {
+			task_id_set[task_id] = struct{}{}
+		}
 	}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for client := range h.clients {
-		if client.task_id != 0 && !task_id_set[client.task_id] {
-			continue
+		if client.task_id != 0 {
+			matched := false
+			if task_id_set != nil {
+				_, matched = task_id_set[client.task_id]
+			} else {
+				matched = task_id_list_contains(task_ids, client.task_id)
+			}
+			if !matched {
+				continue
+			}
 		}
 		select {
 		case client.send <- data:
 		default:
 		}
 	}
+}
+
+func task_id_list_contains(task_ids []int, wanted_task_id int) bool {
+	for _, task_id := range task_ids {
+		if task_id == wanted_task_id {
+			return true
+		}
+	}
+	return false
 }
 
 // BroadcastStats pushes task statistics to all clients.
@@ -507,6 +556,9 @@ func (c *APIClient) broadcast_download_task_progress(task_id int, p *hermes.Task
 	if p == nil {
 		return
 	}
+	if !v1_task_hub.has_task_subscriber(task_id) {
+		return
+	}
 
 	progress_cache_mu.RLock()
 	entry, ok := progress_cache[task_id]
@@ -541,9 +593,16 @@ func (c *APIClient) broadcast_download_task_progress(task_id int, p *hermes.Task
 	}
 
 	files := make([]DownloadTaskFileWSUpdate, 0, len(p.Resources))
-	status_files := make([]services.DownloadTaskFileRecord, 0, len(p.Resources))
+	finished_file_count := 0
+	has_downloading_file := false
 	for _, rp := range p.Resources {
 		status := download_task_file_ws_status(cached_status, rp)
+		switch status {
+		case "finished":
+			finished_file_count++
+		case "downloading":
+			has_downloading_file = true
+		}
 		file_resource_status := model.TaskStatusWaiting
 		if status == "finished" {
 			file_resource_status = model.TaskStatusFinished
@@ -560,10 +619,14 @@ func (c *APIClient) broadcast_download_task_progress(task_id int, p *hermes.Task
 			Progress:   file_progress,
 			Error:      error_message,
 		})
-		status_files = append(status_files, services.DownloadTaskFileRecord{Status: status})
 	}
 
-	effective_status := services.ComputeEffectiveTaskStatus(cached_status, status_files)
+	effective_status := services.ComputeEffectiveTaskStatusFromSummary(
+		cached_status,
+		len(p.Resources),
+		finished_file_count,
+		has_downloading_file,
+	)
 
 	pct := services.TaskProgressPercent(p.Downloaded, p.TotalSize, effective_status)
 
