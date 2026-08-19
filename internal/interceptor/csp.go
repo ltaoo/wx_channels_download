@@ -27,6 +27,27 @@ func RewriteResponseCSPForLocalAssets(ctx proxy.Context, assetBaseURL string) {
 	}
 }
 
+func RewriteResponseCSPForWebSocket(ctx proxy.Context, websocket_url string) {
+	for _, header := range []string{"Content-Security-Policy", "Content-Security-Policy-Report-Only"} {
+		policy := ctx.GetResponseHeader(header)
+		rewritten := RewriteCSPForWebSocket(policy, websocket_url)
+		if rewritten != "" && rewritten != policy {
+			ctx.SetResponseHeader(header, rewritten)
+		}
+	}
+}
+
+func RewriteCSPForWebSocket(policy string, websocket_url string) string {
+	websocket_origin := cspOrigin(websocket_url)
+	if strings.TrimSpace(policy) == "" || websocket_origin == "" {
+		return policy
+	}
+
+	parsed := parseCSP(policy)
+	parsed.addSourcesWithFallback("connect-src", []string{websocket_origin}, "default-src")
+	return parsed.String()
+}
+
 func RewriteCSPForLocalAssets(policy string, assetBaseURL string) string {
 	assetOrigin := cspOrigin(assetBaseURL)
 	if strings.TrimSpace(policy) == "" || assetOrigin == "" {
