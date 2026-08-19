@@ -150,41 +150,38 @@ func ValidateHash(hash string, hashType HashType) bool {
 
 // FileHashWithExtension is based on the TypeScript implementation: calculates the blake3 hash
 // of the file's base64 content + extension, returning the first 32 characters of the hex string
-func FileHashWithExtension(filePath string) (string, error) {
-	// Read file contents
-	contents, err := os.ReadFile(filePath)
+func FileHashWithExtension(file_path string) (string, error) {
+	file, err := os.Open(file_path)
 	if err != nil {
-		return "", fmt.Errorf("failed to read file %s: %w", filePath, err)
+		return "", fmt.Errorf("failed to open file %s: %w", file_path, err)
 	}
+	defer file.Close()
 
-	// Convert to base64
-	base64Contents := base64.StdEncoding.EncodeToString(contents)
-
-	// Get file extension (without dot)
-	extension := filepath.Ext(filePath)
-	if len(extension) > 0 && extension[0] == '.' {
-		extension = extension[1:] // Remove dot
-	}
-
-	// Concatenate base64 content and extension
-	data := base64Contents + extension
-
-	// Calculate hash using blake3
+	// Cloudflare hashes the Base64 representation followed by the extension.
+	// Stream the encoded bytes into BLAKE3 to avoid retaining the file and
+	// multiple Base64-sized copies in memory at the same time.
 	hasher := blake3.New()
-	_, err = hasher.Write([]byte(data))
-	if err != nil {
+	base64_encoder := base64.NewEncoder(base64.StdEncoding, hasher)
+	if _, err := io.Copy(base64_encoder, file); err != nil {
+		_ = base64_encoder.Close()
+		return "", fmt.Errorf("failed to read file %s: %w", file_path, err)
+	}
+	if err := base64_encoder.Close(); err != nil {
+		return "", fmt.Errorf("failed to encode file %s: %w", file_path, err)
+	}
+
+	extension := strings.TrimPrefix(filepath.Ext(file_path), ".")
+	if _, err := io.WriteString(hasher, extension); err != nil {
 		return "", fmt.Errorf("failed to calculate blake3 hash: %w", err)
 	}
 
-	// Get hash bytes and convert to hex string
-	hashBytes := hasher.Sum(nil)
-	hashHex := hex.EncodeToString(hashBytes)
+	hash_bytes := hasher.Sum(nil)
+	hash_hex := hex.EncodeToString(hash_bytes)
 
-	// Return first 32 characters
-	if len(hashHex) > 32 {
-		return hashHex[:32], nil
+	if len(hash_hex) > 32 {
+		return hash_hex[:32], nil
 	}
-	return hashHex, nil
+	return hash_hex, nil
 }
 
 // StringHashWithExtension calculates the blake3 hash of string content + extension

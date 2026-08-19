@@ -166,7 +166,7 @@ func (d *HermesEngine) download_file(
 
 func (d *HermesEngine) copy_reader(
 	ctx context.Context,
-	reader io.Reader,
+	reader io.ReadCloser,
 	writer io.Writer,
 	expected_size int64,
 	downloaded *int64,
@@ -175,6 +175,10 @@ func (d *HermesEngine) copy_reader(
 	on_progress func(total, speed int64, force bool) error,
 ) error {
 	buf := make([]byte, read_buffer_size)
+	read_watchdog := new_read_watchdog(ctx, reader, d.cfg.ReadTimeout)
+	defer read_watchdog.stop()
+	var speed_limit_wait reusable_wait_timer
+	defer speed_limit_wait.stop()
 	speed_sampler := new_progress_speed_sampler(time.Now(), *downloaded)
 	last_log := time.Now()
 	last_log_downloaded := *downloaded
@@ -196,7 +200,14 @@ func (d *HermesEngine) copy_reader(
 				read_buf = read_buf[:remaining]
 			}
 		}
+		read_watchdog.arm()
 		n, read_err := reader.Read(read_buf)
+		timed_out := read_watchdog.disarm()
+		if cause := context.Cause(ctx); cause != nil {
+			read_err = cause
+		} else if timed_out {
+			read_err = err_read_timeout
+		}
 		if n > 0 {
 			if _, err := writer.Write(read_buf[:n]); err != nil {
 				return fmt.Errorf("failed to write file: %w", err)
@@ -206,10 +217,8 @@ func (d *HermesEngine) copy_reader(
 				expected := time.Duration(float64(n) / float64(d.cfg.SpeedLimit) * float64(time.Second))
 				elapsed := time.Since(chunk_start)
 				if expected > elapsed {
-					select {
-					case <-ctx.Done():
-						return context.Cause(ctx)
-					case <-time.After(expected - elapsed):
+					if wait_err := speed_limit_wait.wait(ctx, expected-elapsed); wait_err != nil {
+						return wait_err
 					}
 				}
 			}
@@ -376,11 +385,9 @@ func (d *HermesEngine) download_segments(
 		states[i].slot = i
 		states[i].downloaded = segment.Downloaded
 	}
+	progress_totals := calculate_segment_progress_totals(states)
 	last_log := time.Now()
-	last_log_downloaded := int64(0)
-	for i := range states {
-		last_log_downloaded += states[i].downloaded
-	}
+	last_log_downloaded := progress_totals.downloaded
 	last_persist := time.Now()
 	var first_err error
 	var progress_event_count int64
@@ -388,27 +395,21 @@ func (d *HermesEngine) download_segments(
 	last_progress_event_count_n := int64(0)
 	for progress := range progress_ch {
 		progress_event_count++
-		if progress.slot < 0 || progress.slot >= len(states) {
+		if !update_segment_progress_state(states, &progress_totals, progress) {
 			if first_err == nil {
 				first_err = errors.New("received an invalid segment progress index")
 				cancel_workers()
 			}
 			continue
 		}
-		states[progress.slot] = progress
 		if progress.err != nil && first_err == nil {
 			first_err = progress.err
 			cancel_workers()
 		}
 		// Always update in-memory tracker for real-time WS progress.
-		var total_state_dl, total_state_spd int64
-		for _, s := range states {
-			total_state_dl += s.downloaded
-			total_state_spd += s.speed
-		}
-		d.update_tracker(task_id, resource_id, total_state_dl, total_state_spd)
-		resource.Downloaded = total_state_dl
-		resource.Speed = total_state_spd
+		d.update_tracker(task_id, resource_id, progress_totals.downloaded, progress_totals.speed)
+		resource.Downloaded = progress_totals.downloaded
+		resource.Speed = progress_totals.speed
 		// Throttle DB persistence to progressInterval to avoid excessive writes.
 		if time.Since(last_persist) >= progress_interval || progress.done || progress.err != nil {
 			// The partial file is pre-sized, so its length cannot validate which
@@ -426,10 +427,7 @@ func (d *HermesEngine) download_segments(
 		}
 		// Progress log every 3 seconds for diagnostics
 		if time.Since(last_log) >= progress_log_interval {
-			var total_dl int64
-			for _, s := range states {
-				total_dl += s.downloaded
-			}
+			total_dl := progress_totals.downloaded
 			pct := float64(total_dl) * 100 / float64(file_size)
 			log_speed := calc_speed(last_log, last_log_downloaded, time.Now(), total_dl)
 			// Count how many progress events were received per second in this window
@@ -497,6 +495,31 @@ func (d *HermesEngine) download_segments(
 	return nil
 }
 
+type segment_progress_totals struct {
+	downloaded int64
+	speed      int64
+}
+
+func calculate_segment_progress_totals(states []segment_progress) segment_progress_totals {
+	var totals segment_progress_totals
+	for _, state := range states {
+		totals.downloaded += state.downloaded
+		totals.speed += state.speed
+	}
+	return totals
+}
+
+func update_segment_progress_state(states []segment_progress, totals *segment_progress_totals, progress segment_progress) bool {
+	if totals == nil || progress.slot < 0 || progress.slot >= len(states) {
+		return false
+	}
+	previous := states[progress.slot]
+	totals.downloaded += progress.downloaded - previous.downloaded
+	totals.speed += progress.speed - previous.speed
+	states[progress.slot] = progress
+	return true
+}
+
 func segments_match_ranges(segments []Segment, ranges []SegmentRange) bool {
 	if len(segments) != len(ranges) {
 		return false
@@ -526,6 +549,8 @@ func (d *HermesEngine) download_segment(
 	connection_attempt := 0
 	stalled_attempts := 0
 	var last_err error
+	var speed_limit_wait reusable_wait_timer
+	defer speed_limit_wait.stop()
 
 	// A CDN may intentionally return less than the requested range, or close a
 	// long response early. Such a connection is still useful when it delivered
@@ -574,6 +599,11 @@ func (d *HermesEngine) download_segment(
 			Int("attempt", connection_attempt).
 			Dur("open_elapsed", open_elapsed).
 			Msg("seg: Open() done, reading")
+		read_watchdog := new_read_watchdog(ctx, reader, d.cfg.ReadTimeout)
+		close_reader := func() {
+			read_watchdog.stop()
+			_ = reader.Close()
+		}
 
 		buf := make([]byte, read_buffer_size)
 		for downloaded < segment.Size {
@@ -583,14 +613,21 @@ func (d *HermesEngine) download_segment(
 			if remaining < int64(len(read_buf)) {
 				read_buf = read_buf[:remaining]
 			}
-			n, read_err := d.read_with_timeout(reader, read_buf)
+			read_watchdog.arm()
+			n, read_err := reader.Read(read_buf)
+			timed_out := read_watchdog.disarm()
+			if cause := context.Cause(ctx); cause != nil {
+				read_err = cause
+			} else if timed_out {
+				read_err = err_read_timeout
+			}
 			if n > 0 {
 				written, err := file.WriteAt(read_buf[:n], segment.OffsetStart+downloaded)
 				if err == nil && written != n {
 					err = io.ErrShortWrite
 				}
 				if err != nil {
-					reader.Close()
+					close_reader()
 					progress_ch <- segment_progress{slot: slot, downloaded: downloaded, done: true, err: err}
 					return
 				}
@@ -599,12 +636,10 @@ func (d *HermesEngine) download_segment(
 					expected := time.Duration(float64(n) / float64(d.cfg.SpeedLimit) * float64(time.Second))
 					elapsed := time.Since(chunk_start)
 					if expected > elapsed {
-						select {
-						case <-ctx.Done():
-							reader.Close()
-							progress_ch <- segment_progress{slot: slot, downloaded: downloaded, err: context.Cause(ctx)}
+						if wait_err := speed_limit_wait.wait(ctx, expected-elapsed); wait_err != nil {
+							close_reader()
+							progress_ch <- segment_progress{slot: slot, downloaded: downloaded, err: wait_err}
 							return
-						case <-time.After(expected - elapsed):
 						}
 					}
 				}
@@ -632,7 +667,7 @@ func (d *HermesEngine) download_segment(
 				last_seg_log_downloaded = downloaded
 			}
 			if read_err != nil {
-				reader.Close()
+				close_reader()
 				if errors.Is(read_err, io.EOF) {
 					last_err = io.ErrUnexpectedEOF
 				} else {
@@ -659,7 +694,7 @@ func (d *HermesEngine) download_segment(
 				break
 			}
 		}
-		reader.Close()
+		close_reader()
 		if downloaded == segment.Size {
 			d.logger.Info().
 				Int("slot", slot).
@@ -725,30 +760,143 @@ func finalize_partial_file(part_path, file_path string) error {
 
 var err_read_timeout = errors.New("read timeout: CDN connection stalled")
 
-// readWithTimeout performs a single Read with a deadline. If the Read does not
-// return within the timeout, the reader is closed to unblock the goroutine and
-// errReadTimeout is returned so the caller can retry.
-// The per-read goroutine overhead is amortized by the 256 KiB read buffer,
-// which reduces the number of Read calls by 8× compared to the old 32 KiB buffer.
-func (d *HermesEngine) read_with_timeout(reader io.Reader, buf []byte) (int, error) {
-	type read_result struct {
-		n   int
-		err error
-	}
-	done := make(chan read_result, 1)
-	go func() {
-		n, err := reader.Read(buf)
-		done <- read_result{n, err}
-	}()
+// read_watchdog reuses one timer and one goroutine for every Read on a
+// connection. The timer is armed only while Read is blocked, so rate limiting,
+// disk writes, and progress callbacks do not count as connection stalls.
+type read_watchdog struct {
+	reader    io.Closer
+	timeout   time.Duration
+	timer     *time.Timer
+	mutex     sync.Mutex
+	active    bool
+	deadline  time.Time
+	timed_out bool
+	stop_ch   chan struct{}
+	done_ch   chan struct{}
+	stop_once sync.Once
+}
 
-	timer := time.NewTimer(d.cfg.ReadTimeout)
-	defer timer.Stop()
-	select {
-	case r := <-done:
-		return r.n, r.err
-	case <-timer.C:
-		return 0, err_read_timeout
+func new_read_watchdog(ctx context.Context, reader io.Closer, timeout time.Duration) *read_watchdog {
+	if timeout <= 0 {
+		timeout = default_read_timeout
 	}
+	timer := time.NewTimer(timeout)
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+	watchdog := &read_watchdog{
+		reader:  reader,
+		timeout: timeout,
+		timer:   timer,
+		stop_ch: make(chan struct{}),
+		done_ch: make(chan struct{}),
+	}
+	go watchdog.run(ctx)
+	return watchdog
+}
+
+func (w *read_watchdog) run(ctx context.Context) {
+	defer close(w.done_ch)
+	for {
+		select {
+		case <-w.timer.C:
+			w.mutex.Lock()
+			if !w.active {
+				w.mutex.Unlock()
+				continue
+			}
+			remaining := time.Until(w.deadline)
+			if remaining > 0 {
+				stop_and_drain_timer(w.timer)
+				w.timer.Reset(remaining)
+				w.mutex.Unlock()
+				continue
+			}
+			w.active = false
+			w.timed_out = true
+			w.mutex.Unlock()
+			_ = w.reader.Close()
+			return
+		case <-ctx.Done():
+			_ = w.reader.Close()
+			return
+		case <-w.stop_ch:
+			return
+		}
+	}
+}
+
+func (w *read_watchdog) arm() {
+	w.mutex.Lock()
+	w.active = true
+	w.deadline = time.Now().Add(w.timeout)
+	stop_and_drain_timer(w.timer)
+	w.timer.Reset(w.timeout)
+	w.mutex.Unlock()
+}
+
+func (w *read_watchdog) disarm() bool {
+	w.mutex.Lock()
+	w.active = false
+	stop_and_drain_timer(w.timer)
+	timed_out := w.timed_out
+	w.mutex.Unlock()
+	return timed_out
+}
+
+func (w *read_watchdog) stop() {
+	w.stop_once.Do(func() {
+		w.mutex.Lock()
+		w.active = false
+		stop_and_drain_timer(w.timer)
+		w.mutex.Unlock()
+		close(w.stop_ch)
+	})
+	<-w.done_ch
+}
+
+func stop_and_drain_timer(timer *time.Timer) {
+	if timer.Stop() {
+		return
+	}
+	select {
+	case <-timer.C:
+	default:
+	}
+}
+
+type reusable_wait_timer struct {
+	timer *time.Timer
+}
+
+func (t *reusable_wait_timer) wait(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	if t.timer == nil {
+		t.timer = time.NewTimer(delay)
+	} else {
+		stop_and_drain_timer(t.timer)
+		t.timer.Reset(delay)
+	}
+	select {
+	case <-ctx.Done():
+		stop_and_drain_timer(t.timer)
+		return context.Cause(ctx)
+	case <-t.timer.C:
+		return nil
+	}
+}
+
+func (t *reusable_wait_timer) stop() {
+	if t.timer == nil {
+		return
+	}
+	stop_and_drain_timer(t.timer)
+	t.timer = nil
 }
 
 func wait_for_retry(ctx context.Context, attempt int) bool {

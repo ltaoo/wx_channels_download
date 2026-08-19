@@ -4,11 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"time"
+)
+
+const (
+	default_run_history_limit        = 256
+	run_history_compaction_threshold = 256
 )
 
 type StartFlowOptions struct {
@@ -39,6 +44,11 @@ type FlowEngine struct {
 	RunHistory map[string]*RunRecord
 	// ContextSnapshots 持久化运行上下文，默认内存实现。
 	ContextSnapshots map[string]flowInstanceSnapshot
+	// RunHistoryLimit limits retained terminal runs and their context snapshots.
+	// Zero uses the default limit; negative values retain all terminal runs.
+	RunHistoryLimit    int
+	completed_run_ids  []string
+	completed_run_head int
 
 	// Semaphore for limiting并发执行量。0 表示不限制。
 	ConcurrencyLimit int
@@ -138,7 +148,7 @@ func (e *FlowEngine) ListRunRecords(flow_id string, limit int) []RunRecord {
 
 		copied := *record
 		copied.NodeAttempts = snapshotNodeAttempts(record.NodeAttempts)
-		copied.NodeOutputs = snapshotMap(record.NodeOutputs)
+		copied.NodeOutputs = snapshot_map(record.NodeOutputs)
 		records = append(records, copied)
 	}
 
@@ -198,7 +208,7 @@ func (e *FlowEngine) StartFlowWithOptions(flow_id string, initial_data map[strin
 	}
 	e.Unlock()
 	e.persistContext(ctx)
-	e.updateRunRecord(ctx, RunStatusRunning, nil)
+	e.update_run_record(ctx, RunStatusRunning, nil)
 
 	runWithSemaphore := func() bool {
 		e.Lock()
@@ -226,20 +236,20 @@ func (e *FlowEngine) StartFlowWithOptions(flow_id string, initial_data map[strin
 		err := e.driveFlow(ctx, []string{ref_flow.StartNodeID})
 		e.persistContext(ctx)
 		if err != nil {
-			e.updateRunRecord(ctx, RunStatusFailed, err)
+			e.update_run_record(ctx, RunStatusFailed, err)
 			e.Lock()
 			delete(e.RunningContexts, instanceID)
 			e.Unlock()
 			return err
 		}
 		if nodeIsWaiting(ctx) {
-			e.updateRunRecord(ctx, RunStatusWaiting, nil)
+			e.update_run_record(ctx, RunStatusWaiting, nil)
 			return nil
 		}
 		e.Lock()
 		delete(e.RunningContexts, instanceID)
 		e.Unlock()
-		e.updateRunRecord(ctx, RunStatusCompleted, nil)
+		e.update_run_record(ctx, RunStatusCompleted, nil)
 		return nil
 	}
 
@@ -311,7 +321,7 @@ func (e *FlowEngine) ScheduleCron(flow_id string, expression string, initial_dat
 		for {
 			select {
 			case <-ticker.C:
-				_, _ = e.StartFlowWithOptions(flow_id, cloneStringMap(initial_data), StartFlowOptions{
+				_, _ = e.StartFlowWithOptions(flow_id, clone_string_map(initial_data), StartFlowOptions{
 					Async: true,
 					Trigger: TriggerInfo{
 						Type:   trigger.Type,
@@ -340,10 +350,10 @@ func (e *FlowEngine) StopCron(job_id string) bool {
 	return true
 }
 
-func (e *FlowEngine) GetRunSnapshot(instanceID string) (*RunRecord, bool) {
+func (e *FlowEngine) GetRunSnapshot(instance_id string) (*RunRecord, bool) {
 	e.RLock()
 	defer e.RUnlock()
-	record, ok := e.RunHistory[instanceID]
+	record, ok := e.RunHistory[instance_id]
 	if !ok || record == nil {
 		return nil, false
 	}
@@ -355,21 +365,21 @@ func (e *FlowEngine) GetRunSnapshot(instanceID string) (*RunRecord, bool) {
 		}
 	}
 	if record.NodeOutputs != nil {
-		copied.NodeOutputs = snapshotMap(record.NodeOutputs)
+		copied.NodeOutputs = snapshot_map(record.NodeOutputs)
 	}
 	return &copied, true
 }
 
-func (e *FlowEngine) GetRunContext(instanceID string) (map[string]interface{}, map[string]NodeState) {
+func (e *FlowEngine) GetRunContext(instance_id string) (map[string]interface{}, map[string]NodeState) {
 	e.RLock()
 	defer e.RUnlock()
-	if snapshot, ok := e.ContextSnapshots[instanceID]; ok {
-		return snapshotMap(snapshot.Data), snapshotNodeStates(snapshot.NodeStates)
+	if snapshot, ok := e.ContextSnapshots[instance_id]; ok {
+		return snapshot_map(snapshot.Data), snapshotNodeStates(snapshot.NodeStates)
 	}
-	if ctx, ok := e.RunningContexts[instanceID]; ok && ctx != nil {
+	if ctx, ok := e.RunningContexts[instance_id]; ok && ctx != nil {
 		ctx.Mu.Lock()
 		defer ctx.Mu.Unlock()
-		return snapshotMap(ctx.Data), snapshotNodeStates(ctx.NodeStates)
+		return snapshot_map(ctx.Data), snapshotNodeStates(ctx.NodeStates)
 	}
 	return nil, nil
 }
@@ -405,7 +415,7 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 			ctx.Mu.Unlock()
 
 			e.persistContext(ctx)
-			e.updateRunRecord(ctx, RunStatusRunning, nil)
+			e.update_run_record(ctx, RunStatusRunning, nil)
 
 			success, nextNodeIDs, err := nodeImpl.Execute(ctx)
 			if err == nil && success && ctx.NodeStates[node_id] == StateRunning {
@@ -414,7 +424,7 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 				ctx.Mu.Unlock()
 
 				e.persistContext(ctx)
-				e.updateRunRecord(ctx, RunStatusRunning, nil)
+				e.update_run_record(ctx, RunStatusRunning, nil)
 				if len(nextNodeIDs) > 0 {
 					if err := e.driveFlow(ctx, nextNodeIDs); err != nil {
 						return err
@@ -429,14 +439,14 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 				ctx.Mu.Unlock()
 
 				e.persistContext(ctx)
-				e.updateRunRecord(ctx, RunStatusWaiting, nil)
+				e.update_run_record(ctx, RunStatusWaiting, nil)
 				return nil
 			}
 
 			if nodeDef.RetryPolicy != nil && attempt < nodeDef.RetryPolicy.MaxAttempts {
 				delay := retryDelay(nodeDef.RetryPolicy, attempt)
 				e.persistContext(ctx)
-				e.updateRunRecord(ctx, RunStatusRunning, nil)
+				e.update_run_record(ctx, RunStatusRunning, nil)
 				if delay > 0 {
 					time.Sleep(delay)
 				}
@@ -455,7 +465,7 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 			ctx.Mu.Unlock()
 
 			e.persistContext(ctx)
-			e.updateRunRecord(ctx, RunStatusFailed, baseErr)
+			e.update_run_record(ctx, RunStatusFailed, baseErr)
 			if nodeDef.ErrorNextNodeID != "" {
 				if err := e.driveFlow(ctx, []string{nodeDef.ErrorNextNodeID}); err != nil {
 					return err
@@ -684,79 +694,121 @@ func (e *FlowEngine) CompleteManualTask(ins_id, node_id string, input_data map[s
 	ctx.Mu.Unlock()
 
 	e.persistContext(ctx)
-	e.updateRunRecord(ctx, RunStatusRunning, nil)
+	e.update_run_record(ctx, RunStatusRunning, nil)
 
 	flow, ok := e.getFlowDefinition(ctx.FlowID)
 	if !ok {
 		return errors.New("flow not found")
 	}
 	if err := e.driveFlow(ctx, flow.Nodes[node_id].NextNodeIDs); err != nil {
-		e.updateRunRecord(ctx, RunStatusFailed, err)
+		e.update_run_record(ctx, RunStatusFailed, err)
 		return err
 	}
 	if nodeIsWaiting(ctx) {
-		e.updateRunRecord(ctx, RunStatusWaiting, nil)
+		e.update_run_record(ctx, RunStatusWaiting, nil)
 		return nil
 	}
 	e.Lock()
 	delete(e.RunningContexts, ins_id)
 	e.Unlock()
-	e.updateRunRecord(ctx, RunStatusCompleted, nil)
+	e.update_run_record(ctx, RunStatusCompleted, nil)
 	return nil
 }
 
-func (e *FlowEngine) updateRunRecord(ctx *ProcessContext, status RunStatus, err error) {
+func (e *FlowEngine) update_run_record(ctx *ProcessContext, status RunStatus, err error) {
 	if ctx == nil {
 		return
 	}
 	now := time.Now()
+	e.RLock()
+	persisted_snapshot, has_persisted_snapshot := e.ContextSnapshots[ctx.InstanceID]
+	e.RUnlock()
 	ctx.Mu.Lock()
-	dataSnapshot := snapshotMap(ctx.Data)
-	stateAttempts := snapshotNodeAttempts(ctx.NodeAttempts)
-	currentNode := ctx.CurrentNode
-	triggerType := ctx.TriggerType
-	triggerKey := ctx.TriggerKey
+	data_snapshot := persisted_snapshot.Data
+	if !has_persisted_snapshot {
+		data_snapshot = snapshot_map(ctx.Data)
+	}
+	state_attempts := snapshotNodeAttempts(ctx.NodeAttempts)
+	current_node := ctx.CurrentNode
+	trigger_type := ctx.TriggerType
+	trigger_key := ctx.TriggerKey
 	ctx.Mu.Unlock()
 
 	record := &RunRecord{
 		RunID:         ctx.InstanceID,
 		FlowID:        ctx.FlowID,
 		Status:        status,
-		CurrentNode:   currentNode,
-		NodeOutputs:   dataSnapshot,
+		CurrentNode:   current_node,
+		NodeOutputs:   data_snapshot,
 		LastUpdatedAt: now,
-		NodeAttempts:  stateAttempts,
+		NodeAttempts:  state_attempts,
 	}
 
 	e.Lock()
 	defer e.Unlock()
 	existing := e.RunHistory[ctx.InstanceID]
+	was_terminal := existing != nil && is_terminal_run_status(existing.Status)
 	if existing == nil {
 		record.StartedAt = now
 		record.Trigger = TriggerInfo{
-			Type:      TriggerType(triggerType),
-			Key:       triggerKey,
+			Type:      TriggerType(trigger_type),
+			Key:       trigger_key,
 			StartedAt: now.Format(time.RFC3339Nano),
 		}
 	} else {
 		record.StartedAt = existing.StartedAt
 		record.Trigger = existing.Trigger
 	}
-	if status == RunStatusCompleted || status == RunStatusFailed || status == RunStatusCancelled {
+	if is_terminal_run_status(status) {
 		record.CompletedAt = ptrToTime(now)
 	}
 	if err != nil {
 		record.Error = err.Error()
 	}
 	e.RunHistory[ctx.InstanceID] = record
+	if is_terminal_run_status(status) && !was_terminal {
+		e.retain_completed_run_locked(ctx.InstanceID)
+	}
 }
 
 func (r *RunRecord) CompleteAtOrNil(status RunStatus) *time.Time {
-	if status != RunStatusCompleted && status != RunStatusFailed && status != RunStatusCancelled {
+	if !is_terminal_run_status(status) {
 		return nil
 	}
 	now := time.Now()
 	return &now
+}
+
+func is_terminal_run_status(status RunStatus) bool {
+	return status == RunStatusCompleted || status == RunStatusFailed || status == RunStatusCancelled
+}
+
+func (e *FlowEngine) retain_completed_run_locked(instance_id string) {
+	history_limit := e.RunHistoryLimit
+	if history_limit == 0 {
+		history_limit = default_run_history_limit
+	}
+	if history_limit < 0 {
+		return
+	}
+
+	e.completed_run_ids = append(e.completed_run_ids, instance_id)
+	for len(e.completed_run_ids)-e.completed_run_head > history_limit {
+		expired_instance_id := e.completed_run_ids[e.completed_run_head]
+		e.completed_run_ids[e.completed_run_head] = ""
+		e.completed_run_head++
+		delete(e.RunHistory, expired_instance_id)
+		delete(e.ContextSnapshots, expired_instance_id)
+	}
+	if e.completed_run_head >= run_history_compaction_threshold &&
+		e.completed_run_head*2 >= len(e.completed_run_ids) {
+		remaining_count := copy(e.completed_run_ids, e.completed_run_ids[e.completed_run_head:])
+		for history_index := remaining_count; history_index < len(e.completed_run_ids); history_index++ {
+			e.completed_run_ids[history_index] = ""
+		}
+		e.completed_run_ids = e.completed_run_ids[:remaining_count]
+		e.completed_run_head = 0
+	}
 }
 
 func ptrToTime(now time.Time) *time.Time {
@@ -769,8 +821,8 @@ func (e *FlowEngine) persistContext(ctx *ProcessContext) {
 		return
 	}
 	ctx.Mu.Lock()
-	dataSnapshot := snapshotMap(ctx.Data)
-	stateSnapshot := snapshotNodeStates(ctx.NodeStates)
+	data_snapshot := snapshot_map(ctx.Data)
+	state_snapshot := snapshotNodeStates(ctx.NodeStates)
 	ctx.Mu.Unlock()
 
 	e.Lock()
@@ -779,30 +831,30 @@ func (e *FlowEngine) persistContext(ctx *ProcessContext) {
 		e.ContextSnapshots = map[string]flowInstanceSnapshot{}
 	}
 	e.ContextSnapshots[ctx.InstanceID] = flowInstanceSnapshot{
-		Data:       dataSnapshot,
-		NodeStates: stateSnapshot,
+		Data:       data_snapshot,
+		NodeStates: state_snapshot,
 		UpdatedAt:  time.Now(),
 	}
 }
 
-func cloneStringMap(values map[string]interface{}) map[string]interface{} {
+func clone_string_map(values map[string]interface{}) map[string]interface{} {
 	if len(values) == 0 {
 		return map[string]interface{}{}
 	}
 	copied := make(map[string]interface{}, len(values))
 	for key, value := range values {
-		copied[key] = cloneData(value)
+		copied[key] = clone_data(value)
 	}
 	return copied
 }
 
-func snapshotMap(values map[string]interface{}) map[string]interface{} {
+func snapshot_map(values map[string]interface{}) map[string]interface{} {
 	if len(values) == 0 {
 		return map[string]interface{}{}
 	}
 	copied := make(map[string]interface{}, len(values))
 	for key, value := range values {
-		copied[key] = cloneData(value)
+		copied[key] = clone_data(value)
 	}
 	return copied
 }
@@ -829,16 +881,130 @@ func snapshotNodeAttempts(values map[string]int) map[string]int {
 	return copied
 }
 
-func cloneData(value interface{}) interface{} {
-	raw, err := json.Marshal(value)
-	if err != nil {
+type clone_data_visit struct {
+	kind    reflect.Kind
+	pointer uintptr
+}
+
+func clone_data(value interface{}) interface{} {
+	cloned_value, fast_path_ok := clone_json_data(value, nil)
+	if fast_path_ok {
+		return cloned_value
+	}
+
+	raw, marshal_error := json.Marshal(value)
+	if marshal_error != nil {
 		return value
 	}
 	var out interface{}
-	if err := json.Unmarshal(raw, &out); err != nil {
+	if unmarshal_error := json.Unmarshal(raw, &out); unmarshal_error != nil {
 		return value
 	}
 	return out
+}
+
+func clone_json_data(value interface{}, visiting map[clone_data_visit]struct{}) (interface{}, bool) {
+	switch typed_value := value.(type) {
+	case nil:
+		return nil, true
+	case string:
+		return typed_value, true
+	case bool:
+		return typed_value, true
+	case int:
+		return float64(typed_value), true
+	case int8:
+		return float64(typed_value), true
+	case int16:
+		return float64(typed_value), true
+	case int32:
+		return float64(typed_value), true
+	case int64:
+		return float64(typed_value), true
+	case uint:
+		return float64(typed_value), true
+	case uint8:
+		return float64(typed_value), true
+	case uint16:
+		return float64(typed_value), true
+	case uint32:
+		return float64(typed_value), true
+	case uint64:
+		return float64(typed_value), true
+	case uintptr:
+		return float64(typed_value), true
+	case float64:
+		if typed_value != typed_value || typed_value > 1.7976931348623157e+308 || typed_value < -1.7976931348623157e+308 {
+			return nil, false
+		}
+		return typed_value, true
+	case map[string]interface{}:
+		if typed_value == nil {
+			return nil, true
+		}
+		if visiting == nil {
+			visiting = make(map[clone_data_visit]struct{})
+		}
+		visit := clone_data_visit{kind: reflect.Map, pointer: reflect.ValueOf(typed_value).Pointer()}
+		if _, exists := visiting[visit]; exists {
+			return nil, false
+		}
+		visiting[visit] = struct{}{}
+		cloned_map := make(map[string]interface{}, len(typed_value))
+		for key, nested_value := range typed_value {
+			cloned_nested_value, ok := clone_json_data(nested_value, visiting)
+			if !ok {
+				delete(visiting, visit)
+				return nil, false
+			}
+			cloned_map[key] = cloned_nested_value
+		}
+		delete(visiting, visit)
+		return cloned_map, true
+	case []interface{}:
+		if typed_value == nil {
+			return nil, true
+		}
+		if visiting == nil {
+			visiting = make(map[clone_data_visit]struct{})
+		}
+		visit := clone_data_visit{kind: reflect.Slice, pointer: reflect.ValueOf(typed_value).Pointer()}
+		if _, exists := visiting[visit]; exists {
+			return nil, false
+		}
+		visiting[visit] = struct{}{}
+		cloned_slice := make([]interface{}, len(typed_value))
+		for value_index, nested_value := range typed_value {
+			cloned_nested_value, ok := clone_json_data(nested_value, visiting)
+			if !ok {
+				delete(visiting, visit)
+				return nil, false
+			}
+			cloned_slice[value_index] = cloned_nested_value
+		}
+		delete(visiting, visit)
+		return cloned_slice, true
+	case map[string]string:
+		if typed_value == nil {
+			return nil, true
+		}
+		cloned_map := make(map[string]interface{}, len(typed_value))
+		for key, nested_value := range typed_value {
+			cloned_map[key] = nested_value
+		}
+		return cloned_map, true
+	case []string:
+		if typed_value == nil {
+			return nil, true
+		}
+		cloned_slice := make([]interface{}, len(typed_value))
+		for value_index, nested_value := range typed_value {
+			cloned_slice[value_index] = nested_value
+		}
+		return cloned_slice, true
+	default:
+		return nil, false
+	}
 }
 
 func retryDelay(policy *RetryPolicy, attempt int) time.Duration {

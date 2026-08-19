@@ -337,7 +337,7 @@ type HermesEngine struct {
 	drivers        map[string]ProtocolDriver
 	hooks          *HookManager
 	postprocessor  Postprocessor
-	progress_mu    sync.Mutex
+	progress_mu    sync.RWMutex
 	progress_cache map[int]*progress_tracker // keyed by task ID
 	cfg            HermesEngineConfig
 }
@@ -346,7 +346,10 @@ type HermesEngine struct {
 type progress_tracker struct {
 	mu                   sync.Mutex
 	resources            map[int]*resource_tracker
-	order                []int     // resource IDs in merge_order
+	order                []int // resource IDs in merge_order
+	total_size           int64
+	total_downloaded     int64
+	total_speed          int64
 	last_emit_downloaded int64     // last emitted total downloaded, used to skip duplicate broadcasts
 	last_emit_speed      int64     // last emitted total speed
 	last_emit_time       time.Time // last emission time, used for keepalive when segments are connecting
