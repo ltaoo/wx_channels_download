@@ -3,7 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "lint": "eslint \"src/**/*.js\""
+    "build:hub-admin": "./hub/admin/build.sh",
+    "deploy:hub-admin": "npm run build:hub-admin && cd hub/admin && npx wrangler@latest pages deploy",
+    "lint": "eslint \"src/**/*.js\" \"hub/admin/public/app.js\" \"hub/admin/functions/**/*.js\""
   },
   "devDependencies": {
     "eslint": "^9.14.0",

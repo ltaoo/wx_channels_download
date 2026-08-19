@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -52,6 +53,8 @@ type APIClient struct {
 	scraper_job_service    *services.ScraperJobService
 	update_service         *services.UpdateService
 	restart_service        *services.ApplicationRestartService
+	hub_service            *services.HubService
+	hub_config_error       error
 }
 
 func NewAPIClient(
@@ -106,6 +109,7 @@ func NewAPIClient(
 		db, &logger, downloader, hook_manager,
 		cfg.WorkDir, cfg.DownloadDir,
 	)
+	api_client.configure_hub_service()
 	api_client.mcp_handler = api_client.new_mcp_handler()
 
 	api_client.broadcaster = new_task_broadcaster()
@@ -290,10 +294,19 @@ func (c *APIClient) service_statuses_map() map[string]string {
 }
 
 func (c *APIClient) Start() error {
+	if c.hub_config_error != nil {
+		return c.hub_config_error
+	}
+	if c.hub_service != nil {
+		return c.hub_service.Start(context.Background())
+	}
 	return nil
 }
 
 func (c *APIClient) Stop() error {
+	if c.hub_service != nil {
+		c.hub_service.Close()
+	}
 	if c.scraper_job_service != nil {
 		c.scraper_job_service.InterruptAll()
 	}

@@ -645,6 +645,40 @@ func (c *Config) LoadConfig() error {
 		Group:       "Cloudflare",
 		HotReload:   true,
 	})
+	Register(ConfigField{
+		Key:         "hub.deploy.workerName",
+		Type:        ConfigTypeString,
+		Default:     "wx-channels-hub",
+		Description: "部署 Durable Objects Hub 时使用的 Cloudflare Worker 名称",
+		Title:       "Hub Worker 名称",
+		Group:       "Hub",
+	})
+	Register(ConfigField{
+		Key:         "hub.deploy.token",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "部署为 Cloudflare Worker HUB_TOKEN secret 的访问凭证",
+		Title:       "Hub 部署 Token",
+		Group:       "Hub",
+		Sensitive:   true,
+	})
+	Register(ConfigField{
+		Key:         "hub.deploy.adminToken",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "保护 Hub 管理页面的独立管理员密码，不能与客户端 Token 相同",
+		Title:       "Hub 管理员 Token",
+		Group:       "Hub",
+		Sensitive:   true,
+	})
+	Register(ConfigField{
+		Key:         "hub.defaultInstance",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "本地 API 未指定 hub 时使用的 hub.instances 名称；留空时使用第一个启用实例",
+		Title:       "默认 Hub 实例",
+		Group:       "Hub",
+	})
 	// Update auto-update configuration
 	Register(ConfigField{
 		Key:         "update.proxy",

@@ -48,4 +48,5 @@ docs/.vitepress/dist
 *.log
 
 .env
+.dev.vars*
 deploy.sh

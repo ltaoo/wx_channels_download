@@ -28,6 +28,7 @@ require (
 	github.com/andybalholm/brotli v1.1.1
 	github.com/dop251/goja v0.0.0-20241024094426-79f3a7efcdbd
 	github.com/ebitengine/oto/v3 v3.2.0-alpha.4
+	github.com/evanw/esbuild v0.21.5
 	github.com/expr-lang/expr v1.16.9
 	github.com/fatih/color v1.16.0
 	github.com/gin-gonic/gin v1.9.1

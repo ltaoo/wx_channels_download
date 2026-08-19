@@ -96,3 +96,22 @@ cloudflare:
   sphWorkerName: "sph"
   sphCookie: ""
   sphCredential: ""
+
+hub:
+  deploy:
+    workerName: "wx-channels-hub"
+    token: ""
+    adminToken: ""
+  defaultInstance: ""
+  instances: []
+  # instances:
+  #   - name: "home"
+  #     enabled: true
+  #     url: "https://wx-channels-hub.example.workers.dev"
+  #     id: "home"
+  #     clientId: "computer-c"
+  #     token: ""
+  #     httpTimeoutSeconds: 30
+  #     capabilities:
+  #       wxchannels: true
+  #       download: false

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -10,15 +11,28 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"wx_channel/frontend"
+	"wx_channel/pkg/cloudflare/durableobjects"
 	"wx_channel/pkg/cloudflare/worker"
 )
 
 const permission_hint = "提示: 请确保在 Cloudflare 后台为 Token 授予了足够的权限 (Workers:Edit, D1:Edit)"
+
+const (
+	hub_default_worker_name      = "wx-channels-hub"
+	hub_compatibility_date       = "2026-05-03"
+	hub_class_name               = "HubDurableObject"
+	hub_binding_name             = "HUBS"
+	hub_token_binding_name       = "HUB_TOKEN"
+	hub_admin_token_binding_name = "HUB_ADMIN_TOKEN"
+	hub_main_module              = "hub.js"
+)
 
 var deploy_cmd = &cobra.Command{
 	Use:   "deploy",
@@ -44,9 +58,105 @@ var deploy_sph_cmd = &cobra.Command{
 	},
 }
 
+var deploy_hub_cmd = &cobra.Command{
+	Use:   "hub",
+	Short: "部署 Durable Objects 任务 Hub",
+	Long:  "通过 Cloudflare REST API 直接部署原生 JavaScript Durable Objects 任务 Hub",
+	Args:  cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		deploy_hub()
+	},
+}
+
 func init() {
-	deploy_cmd.AddCommand(deploy_mp_cmd, deploy_sph_cmd)
+	deploy_cmd.AddCommand(deploy_mp_cmd, deploy_sph_cmd, deploy_hub_cmd)
 	Register(deploy_cmd)
+}
+
+func deploy_hub() {
+	pterm.DefaultSection.Println("开始部署 Durable Objects 任务 Hub (Go + JavaScript + REST API)")
+
+	account_id := strings.TrimSpace(viper.GetString("cloudflare.accountId"))
+	api_token := strings.TrimSpace(viper.GetString("cloudflare.apiToken"))
+	worker_name := strings.TrimSpace(viper.GetString("hub.deploy.workerName"))
+	hub_token := strings.TrimSpace(viper.GetString("hub.deploy.token"))
+	admin_token := strings.TrimSpace(viper.GetString("hub.deploy.adminToken"))
+	if worker_name == "" {
+		worker_name = hub_default_worker_name
+	}
+	if account_id == "" || api_token == "" {
+		pterm.Error.Println("错误: 未配置 cloudflare.accountId 或 cloudflare.apiToken")
+		return
+	}
+	if hub_token == "" {
+		pterm.Error.Println("错误: 未配置 hub.deploy.token；该值会作为 Worker 的 HUB_TOKEN secret")
+		return
+	}
+	if admin_token == "" {
+		pterm.Error.Println("错误: 未配置 hub.deploy.adminToken；该值用于保护 Hub 管理页面")
+		return
+	}
+	if admin_token == hub_token {
+		pterm.Error.Println("错误: hub.deploy.adminToken 不能与 hub.deploy.token 相同")
+		return
+	}
+
+	spinner, _ := pterm.DefaultSpinner.Start("正在部署原生 JavaScript Hub...")
+	script_content := []byte(frontend.HubWorkerJavaScript())
+	deploy_context, cancel_deploy := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel_deploy()
+	result, err := durableobjects.Deploy(deploy_context, durableobjects.DeployOptions{
+		AccountID:         account_id,
+		AuthToken:         api_token,
+		WorkerName:        worker_name,
+		ScriptContent:     script_content,
+		CompatibilityDate: hub_compatibility_date,
+		MainModule:        hub_main_module,
+		DurableObjects: []durableobjects.DurableObject{
+			{
+				BindingName: hub_binding_name,
+				ClassName:   hub_class_name,
+				Storage:     "sqlite",
+			},
+		},
+		Secrets: map[string]string{
+			hub_token_binding_name:       hub_token,
+			hub_admin_token_binding_name: admin_token,
+		},
+		EnableSubdomain: true,
+	})
+	if err != nil {
+		spinner.Fail(fmt.Sprintf("部署失败: %v", err))
+		pterm.Info.Println("提示: Cloudflare API Token 需要 Workers Scripts:Edit 权限")
+		return
+	}
+	spinner.Success(fmt.Sprintf("Hub 部署成功，已编译 %d 字节 JavaScript", result.ScriptBytes))
+
+	spinner, _ = pterm.DefaultSpinner.Start("正在获取 Worker 访问地址...")
+	subdomain, err := get_workers_subdomain(account_id, api_token)
+	worker_url := fmt.Sprintf("https://%s.<your-subdomain>.workers.dev", result.WorkerName)
+	if err != nil {
+		spinner.Warning(fmt.Sprintf("获取子域名失败: %v", err))
+	} else {
+		worker_url = fmt.Sprintf("https://%s.%s.workers.dev", result.WorkerName, subdomain)
+		spinner.Success("获取访问地址成功")
+	}
+
+	pterm.Println()
+	pterm.DefaultHeader.WithFullWidth().Println("Hub 部署摘要")
+	table_data := [][]string{
+		{"项目", "值"},
+		{"Worker", result.WorkerName},
+		{"Worker ID", result.WorkerID},
+		{"URL", worker_url},
+		{"健康检查", worker_url + "/health"},
+		{"管理 API", worker_url + "/admin/api/overview"},
+		{"WebSocket", worker_url + "/v1/hubs/<hub.id>/ws"},
+	}
+	pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(table_data).Render()
+	pterm.Println()
+	pterm.Info.Println("将上面的 URL 和 hub.deploy.token 写入需要连接该 Worker 的 hub.instances。")
+	pterm.Info.Println("管理页面已拆分到 frontend/hub/admin，请按其中 README 使用 Cloudflare Pages 单独部署。")
 }
 
 func deploy_mp() {
