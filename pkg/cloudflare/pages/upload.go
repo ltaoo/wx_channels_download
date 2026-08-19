@@ -9,8 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/samber/lo"
+	"sync"
 )
 
 // Bucket distribution algorithm constants
@@ -164,6 +163,99 @@ type UploadResp struct {
 	Files map[string]string `json:"files"`
 }
 
+func select_missing_files(files_map map[string]FileContainer, missing_hashes []string) []FileContainer {
+	missing_hash_set := make(map[string]struct{}, len(missing_hashes))
+	for _, missing_hash := range missing_hashes {
+		missing_hash_set[missing_hash] = struct{}{}
+	}
+
+	files_to_upload := make([]FileContainer, 0, len(missing_hash_set))
+	for _, file := range files_map {
+		if _, missing := missing_hash_set[file.Hash]; !missing {
+			continue
+		}
+		files_to_upload = append(files_to_upload, file)
+		// Pages assets are content-addressed. Identical hashes only need one upload.
+		delete(missing_hash_set, file.Hash)
+	}
+	return files_to_upload
+}
+
+func upload_batch_summary(files []FilePayloadToUpload) string {
+	var encoded_bytes int64
+	for _, file := range files {
+		encoded_bytes += int64(len(file.Value))
+	}
+	return fmt.Sprintf("[PAGES] uploading %d files (%d encoded bytes)", len(files), encoded_bytes)
+}
+
+type upload_batch_func func([]FilePayloadToUpload, string) (string, error)
+
+func build_upload_bucket_payload(bucket Bucket) ([]FilePayloadToUpload, error) {
+	files := make([]FilePayloadToUpload, 0, len(bucket.Files))
+	for _, file := range bucket.Files {
+		file_content, err := os.ReadFile(file.Path)
+		if err != nil {
+			return nil, fmt.Errorf("read upload file %s: %w", file.Path, err)
+		}
+		files = append(files, FilePayloadToUpload{
+			Key:   file.Hash,
+			Value: base64.StdEncoding.EncodeToString(file_content),
+			Metadata: FileMetadata{
+				ContentType: file.ContentType,
+			},
+			Base64: true,
+		})
+	}
+	return files, nil
+}
+
+func upload_file_buckets(buckets []Bucket, jwt string, upload_batch upload_batch_func) error {
+	if len(buckets) == 0 {
+		return nil
+	}
+	worker_count := BULK_UPLOAD_CONCURRENCY
+	if worker_count > len(buckets) {
+		worker_count = len(buckets)
+	}
+
+	bucket_channel := make(chan Bucket)
+	error_channel := make(chan error, len(buckets))
+	var worker_group sync.WaitGroup
+	worker_group.Add(worker_count)
+	for worker_index := 0; worker_index < worker_count; worker_index++ {
+		go func() {
+			defer worker_group.Done()
+			for bucket := range bucket_channel {
+				files, err := build_upload_bucket_payload(bucket)
+				if err != nil {
+					error_channel <- err
+					continue
+				}
+				if len(files) == 0 {
+					continue
+				}
+				log.Print(upload_batch_summary(files))
+				if _, err := upload_batch(files, jwt); err != nil {
+					error_channel <- fmt.Errorf("upload Pages asset bucket: %w", err)
+				}
+			}
+		}()
+	}
+	for _, bucket := range buckets {
+		if len(bucket.Files) > 0 {
+			bucket_channel <- bucket
+		}
+	}
+	close(bucket_channel)
+	worker_group.Wait()
+	close(error_channel)
+	for upload_err := range error_channel {
+		return upload_err
+	}
+	return nil
+}
+
 func Upload(payload UploadPayload) (*UploadResp, error) {
 	files_map := payload.FilesMap
 	jwt := payload.JWT
@@ -176,58 +268,29 @@ func Upload(payload UploadPayload) (*UploadResp, error) {
 	// 	return err
 	// }
 	// fmt.Println(jwt)
-	files_path := []string{}
-	files_hash := []string{}
+	file_hashes := []string{}
 	files_path_with_hash := map[string]string{}
+	seen_hashes := make(map[string]struct{}, len(files_map))
 	for _, file := range files_map {
-		files_path = append(files_path, file.Path)
-		files_hash = append(files_hash, file.Hash)
+		if _, seen := seen_hashes[file.Hash]; !seen {
+			seen_hashes[file.Hash] = struct{}{}
+			file_hashes = append(file_hashes, file.Hash)
+		}
 		key := "/" + file.Filename
 		files_path_with_hash[key] = file.Hash
 	}
-	missing_files, err := Api_fetch_missing_files(files_path, jwt)
+	missing_hashes, err := Api_fetch_missing_files(file_hashes, jwt)
 	if err != nil {
 		log.Fatalf("Error fetching missing files: %v", err)
 		return nil, err
 	}
-	sorted_files := []FileContainer{}
-	for _, file := range files_map {
-		present := lo.Contains(missing_files, file.Hash)
-		if !present {
-			sorted_files = append(sorted_files, file)
-		}
-		sorted_files = append(sorted_files, file)
-	}
-	buckets := distribute_files_to_buckets(sorted_files)
-
-	for _, bucket := range buckets.Buckets {
-		if len(bucket.Files) == 0 {
-			continue
-		}
-
-		var files []FilePayloadToUpload
-		for _, f := range bucket.Files {
-			fileContent, err := os.ReadFile(f.Path)
-			if err != nil {
-				log.Printf("Error reading file %s: %v", f.Path, err)
-				continue
-			}
-			base64Content := base64.StdEncoding.EncodeToString(fileContent)
-
-			files = append(files, FilePayloadToUpload{
-				Key:   f.Hash,
-				Value: base64Content,
-				Metadata: FileMetadata{
-					ContentType: f.ContentType,
-				},
-				Base64: true,
-			})
-		}
-		fmt.Println("[PAGES]Upload - before Api_upload", files)
-		Api_upload(files, jwt)
+	files_to_upload := select_missing_files(files_map, missing_hashes)
+	buckets := distribute_files_to_buckets(files_to_upload)
+	if err := upload_file_buckets(buckets.Buckets, jwt, Api_upload); err != nil {
+		return nil, err
 	}
 	// print_bucket_result(buckets)
-	_, err = Api_upsert_hashes(files_hash, jwt)
+	_, err = Api_upsert_hashes(file_hashes, jwt)
 	if err != nil {
 		return nil, err
 	}

@@ -113,10 +113,9 @@ func Api_fetch_upload_token(account_id string, project_name string) (*UploadToke
 }
 
 func Api_upload(files []FilePayloadToUpload, jwt string) (string, error) {
-	CLOUDFLARE_API_BASE_URL := "https://api.cloudflare.com/client/v4"
+	cloudflare_api_base_url := "https://api.cloudflare.com/client/v4"
 
-	methods := "POST"
-	request_url := CLOUDFLARE_API_BASE_URL + "/pages/assets/upload"
+	request_url := cloudflare_api_base_url + "/pages/assets/upload"
 	headers := map[string]string{
 		"Content-Type":  "application/json",
 		"Authorization": "Bearer " + jwt,
@@ -125,7 +124,7 @@ func Api_upload(files []FilePayloadToUpload, jwt string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req, err := http.NewRequest(methods, request_url, strings.NewReader(string(body)))
+	req, err := new_upload_request(request_url, body)
 	if err != nil {
 		return "", err
 	}
@@ -144,6 +143,10 @@ func Api_upload(files []FilePayloadToUpload, jwt string) (string, error) {
 		return "", err
 	}
 	return string(resp_bytes), nil
+}
+
+func new_upload_request(request_url string, body []byte) (*http.Request, error) {
+	return http.NewRequest(http.MethodPost, request_url, bytes.NewReader(body))
 }
 
 func Api_upsert_hashes(hashes []string, jwt string) (string, error) {
