@@ -31,16 +31,8 @@ function ContentDetailAction(props) {
 
 function ContentDetailCover(props) {
   const content = props.content;
-  const cover_url = props.store.methods.coverURL(content);
-  const fallback = View({ class: "wx-content-cover-fallback" }, [
-    Timeless.Icon({ name: "file", size: 32 }),
-    View({ class: "wx-content-cover-type" }, [
-      props.store.methods.typeLabel(content.content_type),
-    ]),
-  ]);
-  if (!cover_url) {
-    return fallback;
-  }
+  const cover_url = props.coverURL || props.store.methods.coverURL(content);
+  if (!cover_url) return null;
   return View({ class: "wx-content-cover-wrap" }, [
     LazyImg({
       class: "wx-content-cover",
@@ -486,7 +478,9 @@ function content_asset_previews(content, vm$) {
   const append_resource = (resource, asset = {}) => {
     resource = resource && typeof resource === "object" ? resource : {};
     const type = content_media_type(resource, asset);
-    const url = resource.exists ? vm$.methods.resourceFileURL(resource) : "";
+    const available = vm$.methods.resourceFileAvailable(resource);
+    const url = available ? vm$.methods.resourceFileURL(resource) : "";
+    const status_text = vm$.methods.resourceFileStatus(resource);
     const resource_id = detail_object_value(resource, "id", "ID");
     const local_path = String(
       detail_object_value(resource, "local_path", "LocalPath") || "",
@@ -514,7 +508,8 @@ function content_asset_previews(content, vm$) {
       asset,
       resource,
       asset_label: content_media_asset_label(asset),
-      available: Boolean(url),
+      available,
+      status_text,
     });
   };
 
@@ -692,30 +687,37 @@ function ContentDetailMediaStage(props) {
       preload: "metadata",
     });
   } else if (media.type === "audio") {
-    player = View({ class: "wx-content-detail-media-audio-stage" }, [
-      View({ class: "wx-content-detail-media-artwork" }, [
-        props.content.cover_url
-          ? Img({
+    player = View({
+      class: [
+        "wx-content-detail-media-audio-stage",
+        cover_url ? "" : "wx-content-detail-media-audio-stage-no-artwork",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    }, [
+      cover_url
+        ? View({ class: "wx-content-detail-media-artwork" }, [
+            Img({
               class: "wx-content-detail-media-artwork-image",
-              src: props.content.cover_url,
+              src: cover_url,
               alt: "",
               attributes: { referrerpolicy: "no-referrer" },
               onError(event) {
                 event.target.style.display = "none";
               },
-            })
-          : null,
-        View({ class: "wx-content-detail-media-artwork-fallback" }, [
-          Timeless.Icon({ name: "file-volume", size: 42 }),
-        ]),
-      ].filter(Boolean)),
+            }),
+            View({ class: "wx-content-detail-media-artwork-fallback" }, [
+              Timeless.Icon({ name: "file-volume", size: 42 }),
+            ]),
+          ])
+        : null,
       Timeless.Audio({
         class: "wx-content-detail-media-audio",
         src: media.url,
         controls: true,
         preload: "metadata",
       }),
-    ]);
+    ].filter(Boolean));
   } else if (media.type === "image") {
     player = Img({
       class: "wx-content-detail-media-image",
@@ -753,7 +755,7 @@ function ContentDetailMediaStage(props) {
     content_media_type_label(media.type),
     media.asset_label,
     vm$.methods.formatBytes(size),
-    media.available ? "已下载" : "不可用",
+    media.status_text,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -828,7 +830,7 @@ function ContentDetailMediaPicker(props) {
               detail_object_value(media.resource, "size", "Size") ||
                 detail_object_value(media.asset, "size", "Size"),
             ),
-            media.available ? "已下载" : "不可用",
+            media.status_text,
           ]
             .filter(Boolean)
             .join(" · "),
@@ -947,10 +949,7 @@ function ContentDetailResource(props) {
             ["已删除"],
           )
         : null,
-      !deleted &&
-      !resource.download_task_in_progress &&
-      resource.exists &&
-      vm$.methods.resourceFileURL(resource)
+      !deleted && vm$.methods.resourceFileAvailable(resource)
         ? ContentDetailAction({
             icon: "folder-open",
             title: "打开文件",
@@ -1133,11 +1132,21 @@ function ContentDetailMain(props) {
   const vm$ = props.store;
   const content = props.content;
   const description = String(content.description || "").trim();
+  const cover_url = vm$.methods.coverURL(content);
   return View({ class: "wx-content-detail-layout" }, [
-    View({ class: "wx-content-detail-summary dm-panel" }, [
-      View({ class: "wx-content-detail-cover" }, [
-        ContentDetailCover({ store: vm$, content }),
-      ]),
+    View({
+      class: [
+        "wx-content-detail-summary dm-panel",
+        cover_url ? "" : "wx-content-detail-summary-no-cover",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    }, [
+      cover_url
+        ? View({ class: "wx-content-detail-cover" }, [
+            ContentDetailCover({ store: vm$, content, coverURL: cover_url }),
+          ])
+        : null,
       View({ class: "wx-content-detail-info" }, [
         View({ class: "wx-content-card-tags" }, [
           ContentDetailPlatform({ store: vm$, content }),
@@ -1161,7 +1170,7 @@ function ContentDetailMain(props) {
           `发布于 ${vm$.methods.formatTime(content.publish_time)}`,
         ]),
       ].filter(Boolean)),
-    ]),
+    ].filter(Boolean)),
     ContentDetailSection({
       title: "内容",
       children: [ContentDetailExtension({ store: vm$, content })],

@@ -427,9 +427,32 @@ function ScraperContentCard(props) {
       ScraperContentCover({ content }),
       View({ class: "wx-home-content-info" }, [
         View({ class: "wx-home-badges" }, [
-          View({ class: "wx-home-badge wx-home-badge-primary" }, [
-            content.platform_name,
-          ]),
+          View(
+            {
+              class:
+                "wx-home-badge wx-home-badge-primary wx-home-platform-badge",
+            },
+            [
+              Show({
+                when: content.platform_favicon,
+                ok() {
+                  return Img({
+                    class: "wx-home-platform-favicon",
+                    src: content.platform_favicon,
+                    alt: "",
+                    attributes: {
+                      loading: "lazy",
+                      referrerpolicy: "no-referrer",
+                    },
+                    onError(event) {
+                      event.target.style.display = "none";
+                    },
+                  });
+                },
+              }),
+              content.platform_name,
+            ],
+          ),
           View({ class: "wx-home-badge" }, [content.content_type_name]),
         ]),
         View(
@@ -1249,25 +1272,6 @@ function ScraperTypedContentDetail(props) {
                   detail.subject.meta_text,
                 ]),
               ]),
-              Show({
-                when: detail.subject.has_url,
-                ok() {
-                  return Button(
-                    {
-                      store: vm$.ui.btn_detail_subject_open$.bind(
-                        detail.subject,
-                      ),
-                      class:
-                        "wx-content-action wx-home-detail-subject-open dm-button dm-focus-ring",
-                      attributes: { type: "button" },
-                    },
-                    [
-                      Timeless.Icon({ name: "external-link", size: 13 }),
-                      "打开",
-                    ],
-                  );
-                },
-              }),
             ]);
           },
         }),
@@ -1618,38 +1622,6 @@ function ScraperDownloadInfo(props) {
                 ]);
               },
             }),
-            Button(
-              {
-                store: vm$.ui.btn_third_party_download$,
-                class:
-                  "wx-content-action wx-home-third-party-download dm-button dm-button--outline dm-focus-ring",
-                attributes: {
-                  type: "button",
-                  title: "使用 DownloadResource endpoint 创建三方下载任务",
-                },
-              },
-              [
-                Timeless.Icon({ name: "hard-drive", size: 16 }),
-                View({ class: "wx-content-action-label" }, ["三方下载"]),
-              ],
-            ),
-            Button(
-              {
-                store: vm$.ui.btn_create_download_task$,
-                class:
-                  "wx-content-action wx-home-download dm-button dm-button--primary dm-focus-ring",
-                attributes: {
-                  type: "button",
-                  title: "创建当前预览中的下载任务",
-                },
-              },
-              [
-                Timeless.Icon({ name: "download", size: 16 }),
-                View({ class: "wx-content-action-label" }, [
-                  vm$.state.download_button_text,
-                ]),
-              ],
-            ),
           ]),
         ]),
         View({ class: "wx-home-download-body" }, [
@@ -1723,21 +1695,62 @@ function ScraperDownloadInfo(props) {
   });
 }
 
-function HomeResultActions(props) {
+function ScraperResultActionBar(props) {
   const vm$ = props.store;
-  return View({ class: "wx-home-result-actions" }, [
-    Button(
-      {
-        store: vm$.ui.btn_force_refresh$,
-        class: "wx-content-action wx-home-refresh",
-        attributes: {
-          type: "button",
-          title: "忽略现有缓存并重新抓取",
-        },
+  return View(
+    {
+      class: "wx-home-result-actions",
+      attributes: {
+        role: "toolbar",
+        "aria-label": "抓取完成操作",
       },
-      ["重新抓取"],
-    ),
-  ]);
+    },
+    [
+      View({ class: "wx-home-result-actions-summary" }, [
+        View({ class: "wx-home-result-actions-icon" }, [
+          Timeless.Icon({ name: "check", size: 17 }),
+        ]),
+        View({ class: "wx-home-result-actions-copy" }, [
+          View({ class: "wx-home-result-actions-title" }, ["抓取完成"]),
+          View({ class: "wx-home-result-actions-description" }, [
+            "请选择下载方式",
+          ]),
+        ]),
+      ]),
+      View({ class: "wx-home-result-actions-controls" }, [
+        Button(
+          {
+            store: vm$.ui.btn_third_party_download$,
+            class: "wx-home-third-party-download",
+            attributes: {
+              type: "button",
+              title: "使用 DownloadResource endpoint 创建三方下载任务",
+            },
+          },
+          [
+            Timeless.Icon({ name: "hard-drive", size: 16 }),
+            View({ class: "wx-content-action-label" }, ["三方下载"]),
+          ],
+        ),
+        Button(
+          {
+            store: vm$.ui.btn_create_download_task$,
+            class: "wx-home-download",
+            attributes: {
+              type: "button",
+              title: "创建当前预览中的下载任务",
+            },
+          },
+          [
+            Timeless.Icon({ name: "download", size: 16 }),
+            View({ class: "wx-content-action-label" }, [
+              vm$.state.download_button_text,
+            ]),
+          ],
+        ),
+      ]),
+    ],
+  );
 }
 
 function ScraperCacheCard(props) {
@@ -1913,6 +1926,7 @@ function ScraperPageResult(props) {
         ScraperDownloadInfo({ store: vm$ }),
         ScraperRawJSON({ store: vm$ }),
         ScraperCacheCard({ store: vm$ }),
+        ScraperResultActionBar({ store: vm$ }),
       ]);
     },
   });

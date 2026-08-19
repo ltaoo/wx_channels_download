@@ -24,6 +24,7 @@ export default [
         LazyImg: "readonly",
         Link: "readonly",
         Dialog: "readonly",
+        Drawer: "readonly",
         DialogHeader: "readonly",
         DialogTitle: "readonly",
         DialogDescription: "readonly",

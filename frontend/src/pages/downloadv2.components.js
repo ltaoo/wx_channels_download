@@ -4,6 +4,7 @@ import {
   format_download_percent,
   format_download_size,
   format_download_speed,
+  format_download_time,
   get_download_status_count,
   is_download_open_external,
   is_download_waiting_status,
@@ -460,12 +461,6 @@ function DownloadV2TaskCover(props) {
         progress,
       ]);
     },
-    else() {
-      return View({ class: "wx-dl-page-task-cover-wrap" }, [
-        fallback(),
-        progress,
-      ]);
-    },
   });
 }
 
@@ -726,6 +721,21 @@ function DownloadV2TaskRow(props) {
         }),
       ]),
     ]),
+    View(
+      {
+        class: "wx-dl-page-task-time-cell",
+        attributes: {
+          title: computed(task_, (task) =>
+            format_download_time(task && task.created_at),
+          ),
+        },
+      },
+      [
+        computed(task_, (task) =>
+          format_download_time(task && task.created_at),
+        ),
+      ],
+    ),
     DownloadV2TaskActions({ store: vm$, task: task_, state: state_ }),
   ]);
 }
@@ -743,8 +753,8 @@ function DownloadV2TaskSkeletonRow() {
       }),
       DownloadV2Skeleton({
         style: {
-          width: "52px",
-          height: "52px",
+          width: "var(--dm-control-height-lg)",
+          height: "var(--dm-control-height-lg)",
           "border-radius": "6px",
           "margin-right": "12px",
         },
@@ -765,6 +775,9 @@ function DownloadV2TaskSkeletonRow() {
         }),
       ]),
     ]),
+    DownloadV2Skeleton({
+      style: { width: "128px", height: "12px", "border-radius": "5px" },
+    }),
     View({ class: "wx-dl-page-task-actions-cell" }, [
       DownloadV2Skeleton({
         style: { width: "34px", height: "34px", "border-radius": "8px" },
@@ -899,6 +912,7 @@ export function DownloadV2TaskTable(props) {
           ),
         ],
       ),
+      View({ class: "wx-dl-page-table-head-cell" }, ["下载时间"]),
       View(
         { class: "wx-dl-page-table-head-cell wx-dl-page-table-head-action" },
         ["操作"],

@@ -78,6 +78,20 @@ function format_download_speed(bytes_per_second) {
   return `${value.toFixed(1)} B/s`;
 }
 
+function format_download_time(value) {
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return "时间未知";
+  const normalized = timestamp < 1000000000000 ? timestamp * 1000 : timestamp;
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(normalized));
+}
+
 function format_download_size(bytes) {
   const value = Math.max(0, Number(bytes) || 0);
   if (value === 0) return "0.0KB";
@@ -1314,6 +1328,7 @@ export {
   format_download_percent,
   format_download_size,
   format_download_speed,
+  format_download_time,
   get_download_status_count,
   is_download_open_external,
   is_download_waiting_status,

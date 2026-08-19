@@ -94,11 +94,13 @@ function normalize_content_item(raw) {
     : Array.isArray(source.DownloadTasks)
       ? source.DownloadTasks
       : [];
-  const resources = Array.isArray(source.resources)
-    ? source.resources
-    : Array.isArray(source.Resources)
-      ? source.Resources
-      : [];
+  const file_count = Math.max(
+    0,
+    number_or_default(
+      first_non_empty(source.file_count, source.fileCount, source.FileCount),
+      0,
+    ),
+  );
 
   return {
     ...source,
@@ -144,7 +146,7 @@ function normalize_content_item(raw) {
     ),
     accounts: accounts_source.map(normalize_content_account),
     download_tasks: tasks,
-    resources,
+    file_count,
   };
 }
 
@@ -200,20 +202,56 @@ function content_type_label(value, subtypeValue) {
   return labels[subtype] || labels[type] || subtype || type || "内容";
 }
 
-function content_download_status(tasks) {
-  if (!Array.isArray(tasks) || tasks.length === 0) {
-    return "未下载";
+function normalize_content_download_status(value) {
+  const status = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  if (["2", "4", "running", "downloading", "merging"].includes(status)) {
+    return "running";
   }
-  if (tasks.some((task) => [1, 2, 4].includes(Number(task.status)))) {
-    return "下载中";
+  if (["3", "pause", "paused"].includes(status)) return "paused";
+  if (["5", "done", "finished", "completed", "success"].includes(status)) {
+    return "succeeded";
   }
-  if (tasks.some((task) => Number(task.status) === 6)) {
-    return "下载失败";
+  if (
+    [
+      "6",
+      "7",
+      "error",
+      "fail",
+      "failed",
+      "failure",
+      "cancelled",
+      "canceled",
+    ].includes(status)
+  ) {
+    return "failed";
   }
-  if (tasks.every((task) => Number(task.status) === 5)) {
-    return "已下载";
-  }
-  return `${tasks.length} 个任务`;
+  return status;
+}
+
+function content_statistics(content) {
+  const source = content && typeof content === "object" ? content : {};
+  const tasks = Array.isArray(source.download_tasks)
+    ? source.download_tasks
+    : [];
+  const statistics = {
+    total_tasks: tasks.length,
+    in_progress: 0,
+    failed: 0,
+    files: Math.max(0, number_or_default(source.file_count, 0)),
+  };
+  tasks.forEach((task) => {
+    const status = normalize_content_download_status(
+      first_non_empty(task && task.status, task && task.Status),
+    );
+    if (status === "running" || status === "paused") {
+      statistics.in_progress += 1;
+    } else if (status === "failed") {
+      statistics.failed += 1;
+    }
+  });
+  return statistics;
 }
 
 function normalize_epoch_ms(value) {
@@ -461,7 +499,7 @@ function ContentViewModel(props) {
     detailHref: content_detail_href,
     platformName: content_platform_name,
     typeLabel: content_type_label,
-    downloadStatus: content_download_status,
+    statistics: content_statistics,
     formatTime: format_content_time,
   };
 

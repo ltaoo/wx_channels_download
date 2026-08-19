@@ -96,11 +96,18 @@ function error_message(error, fallback) {
 }
 
 function platform_favicon(platform_id) {
-  return PLATFORM_FAVICONS[platform_id] || "";
+  const key = String(platform_id || "")
+    .trim()
+    .toLowerCase();
+  const favicons = window.PLATFORM_FAVICONS || {};
+  return favicons[key] || PLATFORM_FAVICONS[key] || "";
 }
 
 function platform_name(platform_id) {
-  return PLATFORM_NAMES[platform_id] || platform_id || "";
+  const key = String(platform_id || "")
+    .trim()
+    .toLowerCase();
+  return PLATFORM_NAMES[key] || platform_id || "";
 }
 
 function format_bytes(bytes) {

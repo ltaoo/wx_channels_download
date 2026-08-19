@@ -29,7 +29,7 @@ function ContentPageView(props) {
   return View(
     {
       class:
-        "wx-content-page wx-content-library-page wx-browse-history-page dm-page",
+        "wx-content-page wx-content-library-page wx-content-list-page wx-browse-history-page dm-page",
       onMounted() {
         vm$.methods.ready();
       },
@@ -153,20 +153,23 @@ function ContentPageToolbar(props) {
   );
 }
 
+function content_cover_url(content) {
+  return String((content && content.cover_url) || "").trim();
+}
+
 function ContentRowCover(props) {
   const content = props.content;
+  const cover_url = content_cover_url(content);
+  if (!cover_url) return null;
   const fallback = View(
     { class: "wx-content-row-cover wx-content-row-cover-fallback" },
     [Timeless.Icon({ name: "file", size: 18 })],
   );
-  if (!content.cover_url) {
-    return fallback;
-  }
   return View({ class: "wx-content-row-cover-wrap" }, [
     fallback,
     LazyImg({
       class: "wx-content-row-cover",
-      src: content.cover_url,
+      src: cover_url,
       alt: content.title,
       attributes: {
         referrerpolicy: "no-referrer",
@@ -221,11 +224,39 @@ function ContentRowAccounts(props) {
   ]);
 }
 
+function ContentRowStatistics(props) {
+  const statistics = props.statistics;
+  const items = [
+    { key: "in-progress", label: "进行中任务", value: statistics.in_progress },
+    { key: "failed", label: "失败任务", value: statistics.failed },
+    { key: "success", label: "成功任务", value: statistics.total_tasks },
+    { key: "files", label: "文件", value: statistics.files },
+  ].filter((item) => item.value > 0);
+  return View({ class: "wx-content-row-stats" }, [
+    For({
+      each: items,
+      render(item) {
+        return View(
+          {
+            class: `wx-content-row-stat wx-content-row-stat-${item.key}`,
+            attributes: { title: `${item.label}：${item.value}` },
+          },
+          [
+            View({ class: "wx-content-row-stat-value" }, [String(item.value)]),
+            View({ class: "wx-content-row-stat-label" }, [item.label]),
+          ],
+        );
+      },
+    }),
+  ]);
+}
+
 function ContentRow(props) {
   const vm$ = props.store;
   const content = props.content;
   const favicon = window.PLATFORM_FAVICONS[content.platform_id] || "";
   const detail_href = vm$.methods.detailHref(content);
+  const statistics = vm$.methods.statistics(content);
   return View(
     {
       class: ["wx-content-row", detail_href ? "wx-content-row-clickable" : ""]
@@ -237,41 +268,43 @@ function ContentRow(props) {
       },
     },
     [
-      ContentRowCover({ content }),
-      View({ class: "wx-content-row-main" }, [
-        View(
-          {
-            class: "wx-content-row-title",
-            attributes: { title: content.title },
-          },
-          [content.title],
-        ),
-        View({ class: "wx-content-row-badges" }, [
-          View({ class: "wx-content-row-platform" }, [
-            Show({
-              when: favicon,
-              ok() {
-                return Img({
-                  class: "wx-content-row-platform-icon",
-                  src: favicon,
-                  alt: "",
-                  attributes: {
-                    loading: "lazy",
-                    referrerpolicy: "no-referrer",
-                  },
-                  onError(event) {
-                    event.target.style.display = "none";
-                  },
-                });
-              },
-            }),
-            vm$.methods.platformName(content),
-          ]),
-          View({ class: "wx-content-row-type" }, [
-            vm$.methods.typeLabel(
-              content.content_type,
-              content.content_subtype,
-            ),
+      View({ class: "wx-content-row-main-cell" }, [
+        ContentRowCover({ content }),
+        View({ class: "wx-content-row-main" }, [
+          View(
+            {
+              class: "wx-content-row-title",
+              attributes: { title: content.title },
+            },
+            [content.title],
+          ),
+          View({ class: "wx-content-row-badges" }, [
+            View({ class: "wx-content-row-platform" }, [
+              Show({
+                when: favicon,
+                ok() {
+                  return Img({
+                    class: "wx-content-row-platform-icon",
+                    src: favicon,
+                    alt: "",
+                    attributes: {
+                      loading: "lazy",
+                      referrerpolicy: "no-referrer",
+                    },
+                    onError(event) {
+                      event.target.style.display = "none";
+                    },
+                  });
+                },
+              }),
+              vm$.methods.platformName(content),
+            ]),
+            View({ class: "wx-content-row-type" }, [
+              vm$.methods.typeLabel(
+                content.content_type,
+                content.content_subtype,
+              ),
+            ]),
           ]),
         ]),
       ]),
@@ -280,29 +313,28 @@ function ContentRow(props) {
         Timeless.Icon({ name: "clock3", size: 12 }),
         vm$.methods.formatTime(content.publish_time),
       ]),
-      View({ class: "wx-content-row-visits" }, [
-        vm$.methods.downloadStatus(content.download_tasks),
-      ]),
+      ContentRowStatistics({ statistics }),
     ],
   );
 }
 
 function ContentTableHead() {
   return View({ class: "wx-content-row wx-content-row-head" }, [
-    View({ class: "wx-content-row-head-cell" }, ["封面"]),
-    View({ class: "wx-content-row-head-cell" }, ["标题"]),
+    View({ class: "wx-content-row-head-cell" }, ["封面 / 标题"]),
     View({ class: "wx-content-row-head-cell" }, ["账号"]),
     View({ class: "wx-content-row-head-cell" }, ["发布时间"]),
-    View({ class: "wx-content-row-head-cell" }, ["下载状态"]),
+    View({ class: "wx-content-row-head-cell" }, ["统计"]),
   ]);
 }
 
 function ContentSkeletonRow() {
   return View({ class: "wx-content-row wx-content-skeleton-row" }, [
-    View({ class: "wx-content-row-cover wx-content-skeleton" }),
-    View({}, [
-      View({ class: "wx-content-skeleton wx-content-skeleton-title" }),
-      View({ class: "wx-content-skeleton wx-content-skeleton-tag" }),
+    View({ class: "wx-content-row-main-cell" }, [
+      View({ class: "wx-content-row-cover wx-content-skeleton" }),
+      View({ class: "wx-content-row-main" }, [
+        View({ class: "wx-content-skeleton wx-content-skeleton-title" }),
+        View({ class: "wx-content-skeleton wx-content-skeleton-tag" }),
+      ]),
     ]),
     View({ class: "wx-content-skeleton wx-content-skeleton-line" }),
     View({ class: "wx-content-skeleton wx-content-skeleton-line-short" }),
