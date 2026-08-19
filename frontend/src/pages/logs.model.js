@@ -644,11 +644,11 @@ function LogsPageViewModel(props) {
         return false;
       }
       const field_name = String(field || "").trim();
-      ui.json_preview_dialog$.show();
       json_preview_title_.as(
         field_name ? `${field_name} · JSON` : "JSON 预览",
       );
       json_preview_text_.as(json_field.formatted_text);
+      ui.json_preview_dialog$.show();
       return true;
     },
     async copyJsonFieldValue(value) {
