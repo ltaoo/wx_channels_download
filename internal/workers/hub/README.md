@@ -1,62 +1,181 @@
-# Cloudflare Durable Objects Task Hub
+# Personal CGI Hub
 
-这个 Hub 让无法直接通信的内网 `wx_channels_download` 实例通过出站 WebSocket 共享能力和转交下载任务。Hub 只保存任务 JSON、解析结果和下载元数据，不代理或保存视频文件。
+一个 Hub 由一个人管理，用来连接这个人的多台操作系统设备，并把统一的 `method + args` 调用调度给合适的在线设备。Hub 只保存调用参数、结果和下载元数据，不代理或保存视频文件。
 
-## 架构
+## 概念
+
+- 一个 Worker 部署就是一个 Hub，不再在 Worker 内继续划分多个 `hub.id`。
+- 一台设备指一个操作系统实例：macOS 宿主机是一台；Docker 中的 Linux、虚拟机中的 Windows/Linux 分别是新的设备。
+- 同一操作系统中的多个进程仍属于同一设备，使用同一个稳定的 `deviceId`；新连接会替换该设备的旧连接。
+- 每台设备注册自己可处理的 `methods`。外部调用方只面对一个 CGI 风格的 Hub 接口，由 `method + args` 表达调用，由 Hub 选择实际执行设备。
+- 多 Hub 的发现、授权、检索和路由属于更高层的 Hub 市场或 Hub 集合，不属于当前 Worker。
 
 ```text
-实例 A（无视频号）──WSS──┐
-                          ├── Cloudflare Worker ── Durable Object（每个 hub.id 一个）
-实例 B（有视频号）──WSS──┘              │
-                                        └── SQLite：任务、租约、结果
-
-管理员浏览器 ──HTTPS── Pages 静态资源 / Worker ──Service Binding──┘
+外部调用方 ──HTTPS──┐
+                    │
+管理员浏览器 ─HTTPS─┼── Personal Hub Worker ── Durable Object + SQLite
+                    │             │
+macOS 设备 ─────WSS─┤             ├── method: wxchannels.fetch
+Linux 容器 ─────WSS─┘             └── method: download.create
 ```
 
-任务采用至少一次投递：Hub 分配任务时创建 120 秒租约，执行实例每约 40 秒续租。连接中断或实例退出后，租约过期的任务会重新排队；提交方错过 WebSocket 完成通知时，仍可通过任务查询 API 获取持久结果。
+任务采用至少一次投递：Hub 分配任务时创建 120 秒租约，执行设备定期续租。连接中断后，租约过期的任务会重新排队；发布方错过 WebSocket 完成通知时，仍可通过任务查询 API 获取持久结果。
 
-## 部署 Worker
+## 部署 Hub
 
-Hub 使用带 JSDoc 类型声明的原生 JavaScript，Worker 源码通过 `go:embed` 嵌入。部署命令通过 Go 直接调用 Cloudflare REST API，依次部署 Worker 和独立的 Cloudflare Pages 管理项目，不需要 Wrangler 登录。
-
-先在 `config.yaml` 中配置：
+在 `config.yaml` 中配置 Cloudflare 部署信息：
 
 ```yaml
 cloudflare:
   accountId: "<ACCOUNT_ID>"
-  apiToken: "<API_TOKEN>" # 需要 Workers Scripts:Edit 和 Pages:Edit
+  apiToken: "<API_TOKEN>" # Workers Scripts:Edit 和 Pages:Edit
 
 hub:
   deploy:
     workerName: "wx-channels-hub"
     pagesProjectName: "" # 留空时使用 wx-channels-hub-admin
-    token: "<随机高强度共享密钥>"
-    adminToken: "<与客户端Token不同的管理员密码>"
+    token: "<只供设备使用的随机高强度 Secret>"
+    adminToken: "<与设备 Token 不同的管理员密码>"
 ```
 
-然后在项目根目录执行：
+执行：
 
 ```bash
 go run . deploy hub
 ```
 
-部署命令会上传 `internal/workers/hub/index.js` ES module Worker、声明 `HUBS` Durable Object namespace 和 SQLite `HubDurableObject` 导出、写入 Worker Secrets，并启用 `workers.dev` 地址；随后创建或更新 Pages 项目、写入管理员 Secret、配置指向 Worker 的 `HUB` Service Binding 并发布管理页面。重复执行会更新相同项目，并保留 Durable Object 数据。
+命令会部署单个 Durable Object Hub Worker 和独立的 Cloudflare Pages 管理项目。重复部署会更新代码并保留该 Hub 的设备登记和任务数据。
 
-两个 Token 都应使用随机高强度凭证且不能相同。`HUB_TOKEN` 提供给连接 Hub 的电脑，`HUB_ADMIN_TOKEN` 只提供给管理员。部署后记录命令输出的 Worker URL，例如 `https://wx-channels-hub.<account>.workers.dev`。
+- `HUB_TOKEN` 只用于设备连接和设备自身发布调用，不应分发给外部调用者。
+- `HUB_ADMIN_TOKEN` 只用于管理页面、管理 API 和调用 Token 管理。
+- 外部调用使用管理员在 Hub 中动态创建的独立调用 Token。
+- `/health` 不需要认证。
+- `/v1/connect` 需要设备 `HUB_TOKEN` 和设备身份 header。
+- 其他 `/v1/*` 接口接受动态调用 Token；设备程序也可使用自己的设备 Secret。
+- `/admin/api/*` 需要管理员认证。
 
-Worker 的 `/health` 无需认证；任务接口要求 `Authorization: Bearer <HUB_TOKEN>`；`/admin/api/*` 管理 API 要求独立管理员认证。Worker 不再返回管理页面静态资源。
+## 注册操作系统设备
+
+每个操作系统使用一份单 Hub 配置：
+
+```yaml
+hub:
+  enabled: true
+  url: "https://wx-channels-hub.<account>.workers.dev"
+  deviceId: "mayfair-macbook"
+  deviceName: "Mayfair MacBook"
+  token: "<HUB_TOKEN>"
+  httpTimeoutSeconds: 30
+  methods: "auto"
+```
+
+`deviceId` 在当前 Hub 内必须唯一且保持稳定。留空时程序使用系统主机名；生产环境建议显式设置。`deviceName` 是管理页显示名称，留空时同样使用主机名。操作系统类型与当前程序实际注册的方法由程序自动上报。
+
+`methods` 是通用方法白名单，不再为每项能力增加布尔配置：`auto` 发布当前程序全部已注册方法，`none` 只允许该设备发布调用而不执行远程调用，也可填写 `wxchannels.fetch,wxchannels.contact.feed.list,download.create` 这样的逗号分隔列表。
+
+视频号 adapter 当前会注册以下 Hub 方法：
+
+| method | args | 对应 scraper 方法 |
+| --- | --- | --- |
+| `wxchannels.contact.search` | `keyword`, `next_marker` | `SearchChannelsContact` |
+| `wxchannels.contact.feed.list` | `username`, `next_marker` | `FetchChannelsFeedListOfContact` |
+| `wxchannels.live.replay.list` | `username`, `next_marker` | `FetchChannelsLiveReplayList` |
+| `wxchannels.feed.profile` | `oid`, `nid`, `url`, `eid` | `FetchChannelsFeedProfile` |
+| `wxchannels.feed.comment.list` | `oid`, `nid`, `comment_id`, `next_marker` | `FetchChannelsFeedCommentList` |
+| `wxchannels.feed.share_url` | `oid` | `FetchChannelsFeedShareUrl` |
+
+这些方法依赖设备上的视频号页面 WebSocket 连接；设备连接 Hub 但视频号页面未连接时，调用会失败或超时。
+
+Docker 中的 Linux 使用独立身份：
+
+```yaml
+hub:
+  enabled: true
+  url: "https://wx-channels-hub.<account>.workers.dev"
+  deviceId: "downloader-linux"
+  deviceName: "Downloader Linux"
+  token: "<HUB_TOKEN>"
+  httpTimeoutSeconds: 30
+  methods: "download.create"
+```
+
+本地状态接口：
+
+```http
+GET /api/hub/status
+```
+
+返回当前操作系统设备到个人 Hub 的唯一连接状态，不再接受 `?hub=` 选择参数。
+
+## 管理页面
+
+管理页源码位于 `internal/workers/hub/admin`：
+
+- `public/index.html`、`style.css`、`app.js` 是静态源码；
+- `build.sh` 生成被 Git 忽略的 `dist`，并从 `frontend/public/timeless` 复制共享运行时；
+- `worker.js` 负责 HTTP Basic Auth 和 `/admin/api/*` Service Binding 转发。
+
+浏览器登录：
+
+- 用户名：`admin`
+- 密码：`hub.deploy.adminToken`
+
+管理页每 5 秒刷新，展示操作系统设备，并通过右侧抽屉添加和管理调用 Token。管理员可以创建独立 Token、选择 1/7/30/90 天或永久有效、让 Token 立即过期以及移除 Token。Token 可留空由 Hub 自动生成，也可手动指定；用途或使用人可选填。Token 明文只在创建成功时显示一次，Hub 仅保存 SHA-256 摘要。
+
+每个调用 Token 都是独立发布方：它只能列出和查询自己创建的调用，不能读取其他 Token 或设备发布的任务。Token 过期或移除后，新请求立即返回 `401`；已经分配给设备的调用仍会继续执行。
+
+管理 API：
+
+```bash
+curl -H 'Authorization: Bearer <HUB_ADMIN_TOKEN>' \
+  'https://wx-channels-hub.<account>.workers.dev/admin/api/overview'
+```
+
+overview 返回：
+
+```json
+{
+  "generated_at": 0,
+  "devices": [],
+  "methods": [],
+  "task_counts": [],
+  "access_tokens": []
+}
+```
+
+管理 API 也支持直接维护调用 Token：
+
+```http
+GET /admin/api/access-tokens
+POST /admin/api/access-tokens
+DELETE /admin/api/access-tokens/:id
+POST /admin/api/access-tokens/:id/expire
+Authorization: Bearer <HUB_ADMIN_TOKEN>
+```
+
+创建请求：
+
+```json
+{
+  "name": "合作方 A",
+  "token": "custom-token-at-least-16-characters",
+  "expires_in_seconds": 604800
+}
+```
+
+`token` 留空或省略时由 Hub 自动生成；自定义值必须为 16–256 位，只能包含字母、数字和 `._~+/=-`。`name` 可留空，`expires_in_seconds` 为 `null` 时永不过期。创建响应中的 `token` 是唯一一次返回的明文。
+
+每张设备卡片在设备注册 `wxchannels.fetch` 时提供定向方法调用测试。获取成功后，可以把结果作为 `args` 提交给任意在线且注册 `download.create` 的设备。两个操作都调用同一个 `/admin/api/call` 接口。
 
 ## 本地开发
-
-在项目根目录执行以下命令，会先构建管理页面，再同时启动本地 Worker 和 Pages：
 
 ```bash
 ./internal/workers/hub/dev.sh
 ```
 
-Worker 默认监听 `http://127.0.0.1:8787`，Pages 默认监听 `http://127.0.0.1:8788`。管理页用户名是 `admin`，默认本地密码是 `local-hub-admin-token`。这些本地默认值不会部署到 Cloudflare。
+Worker 默认监听 `http://127.0.0.1:8787`，Pages 默认监听 `http://127.0.0.1:8788`。管理页用户名为 `admin`，默认本地密码为 `local-hub-admin-token`。
 
-可以通过环境变量覆盖端口、Token 或 Wrangler 版本：
+可以覆盖端口和 Token：
 
 ```bash
 HUB_WORKER_PORT=8797 \
@@ -67,157 +186,60 @@ WRANGLER_VERSION=latest \
 ./internal/workers/hub/dev.sh
 ```
 
-按 `Ctrl-C` 会同时停止 Worker 和 Pages。本地 Durable Objects 数据由 Wrangler 保存在本机，不会读写线上 Durable Objects。
+## 设备之间调用方法
 
-## 管理页面
+本地 API 提供统一入口：
 
-管理页源码位于 `internal/workers/hub/admin`：
+```http
+POST /api/hub/call
+Content-Type: application/json
 
-- `public/index.html`、`style.css`、`app.js` 是管理页自身的静态源码；
-- `build.sh` 生成被 Git 忽略的 `dist`，并从共享的 `frontend/public/timeless` 复制运行时；
-- `worker.js` 对静态资源和 API 执行 HTTP Basic Auth，并通过 `HUB` Service Binding 将同源 `/admin/api/*` 请求转发给 Worker；
-- `wrangler.jsonc` 声明 Pages 项目、静态目录、secret 和 Service Binding。
-
-执行 `go run . deploy hub` 即可同时更新 Worker 和 Pages。Cloudflare API Token 需要 Workers Scripts:Edit 和 Pages:Edit 权限。Pages 项目名默认跟随 Worker 生成为 `<workerName>-admin`，也可以通过 `hub.deploy.pagesProjectName` 覆盖。
-
-部署后浏览器访问：
-
-```text
-https://wx-channels-hub-admin.pages.dev
+{
+  "method": "wxchannels.fetch",
+  "target_device_id": "mayfair-macbook",
+  "idempotency_key": "wx-feed-123",
+  "args": {
+    "url": "https://channels.weixin.qq.com/web/pages/feed?..."
+  }
+}
 ```
 
-浏览器会显示 HTTP Basic Auth 登录框：
+`target_device_id` 可省略，此时 Hub 从在线、空闲且注册了该 `method` 的设备中选择一个执行。增加新方法时，只需要设备端注册处理函数，不需要修改 Hub 的任务类型定义。
 
-- 用户名：`admin`
-- 密码：`hub.deploy.adminToken`
+现有业务接口是统一调用的便捷适配层。例如，设备 A 可以把视频号解析交给设备 B：
 
-未通过认证时，Pages Worker 返回 `401`，不会返回管理页面或管理数据。页面每 5 秒刷新，展示所有已自动登记的 Hub、电脑的在线/执行任务/离线状态、能力、连接与最近活跃时间，以及任务状态计数。同一电脑连接多个 Hub 时会分别显示在对应 Hub 中。
-
-管理 API 也可以使用 Bearer 管理员 Token：
-
-```bash
-curl -H 'Authorization: Bearer <HUB_ADMIN_TOKEN>' \
-  'https://wx-channels-hub.<account>.workers.dev/admin/api/overview'
-```
-
-Hub 会在客户端访问时自动登记，不需要在部署配置中维护 Hub ID 列表。电脑离线后仍保留在管理页面中，并显示最近活跃时间和离线时间；重新连接后状态会恢复为在线。
-
-### 管理页能力测试
-
-每个 Hub 卡片都提供 `wxchannels.fetch` 测试区域：
-
-1. 从当前在线且声明了 `wxchannels.fetch` 能力的电脑中选择目标；
-2. 填写一个视频号 URL；
-3. 点击“创建测试任务”。
-
-管理页会创建真实 Hub 任务，并轮询展示“等待领取、已推送、正在获取、成功回传或失败”等状态。任务成功时页面会显示目标电脑提交的 result/content。
-
-获取成功后，可以继续从当前在线且声明了 `download.create` 能力的电脑中选择下载目标。管理端直接引用前一任务持久化的 content，创建 `download.create` 任务；可选填目标电脑上的下载目录和文件名，留空时使用目标电脑的本地默认配置。目标电脑创建任务后会自动开始下载，管理页继续展示该任务的接收、执行和回传结果。
-
-测试和下载接口都受 `HUB_ADMIN_TOKEN` 保护。离线或没有对应能力的电脑不能作为目标。
-
-管理页面中的更新时间、登记时间、连接时间、最近活跃时间、离线时间和测试任务时间统一使用 `YYYY-MM-DD HH:mm:ss` 格式。
-
-## 配置多个 Hub
-
-`hub.deploy` 只用于部署一个 Worker；`hub.instances` 定义当前电脑实际连接的 Hub。每项的 `name` 是本地 API 选择 Hub 时使用的名称，`id` 是 Cloudflare Durable Object 的隔离标识。
-
-一台有视频号能力的电脑可以同时向家庭和办公两个 Hub 提供 `wxchannels.fetch`：
-
-```yaml
-hub:
-  defaultInstance: "home"
-  instances:
-    - name: "home"
-      enabled: true
-      url: "https://wx-channels-hub.<account>.workers.dev"
-      id: "home"
-      clientId: "computer-c"
-      token: "<HUB_TOKEN>"
-      httpTimeoutSeconds: 30
-      capabilities:
-        wxchannels: true
-        download: false
-    - name: "office"
-      enabled: true
-      url: "https://wx-channels-hub.<account>.workers.dev"
-      id: "office"
-      clientId: "computer-c"
-      token: "<HUB_TOKEN>"
-      httpTimeoutSeconds: 30
-      capabilities:
-        wxchannels: true
-        download: false
-```
-
-两个实例也可以使用不同的 Worker URL 和 token。`clientId` 只需在同一个 Hub ID 内唯一；同一台电脑连接不同 Hub 时可以复用同一个 `clientId`。
-
-没有视频号、需要使用家庭 Hub 的电脑：
-
-```yaml
-hub:
-  defaultInstance: "home"
-  instances:
-    - name: "home"
-      enabled: true
-      url: "https://wx-channels-hub.<account>.workers.dev"
-      id: "home"
-      clientId: "computer-a"
-      token: "<HUB_TOKEN>"
-      httpTimeoutSeconds: 30
-      capabilities:
-        wxchannels: false
-        download: true
-```
-
-通过 `GET http://127.0.0.1:2022/api/hub/status` 检查全部连接。响应顶层是默认 Hub 状态，`hubs` 数组包含每个具名实例的状态。也可以使用 `?hub=office` 选择顶层展示的实例。
-
-## 借用视频号能力并在 A 下载
-
-向实例 A 的本地 API 提交 URL。省略 `target_client_id` 时，Hub 会选择任意在线且声明了 `wxchannels.fetch` 能力的实例；也可以指定 `service-b`。
+设备 A 可以把视频号解析交给设备 B：
 
 ```http
 POST /api/hub/tasks/wxchannels
 Content-Type: application/json
 
 {
-  "hub": "home",
   "url": "https://channels.weixin.qq.com/web/pages/feed?...",
-  "target_client_id": "service-b",
+  "target_device_id": "mayfair-macbook",
   "idempotency_key": "wx-feed-123",
   "download": {
-    "download_dir": "/path/on/service-a",
+    "download_dir": "/path/on/publisher",
     "auto_start": true,
     "config": {}
   }
 }
 ```
 
-执行流程：
+省略 `target_device_id` 时，Hub 自动选择在线、空闲且注册了 `wxchannels.fetch` 的设备。
 
-1. A 将 `wxchannels.fetch` 任务提交到 Hub。
-2. Hub 推送给 B；B 直接调用已注册的 `wxchannels` adapter `Fetch(url)`。
-3. B 把原始 content JSON 回传 Hub 并标记任务完成。
-4. Hub 向 A 推送 `task.completed`。
-5. A 使用返回的 content 和 `BuildFromFetch=true` 创建并自动启动本地下载任务。
-
-如果没有提供 `download`，A 只接收和保存解析结果，不会自动下载。可使用返回的任务 ID 调用 `GET /api/hub/tasks/<task-id>?hub=home` 查询 content。省略 `hub` 时使用 `hub.defaultInstance`。
-
-## 将下载任务从 A 交给 B
-
-直接 URL 下载：
+向指定设备创建下载任务：
 
 ```http
 POST /api/hub/tasks/download
 Content-Type: application/json
 
 {
-  "hub": "home",
-  "target_client_id": "service-b",
+  "target_device_id": "downloader-linux",
   "idempotency_key": "download-file-123",
   "url_request": {
     "url": "https://example.com/video.mp4",
-    "download_dir": "/path/on/service-b",
+    "download_dir": "/downloads",
     "filename": "video.mp4",
     "auto_start": true,
     "config": {}
@@ -225,38 +247,107 @@ Content-Type: application/json
 }
 ```
 
-平台 content 下载使用 `request`，其结构与 `/api/v1/download_task/create` 中的单个 object 相同：
+## Hub 对外 CGI 接口
 
-```json
+面向使用者的完整接入流程、任务状态说明和多语言代码示例见 [`docs/feature/hub.md`](../../../docs/feature/hub.md)。
+
+外部系统可以把整个 Hub 当作一个 CGI 节点。查询在线设备和方法：
+
+```http
+GET /v1
+Authorization: Bearer <CALL_TOKEN>
+```
+
+同步调用并直接获得方法结果：
+
+```http
+POST /v1/invoke
+Authorization: Bearer <CALL_TOKEN>
+Content-Type: application/json
+
 {
-  "hub": "home",
-  "target_client_id": "service-b",
-  "request": {
-    "platform": "wxchannels",
-    "content": {},
-    "build_from_fetch": true,
-    "download_dir": "/path/on/service-b",
-    "auto_start": true,
-    "config": {}
+  "method": "wxchannels.contact.feed.list",
+  "target_device_id": "mayfair-macbook",
+  "args": {
+    "username": "example@finder",
+    "next_marker": ""
   }
 }
 ```
+
+`/v1/invoke` 不需要 `idempotency_key`，不返回任务信息，最多等待 10 秒。成功时响应体就是设备方法返回的 JSON；执行失败返回 `502`，超时返回 `504`。超时不会取消内部任务，因此有副作用或可能超过 10 秒的调用应使用异步接口。
+
+创建异步任务：
+
+```http
+POST /v1/call
+Authorization: Bearer <CALL_TOKEN>
+Content-Type: application/json
+
+{
+  "method": "wxchannels.fetch",
+  "idempotency_key": "external-123",
+  "args": {
+    "url": "https://channels.weixin.qq.com/web/pages/feed?..."
+  }
+}
+```
+
+异步获取某个视频号账号的视频列表：
+
+```http
+POST /v1/call
+Authorization: Bearer <CALL_TOKEN>
+Content-Type: application/json
+
+{
+  "method": "wxchannels.contact.feed.list",
+  "target_device_id": "mayfair-macbook",
+  "args": {
+    "username": "example@finder",
+    "next_marker": ""
+  }
+}
+```
+
+不指定 `target_device_id` 时，外部调用方只依赖 Hub 提供的方法，不需要了解内部设备。指定时，Hub 会确认目标设备在线并注册了该方法后再调度。
+
+提交响应中的任务 ID 可以继续使用同一个调用 Token 查询：
+
+```http
+GET /v1/tasks/<task-id>
+Authorization: Bearer <CALL_TOKEN>
+```
+
+`GET /v1/tasks` 也只返回当前调用 Token 发布的任务。调用方不能通过 query 或 header 改写自己的发布方身份。
 
 ## 本地 API
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
-| `GET` | `/api/hub/status?hub=` | 全部 Hub 连接状态；可选择顶层实例 |
-| `POST` | `/api/hub/tasks/wxchannels` | 提交视频号解析任务；body 使用 `hub` 选择实例 |
-| `POST` | `/api/hub/tasks/download` | 向指定客户端提交下载任务；body 使用 `hub` 选择实例 |
-| `GET` | `/api/hub/tasks/:id?hub=` | 查询指定 Hub 的任务、content/result 和错误 |
-| `GET` | `/api/hub/tasks?hub=&status=&limit=` | 查询指定 Hub 上当前客户端发布的任务 |
+| `GET` | `/api/hub/status` | 当前设备到个人 Hub 的连接状态 |
+| `POST` | `/api/hub/call` | 使用 `method + args` 提交任意方法调用 |
+| `POST` | `/api/hub/tasks/wxchannels` | 提交视频号解析任务 |
+| `POST` | `/api/hub/tasks/download` | 向指定设备提交下载任务 |
+| `GET` | `/api/hub/tasks/:id` | 查询任务、content/result 和错误 |
+| `GET` | `/api/hub/tasks?status=&limit=` | 查询当前设备发布的任务 |
+
+## 旧配置迁移
+
+升级后，旧外部调用方不应继续使用共享 `HUB_TOKEN`。请先用 `HUB_ADMIN_TOKEN` 登录管理页，为每个调用方创建独立调用 Token，再替换其 `Authorization`。设备配置中的 `hub.token` 保持不变。
+
+旧版只有一个 `hub.instances` 项时仍可临时连接，新版会使用其中的 `url`、`clientId` 和 token，并保留旧路径与旧协议字段兼容。旧 `capabilities` 布尔值会在迁移期映射为对应 methods；新配置请使用通用的 `hub.methods`。请迁移为新的 `hub.url`、`hub.deviceId`、`hub.deviceName` 和 `hub.token`。
+
+旧配置包含多个实例时会直接报错，因为单个操作系统设备现在只属于一个个人 Hub；多 Hub 管理由更高层应用负责。
+
+从旧版多 `hub.id` Worker 第一次升级时会启用新的单例 Durable Object。设备会在重连后重新登记，但旧 Durable Object 中的历史任务不会自动合并到新 Hub。
 
 ## 可靠性和限制
 
-- 相同发布方和 `idempotency_key` 只创建一个 Hub 任务。
-- 单个 Hub 内的客户端当前一次领取一个任务；多个 Hub 可以各自分配任务。同一电脑上的视频号解析会跨 Hub 串行执行，避免同时操作微信视频号。
-- 单个任务 payload 或 result 上限为 1 MiB。
+- 相同发布方和 `idempotency_key` 只创建一个任务。
+- 每台设备当前一次领取一个任务；同一操作系统内的视频号解析串行执行。
+- 单次调用的 args 或 result 上限为 1 MiB。
 - 完成和失败任务保留 7 天。
-- 任务可能因租约过期而再次执行，执行端必须允许重复调用。下载服务已有内容冲突检查；调用方仍应提供稳定的 `idempotency_key`。
-- `HUB_TOKEN` 是同一 Worker 内客户端共享的信任边界。互不信任的环境应使用不同 Worker/token；实例 `name` 只是本地别名，`id` 只隔离状态，不隔离拥有相同 token 的调用方。
+- 任务可能因租约过期再次执行，执行端必须允许重复调用。
+- `HUB_TOKEN` 是所有设备共享的高权限 Secret，只应写入设备配置；面向人员和外部系统必须分发独立调用 Token。
+- 动态调用 Token 当前拥有全部在线 `methods` 的调用权限；更细粒度的方法授权、限流和计费仍属于后续的 Hub 市场或上层网关。

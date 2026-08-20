@@ -81,6 +81,8 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/v1/third_party_downloader/status", c.handle_third_party_download_status)
 	c.engine.GET("/api/hub/status", c.handle_hub_status)
 	c.engine.GET("/api/hub/tasks", c.handle_hub_task_list)
+	c.engine.POST("/api/hub/call", c.handle_hub_call_submit)
+	c.engine.POST("/api/hub/tasks", c.handle_hub_call_submit)
 	c.engine.GET("/api/hub/tasks/:id", c.handle_hub_task_get)
 	c.engine.POST("/api/hub/tasks/wxchannels", c.handle_hub_wxchannels_submit)
 	c.engine.POST("/api/hub/tasks/download", c.handle_hub_download_submit)

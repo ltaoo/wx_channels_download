@@ -665,8 +665,8 @@ func (c *Config) LoadConfig() error {
 		Key:         "hub.deploy.token",
 		Type:        ConfigTypeString,
 		Default:     "",
-		Description: "部署为 Cloudflare Worker HUB_TOKEN secret 的访问凭证",
-		Title:       "Hub 部署 Token",
+		Description: "部署为 HUB_TOKEN secret 的设备连接凭证；不要分发给外部调用者",
+		Title:       "Hub 设备 Secret",
 		Group:       "Hub",
 		Sensitive:   true,
 	})
@@ -674,17 +674,66 @@ func (c *Config) LoadConfig() error {
 		Key:         "hub.deploy.adminToken",
 		Type:        ConfigTypeString,
 		Default:     "",
-		Description: "保护 Hub 管理页面的独立管理员密码，不能与客户端 Token 相同",
+		Description: "保护 Hub 管理页面和调用 Token 管理 API 的独立管理员密码，不能与设备 Secret 相同",
 		Title:       "Hub 管理员 Token",
 		Group:       "Hub",
 		Sensitive:   true,
 	})
 	Register(ConfigField{
-		Key:         "hub.defaultInstance",
+		Key:         "hub.enabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否将当前操作系统设备连接到个人 Hub",
+		Title:       "启用 Hub 设备连接",
+		Group:       "Hub",
+	})
+	Register(ConfigField{
+		Key:         "hub.url",
 		Type:        ConfigTypeString,
 		Default:     "",
-		Description: "本地 API 未指定 hub 时使用的 hub.instances 名称；留空时使用第一个启用实例",
-		Title:       "默认 Hub 实例",
+		Description: "个人 Hub Worker 的 HTTPS 地址",
+		Title:       "Hub 地址",
+		Group:       "Hub",
+	})
+	Register(ConfigField{
+		Key:         "hub.deviceId",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "当前操作系统实例的稳定唯一标识；留空时使用系统主机名",
+		Title:       "设备 ID",
+		Group:       "Hub",
+	})
+	Register(ConfigField{
+		Key:         "hub.deviceName",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "管理页中显示的设备名称；留空时使用系统主机名",
+		Title:       "设备名称",
+		Group:       "Hub",
+	})
+	Register(ConfigField{
+		Key:         "hub.token",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "设备连接个人 Hub 使用的 Secret；必须与 Hub 部署的 HUB_TOKEN 一致",
+		Title:       "Hub 设备 Secret",
+		Group:       "Hub",
+		Sensitive:   true,
+	})
+	Register(ConfigField{
+		Key:         "hub.httpTimeoutSeconds",
+		Type:        ConfigTypeInt,
+		Default:     30,
+		Description: "设备调用 Hub HTTP API 的超时时间（秒）",
+		Title:       "Hub 请求超时",
+		Group:       "Hub",
+	})
+	Register(ConfigField{
+		Key:         "hub.methods",
+		Type:        ConfigTypeString,
+		Default:     "auto",
+		Description: "当前设备开放的方法；auto 自动发布全部已注册方法，none 不执行远程调用，也可填写逗号分隔的方法名",
+		Title:       "Hub 方法白名单",
 		Group:       "Hub",
 	})
 	// Update auto-update configuration

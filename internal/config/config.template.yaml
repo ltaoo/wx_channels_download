@@ -103,16 +103,10 @@ hub:
     pagesProjectName: ""
     token: ""
     adminToken: ""
-  defaultInstance: ""
-  instances: []
-  # instances:
-  #   - name: "home"
-  #     enabled: true
-  #     url: "https://wx-channels-hub.example.workers.dev"
-  #     id: "home"
-  #     clientId: "computer-c"
-  #     token: ""
-  #     httpTimeoutSeconds: 30
-  #     capabilities:
-  #       wxchannels: true
-  #       download: false
+  enabled: false
+  url: "https://wx-channels-hub.example.workers.dev"
+  deviceId: ""
+  deviceName: ""
+  token: ""
+  httpTimeoutSeconds: 30
+  methods: "auto"

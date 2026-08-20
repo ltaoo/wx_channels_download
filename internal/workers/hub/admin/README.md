@@ -14,6 +14,8 @@ Browser
 
 `worker.js` 使用 Pages 高级模式和 HTTP Basic Auth 保护整个项目。用户名固定为 `admin`，密码来自 Pages secret `HUB_ADMIN_TOKEN`。API 代理保留 Authorization header，Worker 会再次验证同一个管理员 Token。
 
+管理页通过右侧“调用 Token”抽屉调用 `/admin/api/access-tokens`，创建、立即过期和移除外部调用凭证。Token 可以留空自动生成，也可以手动指定；用途或使用人可选填。Token 明文只在创建响应中出现一次，Durable Object 只保存 SHA-256 摘要、可选说明、到期时间和最近使用时间。设备使用的 `HUB_TOKEN` 不会显示在管理页，也不应分发给外部调用者。
+
 ## 部署
 
 在项目根目录执行以下命令，会依次部署 Worker、创建或更新 Pages 项目、配置 Secret 和 Service Binding，并发布管理页面：

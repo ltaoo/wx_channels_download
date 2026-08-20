@@ -124,6 +124,7 @@ export default defineConfig(async () => {
           text: "功能",
           items: [
             { text: "API", link: "/feature/api" },
+            { text: "Hub", link: "/feature/hub" },
             {
               text: "MCP",
               link: "/feature/mcp",

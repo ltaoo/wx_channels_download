@@ -1,5 +1,5 @@
-// Package hub connects one downloader instance to the Cloudflare Durable
-// Objects task hub. Connections are outbound-only, so peers do not need to be
+// Package hub connects one operating-system device to the Cloudflare Durable
+// Objects task Hub. Connections are outbound-only, so devices do not need to be
 // reachable from each other or from the public Internet.
 package hub
 
@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +21,8 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
 )
+
+var method_name_pattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 
 // Client maintains the Hub WebSocket and provides the Hub HTTP API.
 type Client struct {
@@ -116,27 +119,46 @@ func (c *Client) Close() {
 // Status returns a snapshot without exposing the bearer token.
 func (c *Client) Status() Status {
 	if c == nil {
-		return Status{Capabilities: []string{}}
+		return Status{Methods: []string{}}
 	}
 	c.state_mu.RLock()
 	defer c.state_mu.RUnlock()
-	capabilities := append([]string(nil), c.config.Capabilities...)
+	methods := append([]string(nil), c.config.Methods...)
 	return Status{
-		Enabled:      c.config.Enabled,
-		Connected:    c.connected,
-		HubID:        c.config.HubID,
-		ClientID:     c.config.ClientID,
-		URL:          c.config.URL,
-		Capabilities: capabilities,
-		ConnectedAt:  c.connected_at,
-		LastError:    c.last_error,
+		Enabled:     c.config.Enabled,
+		Connected:   c.connected,
+		DeviceID:    c.config.DeviceID,
+		DeviceName:  c.config.DeviceName,
+		DeviceOS:    c.config.DeviceOS,
+		URL:         c.config.URL,
+		Methods:     methods,
+		ConnectedAt: c.connected_at,
+		LastError:   c.last_error,
 	}
 }
 
 // SubmitTask persists and dispatches a task through the Hub.
 func (c *Client) SubmitTask(request_context context.Context, request SubmitTaskRequest) (*Task, error) {
 	var response task_response
-	if err := c.do_json(request_context, http.MethodPost, "/tasks", request, nil, &response); err != nil {
+	path := "/call"
+	var body any = request
+	if c.config.LegacyHubID != "" {
+		path = "/tasks"
+		body = struct {
+			Kind               string `json:"kind"`
+			TargetClientID     string `json:"target_client_id,omitempty"`
+			RequiredCapability string `json:"required_capability,omitempty"`
+			IdempotencyKey     string `json:"idempotency_key,omitempty"`
+			Payload            any    `json:"payload"`
+		}{
+			Kind:               request.Method,
+			TargetClientID:     request.TargetDeviceID,
+			RequiredCapability: request.Method,
+			IdempotencyKey:     request.IdempotencyKey,
+			Payload:            request.Args,
+		}
+	}
+	if err := c.do_json(request_context, http.MethodPost, path, body, nil, &response); err != nil {
 		return nil, err
 	}
 	return &response.Task, nil
@@ -154,13 +176,17 @@ func (c *Client) GetTask(request_context context.Context, task_id string) (*Task
 	return &response.Task, nil
 }
 
-// ListTasks returns tasks published by this client.
+// ListTasks returns calls published by this device.
 func (c *Client) ListTasks(request_context context.Context, status string, limit int) ([]Task, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	query := url.Values{}
-	query.Set("publisher_id", c.config.ClientID)
+	publisher_query := "publisher_device_id"
+	if c.config.LegacyHubID != "" {
+		publisher_query = "publisher_id"
+	}
+	query.Set(publisher_query, c.config.DeviceID)
 	query.Set("limit", strconv.Itoa(limit))
 	if strings.TrimSpace(status) != "" {
 		query.Set("status", strings.TrimSpace(status))
@@ -177,17 +203,22 @@ func (c *Client) validate_config() error {
 	if err != nil || parsed_url.Host == "" || (parsed_url.Scheme != "http" && parsed_url.Scheme != "https") {
 		return errors.New("hub.url must be an http or https URL")
 	}
-	if strings.TrimSpace(c.config.HubID) == "" {
-		return errors.New("hub.id is required")
-	}
-	if strings.TrimSpace(c.config.ClientID) == "" {
-		return errors.New("hub.clientId is required")
+	if strings.TrimSpace(c.config.DeviceID) == "" {
+		return errors.New("hub.deviceId is required")
 	}
 	if strings.TrimSpace(c.config.Token) == "" {
 		return errors.New("hub.token is required")
 	}
-	if c.executor == nil && len(c.config.Capabilities) > 0 {
-		return errors.New("hub task executor is required when capabilities are enabled")
+	if len(c.config.Methods) > 64 {
+		return errors.New("hub.methods cannot contain more than 64 methods")
+	}
+	for _, method := range c.config.Methods {
+		if !method_name_pattern.MatchString(method) {
+			return fmt.Errorf("invalid Hub method name: %q", method)
+		}
+	}
+	if c.executor == nil && len(c.config.Methods) > 0 {
+		return errors.New("hub task executor is required when methods are registered")
 	}
 	return nil
 }
@@ -226,7 +257,7 @@ func (c *Client) run(run_context context.Context) {
 		connection.SetReadLimit(max_message_bytes)
 		c.set_connected(connection)
 		if c.logger != nil {
-			c.logger.Info().Str("hub_id", c.config.HubID).Str("client_id", c.config.ClientID).Msg("hub connected")
+			c.logger.Info().Str("device_id", c.config.DeviceID).Msg("hub connected")
 		}
 		err = c.read_messages(run_context, connection)
 		_ = connection.Close()
@@ -373,15 +404,21 @@ func (c *Client) set_disconnected(connection *websocket.Conn, err error) {
 	}
 	c.state_mu.Unlock()
 	if err != nil && c.logger != nil {
-		c.logger.Warn().Err(err).Str("hub_id", c.config.HubID).Msg("hub disconnected")
+		c.logger.Warn().Err(err).Str("device_id", c.config.DeviceID).Msg("hub disconnected")
 	}
 }
 
 func (c *Client) request_headers() http.Header {
 	headers := http.Header{}
 	headers.Set("Authorization", "Bearer "+c.config.Token)
-	headers.Set("X-Hub-Client-ID", c.config.ClientID)
-	headers.Set("X-Hub-Capabilities", strings.Join(c.config.Capabilities, ","))
+	headers.Set("X-Hub-Device-ID", c.config.DeviceID)
+	headers.Set("X-Hub-Device-Name", c.config.DeviceName)
+	headers.Set("X-Hub-Device-OS", c.config.DeviceOS)
+	headers.Set("X-Hub-Methods", strings.Join(c.config.Methods, ","))
+	if c.config.LegacyHubID != "" {
+		headers.Set("X-Hub-Client-ID", c.config.DeviceID)
+		headers.Set("X-Hub-Capabilities", strings.Join(c.config.Methods, ","))
+	}
 	return headers
 }
 
@@ -398,7 +435,10 @@ func (c *Client) websocket_url() string {
 
 func (c *Client) hub_url(path string, query url.Values) string {
 	base_url := strings.TrimRight(c.config.URL, "/")
-	result := base_url + "/v1/hubs/" + url.PathEscape(c.config.HubID) + path
+	result := base_url + "/v1" + path
+	if c.config.LegacyHubID != "" {
+		result = base_url + "/v1/hubs/" + url.PathEscape(c.config.LegacyHubID) + path
+	}
 	if len(query) > 0 {
 		result += "?" + query.Encode()
 	}

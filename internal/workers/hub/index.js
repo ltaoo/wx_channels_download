@@ -10,16 +10,15 @@ import { DurableObject } from "cloudflare:workers";
 /** @typedef {"queued" | "assigned" | "running" | "completed" | "failed"} TaskStatus */
 
 /**
- * @typedef {Object} TaskRow
+ * @typedef {Object} CallRow
  * @property {string} id
- * @property {string} kind
- * @property {string} publisher_id
- * @property {string | null} target_client_id
- * @property {string} required_capability
+ * @property {string} method
+ * @property {string} publisher_device_id
+ * @property {string | null} target_device_id
  * @property {string | null} idempotency_key
- * @property {string} payload_json
+ * @property {string} args_json
  * @property {TaskStatus} status
- * @property {string | null} assigned_client_id
+ * @property {string | null} assigned_device_id
  * @property {string | null} lease_token
  * @property {number | null} lease_expires_at
  * @property {number} attempt_count
@@ -32,23 +31,23 @@ import { DurableObject } from "cloudflare:workers";
 
 /**
  * @typedef {Object} SocketAttachment
- * @property {string} client_id
+ * @property {string} device_id
+ * @property {string} [client_id]
  * @property {string} connection_id
- * @property {string[]} capabilities
+ * @property {string[]} methods
+ * @property {string[]} [capabilities]
+ * @property {string} device_name
+ * @property {string} device_os
  * @property {number} [connected_at]
  */
 
 /**
- * @typedef {Object} HubRegistryRow
- * @property {string} id
- * @property {number} last_seen_at
- */
-
-/**
- * @typedef {Object} ClientRegistryRow
- * @property {string} client_id
+ * @typedef {Object} DeviceRegistryRow
+ * @property {string} device_id
  * @property {string} connection_id
- * @property {string} capabilities_json
+ * @property {string} methods_json
+ * @property {string} device_name
+ * @property {string} device_os
  * @property {number} connected_at
  * @property {number} last_seen_at
  * @property {number | null} disconnected_at
@@ -56,11 +55,37 @@ import { DurableObject } from "cloudflare:workers";
  */
 
 /**
+ * @typedef {Object} AccessTokenRow
+ * @property {string} id
+ * @property {string} name
+ * @property {string} token_hash
+ * @property {string} token_hint
+ * @property {number | null} expires_at
+ * @property {number} created_at
+ * @property {number | null} last_used_at
+ */
+
+/**
+ * @typedef {Object} InvokeWaiter
+ * @property {(row: CallRow | null) => void} resolve
+ * @property {number} timeout_id
+ */
+
+/**
+ * @typedef {Object} CreateAccessTokenBody
+ * @property {string} [name]
+ * @property {string | null} [token]
+ * @property {number | null} [expires_in_seconds]
+ */
+
+/**
  * @typedef {Object} CreateTaskBody
+ * @property {string} [method]
  * @property {string} [kind]
+ * @property {string} [target_device_id]
  * @property {string} [target_client_id]
- * @property {string} [required_capability]
  * @property {string} [idempotency_key]
+ * @property {unknown} [args]
  * @property {unknown} [payload]
  */
 
@@ -81,8 +106,8 @@ import { DurableObject } from "cloudflare:workers";
  */
 
 /**
- * @typedef {Object} BusyClientRow
- * @property {string} assigned_client_id
+ * @typedef {Object} BusyDeviceRow
+ * @property {string} assigned_device_id
  */
 
 /**
@@ -91,25 +116,19 @@ import { DurableObject } from "cloudflare:workers";
  */
 
 /**
- * @typedef {Object} AdminTestBody
- * @property {string} hub_id
- * @property {string} target_client_id
- * @property {string} url
+ * @typedef {Object} AdminCallBody
+ * @property {string} target_device_id
+ * @property {string} method
+ * @property {Record<string, unknown>} args
+ * @property {string} [idempotency_key]
  */
 
 /**
- * @typedef {Object} AdminDownloadBody
- * @property {string} hub_id
- * @property {string} target_client_id
- * @property {string} source_task_id
- * @property {string} [download_dir]
- * @property {string} [filename]
- */
-
-/**
- * @typedef {Object} ClientSummary
- * @property {string} client_id
- * @property {string[]} capabilities
+ * @typedef {Object} DeviceSummary
+ * @property {string} device_id
+ * @property {string} device_name
+ * @property {string} device_os
+ * @property {string[]} methods
  * @property {"online" | "busy" | "offline"} status
  */
 
@@ -118,8 +137,12 @@ const MAX_ATTEMPTS = 10;
 const LEASE_MILLISECONDS = 120_000;
 const RETENTION_MILLISECONDS = 7 * 24 * 60 * 60 * 1000;
 const MAINTENANCE_MILLISECONDS = 24 * 60 * 60 * 1000;
-const VALID_TASK_KINDS = new Set(["wxchannels.fetch", "download.create"]);
-const HUB_DIRECTORY_NAME = "__hub_directory__";
+const HUB_OBJECT_NAME = "hub";
+const MAX_ACCESS_TOKENS = 500;
+const MIN_ACCESS_TOKEN_LENGTH = 16;
+const MAX_ACCESS_TOKEN_LENGTH = 256;
+const MAX_ACCESS_TOKEN_LIFETIME_SECONDS = 366 * 24 * 60 * 60;
+const INVOKE_TIMEOUT_MILLISECONDS = 10_000;
 
 /**
  * @param {unknown} value
@@ -177,6 +200,65 @@ function safe_equal(left, right) {
 }
 
 /**
+ * @param {string} value
+ * @returns {Promise<string>}
+ */
+async function sha256_hex(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/** @returns {string} */
+function generate_access_token() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return "hub_call_" + btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+/**
+ * @param {string} value
+ * @returns {boolean}
+ */
+function valid_access_token(value) {
+  return (
+    value.length >= MIN_ACCESS_TOKEN_LENGTH &&
+    value.length <= MAX_ACCESS_TOKEN_LENGTH &&
+    /^[A-Za-z0-9._~+/=-]+$/.test(value)
+  );
+}
+
+/**
+ * @param {string} token
+ * @returns {string}
+ */
+function access_token_hint(token) {
+  const visible_prefix_length = token.startsWith("hub_call_") ? 17 : 4;
+  return token.slice(0, visible_prefix_length) + "…" + token.slice(-4);
+}
+
+/**
+ * @param {AccessTokenRow} row
+ * @param {number} [now]
+ * @returns {Record<string, unknown>}
+ */
+function access_token_value(row, now = Date.now()) {
+  const expired = row.expires_at !== null && row.expires_at <= now;
+  return {
+    id: row.id,
+    name: row.name,
+    token_hint: row.token_hint,
+    status: expired ? "expired" : "active",
+    expires_at: row.expires_at,
+    created_at: row.created_at,
+    last_used_at: row.last_used_at,
+  };
+}
+
+/**
  * @param {Request} request
  * @param {Env} env
  * @returns {boolean}
@@ -220,60 +302,39 @@ function admin_auth_required() {
 
 /**
  * @param {Env} env
- * @param {string} hub_id
- * @returns {Promise<void>}
- */
-async function register_hub(env, hub_id) {
-  const directory = env.HUBS.getByName(HUB_DIRECTORY_NAME);
-  const response = await directory.fetch("https://internal/directory/register", {
-    method: "POST",
-    body: hub_id,
-  });
-  if (!response.ok) {
-    throw new Error(`failed to register hub ${hub_id}: ${response.status}`);
-  }
-}
-
-/**
- * @param {Env} env
  * @returns {Promise<Response>}
  */
 async function admin_overview(env) {
-  const directory = env.HUBS.getByName(HUB_DIRECTORY_NAME);
-  const directory_response = await directory.fetch("https://internal/directory/hubs");
-  if (!directory_response.ok) {
-    return error_response("failed to load hub directory", 500);
+  const object = env.HUBS.getByName(HUB_OBJECT_NAME);
+  const [response, access_tokens_response] = await Promise.all([
+    object.fetch("https://internal/"),
+    object.fetch("https://internal/_admin/access-tokens"),
+  ]);
+  if (!response.ok || !access_tokens_response.ok) {
+    return error_response("failed to load Hub overview", 500);
   }
-  /** @type {{ hubs?: HubRegistryRow[] }} */
-  const directory_value = await directory_response.json();
-  const registered_hubs = Array.isArray(directory_value.hubs) ? directory_value.hubs : [];
-  const hubs = await Promise.all(
-    registered_hubs.map(async (registered_hub) => {
-      try {
-        const object = env.HUBS.getByName(registered_hub.id);
-        const response = await object.fetch("https://internal/");
-        if (!response.ok) {
-          throw new Error(`status ${response.status}`);
-        }
-        /** @type {Record<string, unknown>} */
-        const summary = await response.json();
-        return {
-          id: registered_hub.id,
-          last_seen_at: registered_hub.last_seen_at,
-          ...summary,
-        };
-      } catch (error) {
-        return {
-          id: registered_hub.id,
-          last_seen_at: registered_hub.last_seen_at,
-          clients: [],
-          task_counts: [],
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-    }),
-  );
-  return json_response({ generated_at: Date.now(), hubs });
+  /** @type {Record<string, unknown>} */
+  const summary = await response.json();
+  /** @type {{ access_tokens?: Record<string, unknown>[] }} */
+  const access_tokens = await access_tokens_response.json();
+  return json_response({
+    generated_at: Date.now(),
+    ...summary,
+    access_tokens: Array.isArray(access_tokens.access_tokens)
+      ? access_tokens.access_tokens
+      : [],
+  });
+}
+
+/**
+ * @param {Env} env
+ * @param {Request} request
+ * @param {string} path
+ * @returns {Promise<Response>}
+ */
+async function admin_access_token_request(env, request, path) {
+  const object = env.HUBS.getByName(HUB_OBJECT_NAME);
+  return object.fetch(new Request("https://internal/_admin/access-tokens" + path, request));
 }
 
 /**
@@ -281,12 +342,12 @@ async function admin_overview(env) {
  * @param {Request} request
  * @returns {Promise<Response>}
  */
-async function admin_create_test(env, request) {
+async function admin_create_call(env, request) {
   const content_length = Number(request.headers.get("Content-Length") ?? "0");
-  if (content_length > 16 * 1024) {
+  if (content_length > MAX_BODY_BYTES) {
     return error_response("request body is too large", 413);
   }
-  /** @type {AdminTestBody} */
+  /** @type {AdminCallBody} */
   let body;
   try {
     body = await request.json();
@@ -296,191 +357,91 @@ async function admin_create_test(env, request) {
   if (body === null || typeof body !== "object" || Array.isArray(body)) {
     return error_response("invalid JSON body", 400);
   }
-  const hub_id = typeof body.hub_id === "string" ? body.hub_id.trim() : "";
-  const target_client_id = typeof body.target_client_id === "string" ? body.target_client_id.trim() : "";
-  const test_url = typeof body.url === "string" ? body.url.trim() : "";
-  if (!valid_identifier(hub_id) || hub_id === HUB_DIRECTORY_NAME) {
-    return error_response("invalid hub_id", 400);
+  const target_device_id =
+    typeof body.target_device_id === "string" ? body.target_device_id.trim() : "";
+  const method = typeof body.method === "string" ? body.method.trim() : "";
+  const args = body.args ?? {};
+  if (target_device_id !== "" && !valid_identifier(target_device_id)) {
+    return error_response("invalid target_device_id", 400);
   }
-  if (!valid_identifier(target_client_id)) {
-    return error_response("invalid target_client_id", 400);
+  if (!valid_identifier(method)) {
+    return error_response("invalid method", 400);
   }
-  if (test_url === "" || test_url.length > 4096) {
-    return error_response("invalid url", 400);
+  if (args === null || typeof args !== "object" || Array.isArray(args)) {
+    return error_response("args must be an object", 400);
   }
-  try {
-    const parsed_url = new URL(test_url);
-    if (parsed_url.protocol !== "http:" && parsed_url.protocol !== "https:") {
-      return error_response("url must use http or https", 400);
+
+  const object = env.HUBS.getByName(HUB_OBJECT_NAME);
+  if (target_device_id !== "") {
+    const summary_response = await object.fetch("https://internal/");
+    if (!summary_response.ok) {
+      return error_response("failed to load Hub devices", 502);
     }
-  } catch {
-    return error_response("invalid url", 400);
+    /** @type {{ devices?: DeviceSummary[] }} */
+    const summary = await summary_response.json();
+    const devices = Array.isArray(summary.devices) ? summary.devices : [];
+    const target_device = devices.find((device) => device.device_id === target_device_id);
+    if (target_device === undefined) {
+      return error_response("target device is not registered", 404);
+    }
+    if (target_device.status === "offline") {
+      return error_response("target device is offline", 409);
+    }
+    if (!Array.isArray(target_device.methods) || !target_device.methods.includes(method)) {
+      return error_response("target device does not provide method " + method, 409);
+    }
   }
 
-  const object = env.HUBS.getByName(hub_id);
-  const summary_response = await object.fetch("https://internal/");
-  if (!summary_response.ok) {
-    return error_response("failed to load hub clients", 502);
-  }
-  /** @type {{ clients?: ClientSummary[] }} */
-  const summary = await summary_response.json();
-  const clients = Array.isArray(summary.clients) ? summary.clients : [];
-  const target_client = clients.find((client) => client.client_id === target_client_id);
-  if (target_client === undefined) {
-    return error_response("target client is not registered", 404);
-  }
-  if (target_client.status === "offline") {
-    return error_response("target client is offline", 409);
-  }
-  if (!Array.isArray(target_client.capabilities) || !target_client.capabilities.includes("wxchannels.fetch")) {
-    return error_response("target client does not provide wxchannels.fetch", 409);
-  }
-
-  return object.fetch("https://internal/tasks", {
+  return object.fetch("https://internal/call", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Hub-Client-ID": "admin-console",
+      "X-Hub-Publisher-ID": "admin-console",
     },
     body: JSON.stringify({
-      kind: "wxchannels.fetch",
-      target_client_id,
-      required_capability: "wxchannels.fetch",
-      idempotency_key: "admin-test-" + crypto.randomUUID(),
-      payload: { url: test_url },
+      method,
+      target_device_id,
+      idempotency_key:
+        typeof body.idempotency_key === "string" && body.idempotency_key.trim() !== ""
+          ? body.idempotency_key.trim()
+          : "admin-call-" + crypto.randomUUID(),
+      args,
     }),
   });
 }
 
 /**
  * @param {Env} env
- * @param {Request} request
- * @returns {Promise<Response>}
- */
-async function admin_create_download(env, request) {
-  const content_length = Number(request.headers.get("Content-Length") ?? "0");
-  if (content_length > 16 * 1024) {
-    return error_response("request body is too large", 413);
-  }
-  /** @type {AdminDownloadBody} */
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return error_response("invalid JSON", 400);
-  }
-  if (body === null || typeof body !== "object" || Array.isArray(body)) {
-    return error_response("invalid JSON body", 400);
-  }
-  const hub_id = typeof body.hub_id === "string" ? body.hub_id.trim() : "";
-  const target_client_id = typeof body.target_client_id === "string" ? body.target_client_id.trim() : "";
-  const source_task_id = typeof body.source_task_id === "string" ? body.source_task_id.trim() : "";
-  const download_dir = typeof body.download_dir === "string" ? body.download_dir.trim() : "";
-  const filename = typeof body.filename === "string" ? body.filename.trim() : "";
-  if (!valid_identifier(hub_id) || hub_id === HUB_DIRECTORY_NAME) {
-    return error_response("invalid hub_id", 400);
-  }
-  if (!valid_identifier(target_client_id)) {
-    return error_response("invalid target_client_id", 400);
-  }
-  if (!/^[A-Za-z0-9-]{1,128}$/.test(source_task_id)) {
-    return error_response("invalid source_task_id", 400);
-  }
-  if (download_dir.length > 4096 || filename.length > 512) {
-    return error_response("download path or filename is too long", 400);
-  }
-
-  const object = env.HUBS.getByName(hub_id);
-  const summary_response = await object.fetch("https://internal/");
-  if (!summary_response.ok) {
-    return error_response("failed to load hub clients", 502);
-  }
-  /** @type {{ clients?: ClientSummary[] }} */
-  const summary = await summary_response.json();
-  const clients = Array.isArray(summary.clients) ? summary.clients : [];
-  const target_client = clients.find((client) => client.client_id === target_client_id);
-  if (target_client === undefined) {
-    return error_response("target client is not registered", 404);
-  }
-  if (target_client.status === "offline") {
-    return error_response("target client is offline", 409);
-  }
-  if (!Array.isArray(target_client.capabilities) || !target_client.capabilities.includes("download.create")) {
-    return error_response("target client does not provide download.create", 409);
-  }
-
-  const source_response = await object.fetch("https://internal/tasks/" + encodeURIComponent(source_task_id));
-  if (!source_response.ok) {
-    return error_response("source fetch task not found", 404);
-  }
-  /** @type {{ task?: Record<string, unknown> }} */
-  const source_value = await source_response.json();
-  const source_task = source_value.task;
-  if (source_task === undefined || source_task.kind !== "wxchannels.fetch") {
-    return error_response("source task is not wxchannels.fetch", 409);
-  }
-  if (source_task.status !== "completed" || source_task.result === null || source_task.result === undefined) {
-    return error_response("source fetch task has not completed", 409);
-  }
-
-  return object.fetch("https://internal/tasks", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Hub-Client-ID": "admin-console",
-    },
-    body: JSON.stringify({
-      kind: "download.create",
-      target_client_id,
-      required_capability: "download.create",
-      idempotency_key: "admin-download-" + crypto.randomUUID(),
-      payload: {
-        request: {
-          platform: "wxchannels",
-          content: source_task.result,
-          build_from_fetch: true,
-          download_dir,
-          filename,
-          config: {},
-          auto_start: true,
-        },
-      },
-    }),
-  });
-}
-
-/**
- * @param {Env} env
- * @param {string} hub_id
  * @param {string} task_id
  * @returns {Promise<Response>}
  */
-async function admin_task_status(env, hub_id, task_id) {
-  if (!valid_identifier(hub_id) || hub_id === HUB_DIRECTORY_NAME) {
-    return error_response("invalid hub_id", 400);
-  }
+async function admin_task_status(env, task_id) {
   if (!/^[A-Za-z0-9-]{1,128}$/.test(task_id)) {
     return error_response("invalid task id", 400);
   }
-  const object = env.HUBS.getByName(hub_id);
+  const object = env.HUBS.getByName(HUB_OBJECT_NAME);
   return object.fetch("https://internal/tasks/" + encodeURIComponent(task_id));
 }
 
 /**
- * @param {TaskRow} row
+ * @param {CallRow} row
  * @returns {Record<string, unknown>}
  */
 function task_value(row) {
   return {
     id: row.id,
-    kind: row.kind,
-    publisher_id: row.publisher_id,
-    target_client_id: row.target_client_id,
-    required_capability: row.required_capability,
+    method: row.method,
+    kind: row.method,
+    publisher_id: row.publisher_device_id,
+    publisher_device_id: row.publisher_device_id,
+    target_client_id: row.target_device_id,
+    target_device_id: row.target_device_id,
     idempotency_key: row.idempotency_key,
-    payload: JSON.parse(row.payload_json),
+    args: JSON.parse(row.args_json),
+    payload: JSON.parse(row.args_json),
     status: row.status,
-    assigned_client_id: row.assigned_client_id,
+    assigned_client_id: row.assigned_device_id,
+    assigned_device_id: row.assigned_device_id,
     lease_expires_at: row.lease_expires_at,
     attempt_count: row.attempt_count,
     result: row.result_json === null ? null : JSON.parse(row.result_json),
@@ -499,7 +460,16 @@ function socket_attachment(socket) {
   try {
     /** @type {SocketAttachment | null} */
     const value = socket.deserializeAttachment();
-    return value?.client_id ? value : null;
+    if (!value?.device_id && value?.client_id) {
+      value.device_id = value.client_id;
+    }
+    if (!value?.device_id) return null;
+    value.methods = Array.isArray(value.methods)
+      ? value.methods
+      : Array.isArray(value.capabilities)
+        ? value.capabilities
+        : [];
+    return value;
   } catch {
     return null;
   }
@@ -509,11 +479,11 @@ function socket_attachment(socket) {
  * @param {string} value
  * @returns {string[]}
  */
-function parse_capabilities(value) {
+function parse_methods(value) {
   try {
-    const capabilities = JSON.parse(value);
-    return Array.isArray(capabilities)
-      ? capabilities.filter((capability) => typeof capability === "string")
+    const methods = JSON.parse(value);
+    return Array.isArray(methods)
+      ? methods.filter((method) => typeof method === "string")
       : [];
   } catch {
     return [];
@@ -527,17 +497,18 @@ export class HubDurableObject extends DurableObject {
    */
   constructor(ctx, env) {
     super(ctx, env);
+    /** @type {Map<string, InvokeWaiter>} */
+    this.invoke_waiters = new Map();
     this.ctx.storage.sql.exec(`
-      CREATE TABLE IF NOT EXISTS tasks (
+      CREATE TABLE IF NOT EXISTS calls (
         id TEXT PRIMARY KEY,
-        kind TEXT NOT NULL,
-        publisher_id TEXT NOT NULL,
-        target_client_id TEXT,
-        required_capability TEXT NOT NULL,
+        method TEXT NOT NULL,
+        publisher_device_id TEXT NOT NULL,
+        target_device_id TEXT,
         idempotency_key TEXT,
-        payload_json TEXT NOT NULL,
+        args_json TEXT NOT NULL,
         status TEXT NOT NULL,
-        assigned_client_id TEXT,
+        assigned_device_id TEXT,
         lease_token TEXT,
         lease_expires_at INTEGER,
         attempt_count INTEGER NOT NULL DEFAULT 0,
@@ -547,29 +518,81 @@ export class HubDurableObject extends DurableObject {
         updated_at INTEGER NOT NULL,
         completed_at INTEGER
       );
-      CREATE UNIQUE INDEX IF NOT EXISTS tasks_idempotency
-        ON tasks(publisher_id, idempotency_key)
+      CREATE UNIQUE INDEX IF NOT EXISTS calls_idempotency
+        ON calls(publisher_device_id, idempotency_key)
         WHERE idempotency_key IS NOT NULL;
-      CREATE INDEX IF NOT EXISTS tasks_dispatch
-        ON tasks(status, created_at);
-      CREATE INDEX IF NOT EXISTS tasks_lease
-        ON tasks(status, lease_expires_at);
-      CREATE TABLE IF NOT EXISTS hub_registry (
-        id TEXT PRIMARY KEY,
-        last_seen_at INTEGER NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS client_registry (
-        client_id TEXT PRIMARY KEY,
+      CREATE INDEX IF NOT EXISTS calls_dispatch
+        ON calls(status, created_at);
+      CREATE INDEX IF NOT EXISTS calls_lease
+        ON calls(status, lease_expires_at);
+      CREATE TABLE IF NOT EXISTS devices (
+        device_id TEXT PRIMARY KEY,
         connection_id TEXT NOT NULL,
-        capabilities_json TEXT NOT NULL,
+        methods_json TEXT NOT NULL,
+        device_name TEXT NOT NULL DEFAULT '',
+        device_os TEXT NOT NULL DEFAULT '',
         connected_at INTEGER NOT NULL,
         last_seen_at INTEGER NOT NULL,
         disconnected_at INTEGER,
         status TEXT NOT NULL
       );
-      CREATE INDEX IF NOT EXISTS client_registry_status
-        ON client_registry(status, last_seen_at);
+      CREATE INDEX IF NOT EXISTS devices_status
+        ON devices(status, last_seen_at);
+      CREATE TABLE IF NOT EXISTS access_tokens (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        token_hint TEXT NOT NULL,
+        expires_at INTEGER,
+        created_at INTEGER NOT NULL,
+        last_used_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS access_tokens_expiration
+        ON access_tokens(expires_at);
     `);
+    const legacy_tables = new Set(
+      this.ctx.storage.sql
+        .exec("SELECT name FROM sqlite_master WHERE type = 'table'")
+        .toArray()
+        .map((row) => row.name),
+    );
+    if (legacy_tables.has("tasks")) {
+      this.ctx.storage.sql.exec(`
+        INSERT OR IGNORE INTO calls (
+          id, method, publisher_device_id, target_device_id, idempotency_key,
+          args_json, status, assigned_device_id, lease_token, lease_expires_at,
+          attempt_count, result_json, error_message, created_at, updated_at, completed_at
+        )
+        SELECT id, kind, publisher_id, target_client_id, idempotency_key,
+          payload_json, status, assigned_client_id, lease_token, lease_expires_at,
+          attempt_count, result_json, error_message, created_at, updated_at, completed_at
+        FROM tasks
+      `);
+    }
+    if (legacy_tables.has("client_registry")) {
+      const registry_columns = this.ctx.storage.sql
+        .exec("PRAGMA table_info(client_registry)")
+        .toArray();
+      if (!registry_columns.some((column) => column.name === "device_name")) {
+        this.ctx.storage.sql.exec(
+          "ALTER TABLE client_registry ADD COLUMN device_name TEXT NOT NULL DEFAULT ''",
+        );
+      }
+      if (!registry_columns.some((column) => column.name === "device_os")) {
+        this.ctx.storage.sql.exec(
+          "ALTER TABLE client_registry ADD COLUMN device_os TEXT NOT NULL DEFAULT ''",
+        );
+      }
+      this.ctx.storage.sql.exec(`
+        INSERT OR IGNORE INTO devices (
+          device_id, connection_id, methods_json, device_name, device_os,
+          connected_at, last_seen_at, disconnected_at, status
+        )
+        SELECT client_id, connection_id, capabilities_json, device_name, device_os,
+          connected_at, last_seen_at, disconnected_at, status
+        FROM client_registry
+      `);
+    }
   }
 
   /**
@@ -578,27 +601,45 @@ export class HubDurableObject extends DurableObject {
    */
   async fetch(request) {
     const url = new URL(request.url);
-    if (url.pathname === "/directory/register" && request.method === "POST") {
-      return this.register_hub(request);
-    }
-    if (url.pathname === "/directory/hubs" && request.method === "GET") {
-      return this.list_registered_hubs();
-    }
     if (url.pathname === "/connect") {
       return this.accept_connection(request);
     }
     if (url.pathname === "/" && request.method === "GET") {
       return this.summary();
     }
-    if (url.pathname === "/tasks" && request.method === "POST") {
+    if ((url.pathname === "/call" || url.pathname === "/tasks") && request.method === "POST") {
       return this.create_task(request);
     }
+    if (url.pathname === "/invoke" && request.method === "POST") {
+      return this.invoke(request);
+    }
     if (url.pathname === "/tasks" && request.method === "GET") {
-      return this.list_tasks(url);
+      return this.list_tasks(request, url);
     }
     const task_match = url.pathname.match(/^\/tasks\/([A-Za-z0-9-]+)$/);
     if (task_match && request.method === "GET") {
-      return this.get_task(task_match[1]);
+      return this.get_task(request, task_match[1]);
+    }
+    if (url.pathname === "/_admin/access-tokens" && request.method === "GET") {
+      return this.list_access_tokens();
+    }
+    if (url.pathname === "/_admin/access-tokens" && request.method === "POST") {
+      return this.create_access_token(request);
+    }
+    const access_token_match = url.pathname.match(
+      /^\/_admin\/access-tokens\/([A-Za-z0-9-]+)$/,
+    );
+    if (access_token_match && request.method === "DELETE") {
+      return this.delete_access_token(access_token_match[1]);
+    }
+    const access_token_expire_match = url.pathname.match(
+      /^\/_admin\/access-tokens\/([A-Za-z0-9-]+)\/expire$/,
+    );
+    if (access_token_expire_match && request.method === "POST") {
+      return this.expire_access_token(access_token_expire_match[1]);
+    }
+    if (url.pathname === "/_internal/access-tokens/verify" && request.method === "POST") {
+      return this.verify_access_token(request);
     }
     return error_response("not found", 404);
   }
@@ -607,27 +648,271 @@ export class HubDurableObject extends DurableObject {
    * @param {Request} request
    * @returns {Promise<Response>}
    */
-  async register_hub(request) {
-    const hub_id = (await request.text()).trim();
-    if (!valid_identifier(hub_id)) {
-      return error_response("invalid hub id", 400);
+  async invoke(request) {
+    const deadline = Date.now() + INVOKE_TIMEOUT_MILLISECONDS;
+    const task_response = await this.create_task(request, false);
+    if (!task_response.ok) {
+      return task_response;
     }
-    this.ctx.storage.sql.exec(
-      `INSERT INTO hub_registry (id, last_seen_at) VALUES (?, ?)
-       ON CONFLICT(id) DO UPDATE SET last_seen_at = excluded.last_seen_at`,
-      hub_id,
-      Date.now(),
-    );
-    return json_response({ ok: true });
+
+    /** @type {{ task?: { id?: string } }} */
+    let created;
+    try {
+      created = await task_response.json();
+    } catch {
+      return error_response("failed to create invoke task", 500);
+    }
+    const task_id = String(created.task?.id ?? "");
+    if (!/^[A-Za-z0-9-]{1,128}$/.test(task_id)) {
+      return error_response("failed to create invoke task", 500);
+    }
+
+    const remaining_milliseconds = Math.max(0, deadline - Date.now());
+    const row = await this.wait_for_invoke(task_id, remaining_milliseconds);
+    if (row === null) {
+      return error_response("invoke timed out after 10 seconds", 504);
+    }
+    if (row.status === "failed") {
+      return error_response(row.error_message ?? "invoke failed", 502);
+    }
+    if (row.status !== "completed") {
+      return error_response("invoke ended without a result", 500);
+    }
+    try {
+      return json_response(row.result_json === null ? null : JSON.parse(row.result_json));
+    } catch {
+      return error_response("invoke returned invalid JSON", 502);
+    }
+  }
+
+  /**
+   * @param {string} task_id
+   * @param {number} timeout_milliseconds
+   * @returns {Promise<CallRow | null>}
+   */
+  wait_for_invoke(task_id, timeout_milliseconds) {
+    const existing = this.find_task(task_id);
+    if (existing === null || existing.status === "completed" || existing.status === "failed") {
+      return Promise.resolve(existing);
+    }
+    if (timeout_milliseconds <= 0) {
+      return Promise.resolve(null);
+    }
+
+    return new Promise((resolve) => {
+      const timeout_id = setTimeout(() => {
+        this.invoke_waiters.delete(task_id);
+        resolve(null);
+      }, timeout_milliseconds);
+      this.invoke_waiters.set(task_id, { resolve, timeout_id });
+
+      const current = this.find_task(task_id);
+      if (current === null || current.status === "completed" || current.status === "failed") {
+        this.resolve_invoke_waiter(task_id, current);
+      }
+    });
+  }
+
+  /**
+   * @param {string} task_id
+   * @param {CallRow | null} row
+   * @returns {void}
+   */
+  resolve_invoke_waiter(task_id, row) {
+    const waiter = this.invoke_waiters.get(task_id);
+    if (waiter === undefined) {
+      return;
+    }
+    clearTimeout(waiter.timeout_id);
+    this.invoke_waiters.delete(task_id);
+    waiter.resolve(row);
   }
 
   /** @returns {Response} */
-  list_registered_hubs() {
-    /** @type {HubRegistryRow[]} */
-    const hubs = this.ctx.storage.sql
-      .exec("SELECT id, last_seen_at FROM hub_registry ORDER BY id")
+  list_access_tokens() {
+    /** @type {AccessTokenRow[]} */
+    const rows = this.ctx.storage.sql
+      .exec("SELECT * FROM access_tokens ORDER BY created_at DESC")
       .toArray();
-    return json_response({ hubs });
+    const now = Date.now();
+    return json_response({ access_tokens: rows.map((row) => access_token_value(row, now)) });
+  }
+
+  /**
+   * @param {Request} request
+   * @returns {Promise<Response>}
+   */
+  async create_access_token(request) {
+    const content_length = Number(request.headers.get("Content-Length") ?? "0");
+    if (content_length > 16 * 1024) {
+      return error_response("request body is too large", 413);
+    }
+    /** @type {CreateAccessTokenBody} */
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return error_response("invalid JSON", 400);
+    }
+    if (body === null || typeof body !== "object" || Array.isArray(body)) {
+      return error_response("invalid JSON body", 400);
+    }
+    if (body.name !== undefined && typeof body.name !== "string") {
+      return error_response("name must be a string", 400);
+    }
+    if (
+      body.token !== undefined &&
+      body.token !== null &&
+      typeof body.token !== "string"
+    ) {
+      return error_response("token must be a string", 400);
+    }
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (name.length > 128 || /[\r\n]/.test(name)) {
+      return error_response(
+        "name must not exceed 128 characters or contain newlines",
+        400,
+      );
+    }
+    const requested_token =
+      typeof body.token === "string" ? body.token.trim() : "";
+    if (requested_token !== "" && !valid_access_token(requested_token)) {
+      return error_response(
+        "token must be 16 to 256 characters using letters, numbers, or . _ ~ + / = -",
+        400,
+      );
+    }
+    let expires_in_seconds = null;
+    if (
+      body.expires_in_seconds !== undefined &&
+      body.expires_in_seconds !== null
+    ) {
+      expires_in_seconds = Number(body.expires_in_seconds);
+      if (
+        !Number.isInteger(expires_in_seconds) ||
+        expires_in_seconds < 60 ||
+        expires_in_seconds > MAX_ACCESS_TOKEN_LIFETIME_SECONDS
+      ) {
+        return error_response("invalid expires_in_seconds", 400);
+      }
+    }
+    const token_count = Number(
+      this.ctx.storage.sql
+        .exec("SELECT COUNT(*) AS count FROM access_tokens")
+        .toArray()[0]?.count ?? 0,
+    );
+    if (token_count >= MAX_ACCESS_TOKENS) {
+      return error_response("access token limit reached", 409);
+    }
+
+    const token = requested_token || generate_access_token();
+    const token_hash = await sha256_hex(token);
+    const existing_token = this.ctx.storage.sql
+      .exec("SELECT id FROM access_tokens WHERE token_hash = ? LIMIT 1", token_hash)
+      .toArray()[0];
+    if (existing_token !== undefined) {
+      return error_response("access token already exists", 409);
+    }
+    const now = Date.now();
+    const expires_at =
+      expires_in_seconds === null ? null : now + expires_in_seconds * 1000;
+    const id = crypto.randomUUID();
+    const token_hint = access_token_hint(token);
+    this.ctx.storage.sql.exec(
+      `INSERT INTO access_tokens (
+        id, name, token_hash, token_hint, expires_at, created_at, last_used_at
+      ) VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+      id,
+      name,
+      token_hash,
+      token_hint,
+      expires_at,
+      now,
+    );
+    /** @type {AccessTokenRow} */
+    const row = this.ctx.storage.sql
+      .exec("SELECT * FROM access_tokens WHERE id = ? LIMIT 1", id)
+      .toArray()[0];
+    return json_response({ access_token: access_token_value(row, now), token }, 201);
+  }
+
+  /**
+   * @param {string} access_token_id
+   * @returns {Response}
+   */
+  expire_access_token(access_token_id) {
+    /** @type {AccessTokenRow | undefined} */
+    const existing = this.ctx.storage.sql
+      .exec("SELECT * FROM access_tokens WHERE id = ? LIMIT 1", access_token_id)
+      .toArray()[0];
+    if (existing === undefined) {
+      return error_response("access token not found", 404);
+    }
+    const now = Date.now();
+    this.ctx.storage.sql.exec(
+      "UPDATE access_tokens SET expires_at = ? WHERE id = ?",
+      now,
+      access_token_id,
+    );
+    /** @type {AccessTokenRow} */
+    const row = this.ctx.storage.sql
+      .exec("SELECT * FROM access_tokens WHERE id = ? LIMIT 1", access_token_id)
+      .toArray()[0];
+    return json_response({ access_token: access_token_value(row, now) });
+  }
+
+  /**
+   * @param {string} access_token_id
+   * @returns {Response}
+   */
+  delete_access_token(access_token_id) {
+    const existing = this.ctx.storage.sql
+      .exec("SELECT id FROM access_tokens WHERE id = ? LIMIT 1", access_token_id)
+      .toArray()[0];
+    if (existing === undefined) {
+      return error_response("access token not found", 404);
+    }
+    this.ctx.storage.sql.exec("DELETE FROM access_tokens WHERE id = ?", access_token_id);
+    return json_response({ removed: true, id: access_token_id });
+  }
+
+  /**
+   * @param {Request} request
+   * @returns {Promise<Response>}
+   */
+  async verify_access_token(request) {
+    /** @type {{ token?: unknown }} */
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return error_response("unauthorized", 401);
+    }
+    const token = typeof body.token === "string" ? body.token : "";
+    if (!valid_access_token(token)) {
+      return error_response("unauthorized", 401);
+    }
+    const token_hash = await sha256_hex(token);
+    /** @type {AccessTokenRow | undefined} */
+    const row = this.ctx.storage.sql
+      .exec("SELECT * FROM access_tokens WHERE token_hash = ? LIMIT 1", token_hash)
+      .toArray()[0];
+    const now = Date.now();
+    if (row === undefined || (row.expires_at !== null && row.expires_at <= now)) {
+      return error_response("unauthorized", 401);
+    }
+    this.ctx.storage.sql.exec(
+      "UPDATE access_tokens SET last_used_at = ? WHERE id = ?",
+      now,
+      row.id,
+    );
+    return json_response({
+      access_token: {
+        id: row.id,
+        name: row.name,
+        publisher_id: "caller:" + row.id,
+      },
+    });
   }
 
   /**
@@ -641,7 +926,7 @@ export class HubDurableObject extends DurableObject {
       socket.close(1008, "missing client attachment");
       return;
     }
-    this.record_client_activity(attachment);
+    this.record_device_activity(attachment);
 
     const text = typeof message === "string" ? message : new TextDecoder().decode(message);
     if (text.length > MAX_BODY_BYTES) {
@@ -687,7 +972,7 @@ export class HubDurableObject extends DurableObject {
    * @returns {Promise<void>}
    */
   async webSocketClose(socket, code, reason, was_clean) {
-    this.mark_client_offline(socket);
+    this.mark_device_offline(socket);
     socket.close(code, reason || (was_clean ? "closed" : "connection lost"));
   }
 
@@ -696,17 +981,17 @@ export class HubDurableObject extends DurableObject {
    * @returns {Promise<void>}
    */
   async webSocketError(socket) {
-    this.mark_client_offline(socket);
+    this.mark_device_offline(socket);
     socket.close(1011, "websocket error");
   }
 
   /** @returns {Promise<void>} */
   async alarm() {
     const now = Date.now();
-    /** @type {TaskRow[]} */
+    /** @type {CallRow[]} */
     const exhausted = this.ctx.storage.sql
       .exec(
-        `SELECT * FROM tasks
+        `SELECT * FROM calls
          WHERE status IN ('assigned', 'running')
            AND lease_expires_at <= ? AND attempt_count >= ?`,
         now,
@@ -715,7 +1000,7 @@ export class HubDurableObject extends DurableObject {
       .toArray();
 
     this.ctx.storage.sql.exec(
-      `UPDATE tasks
+      `UPDATE calls
        SET status = 'failed', error_message = 'task lease expired too many times',
            updated_at = ?, completed_at = ?
        WHERE status IN ('assigned', 'running')
@@ -726,8 +1011,8 @@ export class HubDurableObject extends DurableObject {
       MAX_ATTEMPTS,
     );
     this.ctx.storage.sql.exec(
-      `UPDATE tasks
-       SET status = 'queued', assigned_client_id = NULL, lease_token = NULL,
+      `UPDATE calls
+       SET status = 'queued', assigned_device_id = NULL, lease_token = NULL,
            lease_expires_at = NULL, updated_at = ?
        WHERE status IN ('assigned', 'running')
          AND lease_expires_at <= ? AND attempt_count < ?`,
@@ -736,7 +1021,7 @@ export class HubDurableObject extends DurableObject {
       MAX_ATTEMPTS,
     );
     this.ctx.storage.sql.exec(
-      `DELETE FROM tasks
+      `DELETE FROM calls
        WHERE status IN ('completed', 'failed') AND completed_at < ?`,
       now - RETENTION_MILLISECONDS,
     );
@@ -744,7 +1029,8 @@ export class HubDurableObject extends DurableObject {
     for (const row of exhausted) {
       const failed_row = this.find_task(row.id);
       if (failed_row !== null) {
-        this.send_to_client(failed_row.publisher_id, {
+        this.resolve_invoke_waiter(failed_row.id, failed_row);
+        this.send_to_device(failed_row.publisher_device_id, {
           type: "task.failed",
           task: task_value(failed_row),
         });
@@ -758,13 +1044,13 @@ export class HubDurableObject extends DurableObject {
    * @param {SocketAttachment} attachment
    * @returns {void}
    */
-  record_client_activity(attachment) {
+  record_device_activity(attachment) {
     this.ctx.storage.sql.exec(
-      `UPDATE client_registry
+      `UPDATE devices
        SET last_seen_at = ?, status = 'online', disconnected_at = NULL
-       WHERE client_id = ? AND connection_id = ?`,
+       WHERE device_id = ? AND connection_id = ?`,
       Date.now(),
-      attachment.client_id,
+      attachment.device_id,
       attachment.connection_id,
     );
   }
@@ -773,19 +1059,19 @@ export class HubDurableObject extends DurableObject {
    * @param {WebSocket} socket
    * @returns {void}
    */
-  mark_client_offline(socket) {
+  mark_device_offline(socket) {
     const attachment = socket_attachment(socket);
     if (attachment === null) {
       return;
     }
     const now = Date.now();
     this.ctx.storage.sql.exec(
-      `UPDATE client_registry
+      `UPDATE devices
        SET status = 'offline', last_seen_at = ?, disconnected_at = ?
-       WHERE client_id = ? AND connection_id = ?`,
+       WHERE device_id = ? AND connection_id = ?`,
       now,
       now,
-      attachment.client_id,
+      attachment.device_id,
       attachment.connection_id,
     );
   }
@@ -798,17 +1084,32 @@ export class HubDurableObject extends DurableObject {
     if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
       return error_response("websocket upgrade required", 426);
     }
-    const client_id = (request.headers.get("X-Hub-Client-ID") ?? "").trim();
-    if (!valid_identifier(client_id)) {
-      return error_response("invalid X-Hub-Client-ID", 400);
+    const device_id = (
+      request.headers.get("X-Hub-Device-ID") ??
+      request.headers.get("X-Hub-Client-ID") ??
+      ""
+    ).trim();
+    if (!valid_identifier(device_id)) {
+      return error_response("invalid X-Hub-Device-ID", 400);
     }
-    const capabilities = (request.headers.get("X-Hub-Capabilities") ?? "")
+    const device_name = (request.headers.get("X-Hub-Device-Name") ?? device_id)
+      .trim()
+      .slice(0, 128) || device_id;
+    const requested_device_os = (request.headers.get("X-Hub-Device-OS") ?? "unknown")
+      .trim()
+      .slice(0, 32);
+    const device_os = valid_identifier(requested_device_os) ? requested_device_os : "unknown";
+    const methods = (
+      request.headers.get("X-Hub-Methods") ??
+      request.headers.get("X-Hub-Capabilities") ??
+      ""
+    )
       .split(",")
       .map((item) => item.trim())
       .filter((item, index, values) => valid_identifier(item) && values.indexOf(item) === index)
-      .slice(0, 8);
+      .slice(0, 64);
 
-    for (const old_socket of this.ctx.getWebSockets(`client:${client_id}`)) {
+    for (const old_socket of this.ctx.getWebSockets(`client:${device_id}`)) {
       old_socket.close(1000, "replaced by a newer connection");
     }
 
@@ -817,37 +1118,45 @@ export class HubDurableObject extends DurableObject {
     const server = pair[1];
     const connection_id = crypto.randomUUID();
     const connected_at = Date.now();
-    const tags = [`client:${client_id}`, ...capabilities.map((value) => `cap:${value}`)];
+    const tags = [`client:${device_id}`, ...methods.map((value) => `method:${value}`)];
     server.serializeAttachment({
-      client_id,
+      device_id,
       connection_id,
-      capabilities,
+      methods,
+      device_name,
+      device_os,
       connected_at,
     });
     this.ctx.storage.sql.exec(
-      `INSERT INTO client_registry (
-         client_id, connection_id, capabilities_json, connected_at,
-         last_seen_at, disconnected_at, status
-       ) VALUES (?, ?, ?, ?, ?, NULL, 'online')
-       ON CONFLICT(client_id) DO UPDATE SET
+      `INSERT INTO devices (
+         device_id, connection_id, methods_json, connected_at,
+         device_name, device_os, last_seen_at, disconnected_at, status
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'online')
+       ON CONFLICT(device_id) DO UPDATE SET
          connection_id = excluded.connection_id,
-         capabilities_json = excluded.capabilities_json,
+         methods_json = excluded.methods_json,
+         device_name = excluded.device_name,
+         device_os = excluded.device_os,
          connected_at = excluded.connected_at,
          last_seen_at = excluded.last_seen_at,
          disconnected_at = NULL,
          status = 'online'`,
-      client_id,
+      device_id,
       connection_id,
-      JSON.stringify(capabilities),
+      JSON.stringify(methods),
       connected_at,
+      device_name,
+      device_os,
       connected_at,
     );
     this.ctx.acceptWebSocket(server, tags);
     server.send(
       JSON.stringify({
-        type: "client.connected",
-        client_id,
-        capabilities,
+        type: "device.connected",
+        device_id,
+        device_name,
+        device_os,
+        methods,
         at: Date.now(),
       }),
     );
@@ -860,64 +1169,80 @@ export class HubDurableObject extends DurableObject {
     /** @type {TaskCountRow[]} */
     const task_counts = this.ctx.storage.sql
       .exec(
-        "SELECT status, COUNT(*) AS count FROM tasks GROUP BY status ORDER BY status",
+        "SELECT status, COUNT(*) AS count FROM calls GROUP BY status ORDER BY status",
       )
       .toArray();
     /** @type {SocketAttachment[]} */
-    const active_clients = this.ctx
+    const active_devices = this.ctx
       .getWebSockets()
       .map(socket_attachment)
       .filter((item) => item !== null);
-    const active_connection_ids = new Set(active_clients.map((client) => client.connection_id));
-    /** @type {BusyClientRow[]} */
+    const active_connection_ids = new Set(active_devices.map((device) => device.connection_id));
+    /** @type {BusyDeviceRow[]} */
     const busy_rows = this.ctx.storage.sql
       .exec(
-        `SELECT DISTINCT assigned_client_id FROM tasks
-         WHERE status IN ('assigned', 'running') AND assigned_client_id IS NOT NULL`,
+        `SELECT DISTINCT assigned_device_id FROM calls
+         WHERE status IN ('assigned', 'running') AND assigned_device_id IS NOT NULL`,
       )
       .toArray();
-    const busy_clients = new Set(busy_rows.map((row) => row.assigned_client_id));
-    /** @type {ClientRegistryRow[]} */
+    const busy_devices = new Set(busy_rows.map((row) => row.assigned_device_id));
+    /** @type {DeviceRegistryRow[]} */
     const registry_rows = this.ctx.storage.sql
       .exec(
-        `SELECT client_id, connection_id, capabilities_json, connected_at,
+        `SELECT device_id, connection_id, methods_json, device_name, device_os, connected_at,
                 last_seen_at, disconnected_at, status
-         FROM client_registry ORDER BY client_id`,
+         FROM devices ORDER BY device_id`,
       )
       .toArray();
     const now = Date.now();
-    const clients = registry_rows.map((row) => {
+    const devices = registry_rows.map((row) => {
       const online = active_connection_ids.has(row.connection_id);
       if (!online && row.status === "online") {
         this.ctx.storage.sql.exec(
-          `UPDATE client_registry
+          `UPDATE devices
            SET status = 'offline', disconnected_at = ?
-           WHERE client_id = ? AND connection_id = ?`,
+           WHERE device_id = ? AND connection_id = ?`,
           now,
-          row.client_id,
+          row.device_id,
           row.connection_id,
         );
       }
       return {
-        client_id: row.client_id,
-        capabilities: parse_capabilities(row.capabilities_json),
+        device_id: row.device_id,
+        device_name: row.device_name || row.device_id,
+        device_os: row.device_os || "unknown",
+        methods: parse_methods(row.methods_json),
         connected_at: row.connected_at,
         last_seen_at: row.last_seen_at,
         disconnected_at: online ? null : row.disconnected_at ?? now,
-        status: online ? (busy_clients.has(row.client_id) ? "busy" : "online") : "offline",
+        status: online ? (busy_devices.has(row.device_id) ? "busy" : "online") : "offline",
       };
     });
-    return json_response({ clients, task_counts });
+    const methods = [
+      ...new Set(
+        devices
+          .filter((device) => device.status !== "offline")
+          .flatMap((device) => device.methods),
+      ),
+    ].sort();
+    return json_response({ devices, methods, task_counts });
   }
 
   /**
    * @param {Request} request
+   * @param {boolean} [allow_idempotency_key]
    * @returns {Promise<Response>}
    */
-  async create_task(request) {
-    const publisher_id = (request.headers.get("X-Hub-Client-ID") ?? "").trim();
-    if (!valid_identifier(publisher_id)) {
-      return error_response("invalid X-Hub-Client-ID", 400);
+  async create_task(request, allow_idempotency_key = true) {
+    const publisher_device_id = (
+      request.headers.get("X-Hub-Authenticated-Publisher-ID") ??
+      request.headers.get("X-Hub-Publisher-ID") ??
+      request.headers.get("X-Hub-Device-ID") ??
+      request.headers.get("X-Hub-Client-ID") ??
+      ""
+    ).trim();
+    if (!valid_identifier(publisher_device_id)) {
+      return error_response("invalid X-Hub-Device-ID", 400);
     }
     const content_length = Number(request.headers.get("Content-Length") ?? "0");
     if (content_length > MAX_BODY_BYTES) {
@@ -931,33 +1256,67 @@ export class HubDurableObject extends DurableObject {
     } catch {
       return error_response("invalid JSON", 400);
     }
-    const kind = (body.kind ?? "").trim();
-    if (!VALID_TASK_KINDS.has(kind)) {
-      return error_response("unsupported task kind", 400);
+    if (body === null || typeof body !== "object" || Array.isArray(body)) {
+      return error_response("invalid JSON body", 400);
     }
-    const target_client_id = (body.target_client_id ?? "").trim();
-    if (target_client_id !== "" && !valid_identifier(target_client_id)) {
-      return error_response("invalid target_client_id", 400);
+    const requested_method = body.method ?? body.kind ?? "";
+    const method = typeof requested_method === "string" ? requested_method.trim() : "";
+    if (!valid_identifier(method)) {
+      return error_response("invalid method", 400);
     }
-    const required_capability = (body.required_capability ?? kind).trim();
-    if (!valid_identifier(required_capability)) {
-      return error_response("invalid required_capability", 400);
+    const requested_target_device_id = body.target_device_id ?? body.target_client_id ?? "";
+    if (typeof requested_target_device_id !== "string") {
+      return error_response("invalid target_device_id", 400);
     }
-    const idempotency_key = (body.idempotency_key ?? "").trim();
+    const target_device_id =
+      requested_target_device_id.trim();
+    if (target_device_id !== "" && !valid_identifier(target_device_id)) {
+      return error_response("invalid target_device_id", 400);
+    }
+    if (
+      allow_idempotency_key &&
+      body.idempotency_key !== undefined &&
+      typeof body.idempotency_key !== "string"
+    ) {
+      return error_response("invalid idempotency_key", 400);
+    }
+    const idempotency_key = allow_idempotency_key
+      ? (body.idempotency_key ?? "").trim()
+      : "";
     if (idempotency_key.length > 128) {
       return error_response("idempotency_key is too long", 400);
     }
-    const payload_json = JSON.stringify(body.payload ?? {});
-    if (payload_json.length > MAX_BODY_BYTES) {
-      return error_response("payload is too large", 413);
+    const args = body.args ?? body.payload ?? {};
+    if (args === null || typeof args !== "object" || Array.isArray(args)) {
+      return error_response("args must be an object", 400);
+    }
+    const args_json = JSON.stringify(args);
+    if (args_json.length > MAX_BODY_BYTES) {
+      return error_response("args is too large", 413);
+    }
+
+    if (target_device_id !== "") {
+      /** @type {DeviceRegistryRow | undefined} */
+      const target_device = this.ctx.storage.sql
+        .exec(
+          "SELECT * FROM devices WHERE device_id = ? LIMIT 1",
+          target_device_id,
+        )
+        .toArray()[0];
+      if (target_device === undefined) {
+        return error_response("target device is not registered", 404);
+      }
+      if (!parse_methods(target_device.methods_json).includes(method)) {
+        return error_response("target device does not provide method " + method, 409);
+      }
     }
 
     if (idempotency_key !== "") {
-      /** @type {TaskRow | undefined} */
+      /** @type {CallRow | undefined} */
       const existing = this.ctx.storage.sql
         .exec(
-          "SELECT * FROM tasks WHERE publisher_id = ? AND idempotency_key = ? LIMIT 1",
-          publisher_id,
+          "SELECT * FROM calls WHERE publisher_device_id = ? AND idempotency_key = ? LIMIT 1",
+          publisher_device_id,
           idempotency_key,
         )
         .toArray()[0];
@@ -969,90 +1328,103 @@ export class HubDurableObject extends DurableObject {
     const now = Date.now();
     const task_id = crypto.randomUUID();
     this.ctx.storage.sql.exec(
-      `INSERT INTO tasks (
-        id, kind, publisher_id, target_client_id, required_capability,
-        idempotency_key, payload_json, status, attempt_count, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?)`,
+      `INSERT INTO calls (
+        id, method, publisher_device_id, target_device_id,
+        idempotency_key, args_json, status, attempt_count, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?)`,
       task_id,
-      kind,
-      publisher_id,
-      target_client_id || null,
-      required_capability,
+      method,
+      publisher_device_id,
+      target_device_id || null,
       idempotency_key || null,
-      payload_json,
+      args_json,
       now,
       now,
     );
     await this.dispatch_pending();
     await this.schedule_alarm();
     const row = this.find_task(task_id);
-    return json_response({ task: task_value(/** @type {TaskRow} */ (row)) }, 201);
+    return json_response({ task: task_value(/** @type {CallRow} */ (row)) }, 201);
   }
 
   /**
+   * @param {Request} request
    * @param {URL} url
    * @returns {Response}
    */
-  list_tasks(url) {
-    const publisher_id = (url.searchParams.get("publisher_id") ?? "").trim();
+  list_tasks(request, url) {
+    const publisher_device_id = (
+      request.headers.get("X-Hub-Authenticated-Publisher-ID") ??
+      url.searchParams.get("publisher_device_id") ??
+      url.searchParams.get("publisher_id") ??
+      ""
+    ).trim();
     const status = (url.searchParams.get("status") ?? "").trim();
     const limit_value = Number(url.searchParams.get("limit") ?? "50");
     const limit = Number.isFinite(limit_value) ? Math.max(1, Math.min(200, limit_value)) : 50;
 
-    /** @type {TaskRow[]} */
+    /** @type {CallRow[]} */
     let rows;
-    if (publisher_id !== "" && status !== "") {
+    if (publisher_device_id !== "" && status !== "") {
       rows = this.ctx.storage.sql
         .exec(
-          "SELECT * FROM tasks WHERE publisher_id = ? AND status = ? ORDER BY created_at DESC LIMIT ?",
-          publisher_id,
+          "SELECT * FROM calls WHERE publisher_device_id = ? AND status = ? ORDER BY created_at DESC LIMIT ?",
+          publisher_device_id,
           status,
           limit,
         )
         .toArray();
-    } else if (publisher_id !== "") {
+    } else if (publisher_device_id !== "") {
       rows = this.ctx.storage.sql
         .exec(
-          "SELECT * FROM tasks WHERE publisher_id = ? ORDER BY created_at DESC LIMIT ?",
-          publisher_id,
+          "SELECT * FROM calls WHERE publisher_device_id = ? ORDER BY created_at DESC LIMIT ?",
+          publisher_device_id,
           limit,
         )
         .toArray();
     } else if (status !== "") {
       rows = this.ctx.storage.sql
         .exec(
-          "SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC LIMIT ?",
+          "SELECT * FROM calls WHERE status = ? ORDER BY created_at DESC LIMIT ?",
           status,
           limit,
         )
         .toArray();
     } else {
       rows = this.ctx.storage.sql
-        .exec("SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?", limit)
+        .exec("SELECT * FROM calls ORDER BY created_at DESC LIMIT ?", limit)
         .toArray();
     }
     return json_response({ tasks: rows.map(task_value) });
   }
 
   /**
+   * @param {Request} request
    * @param {string} task_id
    * @returns {Response}
    */
-  get_task(task_id) {
+  get_task(request, task_id) {
     const row = this.find_task(task_id);
-    return row === null
-      ? error_response("task not found", 404)
-      : json_response({ task: task_value(row) });
+    const publisher_device_id = (
+      request.headers.get("X-Hub-Authenticated-Publisher-ID") ?? ""
+    ).trim();
+    if (
+      row === null ||
+      (publisher_device_id !== "" && row.publisher_device_id !== publisher_device_id)
+    ) {
+      return error_response("task not found", 404);
+    }
+    return json_response({ task: task_value(row) });
   }
 
   /**
    * @param {string} task_id
-   * @returns {TaskRow | null}
+   * @returns {CallRow | null}
    */
   find_task(task_id) {
     return (
       this.ctx.storage.sql
-        .exec("SELECT * FROM tasks WHERE id = ? LIMIT 1", task_id)
+        .exec("SELECT * FROM calls WHERE id = ? LIMIT 1", task_id)
         .toArray()[0] ?? null
     );
   }
@@ -1064,14 +1436,14 @@ export class HubDurableObject extends DurableObject {
    * @returns {Promise<void>}
    */
   async accept_task(socket, attachment, message) {
-    const row = this.owned_task(attachment.client_id, message);
+    const row = this.owned_task(attachment.device_id, message);
     if (row === null) {
       socket.send(JSON.stringify({ type: "task.rejected", task_id: message.task_id }));
       return;
     }
     const now = Date.now();
     this.ctx.storage.sql.exec(
-      "UPDATE tasks SET status = 'running', lease_expires_at = ?, updated_at = ? WHERE id = ?",
+      "UPDATE calls SET status = 'running', lease_expires_at = ?, updated_at = ? WHERE id = ?",
       now + LEASE_MILLISECONDS,
       now,
       row.id,
@@ -1087,14 +1459,14 @@ export class HubDurableObject extends DurableObject {
    * @returns {Promise<void>}
    */
   async heartbeat_task(socket, attachment, message) {
-    const row = this.owned_task(attachment.client_id, message);
+    const row = this.owned_task(attachment.device_id, message);
     if (row === null) {
       socket.send(JSON.stringify({ type: "task.rejected", task_id: message.task_id }));
       return;
     }
     const now = Date.now();
     this.ctx.storage.sql.exec(
-      "UPDATE tasks SET lease_expires_at = ?, updated_at = ? WHERE id = ?",
+      "UPDATE calls SET lease_expires_at = ?, updated_at = ? WHERE id = ?",
       now + LEASE_MILLISECONDS,
       now,
       row.id,
@@ -1114,13 +1486,13 @@ export class HubDurableObject extends DurableObject {
     if (
       existing !== null &&
       existing.status === "completed" &&
-      existing.assigned_client_id === attachment.client_id &&
+      existing.assigned_device_id === attachment.device_id &&
       existing.lease_token === message.lease_token
     ) {
       socket.send(JSON.stringify({ type: "task.ack", task_id: existing.id }));
       return;
     }
-    const row = this.owned_task(attachment.client_id, message);
+    const row = this.owned_task(attachment.device_id, message);
     if (row === null) {
       socket.send(JSON.stringify({ type: "task.rejected", task_id: message.task_id }));
       return;
@@ -1132,16 +1504,17 @@ export class HubDurableObject extends DurableObject {
     }
     const now = Date.now();
     this.ctx.storage.sql.exec(
-      `UPDATE tasks SET status = 'completed', result_json = ?, error_message = NULL,
+      `UPDATE calls SET status = 'completed', result_json = ?, error_message = NULL,
        lease_expires_at = NULL, updated_at = ?, completed_at = ? WHERE id = ?`,
       result_json,
       now,
       now,
       row.id,
     );
-    const completed = /** @type {TaskRow} */ (this.find_task(row.id));
+    const completed = /** @type {CallRow} */ (this.find_task(row.id));
+    this.resolve_invoke_waiter(completed.id, completed);
     socket.send(JSON.stringify({ type: "task.ack", task_id: row.id }));
-    this.send_to_client(completed.publisher_id, {
+    this.send_to_device(completed.publisher_device_id, {
       type: "task.completed",
       task: task_value(completed),
     });
@@ -1156,7 +1529,7 @@ export class HubDurableObject extends DurableObject {
    * @returns {Promise<void>}
    */
   async fail_task(socket, attachment, message) {
-    const row = this.owned_task(attachment.client_id, message);
+    const row = this.owned_task(attachment.device_id, message);
     if (row === null) {
       socket.send(JSON.stringify({ type: "task.rejected", task_id: message.task_id }));
       return;
@@ -1165,7 +1538,7 @@ export class HubDurableObject extends DurableObject {
     const retryable = message.retryable === true && row.attempt_count < MAX_ATTEMPTS;
     if (retryable) {
       this.ctx.storage.sql.exec(
-        `UPDATE tasks SET status = 'queued', assigned_client_id = NULL, lease_token = NULL,
+        `UPDATE calls SET status = 'queued', assigned_device_id = NULL, lease_token = NULL,
          lease_expires_at = NULL, error_message = ?, updated_at = ? WHERE id = ?`,
         (message.error ?? "task failed").slice(0, 4000),
         now,
@@ -1174,16 +1547,17 @@ export class HubDurableObject extends DurableObject {
       socket.send(JSON.stringify({ type: "task.ack", task_id: row.id, requeued: true }));
     } else {
       this.ctx.storage.sql.exec(
-        `UPDATE tasks SET status = 'failed', error_message = ?, lease_expires_at = NULL,
+        `UPDATE calls SET status = 'failed', error_message = ?, lease_expires_at = NULL,
          updated_at = ?, completed_at = ? WHERE id = ?`,
         (message.error ?? "task failed").slice(0, 4000),
         now,
         now,
         row.id,
       );
-      const failed = /** @type {TaskRow} */ (this.find_task(row.id));
+      const failed = /** @type {CallRow} */ (this.find_task(row.id));
+      this.resolve_invoke_waiter(failed.id, failed);
       socket.send(JSON.stringify({ type: "task.ack", task_id: row.id }));
-      this.send_to_client(failed.publisher_id, {
+      this.send_to_device(failed.publisher_device_id, {
         type: "task.failed",
         task: task_value(failed),
       });
@@ -1193,11 +1567,11 @@ export class HubDurableObject extends DurableObject {
   }
 
   /**
-   * @param {string} client_id
+   * @param {string} device_id
    * @param {ClientMessage} message
-   * @returns {TaskRow | null}
+   * @returns {CallRow | null}
    */
-  owned_task(client_id, message) {
+  owned_task(device_id, message) {
     if (!message.task_id || !message.lease_token) {
       return null;
     }
@@ -1205,7 +1579,7 @@ export class HubDurableObject extends DurableObject {
     if (
       row === null ||
       (row.status !== "assigned" && row.status !== "running") ||
-      row.assigned_client_id !== client_id ||
+      row.assigned_device_id !== device_id ||
       row.lease_token !== message.lease_token
     ) {
       return null;
@@ -1215,51 +1589,51 @@ export class HubDurableObject extends DurableObject {
 
   /** @returns {Promise<void>} */
   async dispatch_pending() {
-    /** @type {TaskRow[]} */
+    /** @type {CallRow[]} */
     const queued = this.ctx.storage.sql
-      .exec("SELECT * FROM tasks WHERE status = 'queued' ORDER BY created_at LIMIT 100")
+      .exec("SELECT * FROM calls WHERE status = 'queued' ORDER BY created_at LIMIT 100")
       .toArray();
     if (queued.length === 0) {
       return;
     }
-    /** @type {BusyClientRow[]} */
+    /** @type {BusyDeviceRow[]} */
     const busy_rows = this.ctx.storage.sql
       .exec(
-        `SELECT DISTINCT assigned_client_id FROM tasks
-         WHERE status IN ('assigned', 'running') AND assigned_client_id IS NOT NULL`,
+        `SELECT DISTINCT assigned_device_id FROM calls
+         WHERE status IN ('assigned', 'running') AND assigned_device_id IS NOT NULL`,
       )
       .toArray();
-    const busy_clients = new Set(busy_rows.map((row) => row.assigned_client_id));
+    const busy_devices = new Set(busy_rows.map((row) => row.assigned_device_id));
 
     for (const row of queued) {
-      const candidates = row.target_client_id
-        ? this.ctx.getWebSockets(`client:${row.target_client_id}`)
-        : this.ctx.getWebSockets(`cap:${row.required_capability}`);
+      const candidates = row.target_device_id
+        ? this.ctx.getWebSockets(`client:${row.target_device_id}`)
+        : this.ctx.getWebSockets(`method:${row.method}`);
       const candidate = candidates.find((socket) => {
         const attachment = socket_attachment(socket);
-        return attachment !== null && !busy_clients.has(attachment.client_id);
+        return attachment !== null && !busy_devices.has(attachment.device_id);
       });
       if (candidate === undefined) {
         continue;
       }
       const attachment = /** @type {SocketAttachment} */ (socket_attachment(candidate));
-      if (!attachment.capabilities.includes(row.required_capability)) {
+      if (!attachment.methods.includes(row.method)) {
         continue;
       }
 
       const now = Date.now();
       const lease_token = crypto.randomUUID();
       this.ctx.storage.sql.exec(
-        `UPDATE tasks SET status = 'assigned', assigned_client_id = ?, lease_token = ?,
+        `UPDATE calls SET status = 'assigned', assigned_device_id = ?, lease_token = ?,
          lease_expires_at = ?, attempt_count = attempt_count + 1, updated_at = ?
          WHERE id = ? AND status = 'queued'`,
-        attachment.client_id,
+        attachment.device_id,
         lease_token,
         now + LEASE_MILLISECONDS,
         now,
         row.id,
       );
-      const assigned = /** @type {TaskRow} */ (this.find_task(row.id));
+      const assigned = /** @type {CallRow} */ (this.find_task(row.id));
       try {
         candidate.send(
           JSON.stringify({
@@ -1269,10 +1643,10 @@ export class HubDurableObject extends DurableObject {
             lease_milliseconds: LEASE_MILLISECONDS,
           }),
         );
-        busy_clients.add(attachment.client_id);
+        busy_devices.add(attachment.device_id);
       } catch {
         this.ctx.storage.sql.exec(
-          `UPDATE tasks SET status = 'queued', assigned_client_id = NULL, lease_token = NULL,
+          `UPDATE calls SET status = 'queued', assigned_device_id = NULL, lease_token = NULL,
            lease_expires_at = NULL, updated_at = ? WHERE id = ?`,
           Date.now(),
           row.id,
@@ -1282,13 +1656,13 @@ export class HubDurableObject extends DurableObject {
   }
 
   /**
-   * @param {string} client_id
+   * @param {string} device_id
    * @param {unknown} value
    * @returns {void}
    */
-  send_to_client(client_id, value) {
+  send_to_device(device_id, value) {
     const message = JSON.stringify(value);
-    for (const socket of this.ctx.getWebSockets(`client:${client_id}`)) {
+    for (const socket of this.ctx.getWebSockets(`client:${device_id}`)) {
       try {
         socket.send(message);
       } catch {
@@ -1302,7 +1676,7 @@ export class HubDurableObject extends DurableObject {
     /** @type {number | null | undefined} */
     const next_lease = this.ctx.storage.sql
       .exec(
-        `SELECT MIN(lease_expires_at) AS lease_expires_at FROM tasks
+        `SELECT MIN(lease_expires_at) AS lease_expires_at FROM calls
          WHERE status IN ('assigned', 'running') AND lease_expires_at IS NOT NULL`,
       )
       .toArray()[0]?.lease_expires_at;
@@ -1316,7 +1690,7 @@ export class HubDurableObject extends DurableObject {
 
 /** @type {ExportedHandler<Env>} */
 export default {
-  async fetch(request, env, execution_context) {
+  async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/health" && request.method === "GET") {
       return json_response({ ok: true });
@@ -1329,38 +1703,98 @@ export default {
       if (url.pathname === "/admin/api/overview" && request.method === "GET") {
         return admin_overview(env);
       }
-      if (url.pathname === "/admin/api/tests" && request.method === "POST") {
-        return admin_create_test(env, request);
+      if (url.pathname === "/admin/api/call" && request.method === "POST") {
+        return admin_create_call(env, request);
       }
-      if (url.pathname === "/admin/api/downloads" && request.method === "POST") {
-        return admin_create_download(env, request);
+      if (url.pathname === "/admin/api/access-tokens") {
+        if (request.method !== "GET" && request.method !== "POST") {
+          return error_response("method not allowed", 405);
+        }
+        return admin_access_token_request(env, request, "");
+      }
+      const admin_access_token_expire_match = url.pathname.match(
+        /^\/admin\/api\/access-tokens\/([A-Za-z0-9-]+)\/expire$/,
+      );
+      if (admin_access_token_expire_match !== null && request.method === "POST") {
+        return admin_access_token_request(
+          env,
+          request,
+          "/" + admin_access_token_expire_match[1] + "/expire",
+        );
+      }
+      const admin_access_token_match = url.pathname.match(
+        /^\/admin\/api\/access-tokens\/([A-Za-z0-9-]+)$/,
+      );
+      if (admin_access_token_match !== null && request.method === "DELETE") {
+        return admin_access_token_request(env, request, "/" + admin_access_token_match[1]);
       }
       const admin_task_match = url.pathname.match(/^\/admin\/api\/tasks\/([^/]+)$/);
       if (admin_task_match !== null && request.method === "GET") {
         return admin_task_status(
           env,
-          (url.searchParams.get("hub_id") ?? "").trim(),
           admin_task_match[1],
         );
       }
       return error_response("not found", 404);
     }
-    if (!env.HUB_TOKEN || bearer_token(request) !== env.HUB_TOKEN) {
-      return error_response("unauthorized", 401);
-    }
 
-    const match = url.pathname.match(/^\/v1\/hubs\/([^/]+)(\/.*)?$/);
-    if (match === null) {
+    const legacy_match = url.pathname.match(/^\/v1\/hubs\/[^/]+(\/.*)?$/);
+    let forwarded_path = "";
+    if (url.pathname === "/v1") {
+      forwarded_path = "/";
+    } else if (legacy_match !== null) {
+      forwarded_path = legacy_match[1] || "/";
+    } else if (url.pathname.startsWith("/v1/")) {
+      forwarded_path = url.pathname.slice(3);
+    } else {
       return error_response("not found", 404);
     }
-    const hub_id = decodeURIComponent(match[1]);
-    if (!valid_identifier(hub_id)) {
-      return error_response("invalid hub id", 400);
+    if (forwarded_path.startsWith("/_admin/") || forwarded_path.startsWith("/_internal/")) {
+      return error_response("not found", 404);
     }
-    execution_context.waitUntil(register_hub(env, hub_id).catch(() => undefined));
     const forwarded_url = new URL(request.url);
-    forwarded_url.pathname = match[2] || "/";
-    const object = env.HUBS.getByName(hub_id);
-    return object.fetch(new Request(forwarded_url, request));
+    forwarded_url.pathname = forwarded_path;
+    const object = env.HUBS.getByName(HUB_OBJECT_NAME);
+    const token = bearer_token(request);
+    const device_id = (
+      request.headers.get("X-Hub-Device-ID") ??
+      request.headers.get("X-Hub-Client-ID") ??
+      ""
+    ).trim();
+    const device_authorized =
+      Boolean(env.HUB_TOKEN) &&
+      safe_equal(token, env.HUB_TOKEN) &&
+      valid_identifier(device_id);
+    if (forwarded_path === "/connect" && !device_authorized) {
+      return error_response("unauthorized", 401);
+    }
+    if (device_authorized) {
+      return object.fetch(new Request(forwarded_url, request));
+    }
+
+    const authorization_response = await object.fetch(
+      "https://internal/_internal/access-tokens/verify",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      },
+    );
+    if (!authorization_response.ok) {
+      return error_response("unauthorized", 401);
+    }
+    /** @type {{ access_token?: { id?: string, name?: string, publisher_id?: string } }} */
+    const authorization = await authorization_response.json();
+    const publisher_id = String(authorization.access_token?.publisher_id ?? "");
+    if (!valid_identifier(publisher_id)) {
+      return error_response("unauthorized", 401);
+    }
+    const headers = new Headers(request.headers);
+    headers.delete("X-Hub-Publisher-ID");
+    headers.delete("X-Hub-Device-ID");
+    headers.delete("X-Hub-Client-ID");
+    headers.set("X-Hub-Authenticated-Publisher-ID", publisher_id);
+    headers.set("X-Hub-Access-Token-ID", String(authorization.access_token?.id ?? ""));
+    return object.fetch(new Request(forwarded_url, new Request(request, { headers })));
   },
 };

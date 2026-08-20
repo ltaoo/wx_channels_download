@@ -98,11 +98,11 @@ func deploy_hub() {
 		{"管理页面", result.PagesURL},
 		{"Pages Deployment", result.PagesDeploymentID},
 		{"管理 API", result.PagesURL + "/admin/api/overview"},
-		{"WebSocket", result.WorkerURL + "/v1/hubs/<hub.id>/ws"},
+		{"WebSocket", result.WorkerURL + "/v1/connect"},
 	}
 	pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(table_data).Render()
 	pterm.Println()
-	pterm.Info.Println("将上面的 URL 和 hub.deploy.token 写入需要连接该 Worker 的 hub.instances。")
+	pterm.Info.Println("将上面的 URL 和 hub.deploy.token 写入每台设备的 hub.url 和 hub.token。")
 	pterm.Info.Println("管理页面使用用户名 admin 和 hub.deploy.adminToken 登录。")
 }
 

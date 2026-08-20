@@ -43,6 +43,8 @@ cloudflare:
 
 一次部署 Durable Objects Hub Worker 和受密码保护的 Pages 管理页面。
 
+部署完成后的设备注册、调用 Token 创建、API 协议和多语言示例请参阅 [Hub 使用](/feature/hub)。
+
 ```sh
 wx_video_download deploy hub
 ```

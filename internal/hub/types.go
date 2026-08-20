@@ -7,65 +7,92 @@ import (
 )
 
 const (
-	KindWXChannelsFetch = "wxchannels.fetch"
-	KindDownloadCreate  = "download.create"
-
-	CapabilityWXChannelsFetch = KindWXChannelsFetch
-	CapabilityDownloadCreate  = KindDownloadCreate
+	MethodWXChannelsFetch = "wxchannels.fetch"
+	MethodDownloadCreate  = "download.create"
 
 	max_message_bytes = 2 * 1024 * 1024
 )
 
-// Config describes one local service's Hub identity and capabilities.
+// Config describes one operating-system device's Hub connection and callable methods.
 type Config struct {
-	Enabled      bool
-	URL          string
-	HubID        string
-	ClientID     string
-	Token        string
-	Capabilities []string
-	HTTPTimeout  time.Duration
+	Enabled     bool
+	URL         string
+	DeviceID    string
+	DeviceName  string
+	DeviceOS    string
+	Token       string
+	Methods     []string
+	HTTPTimeout time.Duration
+	LegacyHubID string
 }
 
 // Task is the durable representation returned and pushed by the Hub.
 type Task struct {
-	ID                 string          `json:"id"`
-	Kind               string          `json:"kind"`
-	PublisherID        string          `json:"publisher_id"`
-	TargetClientID     string          `json:"target_client_id,omitempty"`
-	RequiredCapability string          `json:"required_capability"`
-	IdempotencyKey     string          `json:"idempotency_key,omitempty"`
-	Payload            json.RawMessage `json:"payload"`
-	Status             string          `json:"status"`
-	AssignedClientID   string          `json:"assigned_client_id,omitempty"`
-	LeaseExpiresAt     *int64          `json:"lease_expires_at,omitempty"`
-	AttemptCount       int             `json:"attempt_count"`
-	Result             json.RawMessage `json:"result,omitempty"`
-	Error              string          `json:"error,omitempty"`
-	CreatedAt          int64           `json:"created_at"`
-	UpdatedAt          int64           `json:"updated_at"`
-	CompletedAt        *int64          `json:"completed_at,omitempty"`
+	ID                string          `json:"id"`
+	Method            string          `json:"method"`
+	PublisherDeviceID string          `json:"publisher_device_id"`
+	TargetDeviceID    string          `json:"target_device_id,omitempty"`
+	IdempotencyKey    string          `json:"idempotency_key,omitempty"`
+	Args              json.RawMessage `json:"args"`
+	Status            string          `json:"status"`
+	AssignedDeviceID  string          `json:"assigned_device_id,omitempty"`
+	LeaseExpiresAt    *int64          `json:"lease_expires_at,omitempty"`
+	AttemptCount      int             `json:"attempt_count"`
+	Result            json.RawMessage `json:"result,omitempty"`
+	Error             string          `json:"error,omitempty"`
+	CreatedAt         int64           `json:"created_at"`
+	UpdatedAt         int64           `json:"updated_at"`
+	CompletedAt       *int64          `json:"completed_at,omitempty"`
 }
 
-// SubmitTaskRequest is the payload accepted by the Cloudflare Hub.
+// SubmitTaskRequest is one generic method call accepted by the Cloudflare Hub.
 type SubmitTaskRequest struct {
-	Kind               string `json:"kind"`
-	TargetClientID     string `json:"target_client_id,omitempty"`
-	RequiredCapability string `json:"required_capability,omitempty"`
-	IdempotencyKey     string `json:"idempotency_key,omitempty"`
-	Payload            any    `json:"payload"`
+	Method         string `json:"method"`
+	TargetDeviceID string `json:"target_device_id,omitempty"`
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+	Args           any    `json:"args"`
+}
+
+// UnmarshalJSON accepts both the method/args protocol and its task-kind legacy
+// aliases so the device can be upgraded before the Worker.
+func (t *Task) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	copy_legacy_json_field(fields, "method", "kind")
+	copy_legacy_json_field(fields, "args", "payload")
+	copy_legacy_json_field(fields, "publisher_device_id", "publisher_id")
+	copy_legacy_json_field(fields, "target_device_id", "target_client_id")
+	copy_legacy_json_field(fields, "assigned_device_id", "assigned_client_id")
+	normalized, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	type task_without_unmarshal Task
+	return json.Unmarshal(normalized, (*task_without_unmarshal)(t))
+}
+
+func copy_legacy_json_field(fields map[string]json.RawMessage, current_name string, legacy_name string) {
+	if _, exists := fields[current_name]; exists {
+		return
+	}
+	if value, exists := fields[legacy_name]; exists {
+		fields[current_name] = value
+	}
 }
 
 // Status is the local connection status exposed by the API.
 type Status struct {
-	Enabled      bool     `json:"enabled"`
-	Connected    bool     `json:"connected"`
-	HubID        string   `json:"hub_id,omitempty"`
-	ClientID     string   `json:"client_id,omitempty"`
-	URL          string   `json:"url,omitempty"`
-	Capabilities []string `json:"capabilities"`
-	ConnectedAt  int64    `json:"connected_at,omitempty"`
-	LastError    string   `json:"last_error,omitempty"`
+	Enabled     bool     `json:"enabled"`
+	Connected   bool     `json:"connected"`
+	DeviceID    string   `json:"device_id,omitempty"`
+	DeviceName  string   `json:"device_name,omitempty"`
+	DeviceOS    string   `json:"device_os,omitempty"`
+	URL         string   `json:"url,omitempty"`
+	Methods     []string `json:"methods"`
+	ConnectedAt int64    `json:"connected_at,omitempty"`
+	LastError   string   `json:"last_error,omitempty"`
 }
 
 // Executor performs a task assigned to this client and returns JSON result data.

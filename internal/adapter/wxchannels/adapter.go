@@ -78,6 +78,100 @@ func (a *ChannelsAdapter) Fetch(raw_url string) (any, error) {
 	return routes.client.Fetch(wxchannels.FetchParams{URL: raw_url})
 }
 
+// SearchChannelsContact searches for Channels authors through the active
+// browser-backed runtime.
+func (a *ChannelsAdapter) SearchChannelsContact(
+	keyword string,
+	next_marker string,
+) (*wxchannels.ChannelsContactSearchResp, error) {
+	client, err := a.wxchannels_client()
+	if err != nil {
+		return nil, err
+	}
+	return client.SearchChannelsContact(keyword, next_marker)
+}
+
+// FetchChannelsFeedListOfContact fetches a Channels author's feed list through
+// the active browser-backed runtime.
+func (a *ChannelsAdapter) FetchChannelsFeedListOfContact(
+	username string,
+	next_marker string,
+) (*wxchannels.ChannelsFeedListOfAccountResp, error) {
+	client, err := a.wxchannels_client()
+	if err != nil {
+		return nil, err
+	}
+	return client.FetchChannelsFeedListOfContact(username, next_marker)
+}
+
+// FetchChannelsLiveReplayList fetches a Channels author's live replay list
+// through the active browser-backed runtime.
+func (a *ChannelsAdapter) FetchChannelsLiveReplayList(
+	username string,
+	next_marker string,
+) (*wxchannels.ChannelsFeedListOfAccountResp, error) {
+	client, err := a.wxchannels_client()
+	if err != nil {
+		return nil, err
+	}
+	return client.FetchChannelsLiveReplayList(username, next_marker)
+}
+
+// FetchChannelsFeedProfile fetches one Channels feed profile through the
+// active browser-backed runtime.
+func (a *ChannelsAdapter) FetchChannelsFeedProfile(
+	oid string,
+	nid string,
+	request_url string,
+	eid string,
+) (*wxchannels.ChannelsFeedProfileResp, error) {
+	client, err := a.wxchannels_client()
+	if err != nil {
+		return nil, err
+	}
+	return client.FetchChannelsFeedProfile(oid, nid, request_url, eid)
+}
+
+// FetchChannelsFeedCommentList fetches one Channels feed's comments through
+// the active browser-backed runtime.
+func (a *ChannelsAdapter) FetchChannelsFeedCommentList(
+	oid string,
+	nid string,
+	comment_id string,
+	next_marker string,
+) (*wxchannels.ChannelsFeedCommentListResp, error) {
+	client, err := a.wxchannels_client()
+	if err != nil {
+		return nil, err
+	}
+	return client.FetchChannelsFeedCommentList(oid, nid, comment_id, next_marker)
+}
+
+// FetchChannelsFeedShareUrl fetches one Channels feed's share URL through the
+// active browser-backed runtime.
+func (a *ChannelsAdapter) FetchChannelsFeedShareUrl(
+	oid string,
+) (*wxchannels.ChannelsFeedShareUrlResp, error) {
+	client, err := a.wxchannels_client()
+	if err != nil {
+		return nil, err
+	}
+	return client.FetchChannelsFeedShareUrl(oid)
+}
+
+func (a *ChannelsAdapter) wxchannels_client() (*wxchannels.Client, error) {
+	if a == nil {
+		return nil, errors.New("wxchannels adapter is not initialized")
+	}
+	a.runtime_mu.Lock()
+	routes := a.routes
+	a.runtime_mu.Unlock()
+	if routes == nil || routes.client == nil {
+		return nil, errors.New("wxchannels runtime is not initialized")
+	}
+	return routes.client, nil
+}
+
 // Register creates and initializes a standalone channels adapter.
 func Register(d *adapter.AdapterOptions) (*ChannelsAdapter, error) {
 	channels_adapter := NewChannelsAdapter()
