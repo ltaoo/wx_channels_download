@@ -13,51 +13,51 @@ import (
 	"github.com/rs/zerolog"
 
 	"wx_channel/internal/adapter"
+	"wx_channel/internal/bridge"
 	"wx_channel/internal/config"
-	"wx_channel/internal/hub"
 	"wx_channel/pkg/scraper/wxchannels"
 )
 
 const (
-	hub_method_wxchannels_contact_search    = "wxchannels.contact.search"
-	hub_method_wxchannels_contact_feed_list = "wxchannels.contact.feed.list"
-	hub_method_wxchannels_live_replay_list  = "wxchannels.live.replay.list"
-	hub_method_wxchannels_feed_profile      = "wxchannels.feed.profile"
-	hub_method_wxchannels_feed_comment_list = "wxchannels.feed.comment.list"
-	hub_method_wxchannels_feed_share_url    = "wxchannels.feed.share_url"
+	bridge_method_wxchannels_contact_search    = "wxchannels.contact.search"
+	bridge_method_wxchannels_contact_feed_list = "wxchannels.contact.feed.list"
+	bridge_method_wxchannels_live_replay_list  = "wxchannels.live.replay.list"
+	bridge_method_wxchannels_feed_profile      = "wxchannels.feed.profile"
+	bridge_method_wxchannels_feed_comment_list = "wxchannels.feed.comment.list"
+	bridge_method_wxchannels_feed_share_url    = "wxchannels.feed.share_url"
 )
 
-// HubServiceOptions contains the dependencies and configuration for HubService.
-type HubServiceOptions struct {
+// BridgeServiceOptions contains the dependencies and configuration for BridgeService.
+type BridgeServiceOptions struct {
 	ApplicationConfig   *config.Config
-	Config              *hub.Config
+	Config              *bridge.Config
 	DownloadTaskService *DownloadTaskService
-	MethodHandlers      map[string]HubMethodHandler
+	MethodHandlers      map[string]BridgeMethodHandler
 	Logger              *zerolog.Logger
 }
 
-// HubMethodHandler handles the args object for one registered Hub method.
-type HubMethodHandler func(context.Context, json.RawMessage) (json.RawMessage, error)
+// BridgeMethodHandler handles the args object for one registered Bridge method.
+type BridgeMethodHandler func(context.Context, json.RawMessage) (json.RawMessage, error)
 
-// HubWXChannelsDownloadOptions controls local download creation after a remote fetch.
-type HubWXChannelsDownloadOptions struct {
+// BridgeWXChannelsDownloadOptions controls local download creation after a remote fetch.
+type BridgeWXChannelsDownloadOptions struct {
 	DownloadDir string         `json:"download_dir"`
 	Filename    string         `json:"filename"`
 	Config      map[string]any `json:"config"`
 	AutoStart   *bool          `json:"auto_start"`
 }
 
-// SubmitHubWXChannelsTaskRequest describes one remote wxchannels fetch request.
-type SubmitHubWXChannelsTaskRequest struct {
-	URL                  string                        `json:"url"`
-	TargetDeviceID       string                        `json:"target_device_id"`
-	LegacyTargetClientID string                        `json:"target_client_id,omitempty"`
-	IdempotencyKey       string                        `json:"idempotency_key"`
-	Download             *HubWXChannelsDownloadOptions `json:"download,omitempty"`
+// SubmitBridgeWXChannelsTaskRequest describes one remote wxchannels fetch request.
+type SubmitBridgeWXChannelsTaskRequest struct {
+	URL                  string                           `json:"url"`
+	TargetDeviceID       string                           `json:"target_device_id"`
+	LegacyTargetClientID string                           `json:"target_client_id,omitempty"`
+	IdempotencyKey       string                           `json:"idempotency_key"`
+	Download             *BridgeWXChannelsDownloadOptions `json:"download,omitempty"`
 }
 
-// SubmitHubDownloadTaskRequest describes one remote download creation request.
-type SubmitHubDownloadTaskRequest struct {
+// SubmitBridgeDownloadTaskRequest describes one remote download creation request.
+type SubmitBridgeDownloadTaskRequest struct {
 	TargetDeviceID       string                       `json:"target_device_id"`
 	LegacyTargetClientID string                       `json:"target_client_id,omitempty"`
 	IdempotencyKey       string                       `json:"idempotency_key"`
@@ -65,8 +65,8 @@ type SubmitHubDownloadTaskRequest struct {
 	URLRequest           *CreateDownloadTaskByURLBody `json:"url_request,omitempty"`
 }
 
-// SubmitHubCallRequest describes one generic CGI-style method call.
-type SubmitHubCallRequest struct {
+// SubmitBridgeCallRequest describes one generic CGI-style method call.
+type SubmitBridgeCallRequest struct {
 	Method               string         `json:"method"`
 	Args                 map[string]any `json:"args"`
 	TargetDeviceID       string         `json:"target_device_id"`
@@ -74,45 +74,45 @@ type SubmitHubCallRequest struct {
 	IdempotencyKey       string         `json:"idempotency_key"`
 }
 
-type hub_wxchannels_args struct {
-	URL      string                        `json:"url"`
-	Download *HubWXChannelsDownloadOptions `json:"download,omitempty"`
+type bridge_wxchannels_args struct {
+	URL      string                           `json:"url"`
+	Download *BridgeWXChannelsDownloadOptions `json:"download,omitempty"`
 }
 
-type hub_download_args struct {
+type bridge_download_args struct {
 	Request    *CreateDownloadTaskBody      `json:"request,omitempty"`
 	URLRequest *CreateDownloadTaskByURLBody `json:"url_request,omitempty"`
 }
 
-type hub_wxchannels_contact_search_args struct {
+type bridge_wxchannels_contact_search_args struct {
 	Keyword    string `json:"keyword"`
 	NextMarker string `json:"next_marker"`
 }
 
-type hub_wxchannels_account_page_args struct {
+type bridge_wxchannels_account_page_args struct {
 	Username   string `json:"username"`
 	NextMarker string `json:"next_marker"`
 }
 
-type hub_wxchannels_feed_profile_args struct {
+type bridge_wxchannels_feed_profile_args struct {
 	OID string `json:"oid"`
 	NID string `json:"nid"`
 	URL string `json:"url"`
 	EID string `json:"eid"`
 }
 
-type hub_wxchannels_feed_comment_list_args struct {
+type bridge_wxchannels_feed_comment_list_args struct {
 	OID        string `json:"oid"`
 	NID        string `json:"nid"`
 	CommentID  string `json:"comment_id"`
 	NextMarker string `json:"next_marker"`
 }
 
-type hub_wxchannels_feed_share_url_args struct {
+type bridge_wxchannels_feed_share_url_args struct {
 	OID string `json:"oid"`
 }
 
-type hub_wxchannels_adapter interface {
+type bridge_wxchannels_adapter interface {
 	SearchChannelsContact(keyword string, next_marker string) (*wxchannels.ChannelsContactSearchResp, error)
 	FetchChannelsFeedListOfContact(username string, next_marker string) (*wxchannels.ChannelsFeedListOfAccountResp, error)
 	FetchChannelsLiveReplayList(username string, next_marker string) (*wxchannels.ChannelsFeedListOfAccountResp, error)
@@ -121,83 +121,83 @@ type hub_wxchannels_adapter interface {
 	FetchChannelsFeedShareUrl(oid string) (*wxchannels.ChannelsFeedShareUrlResp, error)
 }
 
-type hub_unavailable_error struct {
+type bridge_unavailable_error struct {
 	message string
 }
 
-func (e *hub_unavailable_error) Error() string {
+func (e *bridge_unavailable_error) Error() string {
 	return e.message
 }
 
-// IsHubUnavailableError reports whether the single Hub connection is unavailable.
-func IsHubUnavailableError(err error) bool {
-	var unavailable_error *hub_unavailable_error
+// IsBridgeUnavailableError reports whether the single Bridge connection is unavailable.
+func IsBridgeUnavailableError(err error) bool {
+	var unavailable_error *bridge_unavailable_error
 	return errors.As(err, &unavailable_error)
 }
 
-// HubService owns Hub clients, their lifecycle, and application task dispatch.
-type HubService struct {
-	client                *hub.Client
+// BridgeService owns Bridge clients, their lifecycle, and application task dispatch.
+type BridgeService struct {
+	client                *bridge.Client
 	download_task_service *DownloadTaskService
 	logger                zerolog.Logger
 	config_error          error
 	wxchannels_mu         sync.Mutex
-	wxchannels_adapter    hub_wxchannels_adapter
-	method_handlers       map[string]HubMethodHandler
+	wxchannels_adapter    bridge_wxchannels_adapter
+	method_handlers       map[string]BridgeMethodHandler
 }
 
-// NewHubService creates the current operating-system device's single Hub client.
-func NewHubService(options HubServiceOptions) *HubService {
+// NewBridgeService creates the current operating-system device's single Bridge client.
+func NewBridgeService(options BridgeServiceOptions) *BridgeService {
 	logger := zerolog.Nop()
 	if options.Logger != nil {
-		logger = options.Logger.With().Str("component", "hub_service").Logger()
+		logger = options.Logger.With().Str("component", "bridge_service").Logger()
 	}
-	hub_config := options.Config
+	bridge_config := options.Config
 	var config_error error
 	if options.ApplicationConfig != nil {
-		hub_config, config_error = load_hub_config(options.ApplicationConfig)
+		bridge_config, config_error = load_bridge_config(options.ApplicationConfig)
 		if config_error != nil {
-			logger.Error().Err(config_error).Msg("Hub 配置无效，Hub 服务将保持不可用")
+			logger.Error().Err(config_error).Msg("Bridge 配置无效，Bridge 服务将保持不可用")
 		}
 	}
-	service := &HubService{
+	service := &BridgeService{
 		download_task_service: options.DownloadTaskService,
 		logger:                logger,
 		config_error:          config_error,
-		method_handlers:       make(map[string]HubMethodHandler),
+		method_handlers:       make(map[string]BridgeMethodHandler),
 	}
 	wxchannels_handler := adapter.Get("wxchannels")
 	if wxchannels_handler != nil {
-		service.method_handlers[hub.MethodWXChannelsFetch] = service.execute_wxchannels_fetch
-		if wxchannels_adapter, ok := wxchannels_handler.(hub_wxchannels_adapter); ok {
+		service.method_handlers[bridge.MethodWXChannelsFetch] = service.execute_wxchannels_fetch
+		if wxchannels_adapter, ok := wxchannels_handler.(bridge_wxchannels_adapter); ok {
 			service.wxchannels_adapter = wxchannels_adapter
 			service.register_wxchannels_methods()
 		}
 	}
 	if service.download_task_service != nil {
-		service.method_handlers[hub.MethodDownloadCreate] = service.execute_download_create
+		service.method_handlers[bridge.MethodDownloadCreate] = service.execute_download_create
 	}
 	for method, handler := range options.MethodHandlers {
 		if handler != nil {
 			service.method_handlers[strings.TrimSpace(method)] = handler
 		}
 	}
-	if hub_config != nil {
-		if hub_config.Methods != nil {
-			selected_handlers := make(map[string]HubMethodHandler)
-			for _, method := range hub_config.Methods {
+	if bridge_config != nil {
+		if bridge_config.Methods != nil {
+			selected_handlers := make(map[string]BridgeMethodHandler)
+			for _, method := range bridge_config.Methods {
 				handler := service.method_handlers[method]
 				if handler == nil {
-					logger.Warn().Str("method", method).Msg("Hub 配置的方法在当前设备上没有处理函数")
+					logger.Warn().Str("method", method).Msg("Bridge 配置的方法在当前设备上没有处理函数")
 					continue
 				}
 				selected_handlers[method] = handler
 			}
 			service.method_handlers = selected_handlers
 		}
-		resolved_config := *hub_config
+		resolved_config := *bridge_config
 		resolved_config.Methods = service.method_names()
-		service.client = hub.NewClient(
+		service.client = bridge.NewClient(
 			resolved_config,
 			service.execute_task,
 			service.handle_terminal_task,
@@ -207,34 +207,34 @@ func NewHubService(options HubServiceOptions) *HubService {
 	return service
 }
 
-func (s *HubService) register_wxchannels_methods() {
+func (s *BridgeService) register_wxchannels_methods() {
 	if s == nil || s.wxchannels_adapter == nil {
 		return
 	}
 	if s.method_handlers == nil {
-		s.method_handlers = make(map[string]HubMethodHandler)
+		s.method_handlers = make(map[string]BridgeMethodHandler)
 	}
-	s.method_handlers[hub_method_wxchannels_contact_search] = s.execute_wxchannels_contact_search
-	s.method_handlers[hub_method_wxchannels_contact_feed_list] = s.execute_wxchannels_contact_feed_list
-	s.method_handlers[hub_method_wxchannels_live_replay_list] = s.execute_wxchannels_live_replay_list
-	s.method_handlers[hub_method_wxchannels_feed_profile] = s.execute_wxchannels_feed_profile
-	s.method_handlers[hub_method_wxchannels_feed_comment_list] = s.execute_wxchannels_feed_comment_list
-	s.method_handlers[hub_method_wxchannels_feed_share_url] = s.execute_wxchannels_feed_share_url
+	s.method_handlers[bridge_method_wxchannels_contact_search] = s.execute_wxchannels_contact_search
+	s.method_handlers[bridge_method_wxchannels_contact_feed_list] = s.execute_wxchannels_contact_feed_list
+	s.method_handlers[bridge_method_wxchannels_live_replay_list] = s.execute_wxchannels_live_replay_list
+	s.method_handlers[bridge_method_wxchannels_feed_profile] = s.execute_wxchannels_feed_profile
+	s.method_handlers[bridge_method_wxchannels_feed_comment_list] = s.execute_wxchannels_feed_comment_list
+	s.method_handlers[bridge_method_wxchannels_feed_share_url] = s.execute_wxchannels_feed_share_url
 }
 
-// Start validates and starts the configured Hub client.
-func (s *HubService) Start(parent_context context.Context) error {
+// Start validates and starts the configured Bridge client.
+func (s *BridgeService) Start(parent_context context.Context) error {
 	if s == nil || s.client == nil {
 		return nil
 	}
 	if err := s.client.Start(parent_context); err != nil {
-		return fmt.Errorf("启动 Hub 失败: %w", err)
+		return fmt.Errorf("启动 Bridge 失败: %w", err)
 	}
 	return nil
 }
 
-// Close stops all configured Hub clients.
-func (s *HubService) Close() {
+// Close stops all configured Bridge clients.
+func (s *BridgeService) Close() {
 	if s == nil {
 		return
 	}
@@ -243,32 +243,32 @@ func (s *HubService) Close() {
 	}
 }
 
-// Status returns this operating-system device's Hub connection status.
-func (s *HubService) Status() (hub.Status, error) {
-	empty_status := hub.Status{Methods: []string{}}
+// Status returns this operating-system device's Bridge connection status.
+func (s *BridgeService) Status() (bridge.Status, error) {
+	empty_status := bridge.Status{Methods: []string{}}
 	if s == nil {
-		return empty_status, &hub_unavailable_error{message: "Hub 未配置"}
+		return empty_status, &bridge_unavailable_error{message: "Bridge 未配置"}
 	}
 	if s.config_error != nil {
-		return empty_status, &hub_unavailable_error{message: s.config_error.Error()}
+		return empty_status, &bridge_unavailable_error{message: s.config_error.Error()}
 	}
 	if s.client == nil {
-		return empty_status, &hub_unavailable_error{message: "Hub 未配置"}
+		return empty_status, &bridge_unavailable_error{message: "Bridge 未配置"}
 	}
 	return s.client.Status(), nil
 }
 
-// Call publishes one generic method invocation through the Hub.
-func (s *HubService) Call(request_context context.Context, request SubmitHubCallRequest) (*hub.Task, error) {
+// Call publishes one generic method invocation through the Bridge.
+func (s *BridgeService) Call(request_context context.Context, request SubmitBridgeCallRequest) (*bridge.Task, error) {
 	method := strings.TrimSpace(request.Method)
 	if method == "" {
 		return nil, errors.New("method 不能为空")
 	}
-	hub_client, err := s.resolve_client()
+	bridge_client, err := s.resolve_client()
 	if err != nil {
 		return nil, err
 	}
-	task, err := hub_client.SubmitTask(request_context, hub.SubmitTaskRequest{
+	task, err := bridge_client.SubmitTask(request_context, bridge.SubmitTaskRequest{
 		Method:         method,
 		TargetDeviceID: request.target_device_id(),
 		IdempotencyKey: strings.TrimSpace(request.IdempotencyKey),
@@ -277,21 +277,21 @@ func (s *HubService) Call(request_context context.Context, request SubmitHubCall
 	return task, err
 }
 
-// SubmitWXChannelsTask publishes a wxchannels fetch task through the Hub.
-func (s *HubService) SubmitWXChannelsTask(request_context context.Context, request SubmitHubWXChannelsTaskRequest) (*hub.Task, error) {
+// SubmitWXChannelsTask publishes a wxchannels fetch task through the Bridge.
+func (s *BridgeService) SubmitWXChannelsTask(request_context context.Context, request SubmitBridgeWXChannelsTaskRequest) (*bridge.Task, error) {
 	request.URL = strings.TrimSpace(request.URL)
 	if request.URL == "" {
 		return nil, errors.New("url 不能为空")
 	}
-	hub_client, err := s.resolve_client()
+	bridge_client, err := s.resolve_client()
 	if err != nil {
 		return nil, err
 	}
-	task, err := hub_client.SubmitTask(request_context, hub.SubmitTaskRequest{
-		Method:         hub.MethodWXChannelsFetch,
+	task, err := bridge_client.SubmitTask(request_context, bridge.SubmitTaskRequest{
+		Method:         bridge.MethodWXChannelsFetch,
 		TargetDeviceID: request.target_device_id(),
 		IdempotencyKey: strings.TrimSpace(request.IdempotencyKey),
-		Args: hub_wxchannels_args{
+		Args: bridge_wxchannels_args{
 			URL:      request.URL,
 			Download: request.Download,
 		},
@@ -299,8 +299,8 @@ func (s *HubService) SubmitWXChannelsTask(request_context context.Context, reque
 	return task, err
 }
 
-// SubmitDownloadTask publishes a download creation task through the Hub.
-func (s *HubService) SubmitDownloadTask(request_context context.Context, request SubmitHubDownloadTaskRequest) (*hub.Task, error) {
+// SubmitDownloadTask publishes a download creation task through the Bridge.
+func (s *BridgeService) SubmitDownloadTask(request_context context.Context, request SubmitBridgeDownloadTaskRequest) (*bridge.Task, error) {
 	target_device_id := request.target_device_id()
 	if target_device_id == "" {
 		return nil, errors.New("target_device_id 不能为空")
@@ -308,15 +308,15 @@ func (s *HubService) SubmitDownloadTask(request_context context.Context, request
 	if (request.Request == nil) == (request.URLRequest == nil) {
 		return nil, errors.New("request 和 url_request 必须且只能提供一个")
 	}
-	hub_client, err := s.resolve_client()
+	bridge_client, err := s.resolve_client()
 	if err != nil {
 		return nil, err
 	}
-	task, err := hub_client.SubmitTask(request_context, hub.SubmitTaskRequest{
-		Method:         hub.MethodDownloadCreate,
+	task, err := bridge_client.SubmitTask(request_context, bridge.SubmitTaskRequest{
+		Method:         bridge.MethodDownloadCreate,
 		TargetDeviceID: target_device_id,
 		IdempotencyKey: strings.TrimSpace(request.IdempotencyKey),
-		Args: hub_download_args{
+		Args: bridge_download_args{
 			Request:    request.Request,
 			URLRequest: request.URLRequest,
 		},
@@ -324,64 +324,64 @@ func (s *HubService) SubmitDownloadTask(request_context context.Context, request
 	return task, err
 }
 
-// GetTask retrieves one task through the Hub.
-func (s *HubService) GetTask(request_context context.Context, task_id string) (*hub.Task, error) {
-	hub_client, err := s.resolve_client()
+// GetTask retrieves one task through the Bridge.
+func (s *BridgeService) GetTask(request_context context.Context, task_id string) (*bridge.Task, error) {
+	bridge_client, err := s.resolve_client()
 	if err != nil {
 		return nil, err
 	}
-	task, err := hub_client.GetTask(request_context, task_id)
+	task, err := bridge_client.GetTask(request_context, task_id)
 	return task, err
 }
 
-// ListTasks retrieves tasks through the Hub.
-func (s *HubService) ListTasks(request_context context.Context, status string, limit int) ([]hub.Task, error) {
-	hub_client, err := s.resolve_client()
+// ListTasks retrieves tasks through the Bridge.
+func (s *BridgeService) ListTasks(request_context context.Context, status string, limit int) ([]bridge.Task, error) {
+	bridge_client, err := s.resolve_client()
 	if err != nil {
 		return nil, err
 	}
-	tasks, err := hub_client.ListTasks(request_context, status, limit)
+	tasks, err := bridge_client.ListTasks(request_context, status, limit)
 	return tasks, err
 }
 
-func (s *HubService) resolve_client() (*hub.Client, error) {
+func (s *BridgeService) resolve_client() (*bridge.Client, error) {
 	if s == nil {
-		return nil, &hub_unavailable_error{message: "Hub 未配置"}
+		return nil, &bridge_unavailable_error{message: "Bridge 未配置"}
 	}
 	if s.config_error != nil {
-		return nil, &hub_unavailable_error{message: s.config_error.Error()}
+		return nil, &bridge_unavailable_error{message: s.config_error.Error()}
 	}
 	if s.client == nil {
-		return nil, &hub_unavailable_error{message: "Hub 未配置"}
+		return nil, &bridge_unavailable_error{message: "Bridge 未配置"}
 	}
 	if !s.client.Status().Enabled {
-		return nil, &hub_unavailable_error{message: "Hub 未启用"}
+		return nil, &bridge_unavailable_error{message: "Bridge 未启用"}
 	}
 	return s.client, nil
 }
 
-func (request SubmitHubWXChannelsTaskRequest) target_device_id() string {
+func (request SubmitBridgeWXChannelsTaskRequest) target_device_id() string {
 	if target_device_id := strings.TrimSpace(request.TargetDeviceID); target_device_id != "" {
 		return target_device_id
 	}
 	return strings.TrimSpace(request.LegacyTargetClientID)
 }
 
-func (request SubmitHubDownloadTaskRequest) target_device_id() string {
+func (request SubmitBridgeDownloadTaskRequest) target_device_id() string {
 	if target_device_id := strings.TrimSpace(request.TargetDeviceID); target_device_id != "" {
 		return target_device_id
 	}
 	return strings.TrimSpace(request.LegacyTargetClientID)
 }
 
-func (request SubmitHubCallRequest) target_device_id() string {
+func (request SubmitBridgeCallRequest) target_device_id() string {
 	if target_device_id := strings.TrimSpace(request.TargetDeviceID); target_device_id != "" {
 		return target_device_id
 	}
 	return strings.TrimSpace(request.LegacyTargetClientID)
 }
 
-func (s *HubService) method_names() []string {
+func (s *BridgeService) method_names() []string {
 	methods := make([]string, 0, len(s.method_handlers))
 	for method := range s.method_handlers {
 		methods = append(methods, method)
@@ -390,25 +390,25 @@ func (s *HubService) method_names() []string {
 	return methods
 }
 
-func (s *HubService) execute_task(task_context context.Context, task hub.Task) (json.RawMessage, error) {
+func (s *BridgeService) execute_task(task_context context.Context, task bridge.Task) (json.RawMessage, error) {
 	if err := task_context.Err(); err != nil {
 		return nil, err
 	}
 	handler := s.method_handlers[task.Method]
 	if handler == nil {
-		return nil, fmt.Errorf("当前设备未注册 Hub 方法: %s", task.Method)
+		return nil, fmt.Errorf("当前设备未注册 Bridge 方法: %s", task.Method)
 	}
 	return handler(task_context, task.Args)
 }
 
-func (s *HubService) execute_wxchannels_fetch(task_context context.Context, args json.RawMessage) (json.RawMessage, error) {
-	var request hub_wxchannels_args
+func (s *BridgeService) execute_wxchannels_fetch(task_context context.Context, args json.RawMessage) (json.RawMessage, error) {
+	var request bridge_wxchannels_args
 	if err := json.Unmarshal(args, &request); err != nil {
-		return nil, fmt.Errorf("解析视频号 Hub 任务失败: %w", err)
+		return nil, fmt.Errorf("解析视频号 Bridge 任务失败: %w", err)
 	}
 	request.URL = strings.TrimSpace(request.URL)
 	if request.URL == "" {
-		return nil, errors.New("视频号 Hub 任务缺少 url")
+		return nil, errors.New("视频号 Bridge 任务缺少 url")
 	}
 	handler := adapter.Get("wxchannels")
 	if handler == nil {
@@ -430,12 +430,12 @@ func (s *HubService) execute_wxchannels_fetch(task_context context.Context, args
 	return data, nil
 }
 
-func (s *HubService) execute_wxchannels_contact_search(
+func (s *BridgeService) execute_wxchannels_contact_search(
 	task_context context.Context,
 	args json.RawMessage,
 ) (json.RawMessage, error) {
-	var request hub_wxchannels_contact_search_args
-	if err := decode_hub_method_args(args, &request); err != nil {
+	var request bridge_wxchannels_contact_search_args
+	if err := decode_bridge_method_args(args, &request); err != nil {
 		return nil, err
 	}
 	request.Keyword = strings.TrimSpace(request.Keyword)
@@ -447,15 +447,15 @@ func (s *HubService) execute_wxchannels_contact_search(
 		return nil, err
 	}
 	response, err := wxchannels_adapter.SearchChannelsContact(request.Keyword, request.NextMarker)
-	return encode_hub_method_result(task_context, response, err)
+	return encode_bridge_method_result(task_context, response, err)
 }
 
-func (s *HubService) execute_wxchannels_contact_feed_list(
+func (s *BridgeService) execute_wxchannels_contact_feed_list(
 	task_context context.Context,
 	args json.RawMessage,
 ) (json.RawMessage, error) {
-	var request hub_wxchannels_account_page_args
-	if err := decode_hub_method_args(args, &request); err != nil {
+	var request bridge_wxchannels_account_page_args
+	if err := decode_bridge_method_args(args, &request); err != nil {
 		return nil, err
 	}
 	request.Username = strings.TrimSpace(request.Username)
@@ -467,15 +467,15 @@ func (s *HubService) execute_wxchannels_contact_feed_list(
 		return nil, err
 	}
 	response, err := wxchannels_adapter.FetchChannelsFeedListOfContact(request.Username, request.NextMarker)
-	return encode_hub_method_result(task_context, response, err)
+	return encode_bridge_method_result(task_context, response, err)
 }
 
-func (s *HubService) execute_wxchannels_live_replay_list(
+func (s *BridgeService) execute_wxchannels_live_replay_list(
 	task_context context.Context,
 	args json.RawMessage,
 ) (json.RawMessage, error) {
-	var request hub_wxchannels_account_page_args
-	if err := decode_hub_method_args(args, &request); err != nil {
+	var request bridge_wxchannels_account_page_args
+	if err := decode_bridge_method_args(args, &request); err != nil {
 		return nil, err
 	}
 	request.Username = strings.TrimSpace(request.Username)
@@ -487,15 +487,15 @@ func (s *HubService) execute_wxchannels_live_replay_list(
 		return nil, err
 	}
 	response, err := wxchannels_adapter.FetchChannelsLiveReplayList(request.Username, request.NextMarker)
-	return encode_hub_method_result(task_context, response, err)
+	return encode_bridge_method_result(task_context, response, err)
 }
 
-func (s *HubService) execute_wxchannels_feed_profile(
+func (s *BridgeService) execute_wxchannels_feed_profile(
 	task_context context.Context,
 	args json.RawMessage,
 ) (json.RawMessage, error) {
-	var request hub_wxchannels_feed_profile_args
-	if err := decode_hub_method_args(args, &request); err != nil {
+	var request bridge_wxchannels_feed_profile_args
+	if err := decode_bridge_method_args(args, &request); err != nil {
 		return nil, err
 	}
 	request.OID = strings.TrimSpace(request.OID)
@@ -505,7 +505,7 @@ func (s *HubService) execute_wxchannels_feed_profile(
 	if request.OID == "" && request.URL == "" && request.EID == "" {
 		return nil, errors.New("oid、url 和 eid 至少需要提供一个")
 	}
-	request.OID, request.NID, request.URL, request.EID = normalize_hub_wxchannels_feed_profile_args(
+	request.OID, request.NID, request.URL, request.EID = normalize_bridge_wxchannels_feed_profile_args(
 		request.OID,
 		request.NID,
 		request.URL,
@@ -521,15 +521,15 @@ func (s *HubService) execute_wxchannels_feed_profile(
 		request.URL,
 		request.EID,
 	)
-	return encode_hub_method_result(task_context, response, err)
+	return encode_bridge_method_result(task_context, response, err)
 }
 
-func (s *HubService) execute_wxchannels_feed_comment_list(
+func (s *BridgeService) execute_wxchannels_feed_comment_list(
 	task_context context.Context,
 	args json.RawMessage,
 ) (json.RawMessage, error) {
-	var request hub_wxchannels_feed_comment_list_args
-	if err := decode_hub_method_args(args, &request); err != nil {
+	var request bridge_wxchannels_feed_comment_list_args
+	if err := decode_bridge_method_args(args, &request); err != nil {
 		return nil, err
 	}
 	request.OID = strings.TrimSpace(request.OID)
@@ -551,15 +551,15 @@ func (s *HubService) execute_wxchannels_feed_comment_list(
 		request.CommentID,
 		request.NextMarker,
 	)
-	return encode_hub_method_result(task_context, response, err)
+	return encode_bridge_method_result(task_context, response, err)
 }
 
-func (s *HubService) execute_wxchannels_feed_share_url(
+func (s *BridgeService) execute_wxchannels_feed_share_url(
 	task_context context.Context,
 	args json.RawMessage,
 ) (json.RawMessage, error) {
-	var request hub_wxchannels_feed_share_url_args
-	if err := decode_hub_method_args(args, &request); err != nil {
+	var request bridge_wxchannels_feed_share_url_args
+	if err := decode_bridge_method_args(args, &request); err != nil {
 		return nil, err
 	}
 	request.OID = strings.TrimSpace(request.OID)
@@ -571,12 +571,12 @@ func (s *HubService) execute_wxchannels_feed_share_url(
 		return nil, err
 	}
 	response, err := wxchannels_adapter.FetchChannelsFeedShareUrl(request.OID)
-	return encode_hub_method_result(task_context, response, err)
+	return encode_bridge_method_result(task_context, response, err)
 }
 
-func (s *HubService) resolve_wxchannels_adapter(
+func (s *BridgeService) resolve_wxchannels_adapter(
 	task_context context.Context,
-) (hub_wxchannels_adapter, error) {
+) (bridge_wxchannels_adapter, error) {
 	if err := task_context.Err(); err != nil {
 		return nil, err
 	}
@@ -586,17 +586,17 @@ func (s *HubService) resolve_wxchannels_adapter(
 	return s.wxchannels_adapter, nil
 }
 
-func decode_hub_method_args(args json.RawMessage, target any) error {
+func decode_bridge_method_args(args json.RawMessage, target any) error {
 	if len(args) == 0 {
 		args = json.RawMessage(`{}`)
 	}
 	if err := json.Unmarshal(args, target); err != nil {
-		return fmt.Errorf("解析 Hub 方法参数失败: %w", err)
+		return fmt.Errorf("解析 Bridge 方法参数失败: %w", err)
 	}
 	return nil
 }
 
-func encode_hub_method_result(
+func encode_bridge_method_result(
 	task_context context.Context,
 	response any,
 	response_error error,
@@ -609,12 +609,12 @@ func encode_hub_method_result(
 	}
 	data, err := json.Marshal(response)
 	if err != nil {
-		return nil, fmt.Errorf("编码 Hub 方法结果失败: %w", err)
+		return nil, fmt.Errorf("编码 Bridge 方法结果失败: %w", err)
 	}
 	return data, nil
 }
 
-func normalize_hub_wxchannels_feed_profile_args(
+func normalize_bridge_wxchannels_feed_profile_args(
 	oid string,
 	nid string,
 	request_url string,
@@ -634,11 +634,11 @@ func normalize_hub_wxchannels_feed_profile_args(
 	return oid, nid, request_url, eid
 }
 
-func (s *HubService) execute_download_create(_ context.Context, args json.RawMessage) (json.RawMessage, error) {
+func (s *BridgeService) execute_download_create(_ context.Context, args json.RawMessage) (json.RawMessage, error) {
 	if s.download_task_service == nil {
 		return nil, errors.New("下载任务服务未初始化")
 	}
-	var request hub_download_args
+	var request bridge_download_args
 	if err := json.Unmarshal(args, &request); err != nil {
 		return nil, fmt.Errorf("解析远程下载任务失败: %w", err)
 	}
@@ -662,19 +662,19 @@ func (s *HubService) execute_download_create(_ context.Context, args json.RawMes
 	return nil, errors.New("远程下载任务缺少 request 或 url_request")
 }
 
-func (s *HubService) handle_terminal_task(task hub.Task) {
+func (s *BridgeService) handle_terminal_task(task bridge.Task) {
 	if s == nil || task.Status != "completed" {
 		return
 	}
-	hub_client := s.client
-	if hub_client == nil {
+	bridge_client := s.client
+	if bridge_client == nil {
 		return
 	}
-	status := hub_client.Status()
-	if task.PublisherDeviceID != status.DeviceID || task.Method != hub.MethodWXChannelsFetch {
+	status := bridge_client.Status()
+	if task.PublisherDeviceID != status.DeviceID || task.Method != bridge.MethodWXChannelsFetch {
 		return
 	}
-	var request hub_wxchannels_args
+	var request bridge_wxchannels_args
 	if err := json.Unmarshal(task.Args, &request); err != nil || request.Download == nil {
 		return
 	}
@@ -691,8 +691,8 @@ func (s *HubService) handle_terminal_task(task hub.Task) {
 		AutoStart:      request.Download.AutoStart,
 	})
 	if err != nil {
-		s.logger.Error().Err(err).Str("device_id", status.DeviceID).Str("hub_task_id", task.ID).Msg("failed to create local download from completed hub task")
+		s.logger.Error().Err(err).Str("device_id", status.DeviceID).Str("bridge_task_id", task.ID).Msg("failed to create local download from completed bridge task")
 		return
 	}
-	s.logger.Info().Str("device_id", status.DeviceID).Str("hub_task_id", task.ID).Msg("created local download from completed hub task")
+	s.logger.Info().Str("device_id", status.DeviceID).Str("bridge_task_id", task.ID).Msg("created local download from completed bridge task")
 }

@@ -196,7 +196,7 @@ func Start(cfg *config.Config) error {
 			go bus.Publish(events.DownloadTaskFinished{TaskID: task_id})
 		}
 	})
-	hub_service := services.NewHubService(services.HubServiceOptions{
+	bridge_service := services.NewBridgeService(services.BridgeServiceOptions{
 		ApplicationConfig:   cfg,
 		DownloadTaskService: download_task_service,
 		Logger:              logger,
@@ -237,7 +237,7 @@ func Start(cfg *config.Config) error {
 		download_task_service,
 		fs_service,
 		scraper_job_service,
-		hub_service,
+		bridge_service,
 		certificate_service,
 		mcp_service,
 		application_update_service,
@@ -325,7 +325,7 @@ func Start(cfg *config.Config) error {
 	}
 
 	var cleanup_once sync.Once
-	hub_started := false
+	bridge_started := false
 	api_started := false
 	interceptor_start_attempted := false
 	cleanup := func() {
@@ -338,8 +338,8 @@ func Start(cfg *config.Config) error {
 					color.Red(fmt.Sprintf("Failed to stop proxy service: %v\n", err))
 				}
 			}
-			if hub_started {
-				hub_service.Close()
+			if bridge_started {
+				bridge_service.Close()
 			}
 			scraper_job_service.InterruptAll()
 			for i := len(adapter_handles) - 1; i >= 0; i-- {
@@ -368,9 +368,9 @@ func Start(cfg *config.Config) error {
 	// 	return
 	// }
 	// color.Green(fmt.Sprintf("GUI/Admin service started successfully, address: %v", admin_srv.Addr()))
-	hub_started = true
-	if err := hub_service.Start(ctx); err != nil {
-		logger.Error().Err(err).Msg("Hub 服务启动失败，应用将继续启动")
+	bridge_started = true
+	if err := bridge_service.Start(ctx); err != nil {
+		logger.Error().Err(err).Msg("Bridge 服务启动失败，应用将继续启动")
 	}
 	if err := api_srv.Start(); err != nil {
 		cleanup()

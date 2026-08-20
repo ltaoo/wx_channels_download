@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"wx_channel/internal/workers/hub"
+	"wx_channel/internal/workers/bridge"
 	"wx_channel/internal/workers/mp"
 	"wx_channel/internal/workers/sph"
 )
@@ -37,48 +37,48 @@ var deploy_sph_cmd = &cobra.Command{
 	},
 }
 
-var deploy_hub_cmd = &cobra.Command{
-	Use:   "hub",
-	Short: "部署 Durable Objects 任务 Hub 和管理页面",
-	Long:  "通过 Cloudflare REST API 部署原生 JavaScript Durable Objects Worker 和 Pages 管理页面",
+var deploy_bridge_cmd = &cobra.Command{
+	Use:   "bridge",
+	Short: "部署 Durable Objects Bridge 桥接服务和管理页面",
+	Long:  "通过 Cloudflare REST API 部署用于桥接和转发调用的原生 JavaScript Durable Objects Worker 与 Pages 管理页面",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		deploy_hub()
+		deploy_bridge()
 	},
 }
 
 func init() {
-	deploy_cmd.AddCommand(deploy_mp_cmd, deploy_sph_cmd, deploy_hub_cmd)
+	deploy_cmd.AddCommand(deploy_mp_cmd, deploy_sph_cmd, deploy_bridge_cmd)
 	Register(deploy_cmd)
 }
 
-func deploy_hub() {
-	pterm.DefaultSection.Println("开始部署 Durable Objects 任务 Hub (Go + JavaScript + REST API)")
+func deploy_bridge() {
+	pterm.DefaultSection.Println("开始部署 Durable Objects Bridge 桥接服务 (Go + JavaScript + REST API)")
 
-	spinner, _ := pterm.DefaultSpinner.Start("正在部署 Hub Worker 和 Pages...")
-	result, err := hub.Deploy(context.Background(), hub.DeployOptions{
+	spinner, _ := pterm.DefaultSpinner.Start("正在部署 Bridge Worker 和 Pages...")
+	result, err := bridge.Deploy(context.Background(), bridge.DeployOptions{
 		AccountID:        viper.GetString("cloudflare.accountId"),
 		AuthToken:        viper.GetString("cloudflare.apiToken"),
-		WorkerName:       viper.GetString("hub.deploy.workerName"),
-		PagesProjectName: viper.GetString("hub.deploy.pagesProjectName"),
-		HubToken:         viper.GetString("hub.deploy.token"),
-		AdminToken:       viper.GetString("hub.deploy.adminToken"),
+		WorkerName:       viper.GetString("bridge.deploy.workerName"),
+		PagesProjectName: viper.GetString("bridge.deploy.pagesProjectName"),
+		BridgeToken:      viper.GetString("bridge.deploy.token"),
+		AdminToken:       viper.GetString("bridge.deploy.adminToken"),
 		RepositoryDir:    Cfg.RootDir,
-		Progress: func(progress hub.DeployProgress) {
+		Progress: func(progress bridge.DeployProgress) {
 			spinner.UpdateText(progress.Message)
 		},
 	})
 	if err != nil {
 		spinner.Fail(err.Error())
 		if result != nil && result.WorkerID != "" {
-			pterm.Info.Println("提示: Hub Worker 已部署；请根据上面的 Pages 构建或 API 错误处理后重试")
+			pterm.Info.Println("提示: Bridge Worker 已部署；请根据上面的 Pages 构建或 API 错误处理后重试")
 		} else {
 			pterm.Info.Println("提示: Cloudflare API Token 需要 Workers Scripts:Edit 和 Pages:Edit 权限")
 		}
 		return
 	}
 	spinner.Success(fmt.Sprintf(
-		"Hub Worker 和 Pages 部署成功：%d 字节 JavaScript，%d 个静态文件",
+		"Bridge Worker 和 Pages 部署成功：%d 字节 JavaScript，%d 个静态文件",
 		result.ScriptBytes,
 		result.PagesFiles,
 	))
@@ -87,7 +87,7 @@ func deploy_hub() {
 	}
 
 	pterm.Println()
-	pterm.DefaultHeader.WithFullWidth().Println("Hub 部署摘要")
+	pterm.DefaultHeader.WithFullWidth().Println("Bridge 部署摘要")
 	table_data := [][]string{
 		{"项目", "值"},
 		{"Worker", result.WorkerName},
@@ -102,8 +102,8 @@ func deploy_hub() {
 	}
 	pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(table_data).Render()
 	pterm.Println()
-	pterm.Info.Println("将上面的 URL 和 hub.deploy.token 写入每台设备的 hub.url 和 hub.token。")
-	pterm.Info.Println("管理页面使用用户名 admin 和 hub.deploy.adminToken 登录。")
+	pterm.Info.Println("将上面的 URL 和 bridge.deploy.token 写入每台设备的 bridge.url 和 bridge.token。")
+	pterm.Info.Println("管理页面使用用户名 admin 和 bridge.deploy.adminToken 登录。")
 }
 
 func deploy_mp() {

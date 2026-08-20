@@ -304,7 +304,7 @@ var v1_download_task_upgrader = websocket.Upgrader{
 	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
-var v1_task_hub = new_task_ws_pool()
+var v1_task_bridge = new_task_ws_pool()
 
 // task_ws_pool is a WebSocket connection pool.
 type task_ws_pool struct {
@@ -435,7 +435,7 @@ func (c *APIClient) handle_download_task_ws(ctx *gin.Context) {
 		send:    make(chan []byte, 256),
 		task_id: task_id,
 	}
-	v1_task_hub.add(client)
+	v1_task_bridge.add(client)
 	go client.write_pump()
 
 	if client.task_id != 0 {
@@ -447,7 +447,7 @@ func (c *APIClient) handle_download_task_ws(ctx *gin.Context) {
 	}
 
 	client.read_pump()
-	v1_task_hub.remove(client)
+	v1_task_bridge.remove(client)
 }
 
 func (b *DownloadTaskBroadcaster) broadcast_download_task_upsert(task_ids []int) {
@@ -462,7 +462,7 @@ func (b *DownloadTaskBroadcaster) broadcast_download_task_upsert(task_ids []int)
 	if len(records) == 0 {
 		return
 	}
-	v1_task_hub.BroadcastTasks(task_ids, DownloadTaskWSMessage{
+	v1_task_bridge.BroadcastTasks(task_ids, DownloadTaskWSMessage{
 		Type:  download_task_ws_upsert,
 		Tasks: records,
 	})
@@ -477,7 +477,7 @@ func (b *DownloadTaskBroadcaster) broadcast_download_task_finished(task_id int, 
 		return
 	}
 	apply_finished_resource_snapshot(record, resources)
-	v1_task_hub.BroadcastTasks([]int{task_id}, DownloadTaskWSMessage{
+	v1_task_bridge.BroadcastTasks([]int{task_id}, DownloadTaskWSMessage{
 		Type:  download_task_ws_upsert,
 		Tasks: []services.DownloadTaskRecord{*record},
 	})
@@ -511,7 +511,7 @@ func (b *DownloadTaskBroadcaster) broadcast_download_task_create(task_id int) {
 	if err != nil || record == nil {
 		return
 	}
-	v1_task_hub.BroadcastTasks([]int{task_id}, DownloadTaskWSMessage{
+	v1_task_bridge.BroadcastTasks([]int{task_id}, DownloadTaskWSMessage{
 		Type:  download_task_ws_create,
 		Tasks: []services.DownloadTaskRecord{*record},
 	})
@@ -551,7 +551,7 @@ func (b *DownloadTaskBroadcaster) broadcast_download_task_state(task_id int) {
 	if err != nil || record == nil {
 		return
 	}
-	v1_task_hub.BroadcastTasks([]int{task_id}, DownloadTaskWSMessage{
+	v1_task_bridge.BroadcastTasks([]int{task_id}, DownloadTaskWSMessage{
 		Type:    download_task_ws_update,
 		Updates: []DownloadTaskWSUpdate{download_task_ws_update_from_record(*record)},
 	})
@@ -563,7 +563,7 @@ func (b *DownloadTaskBroadcaster) broadcast_download_task_progress(task_id int, 
 	if p == nil {
 		return
 	}
-	if !v1_task_hub.has_task_subscriber(task_id) {
+	if !v1_task_bridge.has_task_subscriber(task_id) {
 		return
 	}
 
@@ -657,7 +657,7 @@ func (b *DownloadTaskBroadcaster) broadcast_download_task_progress(task_id int, 
 		b.progress_cache_mu.RUnlock()
 		return
 	}
-	v1_task_hub.BroadcastTasks([]int{task_id}, DownloadTaskWSMessage{
+	v1_task_bridge.BroadcastTasks([]int{task_id}, DownloadTaskWSMessage{
 		Type:    download_task_ws_update,
 		Updates: []DownloadTaskWSUpdate{update},
 	})
@@ -727,14 +727,14 @@ func (b *DownloadTaskBroadcaster) broadcast_download_task_stats() {
 	for _, sc := range counts {
 		add_download_task_stats_count(stats, sc.Status, sc.Count)
 	}
-	v1_task_hub.BroadcastStats(stats)
+	v1_task_bridge.BroadcastStats(stats)
 }
 
 func (b *DownloadTaskBroadcaster) broadcast_download_task_delete(task_ids []int) {
 	if len(task_ids) == 0 {
 		return
 	}
-	v1_task_hub.BroadcastTasks(task_ids, DownloadTaskWSMessage{
+	v1_task_bridge.BroadcastTasks(task_ids, DownloadTaskWSMessage{
 		Type:    download_task_ws_delete,
 		TaskIDs: task_ids,
 	})

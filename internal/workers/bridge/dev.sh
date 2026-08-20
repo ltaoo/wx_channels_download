@@ -4,14 +4,14 @@ set -euo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 admin_dir="$script_dir/admin"
-worker_port=${HUB_WORKER_PORT:-8787}
-pages_port=${HUB_PAGES_PORT:-8788}
+worker_port=${BRIDGE_WORKER_PORT:-8787}
+pages_port=${BRIDGE_PAGES_PORT:-8788}
 wrangler_version=${WRANGLER_VERSION:-latest}
 
 # These predictable values are only for local development. Override them through
 # the environment when a test needs different credentials.
-export HUB_TOKEN=${HUB_TOKEN:-local-hub-token}
-export HUB_ADMIN_TOKEN=${HUB_ADMIN_TOKEN:-local-hub-admin-token}
+export BRIDGE_TOKEN=${BRIDGE_TOKEN:-local-bridge-token}
+export BRIDGE_ADMIN_TOKEN=${BRIDGE_ADMIN_TOKEN:-local-bridge-admin-token}
 
 worker_pid=""
 pages_pid=""
@@ -67,7 +67,7 @@ command -v curl >/dev/null 2>&1 || {
   exit 1
 }
 
-echo "正在构建 Hub Admin Pages..."
+echo "正在构建 Bridge Admin Pages..."
 "$admin_dir/build.sh"
 
 echo "正在准备 Wrangler $wrangler_version..."
@@ -98,7 +98,7 @@ if ! wait_for_service "http://127.0.0.1:$pages_port/" "$pages_pid"; then
 fi
 
 echo
-echo "Hub 本地开发环境已启动："
+echo "Bridge 本地开发环境已启动："
 echo "  Worker: http://127.0.0.1:$worker_port"
 echo "  Pages:  http://127.0.0.1:$pages_port"
 echo "  管理页用户名: admin"

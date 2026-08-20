@@ -1,6 +1,6 @@
 const Timeless = window.Timeless;
 if (!Timeless || !Timeless.DOM) {
-  throw new Error("Hub 管理页无法启动：Timeless 运行时未加载");
+  throw new Error("Bridge 管理页无法启动：Timeless 运行时未加载");
 }
 const {
   Button,
@@ -1252,7 +1252,7 @@ function AccessTokenManagementView(props) {
       class: "access-token-management",
       attributes: {
         n: "access-token-management",
-        "aria-label": "Hub 调用 Token 管理",
+        "aria-label": "Bridge 调用 Token 管理",
       },
     },
     [
@@ -1639,7 +1639,7 @@ function TaskResultView(props) {
 
 function TestResultView(props) {
   return TaskResultView({
-    name: "hub-test",
+    name: "bridge-test",
     result: props.test,
     submitting_text: "正在发起测试调用…",
     status_labels: {
@@ -1654,9 +1654,9 @@ function TestResultView(props) {
 
 function DownloadResultView(props) {
   return TaskResultView({
-    name: "hub-download",
+    name: "bridge-download",
     result: props.download,
-    submitting_text: "正在发起 Hub 下载调用…",
+    submitting_text: "正在发起 Bridge 下载调用…",
     status_labels: {
       queued: "等待下载设备接收调用",
       assigned: "下载调用已推送，等待设备确认",
@@ -1712,20 +1712,20 @@ function DownloadPanelView(props) {
       return View(
         {
           class: "download-panel",
-          attributes: { n: "hub-download-panel" },
+          attributes: { n: "bridge-download-panel" },
         },
         [
           View(
             {
               class: "test-title",
-              attributes: { n: "hub-download-title" },
+              attributes: { n: "bridge-download-title" },
             },
             ["将获取内容提交给下载设备"],
           ),
           View(
             {
               class: "test-description",
-              attributes: { n: "hub-download-description" },
+              attributes: { n: "bridge-download-description" },
             },
             [
               "把上一步回传的 content 作为 args 调用 download.create；成功后目标设备会创建并自动启动本地下载任务。",
@@ -1734,13 +1734,13 @@ function DownloadPanelView(props) {
           View(
             {
               class: "test-form download-form",
-              attributes: { n: "hub-download-form" },
+              attributes: { n: "bridge-download-form" },
             },
             [
               View(
                 {
                   class: "test-field",
-                  attributes: { n: "hub-download-device-field" },
+                  attributes: { n: "bridge-download-device-field" },
                 },
                 [
                   "下载设备",
@@ -1754,7 +1754,7 @@ function DownloadPanelView(props) {
                         value: target_device_id_,
                         options: entry.options,
                         attributes: {
-                          n: "hub-download-device-select",
+                          n: "bridge-download-device-select",
                           "aria-label": "下载设备",
                         },
                         onChange(event) {
@@ -1772,7 +1772,7 @@ function DownloadPanelView(props) {
               View(
                 {
                   class: "test-field",
-                  attributes: { n: "hub-download-directory-field" },
+                  attributes: { n: "bridge-download-directory-field" },
                 },
                 [
                   "下载目录（可选）",
@@ -1781,7 +1781,7 @@ function DownloadPanelView(props) {
                     value: download_dir_,
                     placeholder: "留空使用目标设备默认目录",
                     attributes: {
-                      n: "hub-download-directory-input",
+                      n: "bridge-download-directory-input",
                       "aria-label": "下载目录（可选）",
                     },
                     onInput(event) {
@@ -1797,7 +1797,7 @@ function DownloadPanelView(props) {
               View(
                 {
                   class: "test-field",
-                  attributes: { n: "hub-download-filename-field" },
+                  attributes: { n: "bridge-download-filename-field" },
                 },
                 [
                   "文件名（可选）",
@@ -1806,7 +1806,7 @@ function DownloadPanelView(props) {
                     value: filename_,
                     placeholder: "留空使用内容标题",
                     attributes: {
-                      n: "hub-download-filename-input",
+                      n: "bridge-download-filename-input",
                       "aria-label": "文件名（可选）",
                     },
                     onInput(event) {
@@ -1822,7 +1822,7 @@ function DownloadPanelView(props) {
               Button(
                 {
                   attributes: {
-                    n: "hub-download-submit-button",
+                    n: "bridge-download-submit-button",
                   },
                   disabled: disabled_,
                   onClick() {
@@ -1861,35 +1861,35 @@ function TestPanelView(props) {
   return View(
     {
       class: "test-panel",
-      attributes: { n: "hub-test-panel" },
+      attributes: { n: "bridge-test-panel" },
     },
     [
       View(
         {
           class: "test-title",
-          attributes: { n: "hub-test-title" },
+          attributes: { n: "bridge-test-title" },
         },
         ["调用此设备的 wxchannels.fetch 方法"],
       ),
       View(
         {
           class: "test-description",
-          attributes: { n: "hub-test-description" },
+          attributes: { n: "bridge-test-description" },
         },
         [
-          "发起真实调用并观察当前设备是否接收、获取视频号数据并把结果提交回 Hub。",
+          "发起真实调用并观察当前设备是否接收、获取视频号数据并把结果提交回 Bridge。",
         ],
       ),
       View(
         {
           class: "test-form device-test-form",
-          attributes: { n: "hub-test-form" },
+          attributes: { n: "bridge-test-form" },
         },
         [
           View(
             {
               class: "test-field",
-              attributes: { n: "hub-test-url-field" },
+              attributes: { n: "bridge-test-url-field" },
             },
             [
               "视频号 URL",
@@ -1899,7 +1899,7 @@ function TestPanelView(props) {
                 placeholder: "https://channels.weixin.qq.com/...",
                 type: "url",
                 attributes: {
-                  n: "hub-test-url-input",
+                  n: "bridge-test-url-input",
                   "aria-label": "视频号 URL",
                 },
                 onInput(event) {
@@ -1915,7 +1915,7 @@ function TestPanelView(props) {
           Button(
             {
               attributes: {
-                n: "hub-test-submit-button",
+                n: "bridge-test-submit-button",
               },
               disabled: disabled_,
               onClick() {
@@ -1948,30 +1948,30 @@ function format_os(value) {
   return labels[value] || value || "未知系统";
 }
 
-function HubSummaryView(props) {
+function BridgeSummaryView(props) {
   return View(
     {
-      class: "hub-summary",
-      attributes: { n: "hub-summary" },
+      class: "bridge-summary",
+      attributes: { n: "bridge-summary" },
     },
     [
       View(
         {
-          class: "hub-summary-section",
-          attributes: { n: "hub-method-summary" },
+          class: "bridge-summary-section",
+          attributes: { n: "bridge-method-summary" },
         },
         [
           View(
             {
               class: "summary-label",
-              attributes: { n: "hub-method-label" },
+              attributes: { n: "bridge-method-label" },
             },
             ["当前在线方法"],
           ),
           View(
             {
               class: "methods",
-              attributes: { n: "hub-methods" },
+              attributes: { n: "bridge-methods" },
             },
             [
               Show({
@@ -1983,7 +1983,7 @@ function HubSummaryView(props) {
                   return View(
                     {
                       class: "method muted",
-                      attributes: { n: "empty-hub-method" },
+                      attributes: { n: "empty-bridge-method" },
                     },
                     ["暂无在线方法"],
                   );
@@ -1995,7 +1995,7 @@ function HubSummaryView(props) {
                   return View(
                     {
                       class: "method",
-                      attributes: { n: "hub-method" },
+                      attributes: { n: "bridge-method" },
                     },
                     [String(source_value(method_value))],
                   );
@@ -2007,21 +2007,21 @@ function HubSummaryView(props) {
       ),
       View(
         {
-          class: "hub-summary-section",
-          attributes: { n: "hub-task-summary" },
+          class: "bridge-summary-section",
+          attributes: { n: "bridge-task-summary" },
         },
         [
           View(
             {
               class: "summary-label",
-              attributes: { n: "hub-task-label" },
+              attributes: { n: "bridge-task-label" },
             },
-            ["Hub 调用"],
+            ["Bridge 调用"],
           ),
           View(
             {
               class: "task-counts",
-              attributes: { n: "hub-task-counts" },
+              attributes: { n: "bridge-task-counts" },
             },
             [
               Show({
@@ -2249,7 +2249,7 @@ function DeviceListView(props) {
               class: "empty device-list-empty",
               attributes: { n: "empty-device-list" },
             },
-            ["尚无设备注册。请在一台操作系统中启用 Hub 连接。"],
+            ["尚无设备注册。请在一台操作系统中启用 Bridge 连接。"],
           );
         },
       }),
@@ -2313,7 +2313,7 @@ function ApplicationView() {
                   class: "dashboard-title",
                   attributes: { n: "dashboard-title" },
                 },
-                ["WX Channels Hub"],
+                ["WX Channels Bridge"],
               ),
               View(
                 {
@@ -2321,7 +2321,7 @@ function ApplicationView() {
                   attributes: { n: "dashboard-subtitle" },
                 },
                 [
-                  "管理操作系统设备、调用 Token，并观察 Hub 请求的调度与执行状态。",
+                  "管理操作系统设备、调用 Token，并观察 Bridge 请求的桥接、转发与执行状态。",
                 ],
               ),
             ],
@@ -2385,7 +2385,7 @@ function ApplicationView() {
           );
         },
       }),
-      HubSummaryView({
+      BridgeSummaryView({
         methods: vm$.state.available_methods,
         task_counts: vm$.state.task_counts,
       }),
@@ -2405,7 +2405,7 @@ function ApplicationView() {
 function bootstrap() {
   const root_node = document.querySelector('[data-n="dashboard-root"]');
   if (!root_node) {
-    throw new Error("Hub 管理页无法启动：缺少根节点");
+    throw new Error("Bridge 管理页无法启动：缺少根节点");
   }
   Timeless.DOM.render(ApplicationView(), root_node);
 }

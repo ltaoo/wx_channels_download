@@ -1,8 +1,8 @@
 /**
  * @typedef {Object} Env
  * @property {Fetcher} ASSETS
- * @property {Fetcher} HUB
- * @property {string} [HUB_ADMIN_TOKEN]
+ * @property {Fetcher} BRIDGE
+ * @property {string} [BRIDGE_ADMIN_TOKEN]
  */
 
 /**
@@ -11,7 +11,7 @@
  * @returns {boolean}
  */
 function admin_authorized(request, env) {
-  const admin_token = typeof env.HUB_ADMIN_TOKEN === "string" ? env.HUB_ADMIN_TOKEN : "";
+  const admin_token = typeof env.BRIDGE_ADMIN_TOKEN === "string" ? env.BRIDGE_ADMIN_TOKEN : "";
   const authorization = request.headers.get("Authorization") || "";
   if (admin_token === "" || !authorization.startsWith("Basic ")) {
     return false;
@@ -52,7 +52,7 @@ function authorization_required() {
     headers: {
       "Cache-Control": "no-store",
       "Content-Type": "text/plain; charset=utf-8",
-      "WWW-Authenticate": 'Basic realm="WX Channels Hub Admin", charset="UTF-8"',
+      "WWW-Authenticate": 'Basic realm="WX Channels Bridge Admin", charset="UTF-8"',
     },
   });
 }
@@ -79,7 +79,7 @@ export default {
     }
     const pathname = new URL(request.url).pathname;
     const response = pathname === "/admin/api" || pathname.startsWith("/admin/api/")
-      ? await env.HUB.fetch(request)
+      ? await env.BRIDGE.fetch(request)
       : await env.ASSETS.fetch(request);
     return secure_response(response);
   },

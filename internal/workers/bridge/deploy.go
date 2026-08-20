@@ -1,4 +1,4 @@
-package hub
+package bridge
 
 import (
 	"context"
@@ -17,16 +17,16 @@ import (
 
 const (
 	default_api_base_url            = "https://api.cloudflare.com/client/v4"
-	default_worker_name             = "wx-channels-hub"
+	default_worker_name             = "dm-bridge"
 	worker_compatibility_date       = "2026-05-03"
-	worker_class_name               = "HubDurableObject"
-	worker_binding_name             = "HUBS"
-	hub_token_binding_name          = "HUB_TOKEN"
-	hub_admin_token_binding_name    = "HUB_ADMIN_TOKEN"
-	worker_main_module              = "hub.js"
+	worker_class_name               = "BridgeDurableObject"
+	worker_binding_name             = "BRIDGES"
+	bridge_token_binding_name       = "BRIDGE_TOKEN"
+	bridge_admin_token_binding_name = "BRIDGE_ADMIN_TOKEN"
+	worker_main_module              = "bridge.js"
 	pages_compatibility_date        = "2026-08-19"
 	pages_production_branch         = "main"
-	pages_service_binding           = "HUB"
+	pages_service_binding           = "BRIDGE"
 	worker_deploy_timeout           = 2 * time.Minute
 	worker_subdomain_timeout        = 30 * time.Second
 	pages_build_timeout             = 30 * time.Second
@@ -34,7 +34,7 @@ const (
 	cloudflare_http_request_timeout = 2 * time.Minute
 )
 
-// DeployStage identifies the current Hub deployment phase.
+// DeployStage identifies the current Bridge deployment phase.
 type DeployStage string
 
 const (
@@ -44,19 +44,19 @@ const (
 	DeployStagePagesDeploy     DeployStage = "pages_deploy"
 )
 
-// DeployProgress is emitted before each Hub deployment phase.
+// DeployProgress is emitted before each Bridge deployment phase.
 type DeployProgress struct {
 	Stage   DeployStage
 	Message string
 }
 
-// DeployOptions contains the Cloudflare credentials and Hub deployment names.
+// DeployOptions contains the Cloudflare credentials and Bridge deployment names.
 type DeployOptions struct {
 	AccountID        string
 	AuthToken        string
 	WorkerName       string
 	PagesProjectName string
-	HubToken         string
+	BridgeToken      string
 	AdminToken       string
 	RepositoryDir    string
 	APIBaseURL       string
@@ -78,7 +78,7 @@ type DeployResult struct {
 	PagesFiles         int
 }
 
-// Deploy uploads the Hub Worker, builds the admin assets, and deploys the
+// Deploy uploads the Bridge Worker, builds the admin assets, and deploys the
 // Cloudflare Pages management project.
 func Deploy(request_context context.Context, options DeployOptions) (*DeployResult, error) {
 	normalized_options, err := normalize_deploy_options(options)
@@ -100,13 +100,13 @@ func Deploy(request_context context.Context, options DeployOptions) (*DeployResu
 		HTTPClient: http_client,
 	})
 
-	notify_progress(options, DeployStageWorker, "正在部署 Hub Worker...")
+	notify_progress(options, DeployStageWorker, "正在部署 Bridge Worker...")
 	worker_context, cancel_worker := context.WithTimeout(request_context, worker_deploy_timeout)
 	worker_result, err := durableobjects.Deploy(worker_context, durableobjects.DeployOptions{
 		AccountID:         options.AccountID,
 		AuthToken:         options.AuthToken,
 		WorkerName:        options.WorkerName,
-		ScriptContent:     []byte(HubWorkerJavaScript()),
+		ScriptContent:     []byte(BridgeWorkerJavaScript()),
 		CompatibilityDate: worker_compatibility_date,
 		MainModule:        worker_main_module,
 		DurableObjects: []durableobjects.DurableObject{
@@ -117,15 +117,15 @@ func Deploy(request_context context.Context, options DeployOptions) (*DeployResu
 			},
 		},
 		Secrets: map[string]string{
-			hub_token_binding_name:       options.HubToken,
-			hub_admin_token_binding_name: options.AdminToken,
+			bridge_token_binding_name:       options.BridgeToken,
+			bridge_admin_token_binding_name: options.AdminToken,
 		},
 		EnableSubdomain: true,
 		APIClient:       worker_api_client,
 	})
 	cancel_worker()
 	if err != nil {
-		return nil, fmt.Errorf("部署 Hub Worker 失败: %w", err)
+		return nil, fmt.Errorf("部署 Bridge Worker 失败: %w", err)
 	}
 
 	result := &DeployResult{
@@ -150,16 +150,16 @@ func Deploy(request_context context.Context, options DeployOptions) (*DeployResu
 		result.WorkerURL = fmt.Sprintf("https://%s.%s.workers.dev", worker_result.WorkerName, subdomain)
 	}
 
-	admin_dir := filepath.Join(options.RepositoryDir, "internal", "workers", "hub", "admin")
-	notify_progress(options, DeployStagePagesBuild, "正在准备 Hub Pages 静态资源...")
+	admin_dir := filepath.Join(options.RepositoryDir, "internal", "workers", "bridge", "admin")
+	notify_progress(options, DeployStagePagesBuild, "正在准备 Bridge Pages 静态资源...")
 	build_context, cancel_build := context.WithTimeout(request_context, pages_build_timeout)
 	err = build_pages_assets(build_context, admin_dir)
 	cancel_build()
 	if err != nil {
-		return result, fmt.Errorf("Hub Worker 已部署，但 Pages 管理页面构建失败: %w", err)
+		return result, fmt.Errorf("Bridge Worker 已部署，但 Pages 管理页面构建失败: %w", err)
 	}
 
-	notify_progress(options, DeployStagePagesDeploy, "正在通过 Cloudflare API 部署 Hub Pages...")
+	notify_progress(options, DeployStagePagesDeploy, "正在通过 Cloudflare API 部署 Bridge Pages...")
 	pages_context, cancel_pages := context.WithTimeout(request_context, pages_deploy_timeout)
 	pages_result, err := pages_api_client.DeployProject(pages_context, pages.DeployOptions{
 		AccountID:         options.AccountID,
@@ -169,7 +169,7 @@ func Deploy(request_context context.Context, options DeployOptions) (*DeployResu
 		CompatibilityDate: pages_compatibility_date,
 		Directory:         filepath.Join(admin_dir, "dist"),
 		Secrets: map[string]string{
-			hub_admin_token_binding_name: options.AdminToken,
+			bridge_admin_token_binding_name: options.AdminToken,
 		},
 		Services: map[string]pages.ServiceBinding{
 			pages_service_binding: {Service: worker_result.WorkerName},
@@ -177,7 +177,7 @@ func Deploy(request_context context.Context, options DeployOptions) (*DeployResu
 	})
 	cancel_pages()
 	if err != nil {
-		return result, fmt.Errorf("Hub Worker 已部署，但 Pages 管理页面部署失败: %w", err)
+		return result, fmt.Errorf("Bridge Worker 已部署，但 Pages 管理页面部署失败: %w", err)
 	}
 
 	result.PagesProjectName = pages_result.ProjectName
@@ -193,7 +193,7 @@ func normalize_deploy_options(options DeployOptions) (DeployOptions, error) {
 	options.AuthToken = strings.TrimSpace(options.AuthToken)
 	options.WorkerName = strings.TrimSpace(options.WorkerName)
 	options.PagesProjectName = strings.TrimSpace(options.PagesProjectName)
-	options.HubToken = strings.TrimSpace(options.HubToken)
+	options.BridgeToken = strings.TrimSpace(options.BridgeToken)
 	options.AdminToken = strings.TrimSpace(options.AdminToken)
 	options.RepositoryDir = strings.TrimSpace(options.RepositoryDir)
 	options.APIBaseURL = strings.TrimRight(strings.TrimSpace(options.APIBaseURL), "/")
@@ -212,14 +212,14 @@ func normalize_deploy_options(options DeployOptions) (DeployOptions, error) {
 	if options.AuthToken == "" {
 		return options, errors.New("未配置 cloudflare.apiToken")
 	}
-	if options.HubToken == "" {
-		return options, errors.New("未配置 hub.deploy.token；该值会作为 Worker 的 HUB_TOKEN secret")
+	if options.BridgeToken == "" {
+		return options, errors.New("未配置 bridge.deploy.token；该值会作为 Worker 的 BRIDGE_TOKEN secret")
 	}
 	if options.AdminToken == "" {
-		return options, errors.New("未配置 hub.deploy.adminToken；该值用于保护 Hub 管理页面")
+		return options, errors.New("未配置 bridge.deploy.adminToken；该值用于保护 Bridge 管理页面")
 	}
-	if options.AdminToken == options.HubToken {
-		return options, errors.New("hub.deploy.adminToken 不能与 hub.deploy.token 相同")
+	if options.AdminToken == options.BridgeToken {
+		return options, errors.New("bridge.deploy.adminToken 不能与 bridge.deploy.token 相同")
 	}
 	if options.RepositoryDir == "" {
 		return options, errors.New("项目根目录不能为空")

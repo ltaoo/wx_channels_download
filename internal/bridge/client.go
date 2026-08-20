@@ -1,7 +1,7 @@
-// Package hub connects one operating-system device to the Cloudflare Durable
-// Objects task Hub. Connections are outbound-only, so devices do not need to be
+// Package bridge connects one operating-system device to the Cloudflare Durable
+// Objects task Bridge. Connections are outbound-only, so devices do not need to be
 // reachable from each other or from the public Internet.
-package hub
+package bridge
 
 import (
 	"bytes"
@@ -24,7 +24,7 @@ import (
 
 var method_name_pattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 
-// Client maintains the Hub WebSocket and provides the Hub HTTP API.
+// Client maintains the Bridge WebSocket and provides the Bridge HTTP API.
 type Client struct {
 	config           Config
 	executor         Executor
@@ -137,12 +137,12 @@ func (c *Client) Status() Status {
 	}
 }
 
-// SubmitTask persists and dispatches a task through the Hub.
+// SubmitTask persists and dispatches a task through the Bridge.
 func (c *Client) SubmitTask(request_context context.Context, request SubmitTaskRequest) (*Task, error) {
 	var response task_response
 	path := "/call"
 	var body any = request
-	if c.config.LegacyHubID != "" {
+	if c.config.LegacyBridgeID != "" {
 		path = "/tasks"
 		body = struct {
 			Kind               string `json:"kind"`
@@ -183,7 +183,7 @@ func (c *Client) ListTasks(request_context context.Context, status string, limit
 	}
 	query := url.Values{}
 	publisher_query := "publisher_device_id"
-	if c.config.LegacyHubID != "" {
+	if c.config.LegacyBridgeID != "" {
 		publisher_query = "publisher_id"
 	}
 	query.Set(publisher_query, c.config.DeviceID)
@@ -201,24 +201,24 @@ func (c *Client) ListTasks(request_context context.Context, status string, limit
 func (c *Client) validate_config() error {
 	parsed_url, err := url.Parse(strings.TrimSpace(c.config.URL))
 	if err != nil || parsed_url.Host == "" || (parsed_url.Scheme != "http" && parsed_url.Scheme != "https") {
-		return errors.New("hub.url must be an http or https URL")
+		return errors.New("bridge.url must be an http or https URL")
 	}
 	if strings.TrimSpace(c.config.DeviceID) == "" {
-		return errors.New("hub.deviceId is required")
+		return errors.New("bridge.deviceId is required")
 	}
 	if strings.TrimSpace(c.config.Token) == "" {
-		return errors.New("hub.token is required")
+		return errors.New("bridge.token is required")
 	}
 	if len(c.config.Methods) > 64 {
-		return errors.New("hub.methods cannot contain more than 64 methods")
+		return errors.New("bridge.methods cannot contain more than 64 methods")
 	}
 	for _, method := range c.config.Methods {
 		if !method_name_pattern.MatchString(method) {
-			return fmt.Errorf("invalid Hub method name: %q", method)
+			return fmt.Errorf("invalid Bridge method name: %q", method)
 		}
 	}
 	if c.executor == nil && len(c.config.Methods) > 0 {
-		return errors.New("hub task executor is required when methods are registered")
+		return errors.New("bridge task executor is required when methods are registered")
 	}
 	return nil
 }
@@ -257,7 +257,7 @@ func (c *Client) run(run_context context.Context) {
 		connection.SetReadLimit(max_message_bytes)
 		c.set_connected(connection)
 		if c.logger != nil {
-			c.logger.Info().Str("device_id", c.config.DeviceID).Msg("hub connected")
+			c.logger.Info().Str("device_id", c.config.DeviceID).Msg("bridge connected")
 		}
 		err = c.read_messages(run_context, connection)
 		_ = connection.Close()
@@ -290,7 +290,7 @@ func (c *Client) read_messages(run_context context.Context, connection *websocke
 			}
 		case "error":
 			if c.logger != nil {
-				c.logger.Warn().Str("error", message.Error).Msg("hub protocol error")
+				c.logger.Warn().Str("error", message.Error).Msg("bridge protocol error")
 			}
 		}
 	}
@@ -372,7 +372,7 @@ func (c *Client) send_message(message client_message) error {
 	connection := c.connection
 	c.state_mu.RUnlock()
 	if connection == nil {
-		return errors.New("hub websocket is disconnected")
+		return errors.New("bridge websocket is disconnected")
 	}
 	data, err := json.Marshal(message)
 	if err != nil {
@@ -404,26 +404,26 @@ func (c *Client) set_disconnected(connection *websocket.Conn, err error) {
 	}
 	c.state_mu.Unlock()
 	if err != nil && c.logger != nil {
-		c.logger.Warn().Err(err).Str("device_id", c.config.DeviceID).Msg("hub disconnected")
+		c.logger.Warn().Err(err).Str("device_id", c.config.DeviceID).Msg("bridge disconnected")
 	}
 }
 
 func (c *Client) request_headers() http.Header {
 	headers := http.Header{}
 	headers.Set("Authorization", "Bearer "+c.config.Token)
-	headers.Set("X-Hub-Device-ID", c.config.DeviceID)
-	headers.Set("X-Hub-Device-Name", c.config.DeviceName)
-	headers.Set("X-Hub-Device-OS", c.config.DeviceOS)
-	headers.Set("X-Hub-Methods", strings.Join(c.config.Methods, ","))
-	if c.config.LegacyHubID != "" {
-		headers.Set("X-Hub-Client-ID", c.config.DeviceID)
-		headers.Set("X-Hub-Capabilities", strings.Join(c.config.Methods, ","))
+	headers.Set("X-Bridge-Device-ID", c.config.DeviceID)
+	headers.Set("X-Bridge-Device-Name", c.config.DeviceName)
+	headers.Set("X-Bridge-Device-OS", c.config.DeviceOS)
+	headers.Set("X-Bridge-Methods", strings.Join(c.config.Methods, ","))
+	if c.config.LegacyBridgeID != "" {
+		headers.Set("X-Bridge-Client-ID", c.config.DeviceID)
+		headers.Set("X-Bridge-Capabilities", strings.Join(c.config.Methods, ","))
 	}
 	return headers
 }
 
 func (c *Client) websocket_url() string {
-	http_url := c.hub_url("/connect", nil)
+	http_url := c.bridge_url("/connect", nil)
 	parsed_url, _ := url.Parse(http_url)
 	if parsed_url.Scheme == "https" {
 		parsed_url.Scheme = "wss"
@@ -433,11 +433,11 @@ func (c *Client) websocket_url() string {
 	return parsed_url.String()
 }
 
-func (c *Client) hub_url(path string, query url.Values) string {
+func (c *Client) bridge_url(path string, query url.Values) string {
 	base_url := strings.TrimRight(c.config.URL, "/")
 	result := base_url + "/v1" + path
-	if c.config.LegacyHubID != "" {
-		result = base_url + "/v1/hubs/" + url.PathEscape(c.config.LegacyHubID) + path
+	if c.config.LegacyBridgeID != "" {
+		result = base_url + "/v1/bridges/" + url.PathEscape(c.config.LegacyBridgeID) + path
 	}
 	if len(query) > 0 {
 		result += "?" + query.Encode()
@@ -454,7 +454,7 @@ func (c *Client) do_json(
 	result any,
 ) error {
 	if c == nil || !c.config.Enabled {
-		return errors.New("hub is disabled")
+		return errors.New("bridge is disabled")
 	}
 	var body_reader io.Reader
 	if body != nil {
@@ -464,7 +464,7 @@ func (c *Client) do_json(
 		}
 		body_reader = bytes.NewReader(data)
 	}
-	request, err := http.NewRequestWithContext(request_context, method, c.hub_url(path, query), body_reader)
+	request, err := http.NewRequestWithContext(request_context, method, c.bridge_url(path, query), body_reader)
 	if err != nil {
 		return err
 	}
@@ -482,17 +482,17 @@ func (c *Client) do_json(
 		return err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		var hub_error error_response
-		if json.Unmarshal(data, &hub_error) == nil && hub_error.Error != "" {
-			return fmt.Errorf("hub request failed (%d): %s", response.StatusCode, hub_error.Error)
+		var bridge_error error_response
+		if json.Unmarshal(data, &bridge_error) == nil && bridge_error.Error != "" {
+			return fmt.Errorf("bridge request failed (%d): %s", response.StatusCode, bridge_error.Error)
 		}
-		return fmt.Errorf("hub request failed (%d): %s", response.StatusCode, strings.TrimSpace(string(data)))
+		return fmt.Errorf("bridge request failed (%d): %s", response.StatusCode, strings.TrimSpace(string(data)))
 	}
 	if result == nil || len(data) == 0 {
 		return nil
 	}
 	if err := json.Unmarshal(data, result); err != nil {
-		return fmt.Errorf("decode hub response: %w", err)
+		return fmt.Errorf("decode bridge response: %w", err)
 	}
 	return nil
 }

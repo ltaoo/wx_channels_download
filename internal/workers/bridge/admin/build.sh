@@ -20,4 +20,4 @@ cp -- "$script_dir/worker.js" "$dist_dir/_worker.js"
 cp -- "$timeless_source_dir/timeless.umd.min.js" "$timeless_dist_dir/timeless.umd.min.js"
 cp -- "$timeless_source_dir/timeless.dom.umd.min.js" "$timeless_dist_dir/timeless.dom.umd.min.js"
 
-printf 'Hub Admin Pages assets prepared in %s\n' "$dist_dir"
+printf 'Bridge Admin Pages assets prepared in %s\n' "$dist_dir"

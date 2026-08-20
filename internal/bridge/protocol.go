@@ -1,4 +1,4 @@
-package hub
+package bridge
 
 import "encoding/json"
 

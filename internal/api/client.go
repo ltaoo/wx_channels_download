@@ -39,7 +39,7 @@ type APIClient struct {
 	scraper_job_service         *services.ScraperJobService
 	application_update_service  *services.ApplicationUpdateService
 	application_restart_service *services.ApplicationRestartService
-	hub_service                 *services.HubService
+	bridge_service              *services.BridgeService
 	certificate_service         *services.CertificateService
 	mcp_service                 *services.MCPService
 }
@@ -58,7 +58,7 @@ func NewAPIClient(
 	download_task_service *services.DownloadTaskService,
 	fs_service *services.FSService,
 	scraper_job_service *services.ScraperJobService,
-	hub_service *services.HubService,
+	bridge_service *services.BridgeService,
 	certificate_service *services.CertificateService,
 	mcp_service *services.MCPService,
 	application_update_service *services.ApplicationUpdateService,
@@ -90,7 +90,7 @@ func NewAPIClient(
 		application_update_service:  application_update_service,
 		application_restart_service: application_restart_service,
 		download_task_service:       download_task_service,
-		hub_service:                 hub_service,
+		bridge_service:              bridge_service,
 		certificate_service:         certificate_service,
 		mcp_service:                 mcp_service,
 	}
@@ -131,7 +131,7 @@ func (c *APIClient) service_statuses_map() map[string]string {
 }
 
 func (c *APIClient) Stop() error {
-	v1_task_hub.close_all()
+	v1_task_bridge.close_all()
 	return nil
 }
 

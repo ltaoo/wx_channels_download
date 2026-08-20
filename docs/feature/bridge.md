@@ -1,27 +1,27 @@
 ---
-title: Hub 使用
+title: Bridge 使用
 ---
 
-# Hub 使用
+# Bridge 使用
 
-Hub 把一个人管理的多台操作系统设备组织成一个可远程调用的能力节点。外部程序只需要向 Hub 提交 `method + args`，Hub 会选择能够执行该方法的在线设备；也可以通过 `target_device_id` 指定设备。
+Bridge 是连接外部程序与多台操作系统设备的桥接/转发服务。外部程序只需要提交 `method + args`，Bridge 就会把调用转发给能够执行该方法的在线设备；也可以通过 `target_device_id` 指定设备。
 
 ```text
-外部程序 ── HTTPS ── Hub Worker ── WebSocket ── macOS / Windows / Linux 设备
+外部程序 ── HTTPS ── Bridge Worker ── WebSocket ── macOS / Windows / Linux 设备
              │
              └── 调用 Token 鉴权、任务持久化、设备选择与结果查询
 ```
 
-Hub 提供两种调用方式：`/v1/invoke` 会等待最多 10 秒并直接返回方法结果，适合快速调用；`/v1/call` 会立即返回持久任务，适合耗时操作、可靠重试和后台处理。
+Bridge 提供两种调用方式：`/v1/invoke` 会等待最多 10 秒并直接返回方法结果，适合快速调用；`/v1/call` 会立即返回持久任务，适合耗时操作、可靠重试和后台处理。
 
 ## 使用前准备
 
-### 1. 部署 Hub
+### 1. 部署 Bridge
 
-按照 [deploy hub](/cli/deploy#deploy-hub) 部署 Cloudflare Worker 和 Pages 管理页面。本文使用下面的 Worker 地址作为示例：
+按照 [deploy bridge](/cli/deploy#deploy-bridge) 部署 Cloudflare Worker 和 Pages 管理页面。本文使用下面的 Worker 地址作为示例：
 
 ```text
-https://wx-channels-hub.litao.workers.dev
+https://dm-bridge.litao.workers.dev
 ```
 
 ### 2. 注册执行设备
@@ -29,17 +29,17 @@ https://wx-channels-hub.litao.workers.dev
 需要提供能力的每个操作系统分别配置并运行 `wx_channels_download`：
 
 ```yaml
-hub:
+bridge:
   enabled: true
-  url: "https://wx-channels-hub.example.workers.dev"
+  url: "https://dm-bridge.example.workers.dev"
   deviceId: "my-macbook"
   deviceName: "My MacBook"
-  token: "<HUB_TOKEN>"
+  token: "<BRIDGE_TOKEN>"
   httpTimeoutSeconds: 30
   methods: "auto"
 ```
 
-- `deviceId` 是当前 Hub 内稳定且唯一的设备标识。
+- `deviceId` 是当前 Bridge 内稳定且唯一的设备标识。
 - `token` 是部署时设置的设备 Secret，只用于设备连接，不应提供给外部调用者。
 - `methods: "auto"` 注册当前设备支持的全部方法；也可以使用逗号分隔的方法白名单。
 - 视频号方法需要设备上的视频号页面已经连接；仅显示设备在线不代表视频号页面一定可用。
@@ -48,7 +48,7 @@ hub:
 
 打开 Pages 管理页面，点击右上角的“调用 Token”进入抽屉，然后创建调用 Token：
 
-- Token 留空时由 Hub 自动生成，也可以手动指定 16–256 位 Token。
+- Token 留空时由 Bridge 自动生成，也可以手动指定 16–256 位 Token。
 - 用途或使用人可选填。
 - 可以设置 1、7、30、90 天或永不过期。
 - Token 明文只显示一次，请立即保存。
@@ -56,15 +56,15 @@ hub:
 本文示例通过环境变量读取地址和 Token：
 
 ```sh
-export HUB_URL="https://wx-channels-hub.litao.workers.dev"
-export HUB_CALL_TOKEN="hub_call_xxx"
+export BRIDGE_URL="https://dm-bridge.litao.workers.dev"
+export BRIDGE_CALL_TOKEN="bridge_call_xxx"
 ```
 
 ::: warning 三类凭证不要混用
 
 - 调用 Token：供外部程序访问 `/v1/*`，本文所有示例都使用它。
-- 设备 Secret：配置项 `hub.token`，只供设备连接 Hub。
-- 管理员 Token：配置项 `hub.deploy.adminToken`，只供管理页面和管理 API 使用。
+- 设备 Secret：配置项 `bridge.token`，只供设备连接 Bridge。
+- 管理员 Token：配置项 `bridge.deploy.adminToken`，只供管理页面和管理 API 使用。
 
 :::
 
@@ -87,12 +87,12 @@ Authorization: Bearer <CALL_TOKEN>
 
 每个调用 Token 都对应独立的发布方身份。一个 Token 不能读取另一个 Token 或设备创建的任务；尝试查询其他发布方的任务时返回 `404`。
 
-## 查询 Hub 状态
+## 查询 Bridge 状态
 
 ```sh
 curl -sS \
-  -H "Authorization: Bearer $HUB_CALL_TOKEN" \
-  "$HUB_URL/v1"
+  -H "Authorization: Bearer $BRIDGE_CALL_TOKEN" \
+  "$BRIDGE_URL/v1"
 ```
 
 返回示例：
@@ -130,7 +130,7 @@ curl -sS \
 ```sh
 curl -sS \
   -X POST \
-  -H "Authorization: Bearer $HUB_CALL_TOKEN" \
+  -H "Authorization: Bearer $BRIDGE_CALL_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "method": "wxchannels.contact.feed.list",
@@ -139,7 +139,7 @@ curl -sS \
       "next_marker": ""
     }
   }' \
-  "$HUB_URL/v1/invoke"
+  "$BRIDGE_URL/v1/invoke"
 ```
 
 请求字段：
@@ -148,7 +148,7 @@ curl -sS \
 | --- | --- | --- |
 | `method` | 是 | 设备注册的方法名 |
 | `args` | 否 | 传给方法的 JSON 对象，默认 `{}` |
-| `target_device_id` | 否 | 指定执行设备；省略时由 Hub 自动选择 |
+| `target_device_id` | 否 | 指定执行设备；省略时由 Bridge 自动选择 |
 
 任务在 10 秒内完成时返回 `200`，响应体就是设备方法返回的 JSON 结果，不包含 `task`、任务 ID 或其他任务信息。设备执行失败时返回 `502`；10 秒内没有完成时返回 `504`：
 
@@ -158,7 +158,7 @@ curl -sS \
 }
 ```
 
-`/v1/invoke` 仍会在 Hub 内创建持久任务。HTTP 超时不会取消已经创建或正在执行的任务，该任务可能在响应超时后继续完成。由于响应不提供任务 ID，而且该接口不使用幂等键，不要直接重试可能产生副作用的调用；这类调用应使用 `/v1/call`。
+`/v1/invoke` 仍会在 Bridge 内创建持久任务。HTTP 超时不会取消已经创建或正在执行的任务，该任务可能在响应超时后继续完成。由于响应不提供任务 ID，而且该接口不使用幂等键，不要直接重试可能产生副作用的调用；这类调用应使用 `/v1/call`。
 
 ## 创建异步调用
 
@@ -167,7 +167,7 @@ curl -sS \
 ```sh
 curl -sS \
   -X POST \
-  -H "Authorization: Bearer $HUB_CALL_TOKEN" \
+  -H "Authorization: Bearer $BRIDGE_CALL_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "method": "wxchannels.contact.feed.list",
@@ -177,7 +177,7 @@ curl -sS \
     },
     "idempotency_key": "feed-list-example-001"
   }' \
-  "$HUB_URL/v1/call"
+  "$BRIDGE_URL/v1/call"
 ```
 
 请求字段：
@@ -186,7 +186,7 @@ curl -sS \
 | --- | --- | --- |
 | `method` | 是 | 设备注册的方法名 |
 | `args` | 否 | 传给方法的 JSON 对象，默认 `{}` |
-| `target_device_id` | 否 | 指定执行设备；省略时由 Hub 自动选择 |
+| `target_device_id` | 否 | 指定执行设备；省略时由 Bridge 自动选择 |
 | `idempotency_key` | 否 | 当前调用 Token 下的全局幂等键，最长 128 个字符 |
 
 新任务通常返回 `201`：
@@ -215,11 +215,11 @@ curl -sS \
 }
 ```
 
-在同一个调用 Token 下重复提交相同的非空 `idempotency_key`，Hub 不会创建新任务，而是返回原任务和 `"idempotent_replay": true`。幂等键不按 method 分组，因此同一 Token 的所有调用都应使用不同的业务键。
+在同一个调用 Token 下重复提交相同的非空 `idempotency_key`，Bridge 不会创建新任务，而是返回原任务和 `"idempotent_replay": true`。幂等键不按 method 分组，因此同一 Token 的所有调用都应使用不同的业务键。
 
 ### 指定执行设备
 
-默认建议省略 `target_device_id`，让调用方只依赖 Hub 方法，不依赖内部设备。如果业务必须固定到某台设备，可以指定：
+默认建议省略 `target_device_id`，让调用方只依赖 Bridge 方法，不依赖内部设备。如果业务必须固定到某台设备，可以指定：
 
 ```json
 {
@@ -240,8 +240,8 @@ curl -sS \
 TASK_ID="7e793f36-87e0-4ae2-b899-3d57decd95de"
 
 curl -sS \
-  -H "Authorization: Bearer $HUB_CALL_TOKEN" \
-  "$HUB_URL/v1/tasks/$TASK_ID"
+  -H "Authorization: Bearer $BRIDGE_CALL_TOKEN" \
+  "$BRIDGE_URL/v1/tasks/$TASK_ID"
 ```
 
 任务状态：
@@ -260,8 +260,8 @@ curl -sS \
 
 ```sh
 curl -sS \
-  -H "Authorization: Bearer $HUB_CALL_TOKEN" \
-  "$HUB_URL/v1/tasks?status=completed&limit=20"
+  -H "Authorization: Bearer $BRIDGE_CALL_TOKEN" \
+  "$BRIDGE_URL/v1/tasks?status=completed&limit=20"
 ```
 
 `limit` 的有效范围为 1–200。省略 `status` 时返回所有状态。
@@ -332,19 +332,19 @@ curl -sS \
 
 ## 主流语言调用示例
 
-下面的示例都通过 `/v1/invoke` 调用 `wxchannels.contact.feed.list`，并直接输出方法结果。客户端 HTTP 超时应略大于 Hub 的 10 秒等待时间。
+下面的示例都通过 `/v1/invoke` 调用 `wxchannels.contact.feed.list`，并直接输出方法结果。客户端 HTTP 超时应略大于 Bridge 的 10 秒等待时间。
 
 ### JavaScript / TypeScript（Node.js 18+）
 
 ```js
-const hub_url = process.env.HUB_URL?.replace(/\/+$/, "");
-const call_token = process.env.HUB_CALL_TOKEN;
+const bridge_url = process.env.BRIDGE_URL?.replace(/\/+$/, "");
+const call_token = process.env.BRIDGE_CALL_TOKEN;
 
-if (!hub_url || !call_token) {
-  throw new Error("请设置 HUB_URL 和 HUB_CALL_TOKEN");
+if (!bridge_url || !call_token) {
+  throw new Error("请设置 BRIDGE_URL 和 BRIDGE_CALL_TOKEN");
 }
 
-const response = await fetch(`${hub_url}/v1/invoke`, {
+const response = await fetch(`${bridge_url}/v1/invoke`, {
   method: "POST",
   headers: {
     Authorization: `Bearer ${call_token}`,
@@ -362,7 +362,7 @@ const response = await fetch(`${hub_url}/v1/invoke`, {
 
 const response_body = await response.text();
 if (!response.ok) {
-  throw new Error(`Hub 返回 ${response.status}: ${response_body}`);
+  throw new Error(`Bridge 返回 ${response.status}: ${response_body}`);
 }
 
 const result = JSON.parse(response_body);
@@ -381,11 +381,11 @@ python3 -m pip install requests
 import os
 import requests
 
-hub_url = os.environ["HUB_URL"].rstrip("/")
-call_token = os.environ["HUB_CALL_TOKEN"]
+bridge_url = os.environ["BRIDGE_URL"].rstrip("/")
+call_token = os.environ["BRIDGE_CALL_TOKEN"]
 
 response = requests.post(
-    f"{hub_url}/v1/invoke",
+    f"{bridge_url}/v1/invoke",
     headers={"Authorization": f"Bearer {call_token}"},
     json={
         "method": "wxchannels.contact.feed.list",
@@ -425,10 +425,10 @@ type CallRequest struct {
 }
 
 func main() {
-	hub_url := strings.TrimRight(os.Getenv("HUB_URL"), "/")
-	call_token := os.Getenv("HUB_CALL_TOKEN")
-	if hub_url == "" || call_token == "" {
-		log.Fatal("请设置 HUB_URL 和 HUB_CALL_TOKEN")
+	bridge_url := strings.TrimRight(os.Getenv("BRIDGE_URL"), "/")
+	call_token := os.Getenv("BRIDGE_CALL_TOKEN")
+	if bridge_url == "" || call_token == "" {
+		log.Fatal("请设置 BRIDGE_URL 和 BRIDGE_CALL_TOKEN")
 	}
 
 	request_body, err := json.Marshal(CallRequest{
@@ -445,7 +445,7 @@ func main() {
 	http_client := &http.Client{Timeout: 15 * time.Second}
 	http_request, err := http.NewRequest(
 		http.MethodPost,
-		hub_url+"/v1/invoke",
+		bridge_url+"/v1/invoke",
 		bytes.NewReader(request_body),
 	)
 	if err != nil {
@@ -465,7 +465,7 @@ func main() {
 		log.Fatal(err)
 	}
 	if http_response.StatusCode < 200 || http_response.StatusCode >= 300 {
-		log.Fatalf("Hub 返回 %s: %s", http_response.Status, response_body)
+		log.Fatalf("Bridge 返回 %s: %s", http_response.Status, response_body)
 	}
 
 	fmt.Println(string(response_body))
@@ -483,15 +483,15 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 
-public class HubExample {
+public class BridgeExample {
     public static void main(String[] args) throws Exception {
-        String hubUrlValue = System.getenv("HUB_URL");
-        String callToken = System.getenv("HUB_CALL_TOKEN");
-        if (hubUrlValue == null || hubUrlValue.isBlank()
+        String bridgeUrlValue = System.getenv("BRIDGE_URL");
+        String callToken = System.getenv("BRIDGE_CALL_TOKEN");
+        if (bridgeUrlValue == null || bridgeUrlValue.isBlank()
                 || callToken == null || callToken.isBlank()) {
-            throw new IllegalStateException("请设置 HUB_URL 和 HUB_CALL_TOKEN");
+            throw new IllegalStateException("请设置 BRIDGE_URL 和 BRIDGE_CALL_TOKEN");
         }
-        String hubUrl = hubUrlValue.replaceAll("/+$", "");
+        String bridgeUrl = bridgeUrlValue.replaceAll("/+$", "");
         String requestBody = "{"
             + "\"method\":\"wxchannels.contact.feed.list\","
             + "\"args\":{"
@@ -500,7 +500,7 @@ public class HubExample {
             + "}";
 
         HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(hubUrl + "/v1/invoke"))
+            .uri(URI.create(bridgeUrl + "/v1/invoke"))
             .timeout(Duration.ofSeconds(15))
             .header("Authorization", "Bearer " + callToken)
             .header("Content-Type", "application/json")
@@ -513,7 +513,7 @@ public class HubExample {
         );
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IllegalStateException(
-                "Hub 返回 " + response.statusCode() + ": " + response.body()
+                "Bridge 返回 " + response.statusCode() + ": " + response.body()
             );
         }
         System.out.println(response.body());
@@ -526,10 +526,10 @@ public class HubExample {
 ```php
 <?php
 
-$hub_url = rtrim((string) getenv('HUB_URL'), '/');
-$call_token = (string) getenv('HUB_CALL_TOKEN');
-if ($hub_url === '' || $call_token === '') {
-    throw new RuntimeException('请设置 HUB_URL 和 HUB_CALL_TOKEN');
+$bridge_url = rtrim((string) getenv('BRIDGE_URL'), '/');
+$call_token = (string) getenv('BRIDGE_CALL_TOKEN');
+if ($bridge_url === '' || $call_token === '') {
+    throw new RuntimeException('请设置 BRIDGE_URL 和 BRIDGE_CALL_TOKEN');
 }
 $request_body = json_encode([
     'method' => 'wxchannels.contact.feed.list',
@@ -539,7 +539,7 @@ $request_body = json_encode([
     ],
 ], JSON_THROW_ON_ERROR);
 
-$curl_handle = curl_init($hub_url . '/v1/invoke');
+$curl_handle = curl_init($bridge_url . '/v1/invoke');
 curl_setopt_array($curl_handle, [
     CURLOPT_POST => true,
     CURLOPT_RETURNTRANSFER => true,
@@ -559,7 +559,7 @@ $status_code = curl_getinfo($curl_handle, CURLINFO_RESPONSE_CODE);
 curl_close($curl_handle);
 
 if ($status_code < 200 || $status_code >= 300) {
-    throw new RuntimeException("Hub 返回 {$status_code}: {$response_body}");
+    throw new RuntimeException("Bridge 返回 {$status_code}: {$response_body}");
 }
 
 json_decode($response_body, true, flags: JSON_THROW_ON_ERROR);
@@ -572,11 +572,11 @@ echo $response_body . PHP_EOL;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 
-var hub_url = (Environment.GetEnvironmentVariable("HUB_URL") ?? "").TrimEnd('/');
-var call_token = Environment.GetEnvironmentVariable("HUB_CALL_TOKEN") ?? "";
-if (string.IsNullOrWhiteSpace(hub_url) || string.IsNullOrWhiteSpace(call_token))
+var bridge_url = (Environment.GetEnvironmentVariable("BRIDGE_URL") ?? "").TrimEnd('/');
+var call_token = Environment.GetEnvironmentVariable("BRIDGE_CALL_TOKEN") ?? "";
+if (string.IsNullOrWhiteSpace(bridge_url) || string.IsNullOrWhiteSpace(call_token))
 {
-    throw new InvalidOperationException("请设置 HUB_URL 和 HUB_CALL_TOKEN");
+    throw new InvalidOperationException("请设置 BRIDGE_URL 和 BRIDGE_CALL_TOKEN");
 }
 
 using var http_client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
@@ -594,14 +594,14 @@ var request_body = new
 };
 
 using var http_response = await http_client.PostAsJsonAsync(
-    hub_url + "/v1/invoke",
+    bridge_url + "/v1/invoke",
     request_body
 );
 var response_body = await http_response.Content.ReadAsStringAsync();
 if (!http_response.IsSuccessStatusCode)
 {
     throw new HttpRequestException(
-        $"Hub 返回 {(int)http_response.StatusCode}: {response_body}"
+        $"Bridge 返回 {(int)http_response.StatusCode}: {response_body}"
     );
 }
 
@@ -626,14 +626,14 @@ use std::env;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let hub_url = env::var("HUB_URL")?.trim_end_matches('/').to_owned();
-    let call_token = env::var("HUB_CALL_TOKEN")?;
+    let bridge_url = env::var("BRIDGE_URL")?.trim_end_matches('/').to_owned();
+    let call_token = env::var("BRIDGE_CALL_TOKEN")?;
     let http_client = Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()?;
 
     let result: Value = http_client
-        .post(format!("{hub_url}/v1/invoke"))
+        .post(format!("{bridge_url}/v1/invoke"))
         .bearer_auth(call_token)
         .json(&json!({
             "method": "wxchannels.contact.feed.list",
@@ -658,24 +658,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 下面的 JavaScript 示例创建调用并等待最终结果。`idempotency_key` 应使用业务对象 ID 或请求唯一 ID，而不是每次重试都生成新值。
 
 ```js
-const hub_url = process.env.HUB_URL?.replace(/\/+$/, "");
-const call_token = process.env.HUB_CALL_TOKEN;
-if (!hub_url || !call_token) {
-  throw new Error("请设置 HUB_URL 和 HUB_CALL_TOKEN");
+const bridge_url = process.env.BRIDGE_URL?.replace(/\/+$/, "");
+const call_token = process.env.BRIDGE_CALL_TOKEN;
+if (!bridge_url || !call_token) {
+  throw new Error("请设置 BRIDGE_URL 和 BRIDGE_CALL_TOKEN");
 }
 const headers = {
   Authorization: `Bearer ${call_token}`,
   "Content-Type": "application/json",
 };
 
-async function hub_request(path, options = {}) {
-  const response = await fetch(hub_url + path, {
+async function bridge_request(path, options = {}) {
+  const response = await fetch(bridge_url + path, {
     ...options,
     headers: { ...headers, ...(options.headers || {}) },
   });
   const response_body = await response.text();
   if (!response.ok) {
-    throw new Error(`Hub 返回 ${response.status}: ${response_body}`);
+    throw new Error(`Bridge 返回 ${response.status}: ${response_body}`);
   }
   return JSON.parse(response_body);
 }
@@ -683,17 +683,17 @@ async function hub_request(path, options = {}) {
 async function wait_for_task(task_id) {
   let delay_milliseconds = 1000;
   while (true) {
-    const { task } = await hub_request(
+    const { task } = await bridge_request(
       `/v1/tasks/${encodeURIComponent(task_id)}`,
     );
     if (task.status === "completed") return task.result;
-    if (task.status === "failed") throw new Error(task.error || "Hub 调用失败");
+    if (task.status === "failed") throw new Error(task.error || "Bridge 调用失败");
     await new Promise((resolve) => setTimeout(resolve, delay_milliseconds));
     delay_milliseconds = Math.min(delay_milliseconds * 1.5, 5000);
   }
 }
 
-const { task } = await hub_request("/v1/call", {
+const { task } = await bridge_request("/v1/call", {
   method: "POST",
   body: JSON.stringify({
     method: "wxchannels.contact.feed.list",
@@ -708,7 +708,7 @@ console.log(result);
 
 ## 错误处理
 
-Hub 错误响应统一为：
+Bridge 错误响应统一为：
 
 ```json
 {
@@ -728,17 +728,17 @@ Hub 错误响应统一为：
 | `429` | Cloudflare 或上层网关限流，应退避重试 |
 | `502` | `/v1/invoke` 的设备方法执行失败，错误位于 `error` |
 | `504` | `/v1/invoke` 等待超过 10 秒，内部任务可能仍会继续执行 |
-| 其他 `5xx` | Hub 或执行环境暂时异常；异步调用应使用相同幂等键重试 |
+| 其他 `5xx` | Bridge 或执行环境暂时异常；异步调用应使用相同幂等键重试 |
 
 异步任务进入 `failed` 时，HTTP 查询本身仍返回 `200`，业务错误位于 `task.error`。同步调用则直接返回非 `2xx` 状态和 `{ "error": "..." }`。
 
 ## 可靠性与安全建议
 
-- Hub 使用至少一次投递。设备断线或租约过期时，任务可能重新执行；执行方法应能容忍重复调用。
+- Bridge 使用至少一次投递。设备断线或租约过期时，任务可能重新执行；执行方法应能容忍重复调用。
 - 对可能产生副作用的调用始终设置稳定的 `idempotency_key`。
 - `/v1/invoke` 不使用幂等键。只应自动重试无副作用的方法；其他调用使用 `/v1/call` 并设置幂等键。
 - 不要把调用 Token 放在 URL、浏览器前端代码、日志或 Git 仓库中。
 - 为不同人员和系统创建不同 Token，分别设置有效期；不再使用时立即过期或移除。
-- 调用 Token 当前可以访问 Hub 中全部在线方法。需要方法级权限、限流或计费时，应在 Hub 前增加上层网关。
-- 调用 args、结果和任务元数据会在 Hub 中持久化；不要通过 Hub 传递不必要的敏感信息。
+- 调用 Token 当前可以访问 Bridge 中全部在线方法。需要方法级权限、限流或计费时，应在 Bridge 前增加上层网关。
+- 调用 args、结果和任务元数据会在 Bridge 中持久化；不要通过 Bridge 传递不必要的敏感信息。
 - 完成和失败任务保留 7 天，调用方应及时保存需要长期使用的结果。

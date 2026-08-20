@@ -97,14 +97,14 @@ cloudflare:
   sphCookie: ""
   sphCredential: ""
 
-hub:
+bridge:
   deploy:
-    workerName: "wx-channels-hub"
+    workerName: "dm-bridge"
     pagesProjectName: ""
     token: ""
     adminToken: ""
   enabled: false
-  url: "https://wx-channels-hub.example.workers.dev"
+  url: "https://dm-bridge.example.workers.dev"
   deviceId: ""
   deviceName: ""
   token: ""

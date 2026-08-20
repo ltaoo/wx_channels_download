@@ -2,9 +2,9 @@ import { DurableObject } from "cloudflare:workers";
 
 /**
  * @typedef {Object} Env
- * @property {DurableObjectNamespace<HubDurableObject>} HUBS
- * @property {string} HUB_TOKEN
- * @property {string} HUB_ADMIN_TOKEN
+ * @property {DurableObjectNamespace<BridgeDurableObject>} BRIDGES
+ * @property {string} BRIDGE_TOKEN
+ * @property {string} BRIDGE_ADMIN_TOKEN
  */
 
 /** @typedef {"queued" | "assigned" | "running" | "completed" | "failed"} TaskStatus */
@@ -137,7 +137,7 @@ const MAX_ATTEMPTS = 10;
 const LEASE_MILLISECONDS = 120_000;
 const RETENTION_MILLISECONDS = 7 * 24 * 60 * 60 * 1000;
 const MAINTENANCE_MILLISECONDS = 24 * 60 * 60 * 1000;
-const HUB_OBJECT_NAME = "hub";
+const BRIDGE_OBJECT_NAME = "bridge";
 const MAX_ACCESS_TOKENS = 500;
 const MIN_ACCESS_TOKEN_LENGTH = 16;
 const MAX_ACCESS_TOKEN_LENGTH = 256;
@@ -216,7 +216,7 @@ function generate_access_token() {
   crypto.getRandomValues(bytes);
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return "hub_call_" + btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+  return "bridge_call_" + btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
 
 /**
@@ -236,7 +236,7 @@ function valid_access_token(value) {
  * @returns {string}
  */
 function access_token_hint(token) {
-  const visible_prefix_length = token.startsWith("hub_call_") ? 17 : 4;
+  const visible_prefix_length = token.startsWith("bridge_call_") ? 20 : 4;
   return token.slice(0, visible_prefix_length) + "…" + token.slice(-4);
 }
 
@@ -264,12 +264,12 @@ function access_token_value(row, now = Date.now()) {
  * @returns {boolean}
  */
 function admin_authorized(request, env) {
-  if (!env.HUB_ADMIN_TOKEN) {
+  if (!env.BRIDGE_ADMIN_TOKEN) {
     return false;
   }
   const authorization = request.headers.get("Authorization") ?? "";
   if (authorization.startsWith("Bearer ")) {
-    return safe_equal(authorization.slice(7), env.HUB_ADMIN_TOKEN);
+    return safe_equal(authorization.slice(7), env.BRIDGE_ADMIN_TOKEN);
   }
   if (!authorization.startsWith("Basic ")) {
     return false;
@@ -282,7 +282,7 @@ function admin_authorized(request, env) {
     }
     const username = credentials.slice(0, separator);
     const password = credentials.slice(separator + 1);
-    return username === "admin" && safe_equal(password, env.HUB_ADMIN_TOKEN);
+    return username === "admin" && safe_equal(password, env.BRIDGE_ADMIN_TOKEN);
   } catch {
     return false;
   }
@@ -295,7 +295,7 @@ function admin_auth_required() {
     headers: {
       "Cache-Control": "no-store",
       "Content-Type": "text/plain; charset=utf-8",
-      "WWW-Authenticate": 'Basic realm="WX Channels Hub Admin", charset="UTF-8"',
+      "WWW-Authenticate": 'Basic realm="WX Channels Bridge Admin", charset="UTF-8"',
     },
   });
 }
@@ -305,13 +305,13 @@ function admin_auth_required() {
  * @returns {Promise<Response>}
  */
 async function admin_overview(env) {
-  const object = env.HUBS.getByName(HUB_OBJECT_NAME);
+  const object = env.BRIDGES.getByName(BRIDGE_OBJECT_NAME);
   const [response, access_tokens_response] = await Promise.all([
     object.fetch("https://internal/"),
     object.fetch("https://internal/_admin/access-tokens"),
   ]);
   if (!response.ok || !access_tokens_response.ok) {
-    return error_response("failed to load Hub overview", 500);
+    return error_response("failed to load Bridge overview", 500);
   }
   /** @type {Record<string, unknown>} */
   const summary = await response.json();
@@ -333,7 +333,7 @@ async function admin_overview(env) {
  * @returns {Promise<Response>}
  */
 async function admin_access_token_request(env, request, path) {
-  const object = env.HUBS.getByName(HUB_OBJECT_NAME);
+  const object = env.BRIDGES.getByName(BRIDGE_OBJECT_NAME);
   return object.fetch(new Request("https://internal/_admin/access-tokens" + path, request));
 }
 
@@ -371,11 +371,11 @@ async function admin_create_call(env, request) {
     return error_response("args must be an object", 400);
   }
 
-  const object = env.HUBS.getByName(HUB_OBJECT_NAME);
+  const object = env.BRIDGES.getByName(BRIDGE_OBJECT_NAME);
   if (target_device_id !== "") {
     const summary_response = await object.fetch("https://internal/");
     if (!summary_response.ok) {
-      return error_response("failed to load Hub devices", 502);
+      return error_response("failed to load Bridge devices", 502);
     }
     /** @type {{ devices?: DeviceSummary[] }} */
     const summary = await summary_response.json();
@@ -396,7 +396,7 @@ async function admin_create_call(env, request) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Hub-Publisher-ID": "admin-console",
+      "X-Bridge-Publisher-ID": "admin-console",
     },
     body: JSON.stringify({
       method,
@@ -419,7 +419,7 @@ async function admin_task_status(env, task_id) {
   if (!/^[A-Za-z0-9-]{1,128}$/.test(task_id)) {
     return error_response("invalid task id", 400);
   }
-  const object = env.HUBS.getByName(HUB_OBJECT_NAME);
+  const object = env.BRIDGES.getByName(BRIDGE_OBJECT_NAME);
   return object.fetch("https://internal/tasks/" + encodeURIComponent(task_id));
 }
 
@@ -490,7 +490,7 @@ function parse_methods(value) {
   }
 }
 
-export class HubDurableObject extends DurableObject {
+export class BridgeDurableObject extends DurableObject {
   /**
    * @param {DurableObjectState} ctx
    * @param {Env} env
@@ -1085,23 +1085,23 @@ export class HubDurableObject extends DurableObject {
       return error_response("websocket upgrade required", 426);
     }
     const device_id = (
-      request.headers.get("X-Hub-Device-ID") ??
-      request.headers.get("X-Hub-Client-ID") ??
+      request.headers.get("X-Bridge-Device-ID") ??
+      request.headers.get("X-Bridge-Client-ID") ??
       ""
     ).trim();
     if (!valid_identifier(device_id)) {
-      return error_response("invalid X-Hub-Device-ID", 400);
+      return error_response("invalid X-Bridge-Device-ID", 400);
     }
-    const device_name = (request.headers.get("X-Hub-Device-Name") ?? device_id)
+    const device_name = (request.headers.get("X-Bridge-Device-Name") ?? device_id)
       .trim()
       .slice(0, 128) || device_id;
-    const requested_device_os = (request.headers.get("X-Hub-Device-OS") ?? "unknown")
+    const requested_device_os = (request.headers.get("X-Bridge-Device-OS") ?? "unknown")
       .trim()
       .slice(0, 32);
     const device_os = valid_identifier(requested_device_os) ? requested_device_os : "unknown";
     const methods = (
-      request.headers.get("X-Hub-Methods") ??
-      request.headers.get("X-Hub-Capabilities") ??
+      request.headers.get("X-Bridge-Methods") ??
+      request.headers.get("X-Bridge-Capabilities") ??
       ""
     )
       .split(",")
@@ -1235,14 +1235,14 @@ export class HubDurableObject extends DurableObject {
    */
   async create_task(request, allow_idempotency_key = true) {
     const publisher_device_id = (
-      request.headers.get("X-Hub-Authenticated-Publisher-ID") ??
-      request.headers.get("X-Hub-Publisher-ID") ??
-      request.headers.get("X-Hub-Device-ID") ??
-      request.headers.get("X-Hub-Client-ID") ??
+      request.headers.get("X-Bridge-Authenticated-Publisher-ID") ??
+      request.headers.get("X-Bridge-Publisher-ID") ??
+      request.headers.get("X-Bridge-Device-ID") ??
+      request.headers.get("X-Bridge-Client-ID") ??
       ""
     ).trim();
     if (!valid_identifier(publisher_device_id)) {
-      return error_response("invalid X-Hub-Device-ID", 400);
+      return error_response("invalid X-Bridge-Device-ID", 400);
     }
     const content_length = Number(request.headers.get("Content-Length") ?? "0");
     if (content_length > MAX_BODY_BYTES) {
@@ -1354,7 +1354,7 @@ export class HubDurableObject extends DurableObject {
    */
   list_tasks(request, url) {
     const publisher_device_id = (
-      request.headers.get("X-Hub-Authenticated-Publisher-ID") ??
+      request.headers.get("X-Bridge-Authenticated-Publisher-ID") ??
       url.searchParams.get("publisher_device_id") ??
       url.searchParams.get("publisher_id") ??
       ""
@@ -1406,7 +1406,7 @@ export class HubDurableObject extends DurableObject {
   get_task(request, task_id) {
     const row = this.find_task(task_id);
     const publisher_device_id = (
-      request.headers.get("X-Hub-Authenticated-Publisher-ID") ?? ""
+      request.headers.get("X-Bridge-Authenticated-Publisher-ID") ?? ""
     ).trim();
     if (
       row === null ||
@@ -1738,7 +1738,7 @@ export default {
       return error_response("not found", 404);
     }
 
-    const legacy_match = url.pathname.match(/^\/v1\/hubs\/[^/]+(\/.*)?$/);
+    const legacy_match = url.pathname.match(/^\/v1\/bridges\/[^/]+(\/.*)?$/);
     let forwarded_path = "";
     if (url.pathname === "/v1") {
       forwarded_path = "/";
@@ -1754,16 +1754,16 @@ export default {
     }
     const forwarded_url = new URL(request.url);
     forwarded_url.pathname = forwarded_path;
-    const object = env.HUBS.getByName(HUB_OBJECT_NAME);
+    const object = env.BRIDGES.getByName(BRIDGE_OBJECT_NAME);
     const token = bearer_token(request);
     const device_id = (
-      request.headers.get("X-Hub-Device-ID") ??
-      request.headers.get("X-Hub-Client-ID") ??
+      request.headers.get("X-Bridge-Device-ID") ??
+      request.headers.get("X-Bridge-Client-ID") ??
       ""
     ).trim();
     const device_authorized =
-      Boolean(env.HUB_TOKEN) &&
-      safe_equal(token, env.HUB_TOKEN) &&
+      Boolean(env.BRIDGE_TOKEN) &&
+      safe_equal(token, env.BRIDGE_TOKEN) &&
       valid_identifier(device_id);
     if (forwarded_path === "/connect" && !device_authorized) {
       return error_response("unauthorized", 401);
@@ -1790,11 +1790,11 @@ export default {
       return error_response("unauthorized", 401);
     }
     const headers = new Headers(request.headers);
-    headers.delete("X-Hub-Publisher-ID");
-    headers.delete("X-Hub-Device-ID");
-    headers.delete("X-Hub-Client-ID");
-    headers.set("X-Hub-Authenticated-Publisher-ID", publisher_id);
-    headers.set("X-Hub-Access-Token-ID", String(authorization.access_token?.id ?? ""));
+    headers.delete("X-Bridge-Publisher-ID");
+    headers.delete("X-Bridge-Device-ID");
+    headers.delete("X-Bridge-Client-ID");
+    headers.set("X-Bridge-Authenticated-Publisher-ID", publisher_id);
+    headers.set("X-Bridge-Access-Token-ID", String(authorization.access_token?.id ?? ""));
     return object.fetch(new Request(forwarded_url, new Request(request, { headers })));
   },
 };

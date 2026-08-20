@@ -13,14 +13,14 @@ button { border: 1px solid #35446f; border-radius: 12px; padding: 10px 16px; bac
 button:hover { border-color: #6687e8; background: #202e51; transform: translateY(-1px); }
 button:disabled { cursor: progress; opacity: .6; transform: none; }
 .overview { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 22px; }
-.metric, .hub-summary, .device-card { border: 1px solid rgba(132, 154, 216, .2); background: rgba(14, 20, 37, .82); box-shadow: 0 20px 60px rgba(0, 0, 0, .24); backdrop-filter: blur(18px); }
+.metric, .bridge-summary, .device-card { border: 1px solid rgba(132, 154, 216, .2); background: rgba(14, 20, 37, .82); box-shadow: 0 20px 60px rgba(0, 0, 0, .24); backdrop-filter: blur(18px); }
 .metric { border-radius: 16px; padding: 18px; }
 .metric-label { margin: 0; color: #8190af; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
 .metric-value { margin: 7px 0 0; font-size: 28px; font-weight: 760; }
 .error { display: none; margin: 0 0 18px; padding: 14px 16px; border: 1px solid #7b3340; border-radius: 14px; background: rgba(90, 24, 38, .62); color: #ffbdc6; white-space: pre-wrap; }
 .error.visible { display: block; }
-.hub-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-bottom: 22px; border-radius: 18px; padding: 18px 20px; }
-.hub-summary-section { display: grid; align-content: start; gap: 10px; }
+.bridge-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-bottom: 22px; border-radius: 18px; padding: 18px 20px; }
+.bridge-summary-section { display: grid; align-content: start; gap: 10px; }
 .summary-label { color: #8190af; font-size: 11px; font-weight: 680; letter-spacing: .08em; text-transform: uppercase; }
 .task-counts { display: flex; flex-wrap: wrap; gap: 8px; }
 .task-badge, .method { border-radius: 999px; font-size: 12px; }
@@ -111,4 +111,4 @@ button:disabled { cursor: progress; opacity: .6; transform: none; }
 @keyframes access-token-drawer-fade-out { from { opacity: 1; } to { opacity: 0; } }
 @keyframes access-token-drawer-slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
 @keyframes access-token-drawer-slide-out { from { transform: translateX(0); } to { transform: translateX(100%); } }
-@media (max-width: 760px) { main { padding-top: 28px; } .dashboard-header, .device-header, .access-token-management-header { align-items: flex-start; flex-direction: column; } .actions { width: 100%; flex-wrap: wrap; } .status { width: 100%; text-align: left; } .overview, .hub-summary, .access-token-create-form, .access-token-drawer-body .access-token-create-form, .created-access-token-value-row, .access-token-card { grid-template-columns: 1fr; } .access-token-card-actions { justify-content: flex-start; } .test-form, .device-test-form, .download-form { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { main { padding-top: 28px; } .dashboard-header, .device-header, .access-token-management-header { align-items: flex-start; flex-direction: column; } .actions { width: 100%; flex-wrap: wrap; } .status { width: 100%; text-align: left; } .overview, .bridge-summary, .access-token-create-form, .access-token-drawer-body .access-token-create-form, .created-access-token-value-row, .access-token-card { grid-template-columns: 1fr; } .access-token-card-actions { justify-content: flex-start; } .test-form, .device-test-form, .download-form { grid-template-columns: 1fr; } }

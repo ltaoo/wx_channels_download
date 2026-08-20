@@ -24,7 +24,7 @@ wx_video_download deploy <command>
 |------|------|
 | `wx_video_download deploy mp` | 部署公众号 RSS/API Worker |
 | `wx_video_download deploy sph` | 部署视频号查询 Worker |
-| `wx_video_download deploy hub` | 部署任务 Hub Worker 和 Pages 管理页面 |
+| `wx_video_download deploy bridge` | 部署 Bridge 桥接/转发 Worker 和 Pages 管理页面 |
 
 ## 通用配置
 
@@ -39,14 +39,14 @@ cloudflare:
 | `cloudflare.accountId` | Cloudflare 账户 ID，可在 Workers 页面找到 |
 | `cloudflare.apiToken` | Cloudflare API Token，需 Workers 读写权限 |
 
-## deploy hub
+## deploy bridge
 
-一次部署 Durable Objects Hub Worker 和受密码保护的 Pages 管理页面。
+一次部署用于桥接/转发远程调用的 Durable Objects Bridge Worker 和受密码保护的 Pages 管理页面。
 
-部署完成后的设备注册、调用 Token 创建、API 协议和多语言示例请参阅 [Hub 使用](/feature/hub)。
+部署完成后的设备注册、调用 Token 创建、API 协议和多语言示例请参阅 [Bridge 使用](/feature/bridge)。
 
 ```sh
-wx_video_download deploy hub
+wx_video_download deploy bridge
 ```
 
 ### 配置
@@ -56,21 +56,21 @@ cloudflare:
   accountId: "your-cloudflare-account-id"
   apiToken: "your-cloudflare-api-token"
 
-hub:
+bridge:
   deploy:
-    workerName: "wx-channels-hub"
-    pagesProjectName: "" # 留空时使用 wx-channels-hub-admin
-    token: "hub-client-token"
-    adminToken: "hub-admin-token"
+    workerName: "dm-bridge"
+    pagesProjectName: "" # 留空时使用 dm-bridge-admin
+    token: "bridge-client-token"
+    adminToken: "bridge-admin-token"
 ```
 
 API Token 需要 Workers Scripts:Edit 和 Pages:Edit 权限。`token` 与 `adminToken` 必须使用不同的高强度随机值。
 
 部署命令会依次执行：
 
-1. 上传 Worker，并配置 Durable Objects、`HUB_TOKEN` 和 `HUB_ADMIN_TOKEN`；
+1. 上传 Worker，并配置 Durable Objects、`BRIDGE_TOKEN` 和 `BRIDGE_ADMIN_TOKEN`；
 2. 创建或更新 Pages 项目；
-3. 为 Pages 配置 `HUB_ADMIN_TOKEN` Secret 和指向 Worker 的 `HUB` Service Binding；
+3. 为 Pages 配置 `BRIDGE_ADMIN_TOKEN` Secret 和指向 Worker 的 `BRIDGE` Service Binding；
 4. 上传管理页面静态资源和高级模式 Worker。
 
 任一步骤失败都会停止后续部署；如果 Pages 阶段失败，命令会明确提示 Worker 已经部署成功，不会回滚 Worker。

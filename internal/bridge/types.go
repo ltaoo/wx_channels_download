@@ -1,4 +1,4 @@
-package hub
+package bridge
 
 import (
 	"context"
@@ -13,20 +13,20 @@ const (
 	max_message_bytes = 2 * 1024 * 1024
 )
 
-// Config describes one operating-system device's Hub connection and callable methods.
+// Config describes one operating-system device's Bridge connection and callable methods.
 type Config struct {
-	Enabled     bool
-	URL         string
-	DeviceID    string
-	DeviceName  string
-	DeviceOS    string
-	Token       string
-	Methods     []string
-	HTTPTimeout time.Duration
-	LegacyHubID string
+	Enabled        bool
+	URL            string
+	DeviceID       string
+	DeviceName     string
+	DeviceOS       string
+	Token          string
+	Methods        []string
+	HTTPTimeout    time.Duration
+	LegacyBridgeID string
 }
 
-// Task is the durable representation returned and pushed by the Hub.
+// Task is the durable representation returned and pushed by the Bridge.
 type Task struct {
 	ID                string          `json:"id"`
 	Method            string          `json:"method"`
@@ -45,7 +45,7 @@ type Task struct {
 	CompletedAt       *int64          `json:"completed_at,omitempty"`
 }
 
-// SubmitTaskRequest is one generic method call accepted by the Cloudflare Hub.
+// SubmitTaskRequest is one generic method call accepted by the Cloudflare Bridge.
 type SubmitTaskRequest struct {
 	Method         string `json:"method"`
 	TargetDeviceID string `json:"target_device_id,omitempty"`

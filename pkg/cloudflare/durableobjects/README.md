@@ -12,4 +12,4 @@
 
 `Deploy` 将调用方提供的 JavaScript、Durable Object 声明和 Secrets 通过 Cloudflare REST API 上传，不负责编译具体应用源码。
 
-当前 Task Hub 的原生 JavaScript 源码和 Worker + Pages 部署编排分别位于 `internal/workers/hub/index.js`、`internal/workers/hub/deploy.go`；`cmd/deploy.go` 只负责读取 CLI 配置、调用 `hub.Deploy` 和展示结果。
+当前 Bridge 桥接/转发服务的原生 JavaScript 源码和 Worker + Pages 部署编排分别位于 `internal/workers/bridge/index.js`、`internal/workers/bridge/deploy.go`；`cmd/deploy.go` 只负责读取 CLI 配置、调用 `bridge.Deploy` 和展示结果。

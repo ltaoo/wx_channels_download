@@ -1,23 +1,23 @@
 {
   "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
-  "name": "wx-channels-hub",
+  "name": "dm-bridge",
   "main": "index.js",
   "compatibility_date": "2026-05-03",
   "durable_objects": {
     "bindings": [
       {
-        "name": "HUBS",
-        "class_name": "HubDurableObject"
+        "name": "BRIDGES",
+        "class_name": "BridgeDurableObject"
       }
     ]
   },
   "exports": {
-    "HubDurableObject": {
+    "BridgeDurableObject": {
       "type": "durable-object",
       "storage": "sqlite"
     }
   },
   "secrets": {
-    "required": ["HUB_TOKEN", "HUB_ADMIN_TOKEN"]
+    "required": ["BRIDGE_TOKEN", "BRIDGE_ADMIN_TOKEN"]
   }
 }
