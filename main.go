@@ -26,6 +26,8 @@ const (
 	max_avatar_size      = 5 << 20
 )
 
+var shanghai_time_zone = time.FixedZone("Asia/Shanghai", 8*60*60)
+
 type token_response struct {
 	Code              int    `json:"code"`
 	Msg               string `json:"msg"`
@@ -446,7 +448,7 @@ func parse_time(field interface{}) string {
 	if milliseconds == 0 {
 		return ""
 	}
-	return time.UnixMilli(milliseconds).UTC().Format("2006-01-02 15:04")
+	return time.UnixMilli(milliseconds).In(shanghai_time_zone).Format("2006-01-02 15:04")
 }
 
 func mask_name(name string) string {
