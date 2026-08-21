@@ -24,6 +24,12 @@ api:
   hostname: "127.0.0.1"
   port: 2022
 
+mcp:
+  enabled: false
+
+scraper:
+  retainedJobs: 20
+
 db:
   type: "sqlite"
   host: ""

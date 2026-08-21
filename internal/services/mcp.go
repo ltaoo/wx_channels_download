@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sync"
 	"sync/atomic"
 
 	"wx_channel/internal/mcpserver"
@@ -29,12 +30,32 @@ type MCPServiceStatus struct {
 
 // MCPService owns the MCP protocol handler and its availability state.
 type MCPService struct {
-	handler http.Handler
-	enabled atomic.Bool
+	handler_mu      sync.RWMutex
+	handler         http.Handler
+	handler_factory mcp_handler_factory
+	enabled         atomic.Bool
 }
+
+type mcp_handler_factory func() (http.Handler, error)
 
 // NewMCPService constructs an enabled MCP service.
 func NewMCPService(config MCPServiceConfig) (*MCPService, error) {
+	handler, err := build_mcp_handler(config)
+	if err != nil {
+		return nil, err
+	}
+	return new_mcp_service(handler), nil
+}
+
+// NewLazyMCPService constructs a disabled MCP service whose protocol handler
+// is initialized only when Enable is called for the first time.
+func NewLazyMCPService(config MCPServiceConfig) *MCPService {
+	return new_lazy_mcp_service(func() (http.Handler, error) {
+		return build_mcp_handler(config)
+	})
+}
+
+func build_mcp_handler(config MCPServiceConfig) (http.Handler, error) {
 	server, err := mcpserver.NewServer(mcpserver.Config{
 		APIBaseURL:  config.APIBaseURL,
 		Version:     config.Version,
@@ -44,7 +65,7 @@ func NewMCPService(config MCPServiceConfig) (*MCPService, error) {
 	if err != nil {
 		return nil, err
 	}
-	return new_mcp_service(mcpserver.NewHTTPHandler(server)), nil
+	return mcpserver.NewHTTPHandler(server), nil
 }
 
 func new_mcp_service(handler http.Handler) *MCPService {
@@ -53,10 +74,30 @@ func new_mcp_service(handler http.Handler) *MCPService {
 	return service
 }
 
+func new_lazy_mcp_service(handler_factory mcp_handler_factory) *MCPService {
+	return &MCPService{handler_factory: handler_factory}
+}
+
 // Enable allows requests to reach the MCP protocol handler.
 func (s *MCPService) Enable() error {
-	if s == nil || s.handler == nil {
+	if s == nil {
 		return errors.New("MCP 服务未初始化")
+	}
+	s.handler_mu.Lock()
+	defer s.handler_mu.Unlock()
+	if s.handler == nil {
+		if s.handler_factory == nil {
+			return errors.New("MCP 服务未初始化")
+		}
+		handler, err := s.handler_factory()
+		if err != nil {
+			return err
+		}
+		if handler == nil {
+			return errors.New("MCP 服务未初始化")
+		}
+		s.handler = handler
+		s.handler_factory = nil
 	}
 	s.enabled.Store(true)
 	return nil
@@ -93,7 +134,7 @@ func (s *MCPService) Status() MCPServiceStatus {
 
 // ServeHTTP applies the service availability gate and delegates MCP protocol handling.
 func (s *MCPService) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	if s == nil || s.handler == nil {
+	if s == nil {
 		write_mcp_service_http_error(writer, http.StatusInternalServerError, "MCP 服务未初始化")
 		return
 	}
@@ -101,7 +142,14 @@ func (s *MCPService) ServeHTTP(writer http.ResponseWriter, request *http.Request
 		write_mcp_service_http_error(writer, http.StatusServiceUnavailable, "MCP 服务未启用")
 		return
 	}
-	s.handler.ServeHTTP(writer, request)
+	s.handler_mu.RLock()
+	handler := s.handler
+	s.handler_mu.RUnlock()
+	if handler == nil {
+		write_mcp_service_http_error(writer, http.StatusInternalServerError, "MCP 服务未初始化")
+		return
+	}
+	handler.ServeHTTP(writer, request)
 }
 
 func write_mcp_service_http_error(writer http.ResponseWriter, status_code int, message string) {

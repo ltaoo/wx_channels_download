@@ -153,7 +153,12 @@ func Start(cfg *config.Config) error {
 	browse_history_service := services.NewBrowseService(b.DB, *logger)
 	fs_service := services.NewFSService()
 	certificate_service := services.NewCertificateService(cfg)
-	scraper_job_service := services.NewScraperJobService(nil, api.BroadcastScraperJobEvent, logger)
+	scraper_job_service := services.NewScraperJobService(
+		new_scraper_platform_checker(cfg),
+		api.BroadcastScraperJobEvent,
+		logger,
+	)
+	scraper_job_service.SetRetentionLimit(cfg.GetInt("scraper.retainedJobs"))
 
 	// --- Download engine ---
 	downloader := hermes.New(hermes.HermesNewConfig{
@@ -210,7 +215,7 @@ func Start(cfg *config.Config) error {
 		LogPath:              api_cfg.LogPath,
 		WorkDir:              api_cfg.WorkDir,
 	})
-	mcp_service, err := new_mcp_service(api_cfg, data_service, scraper_job_service)
+	mcp_service, err := new_mcp_service(api_cfg, data_service, scraper_job_service, cfg.GetBool("mcp.enabled"))
 	if err != nil {
 		task_store.Shutdown()
 		return fmt.Errorf("failed to initialize MCP service: %w", err)
@@ -283,7 +288,7 @@ func Start(cfg *config.Config) error {
 			_ = api_srv.Stop()
 		}
 	})
-	publish_registered_adapter_statuses(bus)
+	publish_registered_adapter_statuses(bus, cfg)
 	// admin_srv := admin.NewAdminServer(cfg, b, bus)
 	if cfg.GlobalScriptPath != "" {
 		table_data = append(table_data, []string{"Global Script", cfg.GlobalScriptPath})
@@ -297,6 +302,10 @@ func Start(cfg *config.Config) error {
 	adapter_handles := make([]adapter.RuntimeHandle, 0)
 	for _, platform_id := range adapter.IDs() {
 		handler := adapter.Get(platform_id)
+		if !adapter.RuntimeEnabled(handler, cfg) {
+			logger.Info().Str("platform", platform_id).Msg("adapter runtime disabled by config")
+			continue
+		}
 		runtime_adapter, ok := handler.(adapter.RuntimeAdapter)
 		if !ok {
 			continue
@@ -379,7 +388,9 @@ func Start(cfg *config.Config) error {
 	api_started = true
 	api_url := http_service_url(api_srv.Addr())
 	color.Green(fmt.Sprintf("API service started successfully, address: %v", api_url))
-	color.Green(fmt.Sprintf("MCP server started successfully, address: %v/mcp", api_url))
+	if mcp_service.Enabled() {
+		color.Green(fmt.Sprintf("MCP server started successfully, address: %v/mcp", api_url))
+	}
 
 	if proxy_enabled {
 		interceptor_start_attempted = true
@@ -471,19 +482,36 @@ func http_service_url(addr string) string {
 	return "http://" + addr
 }
 
-func publish_registered_adapter_statuses(bus *events.Bus) {
+func publish_registered_adapter_statuses(bus *events.Bus, application_config *config.Config) {
 	if bus == nil {
 		return
 	}
 	for _, descriptor := range adapter.StatusDescriptors() {
+		reason := "等待 adapter 状态上报"
+		if !adapter.RuntimeEnabled(adapter.Get(descriptor.Platform), application_config) {
+			reason = "已在配置中禁用"
+		}
 		bus.Publish(events.PlatformStatusChanged{
 			Platform:  descriptor.Platform,
 			Key:       descriptor.Key,
 			Name:      descriptor.Name,
 			Status:    "unavailable",
 			Available: false,
-			Reason:    "等待 adapter 状态上报",
+			Reason:    reason,
 		})
+	}
+}
+
+func new_scraper_platform_checker(application_config *config.Config) services.ScraperPlatformChecker {
+	return func(platform_id string, _ string) error {
+		handler := adapter.Get(platform_id)
+		if handler == nil {
+			return fmt.Errorf("未注册的平台 adapter: %s", platform_id)
+		}
+		if !adapter.RuntimeEnabled(handler, application_config) {
+			return fmt.Errorf("平台 adapter 未启用: %s", platform_id)
+		}
+		return nil
 	}
 }
 

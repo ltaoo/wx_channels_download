@@ -12,42 +12,11 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"wx_channel/internal/adapter"
-	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/services"
 	"wx_channel/pkg/cookies"
 )
 
 const cookie_update_max_body_size = int64(50 * 1024 * 1024)
-
-// handle_cookie_extract imports Chrome cookies into workdir/cookies.json and
-// returns them to the caller. Browser and operating-system details belong to
-// the cookies package.
-func (c *APIClient) handle_cookie_extract(ctx *gin.Context) {
-	cookie_path := filepath.Join(c.cfg.WorkDir, "cookies.json")
-	imported, err := cookies.ImportChrome(cookies.ChromeImportOptions{
-		Domain:     ctx.Query("domain"),
-		OutputPath: cookie_path,
-	})
-	if err != nil {
-		c.logger.Error().Err(err).Msg("failed to import Chrome cookies")
-		result.Err(ctx, 500, "提取或保存 Chrome Cookie 失败: "+err.Error())
-		return
-	}
-
-	c.logger.Info().
-		Int("loaded", imported.Loaded).
-		Int("skipped", imported.Skipped).
-		Str("path", cookie_path).
-		Msg("Chrome cookies imported and saved")
-	c.refresh_adapter_platform_statuses()
-
-	result.Ok(ctx, gin.H{
-		"count":   len(imported.Cookies),
-		"skipped": imported.Skipped,
-		"path":    cookie_path,
-		"cookies": imported.Cookies,
-	})
-}
 
 func (c *APIClient) handle_cookie_update(ctx *gin.Context) {
 	body, err := read_cookie_update_body(ctx)

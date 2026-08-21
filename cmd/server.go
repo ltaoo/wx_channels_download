@@ -90,6 +90,7 @@ func apply_server_config_defaults() {
 }
 
 func run_server() error {
+	apply_server_config_defaults()
 	return application.Start(Cfg)
 }
 

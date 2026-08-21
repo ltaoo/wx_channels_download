@@ -221,6 +221,25 @@ type RuntimeAdapter interface {
 	RegisterRuntime(*AdapterOptions) (RuntimeHandle, error)
 }
 
+// RuntimeEnablement is implemented by adapters whose runtime can be disabled
+// through application configuration.
+type RuntimeEnablement interface {
+	RuntimeEnabled(*config.Config) bool
+}
+
+// RuntimeEnabled reports whether an adapter runtime should be initialized.
+// Adapters without an explicit gate remain enabled for backward compatibility.
+func RuntimeEnabled(handler AdapterHandler, application_config *config.Config) bool {
+	if handler == nil {
+		return false
+	}
+	enablement, ok := handler.(RuntimeEnablement)
+	if !ok {
+		return true
+	}
+	return enablement.RuntimeEnabled(application_config)
+}
+
 // PostprocessDeps contains host services required during download postprocessing.
 type PostprocessDeps struct {
 	DB       *gorm.DB

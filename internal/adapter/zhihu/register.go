@@ -4,7 +4,15 @@ import (
 	"fmt"
 
 	"wx_channel/internal/adapter"
+	"wx_channel/internal/config"
 )
+
+var _ adapter.RuntimeEnablement = (*handler)(nil)
+
+// RuntimeEnabled reports whether the Zhihu runtime is enabled in config.
+func (handler_instance *handler) RuntimeEnabled(application_config *config.Config) bool {
+	return handler_instance != nil && application_config != nil && application_config.GetBool("zhihu.enabled")
+}
 
 // Handle owns the adapter's runtime components.
 type Handle struct {

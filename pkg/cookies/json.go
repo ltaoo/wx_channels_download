@@ -10,7 +10,7 @@ import (
 
 var json_file_mu sync.Mutex
 
-// SaveJSON writes cookies in the same JSON format used by ImportChrome.
+// SaveJSON writes cookies to the application's persistent JSON cookie file.
 func SaveJSON(cookie_list []Cookie, path string) error {
 	json_file_mu.Lock()
 	defer json_file_mu.Unlock()

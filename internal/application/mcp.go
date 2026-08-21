@@ -13,13 +13,18 @@ func new_mcp_service(
 	api_config *api.APIConfig,
 	data_service *services.DataQueryService,
 	scraper_job_service *services.ScraperJobService,
+	enabled bool,
 ) (*services.MCPService, error) {
-	return services.NewMCPService(services.MCPServiceConfig{
+	service_config := services.MCPServiceConfig{
 		APIBaseURL:  mcp_api_base_url(api_config),
 		Version:     api_config.Version,
 		DataReader:  new_mcp_data_reader(data_service),
 		ScraperJobs: new_mcp_scraper_job_backend(scraper_job_service),
-	})
+	}
+	if !enabled {
+		return services.NewLazyMCPService(service_config), nil
+	}
+	return services.NewMCPService(service_config)
 }
 
 func mcp_api_base_url(api_config *api.APIConfig) string {

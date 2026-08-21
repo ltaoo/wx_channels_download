@@ -131,7 +131,6 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/proxy/certificate/replace", c.handle_proxy_certificate_replace)
 	c.engine.POST("/api/proxy/certificate/uninstall", c.handle_proxy_certificate_uninstall)
 	c.engine.POST("/api/proxy/certificate/uninstall_by_name", c.handle_proxy_certificate_uninstall_by_name)
-	c.engine.GET("/api/cookies/extract", c.handle_cookie_extract)
 	c.engine.POST("/api/cookies/update", c.handle_cookie_update)
 
 	c.engine.NoRoute(func(ctx *gin.Context) {

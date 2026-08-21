@@ -4,10 +4,12 @@ title: Bridge 使用
 
 # Bridge 使用
 
-Bridge 是连接外部程序与多台操作系统设备的桥接/转发服务。外部程序只需要提交 `method + args`，Bridge 就会把调用转发给能够执行该方法的在线设备；也可以通过 `target_device_id` 指定设备。
+Bridge 是可以将本机获取视频号数据能力暴露到公网的服务。外部程序只需要提交 `method + args` 接口请求，Bridge 就会把调用转发给能够执行该方法的在线设备；也可以通过 `target_device_id` 指定设备。
+
+> 设备是指可以打开微信视频号的电脑如 Windows、macOS
 
 ```text
-外部程序 ── HTTPS ── Bridge Worker ── WebSocket ── macOS / Windows / Linux 设备
+外部程序 ── HTTPS ── Bridge Worker ── WebSocket ── 设备
              │
              └── 调用 Token 鉴权、任务持久化、设备选择与结果查询
 ```
@@ -26,7 +28,7 @@ https://dm-bridge.litao.workers.dev
 
 ### 2. 注册执行设备
 
-需要提供能力的每个操作系统分别配置并运行 `wx_channels_download`：
+需要提供能力的每台设备分别配置并运行 `wx_channels_download`：
 
 ```yaml
 bridge:

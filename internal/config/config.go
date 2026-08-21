@@ -554,6 +554,22 @@ func (c *Config) LoadConfig() error {
 		Group:       "API",
 	})
 	Register(ConfigField{
+		Key:         "mcp.enabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否在应用启动时初始化并启用 MCP 服务；关闭时仍可通过 API 按需启用",
+		Title:       "启动 MCP 服务",
+		Group:       "MCP",
+	})
+	Register(ConfigField{
+		Key:         "scraper.retainedJobs",
+		Type:        ConfigTypeInt,
+		Default:     20,
+		Description: "内存中保留的已完成、失败或中断抓取任务数量",
+		Title:       "抓取任务保留数量",
+		Group:       "Scraper",
+	})
+	Register(ConfigField{
 		Key:         "cookie.uuid",
 		Type:        ConfigTypeString,
 		Default:     "",
