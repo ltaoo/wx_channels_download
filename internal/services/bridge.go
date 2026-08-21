@@ -15,7 +15,6 @@ import (
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/bridge"
 	"wx_channel/internal/config"
-	"wx_channel/pkg/scraper/wxchannels"
 )
 
 const (
@@ -113,12 +112,12 @@ type bridge_wxchannels_feed_share_url_args struct {
 }
 
 type bridge_wxchannels_adapter interface {
-	SearchChannelsContact(keyword string, next_marker string) (*wxchannels.ChannelsContactSearchResp, error)
-	FetchChannelsFeedListOfContact(username string, next_marker string) (*wxchannels.ChannelsFeedListOfAccountResp, error)
-	FetchChannelsLiveReplayList(username string, next_marker string) (*wxchannels.ChannelsFeedListOfAccountResp, error)
-	FetchChannelsFeedProfile(oid string, nid string, request_url string, eid string) (*wxchannels.ChannelsFeedProfileResp, error)
-	FetchChannelsFeedCommentList(oid string, nid string, comment_id string, next_marker string) (*wxchannels.ChannelsFeedCommentListResp, error)
-	FetchChannelsFeedShareUrl(oid string) (*wxchannels.ChannelsFeedShareUrlResp, error)
+	SearchChannelsContact(keyword string, next_marker string) (json.RawMessage, error)
+	FetchChannelsFeedListOfContact(username string, next_marker string) (json.RawMessage, error)
+	FetchChannelsLiveReplayList(username string, next_marker string) (json.RawMessage, error)
+	FetchChannelsFeedProfile(oid string, nid string, request_url string, eid string) (json.RawMessage, error)
+	FetchChannelsFeedCommentList(oid string, nid string, comment_id string, next_marker string) (json.RawMessage, error)
+	FetchChannelsFeedShareUrl(oid string) (json.RawMessage, error)
 }
 
 type bridge_unavailable_error struct {

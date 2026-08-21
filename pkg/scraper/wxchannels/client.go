@@ -92,14 +92,7 @@ func is_channels_feed_url(raw_url string) bool {
 func (c *Client) fetch_profile_with_share_url(raw_url string) (any, error) {
 	cookie, err := c.resolve_sph_cookie()
 	if err != nil {
-		resp, fetch_err := c.FetchChannelsFeedProfile("", "", raw_url, "")
-		if fetch_err != nil {
-			return nil, fetch_err
-		}
-		if resp.ErrCode != 0 {
-			return nil, fmt.Errorf("fetch channels shared feed profile: %s", resp.ErrMsg)
-		}
-		return &resp.Data.Object, nil
+		return c.FetchChannelsFeedProfile("", "", raw_url, "")
 	}
 	return FetchVideoProfileWithShareUrl(raw_url, cookie)
 }
@@ -257,7 +250,7 @@ func (wc *Client) Available() bool {
 	defer wc.ws_mu.RUnlock()
 	return len(wc.ws_clients) > 0
 }
-func (c *Client) RequestFrontend(endpoint string, body interface{}, timeout time.Duration) (*ClientWebsocketResponse, error) {
+func (c *Client) RequestFrontend(endpoint string, body interface{}, timeout time.Duration) (json.RawMessage, error) {
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
@@ -305,21 +298,21 @@ func (c *Client) RequestFrontend(endpoint string, body interface{}, timeout time
 	c.ws_mu.Unlock()
 	select {
 	case resp := <-resp_chan:
-		return &resp, nil
+		return resp.Data, nil
 	case <-time.After(timeout):
 		return nil, errors.New("request timed out")
 	}
 }
 
 // Search for users by keyword
-func (c *Client) SearchChannelsContact(keyword string, next_marker string) (*ChannelsContactSearchResp, error) {
+func (c *Client) SearchChannelsContact(keyword string, next_marker string) (json.RawMessage, error) {
 	if keyword == "" {
 		return nil, errors.New("keyword cannot be empty")
 	}
 	clean_keyword := strings.TrimSpace(keyword)
 	cache_key := "channels:contact_list:" + clean_keyword + ":" + next_marker
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*ChannelsContactSearchResp); ok {
+		if resp, ok := val.(json.RawMessage); ok {
 			return resp, nil
 		}
 	}
@@ -328,23 +321,19 @@ func (c *Client) SearchChannelsContact(keyword string, next_marker string) (*Cha
 	if err != nil {
 		return nil, err
 	}
-	var r ChannelsContactSearchResp
-	if err := json.Unmarshal(resp.Data, &r); err != nil {
-		return nil, err
-	}
-	c.cache.Set(cache_key, &r, 5*time.Minute)
-	return &r, nil
+	c.cache.Set(cache_key, resp, 5*time.Minute)
+	return resp, nil
 }
 
 // Fetch video feed list for a specific user
-func (c *Client) FetchChannelsFeedListOfContact(username, next_marker string) (*ChannelsFeedListOfAccountResp, error) {
+func (c *Client) FetchChannelsFeedListOfContact(username, next_marker string) (json.RawMessage, error) {
 	clean_name := strings.TrimSpace(username)
 	if !strings.HasSuffix(clean_name, "@finder") {
 		clean_name += "@finder"
 	}
 	cache_key := "channels:feed_list:" + clean_name + ":" + next_marker
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*ChannelsFeedListOfAccountResp); ok {
+		if resp, ok := val.(json.RawMessage); ok {
 			return resp, nil
 		}
 	}
@@ -352,23 +341,19 @@ func (c *Client) FetchChannelsFeedListOfContact(username, next_marker string) (*
 	if err != nil {
 		return nil, err
 	}
-	var r ChannelsFeedListOfAccountResp
-	if err := json.Unmarshal(resp.Data, &r); err != nil {
-		return nil, err
-	}
-	c.cache.Set(cache_key, &r, 5*time.Minute)
-	return &r, nil
+	c.cache.Set(cache_key, resp, 5*time.Minute)
+	return resp, nil
 }
 
 // Fetch live replay list for a specific user
-func (c *Client) FetchChannelsLiveReplayList(username, next_marker string) (*ChannelsFeedListOfAccountResp, error) {
+func (c *Client) FetchChannelsLiveReplayList(username, next_marker string) (json.RawMessage, error) {
 	clean_name := strings.TrimSpace(username)
 	if !strings.HasSuffix(clean_name, "@finder") {
 		clean_name += "@finder"
 	}
 	cache_key := "channels:live_replay_list:" + clean_name + ":" + next_marker
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*ChannelsFeedListOfAccountResp); ok {
+		if resp, ok := val.(json.RawMessage); ok {
 			return resp, nil
 		}
 	}
@@ -376,19 +361,15 @@ func (c *Client) FetchChannelsLiveReplayList(username, next_marker string) (*Cha
 	if err != nil {
 		return nil, err
 	}
-	var r ChannelsFeedListOfAccountResp
-	if err := json.Unmarshal(resp.Data, &r); err != nil {
-		return nil, err
-	}
-	c.cache.Set(cache_key, &r, 5*time.Minute)
-	return &r, nil
+	c.cache.Set(cache_key, resp, 5*time.Minute)
+	return resp, nil
 }
 
 // Fetch favorited or liked feed list for the user
-func (c *Client) FetchChannelsInteractionedFeedList(flag, next_marker string) (*ChannelsFeedListOfAccountResp, error) {
+func (c *Client) FetchChannelsInteractionedFeedList(flag, next_marker string) (json.RawMessage, error) {
 	cache_key := "channels:interactioned_list:" + flag + ":" + next_marker
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*ChannelsFeedListOfAccountResp); ok {
+		if resp, ok := val.(json.RawMessage); ok {
 			return resp, nil
 		}
 	}
@@ -396,18 +377,14 @@ func (c *Client) FetchChannelsInteractionedFeedList(flag, next_marker string) (*
 	if err != nil {
 		return nil, err
 	}
-	var r ChannelsFeedListOfAccountResp
-	if err := json.Unmarshal(resp.Data, &r); err != nil {
-		return nil, err
-	}
-	c.cache.Set(cache_key, &r, 5*time.Minute)
-	return &r, nil
+	c.cache.Set(cache_key, resp, 5*time.Minute)
+	return resp, nil
 }
 
-func (c *Client) FetchChannelsFollowList(next_marker string) (*ChannelsFollowListResp, error) {
+func (c *Client) FetchChannelsFollowList(next_marker string) (json.RawMessage, error) {
 	cache_key := "channels:follow_list:" + next_marker
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*ChannelsFollowListResp); ok {
+		if resp, ok := val.(json.RawMessage); ok {
 			return resp, nil
 		}
 	}
@@ -415,18 +392,14 @@ func (c *Client) FetchChannelsFollowList(next_marker string) (*ChannelsFollowLis
 	if err != nil {
 		return nil, err
 	}
-	var r ChannelsFollowListResp
-	if err := json.Unmarshal(resp.Data, &r); err != nil {
-		return nil, err
-	}
-	c.cache.Set(cache_key, &r, 5*time.Minute)
-	return &r, nil
+	c.cache.Set(cache_key, resp, 5*time.Minute)
+	return resp, nil
 }
 
-func (c *Client) FetchChannelsPlayHistory(next_marker string) (*ChannelsPlayHistoryResp, error) {
+func (c *Client) FetchChannelsPlayHistory(next_marker string) (json.RawMessage, error) {
 	cache_key := "channels:play_history:" + next_marker
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*ChannelsPlayHistoryResp); ok {
+		if resp, ok := val.(json.RawMessage); ok {
 			return resp, nil
 		}
 	}
@@ -434,20 +407,16 @@ func (c *Client) FetchChannelsPlayHistory(next_marker string) (*ChannelsPlayHist
 	if err != nil {
 		return nil, err
 	}
-	var r ChannelsPlayHistoryResp
-	if err := json.Unmarshal(resp.Data, &r); err != nil {
-		return nil, err
-	}
-	c.cache.Set(cache_key, &r, 5*time.Minute)
-	return &r, nil
+	c.cache.Set(cache_key, resp, 5*time.Minute)
+	return resp, nil
 }
 
-func (c *Client) FetchChannelsFeedProfile(oid, uid, url, eid string) (*ChannelsFeedProfileResp, error) {
+func (c *Client) FetchChannelsFeedProfile(oid, uid, url, eid string) (json.RawMessage, error) {
 	// fmt.Println("[API]fetch feed profile", oid, uid)
 	kk := fmt.Sprintf("%s:%s:%s:%s", oid, uid, url, eid)
 	cache_key := "channels:feed_profile:" + kk
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*ChannelsFeedProfileResp); ok {
+		if resp, ok := val.(json.RawMessage); ok {
 			return resp, nil
 		}
 	}
@@ -455,35 +424,24 @@ func (c *Client) FetchChannelsFeedProfile(oid, uid, url, eid string) (*ChannelsF
 	if err != nil {
 		return nil, err
 	}
-	var r ChannelsFeedProfileResp
-	if err := json.Unmarshal(resp.Data, &r); err != nil {
-		return nil, err
-	}
-	c.cache.Set(cache_key, &r, 60*time.Minute)
-	return &r, nil
+	c.cache.Set(cache_key, resp, 60*time.Minute)
+	return resp, nil
 }
 
-func (c *Client) FetchFeedPage(raw_url string) (*ChannelsObject, error) {
+func (c *Client) FetchFeedPage(raw_url string) (json.RawMessage, error) {
 	parts, err := ParseFeedURL(raw_url)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.FetchChannelsFeedProfile(parts.Oid, parts.Nid, raw_url, parts.Eid)
-	if err != nil {
-		return nil, err
-	}
-	if resp.ErrCode != 0 {
-		return nil, fmt.Errorf("fetch channels feed profile: %s", resp.ErrMsg)
-	}
-	return &resp.Data.Object, nil
+	return c.FetchChannelsFeedProfile(parts.Oid, parts.Nid, raw_url, parts.Eid)
 }
 
-func (c *Client) FetchChannelsSharedFeedProfile(url string) (*ChannelsFeedProfileResp, error) {
+func (c *Client) FetchChannelsSharedFeedProfile(url string) (json.RawMessage, error) {
 	// fmt.Println("[API]fetch feed profile", oid, uid)
 	kk := fmt.Sprintf("%s", url)
 	cache_key := "channels:shared_feed_profile:" + kk
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*ChannelsFeedProfileResp); ok {
+		if resp, ok := val.(json.RawMessage); ok {
 			return resp, nil
 		}
 	}
@@ -491,16 +449,12 @@ func (c *Client) FetchChannelsSharedFeedProfile(url string) (*ChannelsFeedProfil
 	if err != nil {
 		return nil, err
 	}
-	var r ChannelsFeedProfileResp
-	if err := json.Unmarshal(resp.Data, &r); err != nil {
-		return nil, err
-	}
-	c.cache.Set(cache_key, &r, 60*time.Minute)
-	return &r, nil
+	c.cache.Set(cache_key, resp, 60*time.Minute)
+	return resp, nil
 
 }
 
-func (c *Client) FetchChannelsFeedCommentList(oid, nid, comment_id, next_marker string) (*ChannelsFeedCommentListResp, error) {
+func (c *Client) FetchChannelsFeedCommentList(oid, nid, comment_id, next_marker string) (json.RawMessage, error) {
 	if oid == "" {
 		return nil, errors.New("missing oid")
 	}
@@ -510,7 +464,7 @@ func (c *Client) FetchChannelsFeedCommentList(oid, nid, comment_id, next_marker 
 	kk := fmt.Sprintf("%s:%s:%s:%s", oid, nid, comment_id, next_marker)
 	cache_key := "channels:feed_comment_list:" + kk
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*ChannelsFeedCommentListResp); ok {
+		if resp, ok := val.(json.RawMessage); ok {
 			return resp, nil
 		}
 	}
@@ -523,22 +477,18 @@ func (c *Client) FetchChannelsFeedCommentList(oid, nid, comment_id, next_marker 
 	if err != nil {
 		return nil, err
 	}
-	var r ChannelsFeedCommentListResp
-	if err := json.Unmarshal(resp.Data, &r); err != nil {
-		return nil, err
-	}
-	c.cache.Set(cache_key, &r, 60*time.Minute)
-	return &r, nil
+	c.cache.Set(cache_key, resp, 60*time.Minute)
+	return resp, nil
 }
 
-func (c *Client) FetchChannelsFeedShareUrl(oid string) (*ChannelsFeedShareUrlResp, error) {
+func (c *Client) FetchChannelsFeedShareUrl(oid string) (json.RawMessage, error) {
 	if oid == "" {
 		return nil, errors.New("missing oid")
 	}
 	kk := fmt.Sprintf("%s", oid)
 	cache_key := "channels:feed_share_url:" + kk
 	if val, found := c.cache.Get(cache_key); found {
-		if resp, ok := val.(*ChannelsFeedShareUrlResp); ok {
+		if resp, ok := val.(json.RawMessage); ok {
 			return resp, nil
 		}
 	}
@@ -548,16 +498,11 @@ func (c *Client) FetchChannelsFeedShareUrl(oid string) (*ChannelsFeedShareUrlRes
 	if err != nil {
 		return nil, err
 	}
-	var r ChannelsFeedShareUrlResp
-	if err := json.Unmarshal(resp.Data, &r); err != nil {
-		return nil, err
-	}
-	c.cache.Set(cache_key, &r, 60*time.Minute)
-	return &r, nil
+	c.cache.Set(cache_key, resp, 60*time.Minute)
+	return resp, nil
 }
 
 // Reload the channels page
-func (c *Client) ReloadChannels() error {
-	_, err := c.RequestFrontend("key:channels:reload", nil, 5*time.Second)
-	return err
+func (c *Client) ReloadChannels() (json.RawMessage, error) {
+	return c.RequestFrontend("key:channels:reload", nil, 5*time.Second)
 }

@@ -1,6 +1,7 @@
 package wxchannelsadapter
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -83,7 +84,7 @@ func (a *ChannelsAdapter) Fetch(raw_url string) (any, error) {
 func (a *ChannelsAdapter) SearchChannelsContact(
 	keyword string,
 	next_marker string,
-) (*wxchannels.ChannelsContactSearchResp, error) {
+) (json.RawMessage, error) {
 	client, err := a.wxchannels_client()
 	if err != nil {
 		return nil, err
@@ -96,7 +97,7 @@ func (a *ChannelsAdapter) SearchChannelsContact(
 func (a *ChannelsAdapter) FetchChannelsFeedListOfContact(
 	username string,
 	next_marker string,
-) (*wxchannels.ChannelsFeedListOfAccountResp, error) {
+) (json.RawMessage, error) {
 	client, err := a.wxchannels_client()
 	if err != nil {
 		return nil, err
@@ -109,7 +110,7 @@ func (a *ChannelsAdapter) FetchChannelsFeedListOfContact(
 func (a *ChannelsAdapter) FetchChannelsLiveReplayList(
 	username string,
 	next_marker string,
-) (*wxchannels.ChannelsFeedListOfAccountResp, error) {
+) (json.RawMessage, error) {
 	client, err := a.wxchannels_client()
 	if err != nil {
 		return nil, err
@@ -124,7 +125,7 @@ func (a *ChannelsAdapter) FetchChannelsFeedProfile(
 	nid string,
 	request_url string,
 	eid string,
-) (*wxchannels.ChannelsFeedProfileResp, error) {
+) (json.RawMessage, error) {
 	client, err := a.wxchannels_client()
 	if err != nil {
 		return nil, err
@@ -139,7 +140,7 @@ func (a *ChannelsAdapter) FetchChannelsFeedCommentList(
 	nid string,
 	comment_id string,
 	next_marker string,
-) (*wxchannels.ChannelsFeedCommentListResp, error) {
+) (json.RawMessage, error) {
 	client, err := a.wxchannels_client()
 	if err != nil {
 		return nil, err
@@ -151,7 +152,7 @@ func (a *ChannelsAdapter) FetchChannelsFeedCommentList(
 // active browser-backed runtime.
 func (a *ChannelsAdapter) FetchChannelsFeedShareUrl(
 	oid string,
-) (*wxchannels.ChannelsFeedShareUrlResp, error) {
+) (json.RawMessage, error) {
 	client, err := a.wxchannels_client()
 	if err != nil {
 		return nil, err

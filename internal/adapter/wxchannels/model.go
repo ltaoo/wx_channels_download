@@ -922,6 +922,15 @@ func parse_channels_object_for_download(content_json json.RawMessage) (wxchannel
 	if channels_object_has_download_shape(&obj) {
 		return obj, nil
 	}
+	var profile_resp wxchannels.ChannelsFeedProfileResp
+	if err := json.Unmarshal(content_json, &profile_resp); err == nil {
+		if profile_resp.ErrCode != 0 {
+			return obj, fmt.Errorf("fetch channels feed profile: %s", profile_resp.ErrMsg)
+		}
+		if channels_object_has_download_shape(&profile_resp.Data.Object) {
+			return profile_resp.Data.Object, nil
+		}
+	}
 	shared_obj, ok, err := shared_feed_profile_to_channels_object(content_json)
 	if err != nil {
 		return obj, err
