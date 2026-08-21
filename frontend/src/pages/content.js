@@ -455,63 +455,12 @@ function ContentPageBody(props) {
         },
       };
     },
-    renderError(error) {
-      return View(
-        {
-          class: "wx-content-state",
-          attributes: { n: "content-table-error", role: "alert" },
-        },
-        [
-          Timeless.Icon({ name: "circle-alert", size: 32 }),
-          View(
-            {
-              class: "wx-content-state-title",
-              attributes: { n: "content-table-error-title" },
-            },
-            ["内容加载失败"],
-          ),
-          View(
-            {
-              class: "wx-content-state-text",
-              attributes: { n: "content-table-error-message" },
-            },
-            [error],
-          ),
-          ContentPageActionButton({
-            store: vm$.ui.btn_retry$,
-            icon: "refresh-cw",
-            label: "重试",
-            variant: "primary",
-            attributes: { n: "content-table-retry" },
-          }),
-        ],
-      );
+    errorTitle: "内容加载失败",
+    retry: {
+      store: vm$.ui.btn_retry$,
     },
-    renderEmpty() {
-      return View(
-        {
-          class: "wx-content-state",
-          attributes: { n: "content-table-empty" },
-        },
-        [
-          Timeless.Icon({ name: "inbox", size: 36 }),
-          View(
-            {
-              class: "wx-content-state-title",
-              attributes: { n: "content-table-empty-title" },
-            },
-            ["暂无内容"],
-          ),
-          View(
-            {
-              class: "wx-content-state-text",
-              attributes: { n: "content-table-empty-description" },
-            },
-            ["当前筛选条件下没有内容"],
-          ),
-        ],
-      );
-    },
+    emptyTitle: "暂无内容",
+    emptyDescription: "当前筛选条件下没有内容",
   });
 }
 

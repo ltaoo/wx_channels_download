@@ -63,27 +63,6 @@
     "/play": {
       "$ref": "./channels/play.json"
     },
-    "/api/mp/list": {
-      "$ref": "./mp/list.json"
-    },
-    "/api/mp/msg/list": {
-      "$ref": "./mp/msg_list.json"
-    },
-    "/api/mp/delete": {
-      "$ref": "./mp/delete.json"
-    },
-    "/api/mp/refresh_with_frontend": {
-      "$ref": "./mp/refresh_with_frontend.json"
-    },
-    "/api/mp/refresh": {
-      "$ref": "./mp/refresh.json"
-    },
-    "/rss/mp": {
-      "$ref": "./mp/rss.json"
-    },
-    "/mp/proxy": {
-      "$ref": "./mp/proxy.json"
-    },
     "/api/v1/download_task/prepare": {
       "$ref": "./download_task/prepare.json"
     },
@@ -134,42 +113,6 @@
     },
     "/ws/v1/download_task": {
       "$ref": "./download_task/ws.json"
-    },
-    "/api/mp/ws_pool": {
-      "$ref": "./mp/ws_pool.json"
-    },
-    "/api/mp/article/list": {
-      "$ref": "./mp/article_list.json"
-    },
-    "/api/mp/jsapi/control": {
-      "$ref": "./mp/jsapi_operations/control.json"
-    },
-    "/api/mp/jsapi/network_auth": {
-      "$ref": "./mp/jsapi_operations/network_auth.json"
-    },
-    "/api/mp/jsapi/page_navigation": {
-      "$ref": "./mp/jsapi_operations/page_navigation.json"
-    },
-    "/api/mp/jsapi/mini_program_finder": {
-      "$ref": "./mp/jsapi_operations/mini_program_finder.json"
-    },
-    "/api/mp/jsapi/contact_share_card": {
-      "$ref": "./mp/jsapi_operations/contact_share_card.json"
-    },
-    "/api/mp/jsapi/media_audio": {
-      "$ref": "./mp/jsapi_operations/media_audio.json"
-    },
-    "/api/mp/jsapi/ad_download_app": {
-      "$ref": "./mp/jsapi_operations/ad_download_app.json"
-    },
-    "/api/mp/jsapi/reporting": {
-      "$ref": "./mp/jsapi_operations/reporting.json"
-    },
-    "/api/mp/jsapi/events": {
-      "$ref": "./mp/jsapi_operations/events.json"
-    },
-    "/api/mp/download_all": {
-      "$ref": "./mp/download_all.json"
     }
   }
 }

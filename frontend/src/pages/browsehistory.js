@@ -385,11 +385,6 @@ function BrowseHistoryPageBody(props) {
     status: vm$.state.status,
     loading: vm$.state.loading,
     error: vm$.state.error,
-    rowKey: "id",
-    size: 10,
-    buffer: 6,
-    gutter: 0,
-    itemHeight: 72,
     skeletonCount: 8,
     renderSkeletonRow: BrowseHistorySkeletonRow,
     onRow(history) {
@@ -399,74 +394,20 @@ function BrowseHistoryPageBody(props) {
           : "wx-content-row-no-cover",
       };
     },
-    renderError(error) {
-      return View(
-        {
-          class: "wx-content-state",
-          attributes: { n: "browse-history-table-error", role: "alert" },
-        },
-        [
-          Timeless.Icon({ name: "circle-alert", size: 32 }),
-          View(
-            {
-              class: "wx-content-state-title",
-              attributes: { n: "browse-history-table-error-title" },
-            },
-            ["浏览记录加载失败"],
-          ),
-          View(
-            {
-              class: "wx-content-state-text",
-              attributes: { n: "browse-history-table-error-message" },
-            },
-            [error],
-          ),
-          BrowseHistoryPageActionButton({
-            store: vm$.ui.btn_retry$,
-            icon: "refresh-cw",
-            label: "重试",
-            attributes: { n: "browse-history-table-retry" },
-          }),
-        ],
-      );
+    errorTitle: "浏览记录加载失败",
+    retry: {
+      store: vm$.ui.btn_retry$,
     },
-    renderEmpty() {
-      return View(
-        {
-          class: "wx-content-state",
-          attributes: { n: "browse-history-table-empty" },
-        },
-        [
-          Timeless.Icon({ name: "inbox", size: 36 }),
-          View(
-            {
-              class: "wx-content-state-title",
-              attributes: { n: "browse-history-table-empty-title" },
-            },
-            [
-              computed(vm$.state.keyword, (keyword) =>
-                String(keyword || "").trim()
-                  ? "没有匹配的浏览记录"
-                  : "暂无浏览记录",
-              ),
-            ],
-          ),
-          View(
-            {
-              class: "wx-content-state-text",
-              attributes: { n: "browse-history-table-empty-description" },
-            },
-            [
-              computed(vm$.state.keyword, (keyword) =>
-                String(keyword || "").trim()
-                  ? "请尝试其他标题、账号或链接"
-                  : "当前条件下未找到浏览记录",
-              ),
-            ],
-          ),
-        ],
-      );
-    },
+    emptyTitle: computed(vm$.state.keyword, (keyword) =>
+      String(keyword || "").trim()
+        ? "没有匹配的浏览记录"
+        : "暂无浏览记录",
+    ),
+    emptyDescription: computed(vm$.state.keyword, (keyword) =>
+      String(keyword || "").trim()
+        ? "请尝试其他标题、账号或链接"
+        : "当前条件下未找到浏览记录",
+    ),
   });
 }
 

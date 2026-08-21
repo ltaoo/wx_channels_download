@@ -3597,7 +3597,8 @@ div[data-lazy-img-state="error"] {
 }
 
 .dm-empty-state,
-.wx-content-state {
+.wx-content-state,
+.wx-table-state {
   background:
     radial-gradient(
       circle at 50% 0,
@@ -4026,7 +4027,8 @@ div[data-lazy-img-state="error"] {
   color: var(--dm-color-primary);
 }
 
-.wx-content-state {
+.wx-content-state,
+.wx-table-state {
   min-height: 320px;
   display: grid;
   align-content: center;
@@ -4039,20 +4041,34 @@ div[data-lazy-img-state="error"] {
   border-radius: var(--dm-radius-lg);
 }
 
-.wx-content-state > svg {
+.wx-content-state > svg,
+.wx-table-state > svg {
   color: var(--dm-color-primary);
 }
 
-.wx-content-state-title {
+.wx-content-state-title,
+.wx-table-state-title {
   color: var(--dm-content-text);
   font-size: var(--dm-font-size-lg);
   font-weight: var(--dm-font-weight-semibold);
 }
 
-.wx-content-state-text {
+.wx-content-state-text,
+.wx-table-state-text {
   max-width: 480px;
   font-size: var(--dm-font-size-md);
   line-height: var(--dm-line-height-relaxed);
+}
+
+.wx-table-state-action {
+  min-width: 84px;
+}
+
+.wx-table-state-action-label {
+  min-width: 0;
+  overflow: hidden;
+  line-height: 1;
+  text-overflow: ellipsis;
 }
 
 .wx-content-skeleton,

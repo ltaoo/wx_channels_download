@@ -202,34 +202,6 @@ function content_type_label(value, subtypeValue) {
   return labels[subtype] || labels[type] || subtype || type || "内容";
 }
 
-function normalize_content_download_status(value) {
-  const status = String(value ?? "")
-    .trim()
-    .toLowerCase();
-  if (["2", "4", "running", "downloading", "merging"].includes(status)) {
-    return "running";
-  }
-  if (["3", "pause", "paused"].includes(status)) return "paused";
-  if (["5", "done", "finished", "completed", "success"].includes(status)) {
-    return "succeeded";
-  }
-  if (
-    [
-      "6",
-      "7",
-      "error",
-      "fail",
-      "failed",
-      "failure",
-      "cancelled",
-      "canceled",
-    ].includes(status)
-  ) {
-    return "failed";
-  }
-  return status;
-}
-
 function content_statistics(content) {
   const source = content && typeof content === "object" ? content : {};
   const tasks = Array.isArray(source.download_tasks)
@@ -242,12 +214,10 @@ function content_statistics(content) {
     files: Math.max(0, number_or_default(source.file_count, 0)),
   };
   tasks.forEach((task) => {
-    const status = normalize_content_download_status(
-      first_non_empty(task && task.status, task && task.Status),
-    );
-    if (status === "running" || status === "paused") {
+    const status = task.status;
+    if ([2, 3, 4].includes(status)) {
       statistics.in_progress += 1;
-    } else if (status === "failed") {
+    } else if ([6, 7].includes(status)) {
       statistics.failed += 1;
     }
   });

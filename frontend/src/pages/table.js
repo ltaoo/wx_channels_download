@@ -54,6 +54,141 @@ function table_children(value) {
   return Array.isArray(value) ? value : [value];
 }
 
+function table_state_icon(value, fallback_name, fallback_size) {
+  const icon = table_resolve(value);
+  if (icon === false || icon === null) return null;
+  if (icon === undefined) {
+    return Timeless.Icon({ name: fallback_name, size: fallback_size });
+  }
+  return typeof icon === "string"
+    ? Timeless.Icon({ name: icon, size: fallback_size })
+    : icon;
+}
+
+function TableState(props) {
+  const icon = table_resolve(props.icon);
+  const title = table_resolve(props.title);
+  const description = table_resolve(props.description);
+  const action = table_resolve(props.action);
+  const children = [];
+
+  if (icon) children.push(icon);
+  if (title !== undefined && title !== null) {
+    children.push(
+      View(
+        {
+          class: "wx-table-state-title wx-content-state-title",
+          attributes: { n: `${props.name}-${props.state}-title` },
+        },
+        table_children(title),
+      ),
+    );
+  }
+  if (description !== undefined && description !== null) {
+    children.push(
+      View(
+        {
+          class: "wx-table-state-text wx-content-state-text",
+          attributes: {
+            n: `${props.name}-${props.state}-${props.descriptionSuffix}`,
+          },
+        },
+        table_children(description),
+      ),
+    );
+  }
+  children.push(...table_children(action));
+
+  return View(
+    {
+      class: table_class_names([
+        "wx-table-state",
+        "wx-content-state",
+        props.class,
+      ]),
+      attributes: {
+        n: `${props.name}-${props.state}`,
+        ...(props.attributes || {}),
+      },
+    },
+    children,
+  );
+}
+
+function TableRetryAction(props) {
+  const retry = props.retry;
+  if (!retry || !retry.store) return null;
+
+  return Button(
+    {
+      store: retry.store,
+      class: table_class_names(["wx-table-state-action", retry.class]),
+      attributes: {
+        n: `${props.name}-retry`,
+        type: "button",
+        ...(retry.attributes || {}),
+      },
+      prefix:
+        retry.icon === false
+          ? null
+          : Timeless.Icon({
+              name: retry.icon || "refresh-cw",
+              size: retry.iconSize || 16,
+            }),
+    },
+    [
+      View(
+        {
+          class:
+            "wx-table-state-action-label wx-content-action-label",
+        },
+        table_children(retry.label ?? "重试"),
+      ),
+    ],
+  );
+}
+
+function TableEmpty(props) {
+  const action =
+    typeof props.renderEmptyAction === "function"
+      ? props.renderEmptyAction()
+      : props.emptyAction;
+  return TableState({
+    name: props.name,
+    state: "empty",
+    class: props.emptyClass,
+    attributes: props.emptyAttributes,
+    icon: table_state_icon(props.emptyIcon, "inbox", 36),
+    title: props.emptyTitle ?? "暂无数据",
+    description: props.emptyDescription,
+    descriptionSuffix: "description",
+    action,
+  });
+}
+
+function TableError(props) {
+  const action =
+    typeof props.renderErrorAction === "function"
+      ? props.renderErrorAction(props.error)
+      : props.errorAction === undefined
+        ? TableRetryAction(props)
+        : props.errorAction;
+  return TableState({
+    name: props.name,
+    state: "error",
+    class: props.errorClass,
+    attributes: {
+      role: "alert",
+      ...(props.errorAttributes || {}),
+    },
+    icon: table_state_icon(props.errorIcon, "circle-alert", 32),
+    title: props.errorTitle ?? "数据加载失败",
+    description: props.errorMessage ?? props.error,
+    descriptionSuffix: "message",
+    action,
+  });
+}
+
 function TableSelectionCheckbox(props) {
   const state_ = props.state;
 
@@ -383,6 +518,37 @@ function TableList(props) {
   return View(
     {
       class: table_class_names(["wx-table-list", props.listClass]),
+      style: {
+        overflow: "auto",
+        ...(props.listStyle || {}),
+      },
+      attributes: { n: `${props.name}-list` },
+    },
+    [
+      Show({
+        when: table_has_rows(props.rows),
+        ok() {
+          return For({
+            each: props.rows,
+            render(item_) {
+              return TableDataRow({ ...props, itemSource: item_ });
+            },
+          });
+        },
+        else() {
+          return typeof props.renderEmpty === "function"
+            ? props.renderEmpty()
+            : null;
+        },
+      }),
+    ],
+  );
+}
+
+function TableVirtualList(props) {
+  return View(
+    {
+      class: table_class_names(["wx-table-list", props.listClass]),
       style: props.listStyle,
       attributes: { n: `${props.name}-list` },
     },
@@ -476,7 +642,7 @@ function TableLoadingOverlay(props) {
   );
 }
 
-function TablePanel(props) {
+function TablePanel(props, render_list) {
   return View(
     {
       class: table_class_names(["wx-table-panel", props.panelClass]),
@@ -486,11 +652,11 @@ function TablePanel(props) {
         ...(props.panelAttributes || {}),
       },
     },
-    [TableHeader(props), TableList(props)],
+    [TableHeader(props), render_list(props)],
   );
 }
 
-export function Table(props) {
+function table_render(props, render_list) {
   const name = props.name || "table";
   const status = props.status || "normal";
   const table_props = {
@@ -506,22 +672,19 @@ export function Table(props) {
       props.headerCellClass || "wx-content-row-head-cell",
     listClass: props.listClass || "wx-content-history-list",
     rowClass: props.rowClass || "wx-content-row",
-    renderEnabled:
-      typeof props.renderEnabled === "undefined" ? true : props.renderEnabled,
-    rowKey: props.rowKey || "id",
-    size: props.size || 10,
-    buffer: props.buffer ?? 6,
-    gutter: props.gutter ?? 0,
-    itemHeight: props.itemHeight || 72,
-    paddingBottom: props.paddingBottom ?? 0,
   };
 
   function render_panel() {
-    return TablePanel(table_props);
+    return TablePanel(
+      { ...table_props, renderEmpty: render_empty },
+      render_list,
+    );
   }
 
   function render_empty() {
-    return typeof props.renderEmpty === "function" ? props.renderEmpty() : null;
+    return typeof props.renderEmpty === "function"
+      ? props.renderEmpty()
+      : TableEmpty(table_props);
   }
 
   function render_initial() {
@@ -535,7 +698,7 @@ export function Table(props) {
   function render_error() {
     return typeof props.renderError === "function"
       ? props.renderError(props.error)
-      : null;
+      : TableError(table_props);
   }
 
   return View(
@@ -568,5 +731,26 @@ export function Table(props) {
         },
       }),
     ],
+  );
+}
+
+export function Table(props) {
+  return table_render(props, TableList);
+}
+
+export function TableWithVirtualList(props) {
+  return table_render(
+    {
+      ...props,
+      renderEnabled:
+        typeof props.renderEnabled === "undefined" ? true : props.renderEnabled,
+      rowKey: props.rowKey || "id",
+      size: props.size || 10,
+      buffer: props.buffer ?? 6,
+      gutter: props.gutter ?? 0,
+      itemHeight: props.itemHeight || 72,
+      paddingBottom: props.paddingBottom ?? 0,
+    },
+    TableVirtualList,
   );
 }

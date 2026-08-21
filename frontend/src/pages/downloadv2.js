@@ -19,12 +19,6 @@ import { Table } from "./table.js";
 
 function DownloadV2TaskTable(props) {
   const vm$ = props.store;
-  const list_height_style = vm$.state.fixed_list_height
-    ? {
-        height: `${vm$.state.list_height}px`,
-        "max-height": `${vm$.state.list_height}px`,
-      }
-    : { "max-height": "100%" };
 
   return Table({
     name: "download-task-table",
@@ -36,10 +30,6 @@ function DownloadV2TaskTable(props) {
     headerClass: "wx-dl-page-table-head",
     headerCellClass: "wx-dl-page-table-head-cell",
     listClass: "wx-content-history-list wx-dl-page-list wx-dl-dark-scroll",
-    virtualListStyle: {
-      ...list_height_style,
-      padding: "0",
-    },
     columns: DownloadV2TaskColumns({ store: vm$ }),
     rows: vm$.state.tasks,
     status: vm$.state.status,
@@ -47,13 +37,6 @@ function DownloadV2TaskTable(props) {
     error: vm$.state.error,
     showHeaderWhenEmpty: true,
     rowClass: "wx-dl-page-task-row",
-    rowKey: "id",
-    size: 12,
-    buffer: vm$.state.list_buffer,
-    gutter: 0,
-    itemHeight: vm$.state.list_item_height,
-    paddingBottom: 0,
-    renderEnabled: vm$.state.list_render_enabled,
     skeletonCount: 8,
     renderSkeletonRow: DownloadV2TaskSkeletonRow,
     rowSelection: {
@@ -61,9 +44,6 @@ function DownloadV2TaskTable(props) {
       allAriaLabel: "全选下载任务",
       itemAriaLabel: "选择下载任务",
       size: 18,
-      enabled(task) {
-        return !vm$.methods.isPlaceholderTask(task);
-      },
       itemState(task) {
         return vm$.methods.taskSelectionState(task);
       },
@@ -76,69 +56,11 @@ function DownloadV2TaskTable(props) {
         });
       },
     },
-    onListMounted(element) {
-      vm$.methods.setListViewElement(element);
+    errorTitle: "下载任务加载失败",
+    retry: {
+      store: vm$.ui.btn_refresh_tasks$,
     },
-    onListScroll(position) {
-      vm$.methods.handleListViewScroll(position);
-    },
-    isPlaceholder(task) {
-      return vm$.methods.isPlaceholderTask(task);
-    },
-    onPlaceholder(task) {
-      vm$.methods.ensureTaskPageForIndex(task.__index);
-    },
-    renderPlaceholderRow() {
-      return DownloadV2TaskSkeletonRow();
-    },
-    renderError(error) {
-      return View(
-        {
-          class: "wx-content-state",
-          attributes: { n: "download-task-table-error", role: "alert" },
-        },
-        [
-          Timeless.Icon({ name: "circle-alert", size: 32 }),
-          View(
-            {
-              class: "wx-content-state-title",
-              attributes: { n: "download-task-table-error-title" },
-            },
-            ["下载任务加载失败"],
-          ),
-          View(
-            {
-              class: "wx-content-state-text",
-              attributes: { n: "download-task-table-error-message" },
-            },
-            [error],
-          ),
-          View(
-            {
-              type: "button",
-              class: "wx-dl-v2-action dm-focus-ring",
-              attributes: {
-                n: "download-task-table-retry",
-                type: "button",
-              },
-              onClick() {
-                vm$.methods.refreshTasks();
-              },
-            },
-            ["重试"],
-          ),
-        ],
-      );
-    },
-    renderEmpty() {
-      return View(
-        {
-          class: "wx-dl-page-empty",
-          attributes: { n: "download-task-table-empty" },
-        },
-        ["暂无下载任务"],
-      );
-    },
+    emptyTitle: "暂无下载任务",
   });
 }
 
