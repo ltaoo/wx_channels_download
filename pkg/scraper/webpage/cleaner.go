@@ -83,12 +83,7 @@ func standardize_code_blocks(selection *goquery.Selection) {
 		if code.Length() == 0 {
 			return
 		}
-		language := code_language(code)
-		if language == "" {
-			language = code_language(pre)
-		}
-		code_text := code.Text()
-		code.Empty().SetText(code_text)
+		language := code_block_language(code, pre)
 		code.RemoveAttr("class")
 		code.RemoveAttr("id")
 		code.RemoveAttr("style")
@@ -96,6 +91,26 @@ func standardize_code_blocks(selection *goquery.Selection) {
 			code.SetAttr("class", "language-"+language)
 		}
 	})
+}
+
+func code_block_language(code *goquery.Selection, pre *goquery.Selection) string {
+	for _, candidate := range []*goquery.Selection{code, pre} {
+		if language := code_language(candidate); language != "" {
+			return language
+		}
+	}
+	// Rouge puts language-* on a wrapper outside div.highlight/pre/code.
+	// Walk nearby generic wrappers while avoiding page-level containers whose
+	// language class should not be applied to every code block in the article.
+	for ancestor := pre.Parent(); ancestor.Length() > 0; ancestor = ancestor.Parent() {
+		if ancestor.Is("article,main,section,body,html") {
+			break
+		}
+		if language := code_language(ancestor); language != "" {
+			return language
+		}
+	}
+	return ""
 }
 
 func code_language(selection *goquery.Selection) string {
