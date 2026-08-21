@@ -1,11 +1,11 @@
 const TYPE_ICONS = {
-  image: "\u{1F5BC}",
-  video: "\u{1F3AC}",
-  audio: "\u{1F3B5}",
-  html: "\u{1F310}",
-  zip: "\u{1F4E6}",
-  pdf: "\u{1F4C4}",
-  other: "\u{1F4C1}",
+  image: "file-image",
+  video: "file-play",
+  audio: "file-volume",
+  html: "file-code",
+  zip: "file-box",
+  pdf: "file-text",
+  other: "file",
 };
 
 const TYPE_LABELS = {

@@ -1797,6 +1797,9 @@ func save_content_details(
 			if detail.Content != nil && strings.TrimSpace(detail.Content.Id) != "" {
 				content_id = strings.TrimSpace(detail.Content.Id)
 			}
+			if err := save_content_account_references(tx, content_id, detail.Accounts, now); err != nil {
+				return fmt.Errorf("save content detail %q accounts: %w", detail.Key, err)
+			}
 			if err := save_content_influencer_references(tx, content_id, detail.Influencers, now); err != nil {
 				return fmt.Errorf("save content detail %q influencers: %w", detail.Key, err)
 			}
@@ -1833,6 +1836,39 @@ func save_content_details(
 		}
 		return nil
 	})
+}
+
+func save_content_account_references(
+	db *gorm.DB,
+	content_id string,
+	references []adapter.ContentAccountReference,
+	now int64,
+) error {
+	if len(references) == 0 {
+		return nil
+	}
+	content_id = strings.TrimSpace(content_id)
+	if content_id == "" {
+		return fmt.Errorf("content account has an empty content id")
+	}
+	content_service := NewContentService(db)
+	for reference_index := range references {
+		reference := references[reference_index]
+		if reference.Account == nil {
+			return fmt.Errorf("content account reference %d has a nil account", reference_index)
+		}
+		role := strings.TrimSpace(reference.Role)
+		if role == "" {
+			role = "owner"
+		}
+		persisted_account, err := content_service.UpsertAccountAndLinkContent(content_id, reference.Account, role, now)
+		if err != nil {
+			return err
+		}
+		references[reference_index].Account = persisted_account
+		references[reference_index].Role = role
+	}
+	return nil
 }
 
 func save_content_influencer_references(

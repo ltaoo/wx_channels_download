@@ -119,14 +119,32 @@ function PreviewFileThumbnail(props) {
   const vm$ = props.store;
   const file = props.file;
   if (file.file_type !== "image" || !file.exists) {
-    return View({ class: "wx-preview-file-icon" }, [
-      vm$.methods.fileTypeIcon(file.file_type),
-    ]);
+    return View(
+      {
+        class: "wx-preview-file-icon",
+        attributes: { n: "file-type-icon" },
+      },
+      [
+        Timeless.Icon({
+          name: vm$.methods.fileTypeIcon(file.file_type),
+          size: 42,
+        }),
+      ],
+    );
   }
   return View({ class: "wx-preview-file-thumbnail-wrap" }, [
-    View({ class: "wx-preview-file-icon" }, [
-      vm$.methods.fileTypeIcon(file.file_type),
-    ]),
+    View(
+      {
+        class: "wx-preview-file-icon",
+        attributes: { n: "file-thumbnail-fallback-icon" },
+      },
+      [
+        Timeless.Icon({
+          name: vm$.methods.fileTypeIcon(file.file_type),
+          size: 42,
+        }),
+      ],
+    ),
     Timeless.Img({
       class: "wx-preview-file-thumbnail",
       src: vm$.methods.fileURL(file),
@@ -218,9 +236,18 @@ function PreviewGalleryPlaceholderView(props) {
   const vm$ = props.store;
   const file = props.file;
   return View({ class: "wx-preview-gallery-placeholder" }, [
-    View({ class: "wx-preview-gallery-placeholder-icon" }, [
-      vm$.methods.fileTypeIcon(file.file_type),
-    ]),
+    View(
+      {
+        class: "wx-preview-gallery-placeholder-icon",
+        attributes: { n: "gallery-placeholder-file-type-icon" },
+      },
+      [
+        Timeless.Icon({
+          name: vm$.methods.fileTypeIcon(file.file_type),
+          size: 30,
+        }),
+      ],
+    ),
     View(
       {
         class: "wx-preview-gallery-placeholder-name",
@@ -262,9 +289,18 @@ function PreviewGalleryMediaView(props) {
   }
   if (file.file_type === "audio") {
     return View({ class: "wx-preview-gallery-audio-stage" }, [
-      View({ class: "wx-preview-gallery-audio-icon" }, [
-        vm$.methods.fileTypeIcon(file.file_type),
-      ]),
+      View(
+        {
+          class: "wx-preview-gallery-audio-icon",
+          attributes: { n: "gallery-audio-file-type-icon" },
+        },
+        [
+          Timeless.Icon({
+            name: vm$.methods.fileTypeIcon(file.file_type),
+            size: 30,
+          }),
+        ],
+      ),
       Timeless.Audio({
         class: "wx-preview-gallery-audio",
         src: url,
@@ -308,9 +344,18 @@ function PreviewGalleryStageView(props) {
         PreviewGalleryMediaView({ store: vm$, file }),
       ]),
       View({ class: "wx-preview-gallery-caption" }, [
-        View({ class: "wx-preview-gallery-caption-icon" }, [
-          vm$.methods.fileTypeIcon(file.file_type),
-        ]),
+        View(
+          {
+            class: "wx-preview-gallery-caption-icon",
+            attributes: { n: "gallery-caption-file-type-icon" },
+          },
+          [
+            Timeless.Icon({
+              name: vm$.methods.fileTypeIcon(file.file_type),
+              size: 18,
+            }),
+          ],
+        ),
         View({ class: "wx-preview-gallery-caption-main" }, [
           View(
             {

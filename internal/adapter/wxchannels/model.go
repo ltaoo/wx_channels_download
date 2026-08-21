@@ -149,6 +149,27 @@ func select_content_video_variant(detail any, spec string) {
 	}
 }
 
+func selected_content_video_size(detail any) int64 {
+	video, ok := detail.(*model.ContentVideo)
+	if !ok || video == nil {
+		return 0
+	}
+	for variant_index := range video.Variants {
+		variant := &video.Variants[variant_index]
+		if variant.IsDefault == 0 {
+			continue
+		}
+		resource_size := variant.Size
+		if resource_size <= 0 && variant.VariantKey == "default" {
+			resource_size = video.Size
+		}
+		variant.Size = resource_size
+		video.Size = resource_size
+		return resource_size
+	}
+	return 0
+}
+
 func resolve_video_download_spec(obj *wxchannels.ChannelsObject, config map[string]any, default_highest bool) string {
 	configured_variant_key := config_string(config, "video_variant_key")
 	configured_spec := config_string(config, "video_variant_spec")
@@ -674,8 +695,8 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 		UniqueID:  resource_unique_id,
 		Extra:     decrypt_extra_json,
 	}
-	if ve, ok := ext.(*model.ContentVideo); ok {
-		video_resource.Size = ve.Size
+	if resource_kind == mime_video_mp4 {
+		video_resource.Size = selected_content_video_size(ext)
 	}
 	video_endpoint := model.DownloadEndpoint{
 		Protocol: "https",

@@ -229,7 +229,7 @@
 }
 
 .wx-preview-file-icon {
-  font-size: var(--dm-font-size-6xl);
+  color: var(--dm-preview-muted);
   opacity: 0.5;
 }
 
@@ -363,7 +363,7 @@
   height: var(--dm-space-16);
   display: grid;
   place-items: center;
-  font-size: var(--dm-font-size-3xl);
+  color: var(--dm-preview-muted);
   background: var(--dm-preview-panel);
   border: var(--dm-border-width) solid var(--dm-preview-border);
   border-radius: var(--dm-radius-lg);
@@ -414,6 +414,7 @@
   height: var(--dm-control-height-sm);
   display: grid;
   place-items: center;
+  color: var(--dm-color-primary);
   background: var(--dm-color-primary-soft);
   border-radius: var(--dm-radius-sm);
 }

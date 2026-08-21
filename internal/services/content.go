@@ -1313,6 +1313,14 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 
 	build_query := func() *gorm.DB {
 		query := s.db.Model(&model.Content{})
+		if scope == ContentListScopeTask {
+			query = query.Where(`EXISTS (
+				SELECT 1
+				FROM download_task
+				WHERE download_task.content_id = content.id
+					AND download_task.deleted_at IS NULL
+			)`)
+		}
 		if content_type := strings.TrimSpace(options.Type); content_type != "" {
 			query = query.Where("content.type = ?", content_type)
 		}

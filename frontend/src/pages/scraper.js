@@ -17,6 +17,17 @@ const task_overwrite_actions = [
   },
 ];
 
+const scraper_compact_radius_style = Object.freeze({
+  "--dm-radius-xs": "4px",
+  "--dm-radius-sm": "4px",
+  "--dm-radius-md": "4px",
+  "--dm-radius-lg": "4px",
+  "--dm-radius-xl": "4px",
+  "--dm-radius-full": "4px",
+  "--dm-brand-radius-control": "4px",
+  "--dm-brand-radius-panel": "4px",
+});
+
 function ScraperPageView(props) {
   const page_props = props || {};
   const vm$ = ScraperPageViewModel({
@@ -27,6 +38,7 @@ function ScraperPageView(props) {
   return View(
     {
       class: "wx-content-page wx-home-page dm-page",
+      style: scraper_compact_radius_style,
       onMounted() {
         vm$.methods.connectProgress();
       },
@@ -95,10 +107,17 @@ function ScraperPageView(props) {
           ScraperPageResult({ store: vm$ }),
         ]),
       ]),
+      Show({
+        when: vm$.state.result_visible,
+        ok() {
+          return ScraperResultActionBar({ store: vm$ });
+        },
+      }),
       ScraperCacheContentDialog({ store: vm$ }),
       TaskOverwriteConfirmDialog({ store: vm$ }),
       ThirdPartyDownloaderPanel({
         store: vm$.models.third_party_downloader,
+        style: scraper_compact_radius_style,
       }),
     ],
   );
@@ -114,7 +133,11 @@ function TaskOverwriteConfirmDialog(props) {
     {
       store: vm$.ui.task_overwrite_confirm_dialog$,
       zIndex: 10000,
-      style: { width: "min(520px, calc(100vw - 32px))" },
+      style: {
+        ...scraper_compact_radius_style,
+        width: "min(520px, calc(100vw - 32px))",
+        "border-radius": "var(--dm-radius-xs)",
+      },
       okText: "确定",
     },
     [
@@ -132,7 +155,7 @@ function TaskOverwriteConfirmDialog(props) {
               "align-items": "center",
               gap: "10px",
               padding: "10px 12px",
-              "border-radius": "10px",
+              "border-radius": "var(--dm-radius-xs)",
               background: "var(--dm-color-bg-subtle)",
               border: "1px solid var(--dm-color-border-translucent)",
             },
@@ -190,7 +213,7 @@ function TaskOverwriteConfirmDialog(props) {
                       "align-items": "center",
                       gap: "12px",
                       padding: "11px 12px",
-                      "border-radius": "10px",
+                      "border-radius": "var(--dm-radius-xs)",
                       border: `1px solid ${state.selected ? "var(--dm-color-primary-fill)" : "var(--dm-color-border)"}`,
                       background: state.selected
                         ? "color-mix(in srgb, var(--dm-color-primary-fill) 10%, transparent)"
@@ -1701,54 +1724,99 @@ function ScraperResultActionBar(props) {
     {
       class: "wx-home-result-actions",
       attributes: {
+        n: "result-actions",
         role: "toolbar",
         "aria-label": "抓取完成操作",
       },
     },
     [
-      View({ class: "wx-home-result-actions-summary" }, [
-        View({ class: "wx-home-result-actions-icon" }, [
-          Timeless.Icon({ name: "check", size: 17 }),
-        ]),
-        View({ class: "wx-home-result-actions-copy" }, [
-          View({ class: "wx-home-result-actions-title" }, ["抓取完成"]),
-          View({ class: "wx-home-result-actions-description" }, [
-            "请选择下载方式",
-          ]),
-        ]),
-      ]),
-      View({ class: "wx-home-result-actions-controls" }, [
-        Button(
-          {
-            store: vm$.ui.btn_third_party_download$,
-            class: "wx-home-third-party-download",
-            attributes: {
-              type: "button",
-              title: "使用 DownloadResource endpoint 创建三方下载任务",
+      View(
+        {
+          class: "wx-home-result-actions-summary",
+          attributes: { n: "result-actions-summary" },
+        },
+        [
+          View(
+            {
+              class: "wx-home-result-actions-icon",
+              attributes: { n: "result-actions-status-icon" },
             },
-          },
-          [
-            Timeless.Icon({ name: "hard-drive", size: 16 }),
-            View({ class: "wx-content-action-label" }, ["三方下载"]),
-          ],
-        ),
-        Button(
-          {
-            store: vm$.ui.btn_create_download_task$,
-            class: "wx-home-download",
-            attributes: {
-              type: "button",
-              title: "创建当前预览中的下载任务",
+            [Timeless.Icon({ name: "check", size: 17 })],
+          ),
+          View(
+            {
+              class: "wx-home-result-actions-copy",
+              attributes: { n: "result-actions-copy" },
             },
-          },
-          [
-            Timeless.Icon({ name: "download", size: 16 }),
-            View({ class: "wx-content-action-label" }, [
-              vm$.state.download_button_text,
-            ]),
-          ],
-        ),
-      ]),
+            [
+              View(
+                {
+                  class: "wx-home-result-actions-title",
+                  attributes: { n: "result-actions-title" },
+                },
+                ["抓取完成"],
+              ),
+              View(
+                {
+                  class: "wx-home-result-actions-description",
+                  attributes: { n: "result-actions-description" },
+                },
+                ["请选择下载方式"],
+              ),
+            ],
+          ),
+        ],
+      ),
+      View(
+        {
+          class: "wx-home-result-actions-controls",
+          attributes: { n: "result-actions-controls" },
+        },
+        [
+          Button(
+            {
+              store: vm$.ui.btn_third_party_download$,
+              class: "wx-home-third-party-download",
+              attributes: {
+                n: "third-party-download-action",
+                type: "button",
+                title: "使用 DownloadResource endpoint 创建三方下载任务",
+              },
+            },
+            [
+              Timeless.Icon({ name: "hard-drive", size: 16 }),
+              View(
+                {
+                  class: "wx-content-action-label",
+                  attributes: { n: "third-party-download-action-label" },
+                },
+                ["三方下载"],
+              ),
+            ],
+          ),
+          Button(
+            {
+              store: vm$.ui.btn_create_download_task$,
+              class: "wx-home-download",
+              attributes: {
+                n: "create-download-task-action",
+                type: "button",
+                title: "创建当前预览中的下载任务",
+              },
+            },
+            [
+              Timeless.Icon({ name: "download", size: 16 }),
+              View(
+                {
+                  class: "wx-content-action-label",
+                  attributes: { n: "create-download-task-action-label" },
+                },
+                [vm$.state.download_button_text],
+              ),
+            ],
+          ),
+        ],
+      ),
     ],
   );
 }
@@ -1848,6 +1916,7 @@ function ScraperCacheContentDialog(props) {
     {
       store: vm$.ui.cache_content_dialog$,
       class: "wx-home-cache-dialog",
+      style: scraper_compact_radius_style,
       showClose: false,
     },
     [
@@ -1919,15 +1988,20 @@ function ScraperPageResult(props) {
   return Show({
     when: vm$.state.result_visible,
     ok() {
-      return View({ class: "wx-home-result" }, [
-        ScraperContentCard({ store: vm$ }),
-        ScraperContentRelations({ store: vm$ }),
-        ScraperContentDetails({ store: vm$ }),
-        ScraperDownloadInfo({ store: vm$ }),
-        ScraperRawJSON({ store: vm$ }),
-        ScraperCacheCard({ store: vm$ }),
-        ScraperResultActionBar({ store: vm$ }),
-      ]);
+      return View(
+        {
+          class: "wx-home-result",
+          attributes: { n: "scraper-result" },
+        },
+        [
+          ScraperContentCard({ store: vm$ }),
+          ScraperContentRelations({ store: vm$ }),
+          ScraperContentDetails({ store: vm$ }),
+          ScraperDownloadInfo({ store: vm$ }),
+          ScraperRawJSON({ store: vm$ }),
+          ScraperCacheCard({ store: vm$ }),
+        ],
+      );
     },
   });
 }
@@ -1939,6 +2013,10 @@ function ScraperPlatformStatus(props) {
     {
       store: vm$.ui.platform_status_popover$,
       class: "wx-home-platform-status-popover",
+      style: {
+        ...scraper_compact_radius_style,
+        "border-radius": "var(--dm-radius-xs)",
+      },
       side: "bottom",
       align: "end",
       onTriggerMouseEnter() {

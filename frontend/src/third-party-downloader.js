@@ -249,8 +249,13 @@ export function ThirdPartyDownloaderPanel(props) {
   return Dialog(
     {
       store: vm$.ui.dialog$,
-      class: "third-party-downloader-panel",
-      style: { width: "min(760px, calc(100vw - 32px))" },
+      class: ["third-party-downloader-panel", props.class]
+        .filter(Boolean)
+        .join(" "),
+      style: {
+        width: "min(760px, calc(100vw - 32px))",
+        ...(props.style || {}),
+      },
       closeLabel: "关闭三方下载器面板",
     },
     [

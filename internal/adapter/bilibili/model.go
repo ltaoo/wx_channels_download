@@ -574,6 +574,11 @@ func bangumi_content_details(info *bilibili.BangumiInfo, selected_stream *bilibi
 	if series_content == nil || series_content.Id == "" {
 		return nil, fmt.Errorf("B站番剧缺少 series 标识")
 	}
+	bangumi_account := build_bangumi_account(now)
+	bangumi_accounts := []adapter.ContentAccountReference{{
+		Account: bangumi_account,
+		Role:    "owner",
+	}}
 
 	return []adapter.ContentDetail{
 		{
@@ -583,10 +588,11 @@ func bangumi_content_details(info *bilibili.BangumiInfo, selected_stream *bilibi
 			Content: video_content,
 		},
 		{
-			Type:    "episode",
-			Key:     episode_content.Id,
-			Data:    bangumi_content_episode(info),
-			Content: episode_content,
+			Type:     "episode",
+			Key:      episode_content.Id,
+			Data:     bangumi_content_episode(info),
+			Content:  episode_content,
+			Accounts: bangumi_accounts,
 			Relation: &model.ContentRelation{
 				SourceContentId: video_content.Id,
 				TargetContentId: episode_content.Id,
@@ -599,6 +605,7 @@ func bangumi_content_details(info *bilibili.BangumiInfo, selected_stream *bilibi
 			Key:         series_content.Id,
 			Data:        bangumi_content_series(info),
 			Content:     series_content,
+			Accounts:    bangumi_accounts,
 			Influencers: bangumi_content_influencers(info),
 			Relation: &model.ContentRelation{
 				SourceContentId: episode_content.Id,

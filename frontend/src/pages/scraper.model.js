@@ -2807,7 +2807,7 @@ function normalize_download_resource(resource_info, index, content_id) {
     icon: download_resource_icon(kind),
     meta_text: [
       kind,
-      format_bytes(first_non_empty(resource.size, resource.Size)),
+      format_bytes(first_non_empty(resource.size, resource.Size)) || "unknown",
       `${endpoints.length} 个下载端点`,
     ]
       .filter(Boolean)

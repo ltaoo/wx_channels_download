@@ -286,6 +286,7 @@ function ContentViewModel(props) {
   const keyword_ = ref("");
   const content_type_ = ref("");
   const scope_ = ref("task");
+  const initial_ = ref(true);
   const loading_ = ref(false);
   const error_ = ref("");
   const detail_id_ = ref("");
@@ -301,16 +302,10 @@ function ContentViewModel(props) {
         set_keyword(value);
       },
     }),
-    select_scope$: new Timeless.vm.SelectCore({
-      defaultValue: scope_.value,
-      placeholder: "下载内容",
-      options: [
-        new Timeless.vm.SelectItemCore({ label: "下载内容", value: "task" }),
-        new Timeless.vm.SelectItemCore({ label: "全部对象", value: "all" }),
-      ],
+    checkbox_all$: new Timeless.vm.CheckboxCore({
+      checked: scope_.value === "all",
       onChange(value) {
-        scope_.as(String(value || "task"));
-        load(1);
+        set_all_scope(value);
       },
     }),
     select_content_type$: new Timeless.vm.SelectCore({
@@ -366,6 +361,14 @@ function ContentViewModel(props) {
       }
     },
   });
+  scope_.subscribe({
+    onChange(value) {
+      const checked = value === "all";
+      if (ui.checkbox_all$.checked !== checked) {
+        ui.checkbox_all$.setValue(checked, { silence: true });
+      }
+    },
+  });
   loading_.subscribe({
     onChange(loading) {
       [ui.btn_search$, ui.btn_refresh$, ui.btn_retry$].forEach((button) => {
@@ -417,12 +420,23 @@ function ContentViewModel(props) {
       return `第 ${start}-${start + state.count - 1} 条，共 ${state.total} 条`;
     },
   );
+  const list_status_ = combine(
+    {
+      initial: initial_,
+      error: error_,
+      contents: contents_,
+    },
+    (state) => {
+      if (state.initial) return "initial";
+      if (state.error) return "error";
+      return state.contents.length > 0 ? "normal" : "empty";
+    },
+  );
 
   async function load(targetPage = page_.value) {
     const sequence = ++request_sequence;
     const requestedPage = Math.max(1, Number(targetPage) || 1);
     loading_.as(true);
-    error_.as("");
 
     const params = {
       page: requestedPage,
@@ -442,22 +456,31 @@ function ContentViewModel(props) {
     if (sequence !== request_sequence) {
       return result;
     }
-    loading_.as(false);
     if (result.error) {
       error_.as(result.error.message || String(result.error));
+      loading_.as(false);
+      initial_.as(false);
       return result;
     }
 
     const data = result.data;
+    error_.as("");
     contents_.as(data.list.map(normalize_content_item), { reset: true });
     total_.as(data.total);
     page_.as(data.page);
     page_size_.as(data.page_size);
+    loading_.as(false);
+    initial_.as(false);
     return result;
   }
 
   function set_keyword(value) {
     keyword_.as(String(value || ""));
+  }
+
+  function set_all_scope(value) {
+    scope_.as(value ? "all" : "task");
+    return load(1);
   }
 
   const methods = {
@@ -512,6 +535,8 @@ function ContentViewModel(props) {
     page_count: page_count_,
     range_text: range_text_,
     scope: scope_,
+    initial: initial_,
+    status: list_status_,
     loading: loading_,
     error: error_,
     detail_id: detail_id_,

@@ -1,5 +1,6 @@
 import { ContentViewModel } from "./content.model.js";
 import ContentDetailPageView from "./content_detail.js";
+import { Table } from "./table.js";
 
 function ContentDetailDrawer(props) {
   const vm$ = props.store;
@@ -120,11 +121,38 @@ function ContentPageToolbar(props) {
             },
           }),
         ]),
-        // Select({
-        //   store: vm$.ui.select_scope$,
-        //   class: "wx-content-scope-select wx-content-filter-select",
-        //   attributes: { "aria-label": "筛选内容范围" },
-        // }),
+        View(
+          {
+            class: "wx-content-scope-toggle",
+            style: {
+              display: "flex",
+              "align-items": "center",
+              gap: "var(--dm-space-2)",
+              "white-space": "nowrap",
+            },
+            attributes: { n: "content-scope-toggle" },
+          },
+          [
+            Checkbox({
+              store: vm$.ui.checkbox_all$,
+              id: "wxContentScopeAll",
+              attributes: {
+                n: "content-scope-all-checkbox",
+                "aria-label": "显示所有内容",
+              },
+            }),
+            View(
+              {
+                type: "label",
+                attributes: {
+                  n: "content-scope-all-label",
+                  for: "wxContentScopeAll",
+                },
+              },
+              ["所有"],
+            ),
+          ],
+        ),
         // Select({
         //   store: vm$.ui.select_content_type$,
         //   class: "wx-content-type-select wx-content-filter-select",
@@ -181,9 +209,9 @@ function ContentRowCover(props) {
 function ContentRowAccounts(props) {
   const accounts = props.content.accounts || [];
   if (accounts.length === 0) {
-    return View({ class: "wx-content-row-author" }, ["暂无关联账号"]);
+    return ["暂无关联账号"];
   }
-  return View({ class: "wx-content-row-author" }, [
+  return [
     For({
       each: accounts,
       render(account_) {
@@ -221,7 +249,7 @@ function ContentRowAccounts(props) {
         ]);
       },
     }),
-  ]);
+  ];
 }
 
 function ContentRowStatistics(props) {
@@ -232,7 +260,7 @@ function ContentRowStatistics(props) {
     { key: "success", label: "成功任务", value: statistics.total_tasks },
     { key: "files", label: "文件", value: statistics.files },
   ].filter((item) => item.value > 0);
-  return View({ class: "wx-content-row-stats" }, [
+  return [
     For({
       each: items,
       render(item) {
@@ -248,186 +276,243 @@ function ContentRowStatistics(props) {
         );
       },
     }),
-  ]);
+  ];
 }
 
-function ContentRow(props) {
+function ContentRowMain(props) {
   const vm$ = props.store;
   const content = props.content;
   const favicon = window.PLATFORM_FAVICONS[content.platform_id] || "";
-  const detail_href = vm$.methods.detailHref(content);
-  const statistics = vm$.methods.statistics(content);
+  return [
+    ContentRowCover({ content }),
+    View({ class: "wx-content-row-main" }, [
+      View(
+        {
+          class: "wx-content-row-title",
+          attributes: { title: content.title },
+        },
+        [content.title],
+      ),
+      View({ class: "wx-content-row-badges" }, [
+        View({ class: "wx-content-row-platform" }, [
+          Show({
+            when: favicon,
+            ok() {
+              return Img({
+                class: "wx-content-row-platform-icon",
+                src: favicon,
+                alt: "",
+                attributes: {
+                  loading: "lazy",
+                  referrerpolicy: "no-referrer",
+                },
+                onError(event) {
+                  event.target.style.display = "none";
+                },
+              });
+            },
+          }),
+          vm$.methods.platformName(content),
+        ]),
+        View({ class: "wx-content-row-type" }, [
+          vm$.methods.typeLabel(content.content_type),
+        ]),
+        Show({
+          when: content.content_subtype,
+          ok() {
+            return View(
+              {
+                class: "wx-content-row-type wx-content-row-subtype",
+                attributes: {
+                  n: "content-subtype",
+                  title: `subtype: ${content.content_subtype}`,
+                },
+              },
+              [content.content_subtype],
+            );
+          },
+        }),
+      ]),
+    ]),
+  ];
+}
+
+function ContentSkeletonRow() {
   return View(
     {
-      class: ["wx-content-row", detail_href ? "wx-content-row-clickable" : ""]
-        .filter(Boolean)
-        .join(" "),
-      attributes: detail_href ? { title: "查看内容详情" } : {},
-      onClick() {
-        vm$.methods.openDetail(content);
-      },
+      class: "wx-content-row wx-content-skeleton-row",
+      attributes: { n: "content-table-skeleton-row", role: "row" },
     },
     [
-      View({ class: "wx-content-row-main-cell" }, [
-        ContentRowCover({ content }),
-        View({ class: "wx-content-row-main" }, [
+      View(
+        {
+          class: "wx-content-row-main-cell",
+          attributes: { n: "content-table-skeleton-main-cell", role: "cell" },
+        },
+        [
+          View({
+            class: "wx-content-row-cover wx-content-skeleton",
+            attributes: { n: "content-table-skeleton-cover" },
+          }),
           View(
             {
-              class: "wx-content-row-title",
-              attributes: { title: content.title },
+              class: "wx-content-row-main",
+              attributes: { n: "content-table-skeleton-main" },
             },
-            [content.title],
-          ),
-          View({ class: "wx-content-row-badges" }, [
-            View({ class: "wx-content-row-platform" }, [
-              Show({
-                when: favicon,
-                ok() {
-                  return Img({
-                    class: "wx-content-row-platform-icon",
-                    src: favicon,
-                    alt: "",
-                    attributes: {
-                      loading: "lazy",
-                      referrerpolicy: "no-referrer",
-                    },
-                    onError(event) {
-                      event.target.style.display = "none";
-                    },
-                  });
-                },
+            [
+              View({
+                class: "wx-content-skeleton wx-content-skeleton-title",
+                attributes: { n: "content-table-skeleton-title" },
               }),
-              vm$.methods.platformName(content),
-            ]),
-            View({ class: "wx-content-row-type" }, [
-              vm$.methods.typeLabel(
-                content.content_type,
-                content.content_subtype,
-              ),
-            ]),
-          ]),
-        ]),
-      ]),
-      ContentRowAccounts({ content }),
-      View({ class: "wx-content-row-meta" }, [
-        Timeless.Icon({ name: "clock3", size: 12 }),
-        vm$.methods.formatTime(content.publish_time),
-      ]),
-      ContentRowStatistics({ statistics }),
+              View({
+                class: "wx-content-skeleton wx-content-skeleton-tag",
+                attributes: { n: "content-table-skeleton-tag" },
+              }),
+            ],
+          ),
+        ],
+      ),
+      View({
+        class: "wx-content-skeleton wx-content-skeleton-line",
+        attributes: { n: "content-table-skeleton-account", role: "cell" },
+      }),
+      View({
+        class: "wx-content-skeleton wx-content-skeleton-line-short",
+        attributes: {
+          n: "content-table-skeleton-publish-time",
+          role: "cell",
+        },
+      }),
+      View({
+        class: "wx-content-skeleton wx-content-skeleton-line-short",
+        attributes: {
+          n: "content-table-skeleton-statistics",
+          role: "cell",
+        },
+      }),
     ],
   );
 }
 
-function ContentTableHead() {
-  return View({ class: "wx-content-row wx-content-row-head" }, [
-    View({ class: "wx-content-row-head-cell" }, ["封面 / 标题"]),
-    View({ class: "wx-content-row-head-cell" }, ["账号"]),
-    View({ class: "wx-content-row-head-cell" }, ["发布时间"]),
-    View({ class: "wx-content-row-head-cell" }, ["统计"]),
-  ]);
-}
-
-function ContentSkeletonRow() {
-  return View({ class: "wx-content-row wx-content-skeleton-row" }, [
-    View({ class: "wx-content-row-main-cell" }, [
-      View({ class: "wx-content-row-cover wx-content-skeleton" }),
-      View({ class: "wx-content-row-main" }, [
-        View({ class: "wx-content-skeleton wx-content-skeleton-title" }),
-        View({ class: "wx-content-skeleton wx-content-skeleton-tag" }),
-      ]),
-    ]),
-    View({ class: "wx-content-skeleton wx-content-skeleton-line" }),
-    View({ class: "wx-content-skeleton wx-content-skeleton-line-short" }),
-    View({ class: "wx-content-skeleton wx-content-skeleton-line-short" }),
-  ]);
-}
-
-function ContentListView(props) {
-  const vm$ = props.store;
-  return View({ class: "wx-content-history-list" }, [
-    VirtualListView({
-      style: {
-        height: "100%",
-        "max-height": "100%",
-        overflow: "auto",
-        position: "relative",
-        "box-sizing": "border-box",
-        "background-color": "transparent",
-      },
-      key: "id",
-      size: 10,
-      buffer: 6,
-      gutter: 0,
-      itemHeight: 72,
-      each: vm$.state.contents,
-      render(content_) {
-        const content =
-          content_ && content_.value !== undefined
-            ? content_.value
-            : content_;
-        return ContentRow({ store: vm$, content });
-      },
-    }),
-  ]);
-}
-
 function ContentPageBody(props) {
   const vm$ = props.store;
-  return View({ class: "wx-content-main dm-container" }, [
-    Show({
-      when: vm$.state.loading,
-      ok() {
-        return View(
-          { class: "wx-content-rows dm-panel" },
-          Array.from({ length: 8 }, () => ContentSkeletonRow()),
-        );
+  return Table({
+    name: "content-table",
+    containerAttributes: { n: "content-page-main" },
+    panelAttributes: { n: "content-table-panel" },
+    columns: [
+      {
+        name: "main",
+        title: "封面 / 标题",
+        cellClass: "wx-content-row-main-cell",
+        render(content) {
+          return ContentRowMain({ store: vm$, content });
+        },
       },
-      else() {
-        return Show({
-          when: computed(vm$.state.error, (error) => Boolean(error)),
-          ok() {
-            return View({ class: "wx-content-state" }, [
-              Timeless.Icon({ name: "circle-alert", size: 32 }),
-              View({ class: "wx-content-state-title" }, ["内容加载失败"]),
-              View({ class: "wx-content-state-text" }, [vm$.state.error]),
-              ContentPageActionButton({
-                store: vm$.ui.btn_retry$,
-                icon: "refresh-cw",
-                label: "重试",
-                variant: "primary",
-              }),
-            ]);
-          },
-          else() {
-            return Show({
-              when: computed(
-                vm$.state.contents,
-                (contents) => contents.length > 0,
-              ),
-              ok() {
-                return View(
-                  {
-                    class:
-                      "wx-content-rows wx-content-history-rows dm-panel",
-                  },
-                  [ContentTableHead(), ContentListView({ store: vm$ })],
-                );
-              },
-              else() {
-                return View({ class: "wx-content-state" }, [
-                  Timeless.Icon({ name: "inbox", size: 36 }),
-                  View({ class: "wx-content-state-title" }, ["暂无内容"]),
-                  View({ class: "wx-content-state-text" }, [
-                    "当前筛选条件下没有内容",
-                  ]),
-                ]);
-              },
-            });
-          },
-        });
+      {
+        name: "account",
+        title: "账号",
+        cellClass: "wx-content-row-author",
+        render(content) {
+          return ContentRowAccounts({ content });
+        },
       },
-    }),
-  ]);
+      {
+        name: "publish-time",
+        title: "发布时间",
+        cellClass: "wx-content-row-meta",
+        render(content) {
+          return [
+            Timeless.Icon({ name: "clock3", size: 12 }),
+            vm$.methods.formatTime(content.publish_time),
+          ];
+        },
+      },
+      {
+        name: "statistics",
+        title: "统计",
+        cellClass: "wx-content-row-stats",
+        render(content) {
+          return ContentRowStatistics({
+            statistics: vm$.methods.statistics(content),
+          });
+        },
+      },
+    ],
+    rows: vm$.state.contents,
+    status: vm$.state.status,
+    loading: vm$.state.loading,
+    error: vm$.state.error,
+    skeletonCount: 8,
+    renderSkeletonRow: ContentSkeletonRow,
+    onRow(content) {
+      const detail_href = vm$.methods.detailHref(content);
+      return {
+        class: detail_href ? "wx-content-row-clickable" : "",
+        attributes: detail_href ? { title: "查看内容详情" } : {},
+        onClick() {
+          vm$.methods.openDetail(content);
+        },
+      };
+    },
+    renderError(error) {
+      return View(
+        {
+          class: "wx-content-state",
+          attributes: { n: "content-table-error", role: "alert" },
+        },
+        [
+          Timeless.Icon({ name: "circle-alert", size: 32 }),
+          View(
+            {
+              class: "wx-content-state-title",
+              attributes: { n: "content-table-error-title" },
+            },
+            ["内容加载失败"],
+          ),
+          View(
+            {
+              class: "wx-content-state-text",
+              attributes: { n: "content-table-error-message" },
+            },
+            [error],
+          ),
+          ContentPageActionButton({
+            store: vm$.ui.btn_retry$,
+            icon: "refresh-cw",
+            label: "重试",
+            variant: "primary",
+            attributes: { n: "content-table-retry" },
+          }),
+        ],
+      );
+    },
+    renderEmpty() {
+      return View(
+        {
+          class: "wx-content-state",
+          attributes: { n: "content-table-empty" },
+        },
+        [
+          Timeless.Icon({ name: "inbox", size: 36 }),
+          View(
+            {
+              class: "wx-content-state-title",
+              attributes: { n: "content-table-empty-title" },
+            },
+            ["暂无内容"],
+          ),
+          View(
+            {
+              class: "wx-content-state-text",
+              attributes: { n: "content-table-empty-description" },
+            },
+            ["当前筛选条件下没有内容"],
+          ),
+        ],
+      );
+    },
+  });
 }
 
 export default ContentPageView;

@@ -105,7 +105,15 @@ type ContentDetail struct {
 	Content     *model.Content               `json:"content,omitempty"`
 	Relation    *model.ContentRelation       `json:"relation,omitempty"`
 	Relations   []model.ContentRelation      `json:"relations,omitempty"`
+	Accounts    []ContentAccountReference    `json:"accounts,omitempty"`
 	Influencers []ContentInfluencerReference `json:"influencers,omitempty"`
+}
+
+// ContentAccountReference associates an account and its role with content
+// discovered as part of a larger content graph.
+type ContentAccountReference struct {
+	Account *model.Account `json:"account"`
+	Role    string         `json:"role,omitempty"`
 }
 
 // ContentInfluencerReference groups one person with every role they have in a
