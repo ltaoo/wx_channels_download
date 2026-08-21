@@ -7,13 +7,62 @@ import {
   CreateTaskPreviewDialog,
   DownloadV2SelectionBar,
   DownloadV2StatusBar,
-  DownloadV2TaskTable,
+  DownloadV2TaskColumns,
+  DownloadV2TaskSkeletonRow,
   OverwriteConfirmDialog,
   SingleOverwriteConfirmDialog,
   TaskDeleteConfirmDialog,
 } from "./downloadv2.components.js";
 import { DownloadV2Model } from "./downloadv2.model.js";
 import PreviewPageView from "./preview.js";
+import { Table } from "./table.js";
+
+function DownloadV2TaskTable(props) {
+  const vm$ = props.store;
+
+  return Table({
+    name: "download-task-table",
+    containerClass: "wx-content-main dm-container",
+    containerAttributes: { n: "download-page-main" },
+    panelClass:
+      "wx-content-rows wx-content-history-rows wx-dl-page-task-table dm-panel",
+    panelAttributes: { n: "download-task-list-panel" },
+    headerClass: "wx-dl-page-table-head",
+    headerCellClass: "wx-dl-page-table-head-cell",
+    listClass: "wx-content-history-list wx-dl-page-list wx-dl-dark-scroll",
+    columns: DownloadV2TaskColumns({ store: vm$ }),
+    rows: vm$.state.tasks,
+    status: vm$.state.status,
+    loading: vm$.state.loading,
+    error: vm$.state.error,
+    showHeaderWhenEmpty: true,
+    rowClass: "wx-dl-page-task-row",
+    skeletonCount: 8,
+    renderSkeletonRow: DownloadV2TaskSkeletonRow,
+    rowSelection: {
+      headerState: vm$.state.loaded_task_selection,
+      allAriaLabel: "全选下载任务",
+      itemAriaLabel: "选择下载任务",
+      size: 18,
+      itemState(task) {
+        return vm$.methods.taskSelectionState(task);
+      },
+      onSelectAll() {
+        vm$.methods.toggleLoadedTasksSelected();
+      },
+      onSelect(task, event) {
+        vm$.methods.toggleTaskSelected(task, {
+          shiftKey: Boolean(event && event.shiftKey),
+        });
+      },
+    },
+    errorTitle: "下载任务加载失败",
+    retry: {
+      store: vm$.ui.btn_refresh_tasks$,
+    },
+    emptyTitle: "暂无下载任务",
+  });
+}
 
 function DownloadV2TaskPreviewDrawer(props) {
   const vm$ = props.store;
@@ -21,13 +70,15 @@ function DownloadV2TaskPreviewDrawer(props) {
     {
       store: vm$.ui.taskPreviewDrawer$,
       class: "wx-dl-preview-drawer",
-      style: { width: "min(max(560px, 60vw), 100vw)" },
+      style: { width: "min(max(560px, 80vw), 100vw)" },
+      attributes: { n: "download-task-preview-drawer" },
     },
-    [
+    () => [
       PreviewPageView({
         app: props.app,
         client: props.client,
         embedded: true,
+        fileView: "gallery",
         taskId: vm$.state.preview_task_id,
       }),
     ],
@@ -43,7 +94,9 @@ function DownloadV2Page(props) {
 
   return View(
     {
-      class: "wx-dl-page-root dm-page dm-flex dm-flex-col dm-min-h-0",
+      class:
+        "wx-content-page wx-content-library-page wx-dl-page-root dm-page",
+      attributes: { n: "download-page" },
       onMounted() {
         vm$.methods.ready();
       },
@@ -53,11 +106,7 @@ function DownloadV2Page(props) {
     },
     [
       DownloadV2StatusBar({ store: vm$ }),
-      View({ class: "wx-dl-page-main dm-container" }, [
-        View({ class: "wx-dl-page-list-wrap dm-panel" }, [
-          DownloadV2TaskTable({ store: vm$ }),
-        ]),
-      ]),
+      DownloadV2TaskTable({ store: vm$ }),
       Show({
         when: computed(vm$.state.tasks, (tasks) => tasks.length > 0),
         ok() {

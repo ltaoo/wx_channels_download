@@ -27,7 +27,8 @@ type api_envelope struct {
 	Data json.RawMessage `json:"data"`
 }
 
-type scraper_job struct {
+// ScraperJob is the transport-neutral snapshot consumed by MCP scraper tools.
+type ScraperJob struct {
 	ID       string          `json:"id"`
 	Platform string          `json:"platform"`
 	URL      string          `json:"url"`
@@ -126,7 +127,7 @@ func (c *api_client) get_wxchannels_api(ctx context.Context, path string, query 
 	return c.do_json(ctx, http.MethodGet, path, nil)
 }
 
-func (c *api_client) create_scraper_job(ctx context.Context, raw_url string, force_refresh bool) (*scraper_job, error) {
+func (c *api_client) create_scraper_job(ctx context.Context, raw_url string, force_refresh bool) (*ScraperJob, error) {
 	body := map[string]any{"url": raw_url, "force_refresh": force_refresh}
 	raw_data, err := c.do_json(ctx, http.MethodPost, "/api/scraper/fetch", body)
 	if err != nil {
@@ -135,44 +136,13 @@ func (c *api_client) create_scraper_job(ctx context.Context, raw_url string, for
 	return decode_scraper_job(raw_data)
 }
 
-func (c *api_client) get_scraper_job(ctx context.Context, job_id string) (*scraper_job, error) {
+func (c *api_client) get_scraper_job(ctx context.Context, job_id string) (*ScraperJob, error) {
 	query := url.Values{"id": []string{job_id}}
 	raw_data, err := c.do_json(ctx, http.MethodGet, "/api/scraper/job?"+query.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}
 	return decode_scraper_job(raw_data)
-}
-
-func (c *api_client) wait_scraper_job(ctx context.Context, job *scraper_job) (*scraper_job, error) {
-	if job == nil || strings.TrimSpace(job.ID) == "" {
-		return nil, fmt.Errorf("抓取任务响应缺少 id")
-	}
-	current_job := job
-	for {
-		switch current_job.Status {
-		case "completed":
-			if !has_json_value(current_job.Output) {
-				return nil, fmt.Errorf("抓取任务已完成，但响应缺少 output")
-			}
-			return current_job, nil
-		case "failed":
-			return nil, new_tool_execution_error(value_or_default(current_job.Error, "抓取内容失败"), raw_json_value(current_job.Progress))
-		case "interrupted":
-			return nil, new_tool_execution_error(value_or_default(current_job.Error, "抓取任务已中断"), raw_json_value(current_job.Progress))
-		}
-
-		select {
-		case <-ctx.Done():
-			return nil, new_tool_execution_error("等待抓取任务超时或已取消: "+ctx.Err().Error(), raw_json_value(current_job.Progress))
-		case <-time.After(c.poll_interval):
-		}
-		next_job, err := c.get_scraper_job(ctx, current_job.ID)
-		if err != nil {
-			return nil, err
-		}
-		current_job = next_job
-	}
 }
 
 func (c *api_client) create_download_task(ctx context.Context, body any) (*download_create_response, error) {
@@ -191,6 +161,12 @@ func (c *api_client) create_download_task(ctx context.Context, body any) (*downl
 }
 
 func (c *api_client) wait_download_task(ctx context.Context, task_id int) (*download_task, error) {
+	var poll_timer *time.Timer
+	defer func() {
+		if poll_timer != nil {
+			poll_timer.Stop()
+		}
+	}()
 	for {
 		query := url.Values{"task_id": []string{strconv.Itoa(task_id)}}
 		raw_data, err := c.do_json(ctx, http.MethodGet, "/api/v1/download_task/list?"+query.Encode(), nil)
@@ -213,10 +189,15 @@ func (c *api_client) wait_download_task(ctx context.Context, task_id int) (*down
 			return nil, new_tool_execution_error(message, task)
 		}
 
+		if poll_timer == nil {
+			poll_timer = time.NewTimer(c.poll_interval)
+		} else {
+			poll_timer.Reset(c.poll_interval)
+		}
 		select {
 		case <-ctx.Done():
 			return nil, new_tool_execution_error("等待下载完成超时或已取消: "+ctx.Err().Error(), task)
-		case <-time.After(c.poll_interval):
+		case <-poll_timer.C:
 		}
 	}
 }
@@ -293,8 +274,8 @@ func (c *api_client) do_json(ctx context.Context, method string, path string, bo
 	return envelope.Data, nil
 }
 
-func decode_scraper_job(raw_data json.RawMessage) (*scraper_job, error) {
-	var job scraper_job
+func decode_scraper_job(raw_data json.RawMessage) (*ScraperJob, error) {
+	var job ScraperJob
 	if err := json.Unmarshal(raw_data, &job); err != nil {
 		return nil, fmt.Errorf("解析抓取任务响应失败: %w", err)
 	}

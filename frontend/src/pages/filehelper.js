@@ -311,17 +311,25 @@ function FileHelperComposerView(props) {
           {
             store: vm$.ui.btn_open_image_picker$,
             class: "wx-filehelper-toolbar-button dm-focus-ring",
-            attributes: { title: "发送图片", "aria-label": "发送图片" },
+            attributes: {
+              n: "open-image-picker-button",
+              title: "发送图片",
+              "aria-label": "发送图片",
+            },
           },
-          ["🖼️"],
+          [Timeless.Icon({ name: "image", size: 18 })],
         ),
         Button(
           {
             store: vm$.ui.btn_open_file_picker$,
             class: "wx-filehelper-toolbar-button dm-focus-ring",
-            attributes: { title: "发送文件", "aria-label": "发送文件" },
+            attributes: {
+              n: "open-file-picker-button",
+              title: "发送文件",
+              "aria-label": "发送文件",
+            },
           },
-          ["📎"],
+          [Timeless.Icon({ name: "file", size: 18 })],
         ),
       ]),
       View({ class: "wx-filehelper-compose-row" }, [

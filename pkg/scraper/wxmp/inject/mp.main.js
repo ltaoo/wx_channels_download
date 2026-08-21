@@ -14,7 +14,6 @@
   } = window.WXMPUtils;
 
   var APIHostname = WXEnv.get("apiOrigin");
-  var MPWSURL = "";
   var credentials = {};
 
   function insert_page_style() {
@@ -66,16 +65,6 @@
       return Timeless.Result.Ok(data);
     },
   });
-
-  const submitCredentialReq = new Timeless.kit.RequestCore(
-    (acct) =>
-      request.post(
-        "/api/mp/refresh?token=" +
-          (WXU.config.officialServerRefreshToken ?? ""),
-        acct,
-      ),
-    { client: http_client },
-  );
 
   const scraperFetchReq = new Timeless.kit.RequestCore(
     (body) => request.post("/api/scraper/fetch", body),
@@ -130,97 +119,6 @@
       }
       job = job_result.data || {};
     }
-  }
-
-  async function handle_api_call(msg, socket) {
-    var { id, key, data } = msg;
-    function resp(body) {
-      socket.send(
-        JSON.stringify({
-          id,
-          data: body,
-        }),
-      );
-    }
-    if (key === "key:fetch_account_home") {
-      var [error, res] = await fetchAccountHome(data);
-      if (error) {
-        resp({
-          errCode: 1001,
-          errMsg: error.message,
-        });
-        return;
-      }
-      resp({
-        errCode: 0,
-        data: res,
-      });
-      return;
-    }
-    resp({
-      errCode: 1000,
-      errMsg: "未匹配的key",
-      payload: msg,
-    });
-  }
-  function connect(acct) {
-    return new Promise((resolve, reject) => {
-      const ws = new WebSocket(MPWSURL);
-      let ping_timer = null;
-      ws.onopen = () => {
-        WXU.log({
-          msg: "ws/mp connected",
-        });
-        submit_credential(acct);
-        var page_title = document.title || acct.nickname || "公众号页面";
-        try {
-          ws.send(
-            JSON.stringify({
-              type: "ping",
-              data: page_title,
-            }),
-          );
-        } catch (e) {
-          // ...
-        }
-        ping_timer = setInterval(() => {
-          console.log("[]ping");
-          if (ws.readyState === 1) {
-            try {
-              ws.send(
-                JSON.stringify({
-                  type: "ping",
-                  data: page_title,
-                }),
-              );
-            } catch (e) {
-              // ...
-            }
-          }
-        }, 5 * 1000);
-        resolve(true);
-      };
-      ws.onclose = () => {
-        console.log("ws/mp disconnected");
-        if (ping_timer) {
-          clearInterval(ping_timer);
-          ping_timer = null;
-        }
-      };
-      ws.onerror = (e) => {
-        console.error("ws/mp error", e);
-        reject(e);
-      };
-      ws.onmessage = (ev) => {
-        const [err, msg] = WXU.parseJSON(ev.data);
-        if (err) {
-          return;
-        }
-        if (msg.type === "api_call") {
-          handle_api_call(msg.data, ws);
-        }
-      };
-    });
   }
 
   function report_article_loaded() {

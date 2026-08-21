@@ -6,7 +6,6 @@ import (
 
 // YouTubePluginConfig implements config.Configurable for youtube plugin config.
 type YouTubePluginConfig struct {
-	Enabled bool
 	Cookie  string
 	PoToken string
 }
@@ -15,14 +14,6 @@ func (c *YouTubePluginConfig) ConfigNamespace() string { return "youtube" }
 
 func (c *YouTubePluginConfig) ConfigSchema() []config.ConfigField {
 	return []config.ConfigField{
-		{
-			Key:         "enabled",
-			Type:        config.ConfigTypeBool,
-			Default:     false,
-			Description: "是否记录 YouTube 页面浏览记录",
-			Title:       "记录 YouTube 浏览",
-			Group:       "YouTube",
-		},
 		{
 			Key:         "cookie",
 			Type:        config.ConfigTypeText,
@@ -45,7 +36,6 @@ func (c *YouTubePluginConfig) ConfigSchema() []config.ConfigField {
 }
 
 func (c *YouTubePluginConfig) ApplyConfig(sub *config.SubViper) error {
-	c.Enabled = sub.GetBool("enabled")
 	c.Cookie = sub.GetString("cookie")
 	c.PoToken = sub.GetString("poToken")
 	return nil

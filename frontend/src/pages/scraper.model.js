@@ -2,8 +2,8 @@ import { ThirdPartyDownloaderModel } from "@/third-party-downloader.model.js";
 
 const active_job_storage_key = "scraper.active_scraper_job_id";
 const platform_status_popover_hide_delay = 240;
-const home_api_origin =
-  (window.__d_config && window.__d_config.apiOrigin) || window.location.origin;
+const ChannelCore = Timeless.kit.ChannelCore;
+const { socket_client$ } = window.__store;
 
 const home_request = Timeless.kit.request_factory({
   headers: { "Content-Type": "application/json" },
@@ -193,9 +193,7 @@ function ScraperPageViewModel(props) {
   const platform_statuses_ = ref([]);
   let request_sequence = 0;
   let active_job_id = "";
-  let websocket_ = null;
-  let websocket_connect_promise = null;
-  let websocket_reconnect_timeout_id = 0;
+  let scraper_channel_connected = false;
   let poll_timeout_id = 0;
   let resolving_terminal_job_id = "";
   let platform_status_hide_timeout_id = 0;
@@ -625,6 +623,10 @@ function ScraperPageViewModel(props) {
       normalized_content_,
       (content) => content.platform_name,
     ),
+    platform_favicon: computed(
+      normalized_content_,
+      (content) => content.platform_favicon,
+    ),
     content_type_name: computed(
       normalized_content_,
       (content) => content.content_type_name,
@@ -981,6 +983,7 @@ function ScraperPageViewModel(props) {
       disabled: download_disabled_.value,
       loading: download_loading_.value,
       variant: "primary",
+      size: "lg",
       onClick() {
         return create_download_task();
       },
@@ -988,6 +991,7 @@ function ScraperPageViewModel(props) {
     btn_third_party_download$: new Timeless.vm.ButtonCore({
       disabled: third_party_download_disabled_.value,
       variant: "outline",
+      size: "lg",
       onClick() {
         return third_party_downloader$.methods.open(
           preferred_third_party_resource_.value || {},
@@ -1161,14 +1165,17 @@ function ScraperPageViewModel(props) {
   });
   configure_ui_button_list(ui.btn_cache_entry$, { variant: "ghost" });
 
-  function scraper_websocket_url() {
-    const websocket_url = new URL(home_api_origin, window.location.href);
-    websocket_url.protocol =
-      websocket_url.protocol === "https:" ? "wss:" : "ws:";
-    websocket_url.pathname = "/ws/scraper";
-    websocket_url.search = "";
-    return websocket_url.toString();
-  }
+  const scraper_channel = new ChannelCore("/ws/scraper", {
+    client: socket_client$,
+    process: decode_scraper_channel_message,
+    reconnect: {
+      enabled: true,
+      interval: 1000,
+    },
+  });
+
+  scraper_channel.onMessage(handle_scraper_channel_message);
+  scraper_channel.onStateChange(sync_scraper_channel_state);
 
   function apply_fetch_progress(progress) {
     if (!progress || typeof progress !== "object") {
@@ -1258,25 +1265,9 @@ function ScraperPageViewModel(props) {
     }
   }
 
-  function clear_websocket_reconnect() {
-    if (websocket_reconnect_timeout_id) {
-      window.clearTimeout(websocket_reconnect_timeout_id);
-      websocket_reconnect_timeout_id = 0;
-    }
-  }
-
-  function close_scraper_websocket() {
-    clear_websocket_reconnect();
-    const websocket = websocket_;
-    websocket_ = null;
-    websocket_connect_promise = null;
-    if (websocket) {
-      try {
-        websocket.close();
-      } catch {
-        // Closing an already closed websocket is harmless.
-      }
-    }
+  function destroy_scraper_channel() {
+    scraper_channel_connected = false;
+    scraper_channel.destroy();
   }
 
   function clear_platform_status_popover_hide() {
@@ -1614,140 +1605,75 @@ function ScraperPageViewModel(props) {
     }, delay);
   }
 
-  function schedule_scraper_websocket_reconnect(delay = 1000) {
-    if (disposed || websocket_reconnect_timeout_id) {
-      return;
+  function decode_scraper_channel_message(value) {
+    if (typeof value !== "string") {
+      return value;
     }
-    websocket_reconnect_timeout_id = window.setTimeout(() => {
-      websocket_reconnect_timeout_id = 0;
-      void connect_scraper_websocket().catch(() => false);
-    }, delay);
+    const [parse_error, message] = DLUtils.parseJSON(value);
+    return parse_error ? null : message;
   }
 
-  function connect_scraper_websocket() {
-    if (disposed) {
-      return Promise.resolve(false);
+  function handle_scraper_channel_message(message) {
+    if (!message) {
+      return;
     }
-    if (websocket_ && websocket_.readyState === WebSocket.OPEN) {
-      return Promise.resolve(true);
+    if (message.type === "platform_status") {
+      apply_platform_status(message.platform_status);
+      return;
     }
-    if (websocket_connect_promise) {
-      return websocket_connect_promise;
+    if (message.type !== "scraper_job") {
+      return;
     }
-    clear_websocket_reconnect();
-
-    const connection_promise = new Promise((resolve, reject) => {
-      let websocket;
-      try {
-        websocket = new WebSocket(scraper_websocket_url());
-      } catch (error) {
-        schedule_scraper_websocket_reconnect();
-        reject(error);
-        return;
-      }
-      websocket_ = websocket;
-      let settled = false;
-      const timeout_id = window.setTimeout(() => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        reject(new Error("scraper progress websocket connection timeout"));
-        try {
-          websocket.close();
-        } catch {
-          // The timed-out websocket may already be closed.
-        }
-      }, 1500);
-
-      websocket.onopen = () => {
-        if (disposed || websocket_ !== websocket) {
-          websocket.close();
-          return;
-        }
-        if (loading_.value && active_job_id) {
-          schedule_job_poll(request_sequence, 2000);
-          const current_progress = fetch_progress_.value || {};
-          fetch_progress_.as({
-            ...current_progress,
-            message: current_progress.message || "已连接实时进度推送",
-            updated_at: Date.now(),
-          });
-        }
-        window.clearTimeout(timeout_id);
-        if (!settled) {
-          settled = true;
-          resolve(true);
-        }
-      };
-      websocket.onmessage = (event) => {
-        const [parse_error, message] = DLUtils.parseJSON(event.data);
-        if (parse_error || !message) {
-          return;
-        }
-        if (message.type === "platform_status") {
-          apply_platform_status(message.platform_status);
-          return;
-        }
-        if (message.type !== "scraper_job") {
-          return;
-        }
-        apply_scraper_job(
-          message.job,
-          request_sequence,
-          message.event || null,
-        );
-      };
-      websocket.onerror = () => {
-        if (settled) {
-          return;
-        }
-        window.clearTimeout(timeout_id);
-        settled = true;
-        reject(new Error("scraper progress websocket connection failed"));
-        try {
-          websocket.close();
-        } catch {
-          // The failed websocket may already be closed.
-        }
-      };
-      websocket.onclose = () => {
-        window.clearTimeout(timeout_id);
-        if (websocket_ === websocket) {
-          websocket_ = null;
-        }
-        if (!settled) {
-          settled = true;
-          reject(new Error("scraper progress websocket connection closed"));
-        }
-        if (loading_.value && active_job_id) {
-          const current_progress = fetch_progress_.value || {};
-          fetch_progress_.as({
-            ...current_progress,
-            message: "实时进度连接已断开，正在用轮询继续更新...",
-            updated_at: Date.now(),
-          });
-          schedule_job_poll(request_sequence, 250);
-        }
-        if (!disposed) {
-          schedule_scraper_websocket_reconnect();
-        }
-      };
-    });
-    websocket_connect_promise = connection_promise;
-    connection_promise.then(
-      () => {
-        if (websocket_connect_promise === connection_promise) {
-          websocket_connect_promise = null;
-        }
-      },
-      () => {
-        if (websocket_connect_promise === connection_promise) {
-          websocket_connect_promise = null;
-        }
-      },
+    apply_scraper_job(
+      message.job,
+      request_sequence,
+      message.event || null,
     );
-    return connection_promise;
+  }
+
+  function sync_scraper_channel_state(channel_state) {
+    const was_connected = scraper_channel_connected;
+    scraper_channel_connected = Boolean(channel_state.connected);
+    if (scraper_channel_connected) {
+      if (loading_.value && active_job_id) {
+        schedule_job_poll(request_sequence, 2000);
+        const current_progress = fetch_progress_.value || {};
+        fetch_progress_.as({
+          ...current_progress,
+          message: current_progress.message || "已连接实时进度推送",
+          updated_at: Date.now(),
+        });
+      }
+      return;
+    }
+    if (
+      !channel_state.connecting &&
+      (was_connected || channel_state.error) &&
+      loading_.value &&
+      active_job_id
+    ) {
+      const current_progress = fetch_progress_.value || {};
+      fetch_progress_.as({
+        ...current_progress,
+        message: "实时进度连接已断开，正在用轮询继续更新...",
+        updated_at: Date.now(),
+      });
+      schedule_job_poll(request_sequence, 250);
+    }
+  }
+
+  async function connect_scraper_channel() {
+    if (disposed) {
+      return false;
+    }
+    const result = await scraper_channel.connect();
+    if (!result || result.error) {
+      throw (
+        (result && result.error) ||
+        new Error("scraper progress channel connection failed")
+      );
+    }
+    return true;
   }
 
   function dispose() {
@@ -1761,7 +1687,7 @@ function ScraperPageViewModel(props) {
     active_job_id = "";
     resolving_terminal_job_id = "";
     finish_job_tracking();
-    close_scraper_websocket();
+    destroy_scraper_channel();
     clear_platform_status_popover_hide();
     ui.platform_status_popover$.hide();
     while (ui_source_unsubscribes_.length > 0) {
@@ -1838,7 +1764,7 @@ function ScraperPageViewModel(props) {
     apply_scraper_job(job, sequence);
     if (loading_.value) {
       try {
-        await connect_scraper_websocket();
+        await connect_scraper_channel();
         void refresh_scraper_job(sequence);
       } catch (error) {
         schedule_job_poll(sequence, 250);
@@ -2239,7 +2165,7 @@ function ScraperPageViewModel(props) {
       if (disposed) {
         return false;
       }
-      return connect_scraper_websocket().catch(() => false);
+      return connect_scraper_channel().catch(() => false);
     },
     dispose,
   };
@@ -2363,6 +2289,14 @@ function save_active_job_id(job_id) {
 function platform_name(value) {
   const platform_id = String(value || "").trim();
   return platform_names[platform_id] || platform_id || "未知平台";
+}
+
+function platform_favicon(value) {
+  const platform_id = String(value || "")
+    .trim()
+    .toLowerCase();
+  const favicons = window.PLATFORM_FAVICONS || {};
+  return String(favicons[platform_id] || "").trim();
 }
 
 function content_type_name(value) {
@@ -2873,7 +2807,7 @@ function normalize_download_resource(resource_info, index, content_id) {
     icon: download_resource_icon(kind),
     meta_text: [
       kind,
-      format_bytes(first_non_empty(resource.size, resource.Size)),
+      format_bytes(first_non_empty(resource.size, resource.Size)) || "unknown",
       `${endpoints.length} 个下载端点`,
     ]
       .filter(Boolean)
@@ -4154,6 +4088,7 @@ function normalize_content(result) {
       result && result.url,
     ),
     platform_name: platform_name(platform_id),
+    platform_favicon: platform_favicon(platform_id),
     content_type_name: content_type_name(content_type),
     publish_time_text: format_time(
       first_non_empty(source.publish_time, source.PublishTime),

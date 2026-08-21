@@ -1,0 +1,537 @@
+{
+  "title": "联系人、卡券、客服与分享 JSAPI",
+  "description": "operation 固定为 invoke。分享、卡券和客服能力通常还受公众号权限、签名、用户确认及客户端版本限制。字段同时覆盖当前文章 Bridge 用法与微信 JS-SDK 到 Bridge 的常见映射。",
+  "type": "object",
+  "required": [
+    "operation",
+    "method",
+    "args"
+  ],
+  "properties": {
+    "operation": {
+      "type": "string",
+      "enum": [
+        "invoke"
+      ],
+      "default": "invoke"
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "addContact",
+        "batchAddCard",
+        "jumpToBizProfile",
+        "makePhoneCall",
+        "openBizChat",
+        "openCardDetail",
+        "openCustomerServiceChat",
+        "profile",
+        "sendAppMessage",
+        "sendAppMessagePrivate",
+        "sendEmail",
+        "shareFB",
+        "shareQQ",
+        "shareQZone",
+        "shareTimeline",
+        "shareTimelinePrivate",
+        "shareWeibo",
+        "shareWeiboApp",
+        "showOpenIMContactProfile"
+      ]
+    },
+    "args": {
+      "oneOf": [
+        {
+          "title": "addContact.args",
+          "description": "添加公众号联系人。username 为公众号原始 ID；webtype 是旧版客户端场景字段。",
+          "type": "object",
+          "required": [
+            "username"
+          ],
+          "properties": {
+            "username": {
+              "type": "string"
+            },
+            "webtype": {
+              "type": "string",
+              "default": "1"
+            },
+            "scene": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "username": "gh_xxxxxxxx",
+            "webtype": "1"
+          }
+        },
+        {
+          "title": "batchAddCard.args",
+          "description": "批量领取卡券。card_ext 是包含 timestamp、nonce_str、signature 等字段的 JSON 字符串，不是对象。",
+          "type": "object",
+          "required": [
+            "card_list"
+          ],
+          "properties": {
+            "card_list": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": [
+                  "card_id",
+                  "card_ext"
+                ],
+                "properties": {
+                  "card_id": {
+                    "type": "string",
+                    "description": "卡券 ID"
+                  },
+                  "card_ext": {
+                    "type": "string",
+                    "description": "签名后的卡券扩展 JSON 字符串"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "card_list": [
+              {
+                "card_id": "p_card_id",
+                "card_ext": "{\"timestamp\":\"1760000000\",\"nonce_str\":\"random\",\"signature\":\"sha1-signature\"}"
+              }
+            ]
+          }
+        },
+        {
+          "title": "jumpToBizProfile.args",
+          "description": "跳转到公众号资料页。tousername/username 在不同客户端版本中可能有差异。",
+          "type": "object",
+          "properties": {
+            "tousername": {
+              "type": "string"
+            },
+            "username": {
+              "type": "string"
+            },
+            "scene": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "tousername": "gh_xxxxxxxx",
+            "scene": 57
+          }
+        },
+        {
+          "title": "makePhoneCall.args",
+          "description": "唤起系统拨号确认。旧版 Bridge 常用 phoneNumber 或 phone_num，具体字段取决于客户端。",
+          "type": "object",
+          "properties": {
+            "phoneNumber": {
+              "type": "string"
+            },
+            "phone_num": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "phoneNumber": "4000000000"
+          }
+        },
+        {
+          "title": "openBizChat.args",
+          "description": "打开企业/业务会话。该方法在当前页面只出现在广告白名单，corpId、userIds、groupName 是常见企业会话字段。",
+          "type": "object",
+          "properties": {
+            "corpId": {
+              "type": "string"
+            },
+            "userIds": {
+              "type": "string",
+              "description": "参与者 ID，多个值的编码方式由客户端决定"
+            },
+            "groupName": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "corpId": "ww_corp_id",
+            "userIds": "user_a;user_b",
+            "groupName": "咨询群"
+          }
+        },
+        {
+          "title": "openCardDetail.args",
+          "description": "打开微信卡包中的卡券详情。传 card_list 数组；每项必须包含 card_id 和用户持有的 code。它与 batchAddCard 不同：这里不传 card_ext。",
+          "type": "object",
+          "required": [
+            "card_list"
+          ],
+          "properties": {
+            "card_list": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": [
+                  "card_id",
+                  "code"
+                ],
+                "properties": {
+                  "card_id": {
+                    "type": "string",
+                    "description": "卡券 ID"
+                  },
+                  "code": {
+                    "type": "string",
+                    "description": "用户已领取卡券的 code"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false,
+          "example": {
+            "card_list": [
+              {
+                "card_id": "p_card_id",
+                "code": "user_card_code"
+              }
+            ]
+          }
+        },
+        {
+          "title": "openCustomerServiceChat.args",
+          "description": "打开企业微信客服会话。corpId 是企业 ID，extInfo.url 是客服链接。",
+          "type": "object",
+          "required": [
+            "corpId",
+            "extInfo"
+          ],
+          "properties": {
+            "corpId": {
+              "type": "string"
+            },
+            "extInfo": {
+              "type": "object",
+              "required": [
+                "url"
+              ],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "corpId": "ww_corp_id",
+            "extInfo": {
+              "url": "https://work.weixin.qq.com/kfid/kfcustomer_id"
+            }
+          }
+        },
+        {
+          "title": "profile.args",
+          "description": "打开用户或公众号资料页。username 是微信内部用户名。",
+          "type": "object",
+          "required": [
+            "username"
+          ],
+          "properties": {
+            "username": {
+              "type": "string"
+            },
+            "scene": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "username": "gh_xxxxxxxx",
+            "scene": 57
+          }
+        },
+        {
+          "title": "sendAppMessage.args",
+          "description": "打开好友分享面板。link、title、desc 和 img_url 是文章中实际使用的核心字段。",
+          "type": "object",
+          "required": [
+            "link",
+            "title"
+          ],
+          "properties": {
+            "appId": {
+              "type": "string"
+            },
+            "link": {
+              "type": "string",
+              "format": "uri"
+            },
+            "title": {
+              "type": "string"
+            },
+            "desc": {
+              "type": "string"
+            },
+            "img_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "img_width": {
+              "type": "string"
+            },
+            "img_height": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "appId": "",
+            "link": "https://mp.weixin.qq.com/s/example#wechat_redirect",
+            "title": "文章标题",
+            "desc": "文章摘要",
+            "img_url": "https://mmbiz.qpic.cn/example/0"
+          }
+        },
+        {
+          "title": "sendAppMessagePrivate.args",
+          "description": "新版私有好友分享流程。基础字段与 sendAppMessage 相同，客户端可能接受额外卡片样式字段。",
+          "type": "object",
+          "required": [
+            "link",
+            "title"
+          ],
+          "properties": {
+            "link": {
+              "type": "string",
+              "format": "uri"
+            },
+            "title": {
+              "type": "string"
+            },
+            "desc": {
+              "type": "string"
+            },
+            "img_url": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "link": "https://mp.weixin.qq.com/s/example#wechat_redirect",
+            "title": "文章标题",
+            "desc": "文章摘要",
+            "img_url": "https://mmbiz.qpic.cn/example/0"
+          }
+        },
+        {
+          "title": "sendEmail.args",
+          "description": "通过系统邮件分享内容。不同客户端可能使用 content 或 desc 作为正文。",
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            },
+            "desc": {
+              "type": "string"
+            },
+            "link": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "title": "文章标题",
+            "content": "文章摘要\nhttps://mp.weixin.qq.com/s/example",
+            "link": "https://mp.weixin.qq.com/s/example"
+          }
+        },
+        {
+          "title": "shareFB.args",
+          "description": "分享到 Facebook，字段结构与普通文章分享相同。",
+          "type": "object",
+          "properties": {
+            "link": {
+              "type": "string",
+              "format": "uri"
+            },
+            "title": {
+              "type": "string"
+            },
+            "desc": {
+              "type": "string"
+            },
+            "img_url": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "link": "https://mp.weixin.qq.com/s/example",
+            "title": "文章标题",
+            "desc": "文章摘要",
+            "img_url": "https://mmbiz.qpic.cn/example/0"
+          }
+        },
+        {
+          "title": "shareQQ.args",
+          "description": "分享到 QQ，字段结构与普通文章分享相同。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {
+            "link": "https://mp.weixin.qq.com/s/example",
+            "title": "文章标题",
+            "desc": "文章摘要",
+            "img_url": "https://mmbiz.qpic.cn/example/0"
+          }
+        },
+        {
+          "title": "shareQZone.args",
+          "description": "分享到 QQ 空间，字段结构与普通文章分享相同。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {
+            "link": "https://mp.weixin.qq.com/s/example",
+            "title": "文章标题",
+            "desc": "文章摘要",
+            "img_url": "https://mmbiz.qpic.cn/example/0"
+          }
+        },
+        {
+          "title": "shareTimeline.args",
+          "description": "分享到朋友圈。朋友圈主要展示 title、link 和 img_url。",
+          "type": "object",
+          "required": [
+            "link",
+            "title"
+          ],
+          "properties": {
+            "link": {
+              "type": "string",
+              "format": "uri"
+            },
+            "title": {
+              "type": "string"
+            },
+            "img_url": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "link": "https://mp.weixin.qq.com/s/example#wechat_redirect",
+            "title": "文章标题",
+            "img_url": "https://mmbiz.qpic.cn/example/0"
+          }
+        },
+        {
+          "title": "shareTimelinePrivate.args",
+          "description": "新版私有朋友圈分享流程。基础字段与 shareTimeline 相同，额外字段由客户端版本决定。",
+          "type": "object",
+          "required": [
+            "link",
+            "title"
+          ],
+          "properties": {
+            "link": {
+              "type": "string",
+              "format": "uri"
+            },
+            "title": {
+              "type": "string"
+            },
+            "img_url": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "link": "https://mp.weixin.qq.com/s/example#wechat_redirect",
+            "title": "文章标题",
+            "img_url": "https://mmbiz.qpic.cn/example/0"
+          }
+        },
+        {
+          "title": "shareWeibo.args",
+          "description": "分享到微博。字段结构与普通文章分享相同。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {
+            "link": "https://mp.weixin.qq.com/s/example",
+            "title": "文章标题",
+            "desc": "文章摘要"
+          }
+        },
+        {
+          "title": "shareWeiboApp.args",
+          "description": "通过微博 App 分享。字段结构与 shareWeibo 相同。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {
+            "link": "https://mp.weixin.qq.com/s/example",
+            "title": "文章标题",
+            "desc": "文章摘要"
+          }
+        },
+        {
+          "title": "showOpenIMContactProfile.args",
+          "description": "显示 OpenIM 联系人资料。当前页面只将方法列入白名单，联系人标识字段随 OpenIM 接入方式变化。",
+          "type": "object",
+          "properties": {
+            "userId": {
+              "type": "string"
+            },
+            "ticket": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "userId": "openim_user_id",
+            "ticket": "openim_ticket"
+          }
+        }
+      ]
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 120000,
+      "default": 15000
+    }
+  },
+  "example": {
+    "operation": "invoke",
+    "method": "openCardDetail",
+    "args": {
+      "card_list": [
+        {
+          "card_id": "p_card_id",
+          "code": "user_card_code"
+        }
+      ]
+    },
+    "timeout_ms": 15000
+  }
+}

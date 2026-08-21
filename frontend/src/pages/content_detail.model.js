@@ -108,13 +108,19 @@ function normalize_content_detail(raw) {
     detail: first_non_empty(source.detail, source.Detail) || null,
     accounts: accounts_source.map(normalize_content_account).filter(Boolean),
     download_tasks: tasks,
-    resources: resources.map((resource) => ({
-      ...resource,
-      download_task_in_progress: resource_download_task_in_progress(
+    resources: resources.map((resource) => {
+      const download_task_status = resource_download_task_status(
         resource,
         tasks,
-      ),
-    })),
+      );
+      return {
+        ...resource,
+        download_task_status,
+        download_task_in_progress: ["running", "paused"].includes(
+          download_task_status,
+        ),
+      };
+    }),
     relations: {
       ...relations_source,
       list: relations,
@@ -206,7 +212,7 @@ function content_cover_url(content) {
       );
       const resource = resources_by_id.get(resource_id) || linked_resource;
       const asset_url = resource_file_url(resource);
-      if (resource.exists === true && asset_url) {
+      if (resource_file_available(resource) && asset_url) {
         return asset_url;
       }
     }
@@ -292,7 +298,7 @@ function normalize_task_status(status) {
   return "waiting";
 }
 
-function resource_download_task_in_progress(resource, tasks) {
+function resource_download_task_status(resource, tasks) {
   const task_id = String(
     first_non_empty(
       resource && resource.task_id,
@@ -300,18 +306,15 @@ function resource_download_task_in_progress(resource, tasks) {
       resource && resource.TaskId,
     ),
   ).trim();
-  if (!task_id) return false;
+  if (!task_id) return "waiting";
 
   const task = (Array.isArray(tasks) ? tasks : []).find(
     (item) =>
       String(first_non_empty(item && item.id, item && item.ID)).trim() ===
       task_id,
   );
-  return (
-    normalize_task_status(
-      first_non_empty(task && task.status, task && task.Status),
-    ) ===
-    "running"
+  return normalize_task_status(
+    first_non_empty(task && task.status, task && task.Status),
   );
 }
 
@@ -328,10 +331,48 @@ function task_status(status) {
 }
 
 function resource_download_finished(resource) {
-  const status = String((resource && resource.status) ?? "")
+  const status = String(
+    first_non_empty(resource && resource.status, resource && resource.Status),
+  )
     .trim()
     .toLowerCase();
   return ["2", "finished", "done"].includes(status);
+}
+
+function resource_file_available(resource) {
+  if (!resource_download_finished(resource)) return false;
+  const exists = first_non_empty(
+    resource && resource.exists,
+    resource && resource.Exists,
+  );
+  return exists === true && Boolean(resource_file_url(resource));
+}
+
+function resource_file_status(resource) {
+  if (resource_file_available(resource)) return "已下载";
+  if (resource_download_finished(resource)) return "文件不存在";
+  const task_status = String(
+    first_non_empty(
+      resource && resource.download_task_status,
+      resource && resource.DownloadTaskStatus,
+    ),
+  )
+    .trim()
+    .toLowerCase();
+  if (task_status === "paused") return "已暂停";
+  if (task_status === "failed") return "下载失败";
+  const resource_status = String(
+    first_non_empty(resource && resource.status, resource && resource.Status),
+  )
+    .trim()
+    .toLowerCase();
+  if (
+    task_status === "running" ||
+    ["1", "running", "downloading"].includes(resource_status)
+  ) {
+    return "下载中";
+  }
+  return "等待下载";
 }
 
 function file_type_icon(resource) {
@@ -498,13 +539,14 @@ function ContentDetailViewModel(props) {
           `${resource.task_id}:${resource.id}`,
         );
         if (!checked) return resource;
-        const exists = checked.exists === true;
+        const download_finished = resource_download_finished(resource);
+        const exists = checked.exists === true && download_finished;
         return {
           ...resource,
           exists,
           local_file_checked: true,
           local_file_exists: exists,
-          local_file_deleted: !exists && resource_download_finished(resource),
+          local_file_deleted: !exists && download_finished,
         };
       }),
     };
@@ -581,6 +623,7 @@ function ContentDetailViewModel(props) {
       }
     },
     openResource(resource) {
+      if (!resource_file_available(resource)) return;
       const url = resource_file_url(resource);
       if (url) {
         window.open(url, "_blank", "noopener,noreferrer");
@@ -589,6 +632,8 @@ function ContentDetailViewModel(props) {
     sourceURL: content_source_url,
     coverURL: content_cover_url,
     resourceFileURL: resource_file_url,
+    resourceFileAvailable: resource_file_available,
+    resourceFileStatus: resource_file_status,
     platformName: platform_name,
     typeLabel: content_type_label,
     taskStatus: task_status,

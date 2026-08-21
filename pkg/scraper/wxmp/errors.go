@@ -17,6 +17,8 @@ const (
 	ErrorKindProxyRequest      ErrorKind = "proxy_request"
 	ErrorKindProxyDispatch     ErrorKind = "proxy_dispatch"
 	ErrorKindFetchMessage      ErrorKind = "fetch_message"
+	ErrorKindFetchPageContent  ErrorKind = "fetch_page_content"
+	ErrorKindJSAPI             ErrorKind = "jsapi"
 	ErrorKindDataParse         ErrorKind = "data_parse"
 	ErrorKindClientNotReady    ErrorKind = "client_not_ready"
 	ErrorKindTimeout           ErrorKind = "timeout"
@@ -35,6 +37,8 @@ var error_messages = map[ErrorKind]string{
 	ErrorKindProxyRequest:      "代理请求创建失败",
 	ErrorKindProxyDispatch:     "代理请求转发失败",
 	ErrorKindFetchMessage:      "获取消息列表失败",
+	ErrorKindFetchPageContent:  "获取页面内容失败",
+	ErrorKindJSAPI:             "JSAPI 调用失败",
 	ErrorKindDataParse:         "数据解析失败",
 	ErrorKindClientNotReady:    "请先初始化客户端 socket 连接",
 	ErrorKindTimeout:           "请求超时",

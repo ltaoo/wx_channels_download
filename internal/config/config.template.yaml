@@ -10,6 +10,9 @@ download:
   playDoneAudio: true
   defaultActionWhenExisting: ""
   maxRunning: 3
+  resourceConcurrency: 10
+  segmentConcurrency: 10
+  connectionConcurrency: 0 # 0 derives resourceConcurrency * segmentConcurrency
   remoteServer:
     enabled: false
     protocol: "http"
@@ -20,6 +23,12 @@ api:
   protocol: "http"
   hostname: "127.0.0.1"
   port: 2022
+
+mcp:
+  enabled: false
+
+scraper:
+  retainedJobs: 20
 
 db:
   type: "sqlite"
@@ -63,7 +72,6 @@ update:
   mirror: ""
 
 channels:
-  enabled: true
   disableLocationToHome: false
   download:
     defaultHighest: false
@@ -73,7 +81,6 @@ channels:
     forceCheckAllFeeds: false
 
 mp:
-  enabled: false
   remoteServer:
     protocol: "http"
     hostname: ""
@@ -93,3 +100,17 @@ cloudflare:
   sphWorkerName: "sph"
   sphCookie: ""
   sphCredential: ""
+
+bridge:
+  deploy:
+    workerName: "dm-bridge"
+    pagesProjectName: ""
+    token: ""
+    adminToken: ""
+  enabled: false
+  url: "https://dm-bridge.example.workers.dev"
+  deviceId: ""
+  deviceName: ""
+  token: ""
+  httpTimeoutSeconds: 30
+  methods: "auto"

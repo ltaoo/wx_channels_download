@@ -78,6 +78,20 @@ function format_download_speed(bytes_per_second) {
   return `${value.toFixed(1)} B/s`;
 }
 
+function format_download_time(value) {
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return "时间未知";
+  const normalized = timestamp < 1000000000000 ? timestamp * 1000 : timestamp;
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(normalized));
+}
+
 function format_download_size(bytes) {
   const value = Math.max(0, Number(bytes) || 0);
   if (value === 0) return "0.0KB";
@@ -188,7 +202,9 @@ function DownloadV2Model(props = {}) {
   const running_count_ = ref(0);
   const status_counts_ = refobj(empty_status_counts());
   const active_status_ = ref("total");
+  const initial_ = ref(true);
   const loading_ = ref(false);
+  const error_ = ref("");
   const list_render_enabled_ = ref(true);
   const selected_task_ids_ = refarr([]);
   const delete_task_ = ref(null);
@@ -250,6 +266,52 @@ function DownloadV2Model(props = {}) {
       }
       const start = (state.page - 1) * state.pageSize + 1;
       return `第 ${start}-${start + state.count - 1} 条，共 ${state.total} 条`;
+    },
+  );
+  const loaded_task_selection_ = combine(
+    {
+      tasks: tasks_,
+      selected_ids: selected_task_ids_,
+    },
+    (data) => {
+      const task_ids = [];
+      (data.tasks || []).forEach((task) => {
+        const id = task_identifier(task);
+        if (
+          !task ||
+          task.__placeholder ||
+          id === undefined ||
+          id === null ||
+          id === ""
+        ) {
+          return;
+        }
+        if (!task_ids.some((task_id) => task_id === id)) {
+          task_ids.push(id);
+        }
+      });
+      const selected_ids = data.selected_ids || [];
+      const selected = task_ids.filter((id) => {
+        return selected_ids.some((selected_id) => selected_id === id);
+      }).length;
+      return {
+        total: task_ids.length,
+        selected,
+        checked: task_ids.length > 0 && selected === task_ids.length,
+        indeterminate: selected > 0 && selected < task_ids.length,
+      };
+    },
+  );
+  const list_status_ = combine(
+    {
+      initial: initial_,
+      error: error_,
+      tasks: tasks_,
+    },
+    (state) => {
+      if (state.initial) return "initial";
+      if (state.error) return "error";
+      return state.tasks.length > 0 ? "normal" : "empty";
     },
   );
 
@@ -363,6 +425,7 @@ function DownloadV2Model(props = {}) {
     taskPreviewDrawer$: new Timeless.vm.DialogCore({
       title: "任务详情",
       closeable: true,
+      footer: false,
     }),
     deleteConfirmDialog$: new Timeless.vm.DialogCore({
       onOk() {
@@ -546,14 +609,21 @@ function DownloadV2Model(props = {}) {
       }
       sync_domain_tasks();
       apply_list_meta(meta);
+      error_.as("");
       return tasks_;
     } catch (error) {
       if (sequence === request_sequence) {
+        error_.as(
+          (error && error.message) || String(error || "获取下载任务失败"),
+        );
         report_error(error, "获取下载任务失败");
       }
       return null;
     } finally {
-      if (sequence === request_sequence) loading_.as(false);
+      if (sequence === request_sequence) {
+        loading_.as(false);
+        initial_.as(false);
+      }
     }
   }
 
@@ -804,6 +874,18 @@ function DownloadV2Model(props = {}) {
       (selected_task_ids_.value || []).filter((id) => !visible_ids.has(id)),
     );
     selection_anchor_task_id = null;
+  }
+
+  function toggle_loaded_tasks_selected() {
+    set_loaded_tasks_selected(!loaded_task_selection_.value.checked);
+  }
+
+  function task_selection_state(task) {
+    const task_id = task_identifier(task);
+    return computed(selected_task_ids_, (ids) => ({
+      checked: (ids || []).some((selected_id) => selected_id === task_id),
+      indeterminate: false,
+    }));
   }
 
   function toggle_task_selected(task, options = {}) {
@@ -1163,6 +1245,8 @@ function DownloadV2Model(props = {}) {
     requestClearTasks: request_clear_tasks,
     confirmClearTasks: confirm_clear_tasks,
     setLoadedTasksSelected: set_loaded_tasks_selected,
+    toggleLoadedTasksSelected: toggle_loaded_tasks_selected,
+    taskSelectionState: task_selection_state,
     toggleTaskSelected: toggle_task_selected,
     requestCreateTask: request_create_task,
     requestCreatePlatformTask: request_create_platform_task,
@@ -1200,6 +1284,7 @@ function DownloadV2Model(props = {}) {
     deleting_task: deleting_task_,
     selected_task_ids: selected_task_ids_,
     selected_task_count: selected_task_count_,
+    loaded_task_selection: loaded_task_selection_,
     clearing_tasks: clearing_tasks_,
     create_task_text: create_task_text_,
     create_task_filename: create_task_filename_,
@@ -1216,7 +1301,10 @@ function DownloadV2Model(props = {}) {
     websocket_connecting: downloader.websocket_connecting,
     status_counts: status_counts_,
     active_status: active_status_,
+    initial: initial_,
+    status: list_status_,
     loading: loading_,
+    error: error_,
     overwrite: overwrite_,
     overwrite_apply_all: overwrite_apply_all_,
     overwrite_processing: overwrite_processing_,
@@ -1314,6 +1402,7 @@ export {
   format_download_percent,
   format_download_size,
   format_download_speed,
+  format_download_time,
   get_download_status_count,
   is_download_open_external,
   is_download_waiting_status,

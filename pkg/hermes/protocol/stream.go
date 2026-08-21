@@ -215,7 +215,7 @@ func (d *StreamDriver) record_attempt(
 	progress_done := make(chan struct{})
 	go func() {
 		defer close(progress_done)
-		if err := parse_ffmpeg_progress(stdout, recording_dir, started_at, on_progress); err != nil {
+		if err := parse_ffmpeg_progress(stdout, recording_dir, start_index, started_at, on_progress); err != nil {
 			select {
 			case callback_err <- err:
 			default:
@@ -412,12 +412,120 @@ func valid_http_header_name(name string) bool {
 	return true
 }
 
+type stream_progress_tracker struct {
+	recording_dir string
+	states        []hermes.StreamSegmentState
+	next_index    int
+	total         int64
+	stat_file     func(string) (os.FileInfo, error)
+}
+
+func new_stream_progress_tracker(recording_dir string, active_start_index int) (*stream_progress_tracker, error) {
+	states, err := stream_segment_states(recording_dir, true)
+	if err != nil {
+		return nil, err
+	}
+	tracker := &stream_progress_tracker{
+		recording_dir: recording_dir,
+		states:        states,
+		stat_file:     os.Stat,
+	}
+	for _, state := range states {
+		tracker.total += state.Downloaded
+		if state.Index >= tracker.next_index {
+			tracker.next_index = state.Index + 1
+		}
+	}
+	if len(tracker.states) > 0 && tracker.states[len(tracker.states)-1].Index >= active_start_index {
+		tracker.states[len(tracker.states)-1].Complete = false
+	}
+	return tracker, nil
+}
+
+func (tracker *stream_progress_tracker) refresh(all_complete bool) ([]hermes.StreamSegmentState, int64, error) {
+	if len(tracker.states) > 0 && !tracker.states[len(tracker.states)-1].Complete {
+		last_state := &tracker.states[len(tracker.states)-1]
+		info, err := tracker.stat_file(stream_segment_path(tracker.recording_dir, last_state.Index))
+		if err != nil {
+			return nil, 0, err
+		}
+		tracker.total += info.Size() - last_state.Downloaded
+		last_state.Size = info.Size()
+		last_state.Downloaded = info.Size()
+	}
+
+	for {
+		info, err := tracker.stat_file(stream_segment_path(tracker.recording_dir, tracker.next_index))
+		if errors.Is(err, os.ErrNotExist) {
+			break
+		}
+		if err != nil {
+			return nil, 0, err
+		}
+		if !info.Mode().IsRegular() {
+			return nil, 0, fmt.Errorf("stream segment %d is not a regular file", tracker.next_index)
+		}
+		if len(tracker.states) > 0 {
+			tracker.states[len(tracker.states)-1].Complete = true
+		}
+		tracker.states = append(tracker.states, hermes.StreamSegmentState{
+			Index:      tracker.next_index,
+			Size:       info.Size(),
+			Downloaded: info.Size(),
+		})
+		tracker.total += info.Size()
+		tracker.next_index++
+	}
+	if all_complete && len(tracker.states) > 0 {
+		tracker.states[len(tracker.states)-1].Complete = true
+	}
+	states := append([]hermes.StreamSegmentState(nil), tracker.states...)
+	return states, tracker.total, nil
+}
+
+func (tracker *stream_progress_tracker) emit_progress(
+	started_at time.Time,
+	all_complete bool,
+	finalizing bool,
+	on_progress func(hermes.StreamRecordProgress) error,
+) error {
+	states, total, err := tracker.refresh(all_complete)
+	if err != nil {
+		return err
+	}
+	elapsed := time.Since(started_at)
+	var speed int64
+	if elapsed > 0 {
+		speed = int64(float64(total) / elapsed.Seconds())
+	}
+	return on_progress(hermes.StreamRecordProgress{
+		Downloaded: total,
+		Speed:      speed,
+		Duration:   elapsed,
+		Segments:   states,
+		Finalizing: finalizing,
+	})
+}
+
+func stream_segment_path(recording_dir string, index int) string {
+	return filepath.Join(recording_dir, fmt.Sprintf("segment-%06d.mkv", index))
+}
+
 func parse_ffmpeg_progress(
 	reader io.Reader,
 	recording_dir string,
+	active_start_index int,
 	started_at time.Time,
 	on_progress func(hermes.StreamRecordProgress) error,
 ) error {
+	var tracker *stream_progress_tracker
+	if on_progress != nil {
+		var err error
+		tracker, err = new_stream_progress_tracker(recording_dir, active_start_index)
+		if err != nil {
+			return err
+		}
+	}
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 4096), 1024*1024)
 	for scanner.Scan() {
@@ -426,7 +534,10 @@ func parse_ffmpeg_progress(
 		if !ok || key != "progress" || (value != "continue" && value != "end") {
 			continue
 		}
-		if err := emit_stream_progress(recording_dir, started_at, value == "end", false, on_progress); err != nil {
+		if tracker == nil {
+			continue
+		}
+		if err := tracker.emit_progress(started_at, value == "end", false, on_progress); err != nil {
 			return err
 		}
 	}

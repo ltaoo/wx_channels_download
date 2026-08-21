@@ -4,6 +4,7 @@ import {
   format_download_percent,
   format_download_size,
   format_download_speed,
+  format_download_time,
   get_download_status_count,
   is_download_open_external,
   is_download_waiting_status,
@@ -204,124 +205,12 @@ function DownloadV2InfinityIcon(props = {}) {
 }
 
 function DownloadV2Skeleton(props = {}) {
-  const { class: extra_class, style } = props;
+  const { attributes, class: extra_class, style } = props;
   return View({
     class: ["wx-skeleton", extra_class].filter(Boolean).join(" "),
     style: style || {},
+    attributes: attributes || {},
   });
-}
-
-function DownloadV2SelectionCheckbox(props) {
-  const {
-    ariaLabel: aria_label,
-    checked: provided_checked,
-    class: extra_class,
-    indeterminate: provided_indeterminate,
-    onToggle: on_toggle,
-    size = 18,
-    style,
-  } = props;
-  const checked =
-    provided_checked && provided_checked.__is_ref
-      ? provided_checked
-      : ref(Boolean(provided_checked));
-  const indeterminate =
-    provided_indeterminate && provided_indeterminate.__is_ref
-      ? provided_indeterminate
-      : ref(Boolean(provided_indeterminate));
-  const select_state_ = combine({ checked, indeterminate }, (state) => ({
-    checked: Boolean(state.checked),
-    indeterminate: Boolean(state.indeterminate),
-  }));
-
-  function toggle(event) {
-    if (event && typeof event.stopPropagation === "function") {
-      event.stopPropagation();
-    }
-    if (typeof on_toggle === "function") on_toggle(event);
-  }
-
-  return View(
-    {
-      role: "checkbox",
-      tabIndex: "0",
-      attributes: {
-        "aria-label": aria_label || "选择下载任务",
-        "aria-checked": computed(select_state_, (state) => {
-          if (state.indeterminate) return "mixed";
-          return state.checked ? "true" : "false";
-        }),
-      },
-      class: extra_class || "",
-      style: {
-        width: `${size + 4}px`,
-        height: `${size + 4}px`,
-        display: "inline-flex",
-        "align-items": "center",
-        "justify-content": "center",
-        cursor: "pointer",
-        "user-select": "none",
-        flex: "0 0 auto",
-        ...(style || {}),
-      },
-      onClick: toggle,
-      onKeyDown(event) {
-        if (event.key === " " || event.key === "Enter") {
-          event.preventDefault();
-          toggle(event);
-        }
-      },
-    },
-    [
-      View(
-        {
-          style: computed(select_state_, (state) => {
-            const active = state.checked || state.indeterminate;
-            return {
-              width: `${size}px`,
-              height: `${size}px`,
-              "box-sizing": "border-box",
-              "border-radius": "4px",
-              border: `1px solid ${active ? "var(--dm-color-primary-fill)" : "var(--dm-color-border)"}`,
-              background: active
-                ? "var(--dm-color-primary-fill)"
-                : "transparent",
-              color: "var(--dm-color-on-primary)",
-              display: "inline-flex",
-              "align-items": "center",
-              "justify-content": "center",
-            };
-          }),
-        },
-        [
-          Show({
-            when: computed(select_state_, (state) => state.indeterminate),
-            ok() {
-              return View({
-                style: {
-                  width: `${Math.max(8, size - 8)}px`,
-                  height: "2px",
-                  "border-radius": "1px",
-                  background: "currentColor",
-                },
-              });
-            },
-            else() {
-              return Show({
-                when: computed(select_state_, (state) => state.checked),
-                ok() {
-                  return Timeless.Icon({
-                    name: "check",
-                    size: Math.max(12, size - 4),
-                  });
-                },
-              });
-            },
-          }),
-        ],
-      ),
-    ],
-  );
 }
 
 function DownloadV2TaskState(task_) {
@@ -460,12 +349,6 @@ function DownloadV2TaskCover(props) {
         progress,
       ]);
     },
-    else() {
-      return View({ class: "wx-dl-page-task-cover-wrap" }, [
-        fallback(),
-        progress,
-      ]);
-    },
   });
 }
 
@@ -495,7 +378,7 @@ function DownloadV2TaskActions(props) {
   const { state: state_, store: vm$, task: task_ } = props;
   const is_open_external = is_download_open_external();
 
-  return View({ class: "wx-dl-page-task-actions-cell" }, [
+  return [
     Match({
       when: combine(
         { state: state_, running_count: vm$.state.running_count },
@@ -592,121 +475,137 @@ function DownloadV2TaskActions(props) {
         vm$.methods.requestDeleteTask(task_value(task_));
       },
     }),
-  ]);
+  ];
 }
 
-function DownloadV2TaskRow(props) {
+function DownloadV2TaskMain(props) {
   const { store: vm$, task: task_ } = props;
   const state_ = DownloadV2TaskState(task_);
-  const task_id = (task_value(task_) || {}).id;
-  const selected_ = computed(vm$.state.selected_task_ids, (ids) => {
-    return (ids || []).some((id) => id === task_id);
-  });
 
-  return View({ class: "wx-dl-page-task-row" }, [
-    View({ class: "wx-dl-page-task-main-cell" }, [
-      DownloadV2SelectionCheckbox({
-        checked: selected_,
-        ariaLabel: "选择下载任务",
-        style: { "margin-right": "10px" },
-        onToggle(event) {
-          vm$.methods.toggleTaskSelected(task_value(task_), {
-            shiftKey: Boolean(event && event.shiftKey),
-          });
-        },
-      }),
-      DownloadV2TaskCover({ task: task_, state: state_ }),
-      View({ class: "wx-dl-page-task-info" }, [
-        View({ class: "wx-dl-page-task-title-line" }, [
-          View(
-            {
-              as: "button",
-              class: "wx-dl-page-task-title",
-              attributes: {
-                type: "button",
-                title: computed(task_, (task) => (task && task.name) || ""),
-              },
-              onClick() {
-                vm$.methods.requestTaskPreview(task_value(task_));
-              },
-            },
-            [computed(task_, (task) => (task && task.name) || "未命名任务")],
-          ),
-          Show({
-            when: computed(state_, (state) => state.is_live_stream),
-            ok() {
-              return View({ class: "wx-dl-page-task-live" }, ["流媒体"]);
-            },
-          }),
-          Show({
-            when: computed(task_, (task) => !task_has_content(task)),
-            ok() {
-              return View(
-                {
-                  class:
-                    "wx-dl-page-task-missing-detail dm-badge dm-badge--warning",
-                  attributes: { title: "该下载任务没有关联内容详情" },
+  return [
+    DownloadV2TaskCover({ task: task_, state: state_ }),
+    View(
+      {
+        class: "wx-dl-page-task-info",
+        attributes: { n: "download-task-info" },
+      },
+      [
+        View(
+          {
+            class: "wx-dl-page-task-title-line",
+            attributes: { n: "download-task-title-line" },
+          },
+          [
+            View(
+              {
+                as: "button",
+                class: "wx-dl-page-task-title",
+                attributes: {
+                  n: "download-task-preview-trigger",
+                  type: "button",
+                  title: computed(task_, (task) => (task && task.name) || ""),
                 },
-                ["缺少详情"],
-              );
-            },
-          }),
-        ]),
-        View({ class: "wx-dl-page-task-desc" }, [
-          View(
-            {
-              class: "wx-dl-page-task-status",
-              style: computed(state_, (state) => ({
-                color: state.status_color,
-              })),
-            },
-            [computed(state_, (state) => state.status_text)],
-          ),
-          "·",
-          Show({
-            when: computed(state_, (state) => state.is_completed),
-            ok() {
-              return DownloadV2Number({
-                value: computed(state_, (state) => state.total_size_text),
-              });
-            },
-            else() {
-              return [
-                DownloadV2Number({
-                  value: computed(
-                    state_,
-                    (state) => `${state.downloaded_size_text} /`,
-                  ),
-                }),
-                Show({
-                  when: computed(state_, (state) => state.is_live_stream),
-                  ok() {
-                    return DownloadV2InfinityIcon({ size: 14 });
-                  },
-                  else() {
-                    return DownloadV2Number({
-                      value: computed(state_, (state) => state.total_size_text),
-                    });
-                  },
-                }),
-              ];
-            },
-          }),
-          Show({
-            when: computed(
-              state_,
-              (state) => state.is_running && Boolean(state.speed_text),
+                onClick() {
+                  vm$.methods.requestTaskPreview(task_value(task_));
+                },
+              },
+              [computed(task_, (task) => (task && task.name) || "未命名任务")],
             ),
-            ok() {
-              return [
-                "·",
-                DownloadV2Number({
-                  value: computed(state_, (state) => state.speed_text),
-                }),
-              ];
-            },
-          }),
-        ]),
+            Show({
+              when: computed(state_, (state) => state.is_live_stream),
+              ok() {
+                return View(
+                  {
+                    class: "wx-dl-page-task-live",
+                    attributes: { n: "download-task-live-badge" },
+                  },
+                  ["流媒体"],
+                );
+              },
+            }),
+            Show({
+              when: computed(task_, (task) => !task_has_content(task)),
+              ok() {
+                return View(
+                  {
+                    class:
+                      "wx-dl-page-task-missing-detail dm-badge dm-badge--warning",
+                    attributes: {
+                      n: "download-task-missing-detail-badge",
+                      title: "该下载任务没有关联内容详情",
+                    },
+                  },
+                  ["缺少详情"],
+                );
+              },
+            }),
+          ],
+        ),
+        View(
+          {
+            class: "wx-dl-page-task-desc",
+            attributes: { n: "download-task-description" },
+          },
+          [
+            View(
+              {
+                class: "wx-dl-page-task-status",
+                style: computed(state_, (state) => ({
+                  color: state.status_color,
+                })),
+                attributes: { n: "download-task-status" },
+              },
+              [computed(state_, (state) => state.status_text)],
+            ),
+            "·",
+            Show({
+              when: computed(state_, (state) => state.is_completed),
+              ok() {
+                return DownloadV2Number({
+                  value: computed(state_, (state) => state.total_size_text),
+                });
+              },
+              else() {
+                return [
+                  DownloadV2Number({
+                    value: computed(
+                      state_,
+                      (state) => `${state.downloaded_size_text} /`,
+                    ),
+                  }),
+                  Show({
+                    when: computed(state_, (state) => state.is_live_stream),
+                    ok() {
+                      return DownloadV2InfinityIcon({ size: 14 });
+                    },
+                    else() {
+                      return DownloadV2Number({
+                        value: computed(
+                          state_,
+                          (state) => state.total_size_text,
+                        ),
+                      });
+                    },
+                  }),
+                ];
+              },
+            }),
+            Show({
+              when: computed(
+                state_,
+                (state) => state.is_running && Boolean(state.speed_text),
+              ),
+              ok() {
+                return [
+                  "·",
+                  DownloadV2Number({
+                    value: computed(state_, (state) => state.speed_text),
+                  }),
+                ];
+              },
+            }),
+          ],
+        ),
         Show({
           when: computed(
             state_,
@@ -717,6 +616,7 @@ function DownloadV2TaskRow(props) {
               {
                 class: "wx-dl-page-task-error",
                 attributes: {
+                  n: "download-task-error",
                   title: computed(state_, (state) => state.error_text),
                 },
               },
@@ -724,188 +624,159 @@ function DownloadV2TaskRow(props) {
             );
           },
         }),
-      ]),
-    ]),
-    DownloadV2TaskActions({ store: vm$, task: task_, state: state_ }),
-  ]);
+      ],
+    ),
+  ];
 }
 
-function DownloadV2TaskSkeletonRow() {
-  return View({ class: "wx-dl-page-task-row wx-dl-page-task-skeleton" }, [
-    View({ class: "wx-dl-page-task-main-cell" }, [
-      DownloadV2Skeleton({
-        style: {
-          width: "18px",
-          height: "18px",
-          "border-radius": "4px",
-          "margin-right": "10px",
-        },
-      }),
-      DownloadV2Skeleton({
-        style: {
-          width: "52px",
-          height: "52px",
-          "border-radius": "6px",
-          "margin-right": "12px",
-        },
-      }),
-      View({ class: "wx-dl-page-task-info" }, [
-        DownloadV2Skeleton({
-          class: "wx-dl-skeleton-line",
-          style: { width: "56%", height: "14px", "border-radius": "5px" },
-        }),
-        DownloadV2Skeleton({
-          class: "wx-dl-skeleton-line",
-          style: {
-            width: "36%",
-            height: "12px",
-            "border-radius": "5px",
-            "margin-top": "7px",
-          },
-        }),
-      ]),
-    ]),
-    View({ class: "wx-dl-page-task-actions-cell" }, [
-      DownloadV2Skeleton({
-        style: { width: "34px", height: "34px", "border-radius": "8px" },
-      }),
-      DownloadV2Skeleton({
-        style: { width: "34px", height: "34px", "border-radius": "8px" },
-      }),
-    ]),
-  ]);
-}
-
-function DownloadV2TaskList(props) {
-  const { size = 12, store: vm$ } = props;
-  const tasks_ = vm$.state.tasks;
-
-  return View({ class: "wx-dl-page-list wx-dl-dark-scroll" }, [
-    Show({
-      when: computed(tasks_, (items) => items.length > 0),
-      ok() {
-        return Show({
-          when: vm$.state.list_render_enabled,
-          ok() {
-            const list_height_style = vm$.state.fixed_list_height
-              ? {
-                  height: `${vm$.state.list_height}px`,
-                  "max-height": `${vm$.state.list_height}px`,
-                }
-              : { "max-height": "100%" };
-            return VirtualListView({
-              style: {
-                ...list_height_style,
-                overflow: "auto",
-                position: "relative",
-                padding: "0",
-                "box-sizing": "border-box",
-                "background-color": "transparent",
-              },
-              key: "id",
-              size,
-              buffer: vm$.state.list_buffer,
-              gutter: 0,
-              itemHeight: vm$.state.list_item_height,
-              paddingBottom: 0,
-              each: tasks_,
-              onMounted(element) {
-                vm$.methods.setListViewElement(element);
-              },
-              onScroll(position) {
-                vm$.methods.handleListViewScroll(position);
-              },
-              render(task_) {
-                const task = task_value(task_);
-                if (vm$.methods.isPlaceholderTask(task)) {
-                  vm$.methods.ensureTaskPageForIndex(task.__index);
-                  return DownloadV2TaskSkeletonRow();
-                }
-                return DownloadV2TaskRow({ store: vm$, task: task_ });
-              },
-            });
-          },
+export function DownloadV2TaskColumns(props) {
+  const vm$ = props.store;
+  return [
+    {
+      name: "task",
+      title: "下载任务",
+      cellClass: "wx-dl-page-task-main-cell",
+      render(_task, context) {
+        return DownloadV2TaskMain({
+          store: vm$,
+          task: context.itemSource,
         });
       },
-      else() {
-        return View({ class: "wx-dl-page-empty" }, ["暂无下载任务"]);
-      },
-    }),
-  ]);
-}
-
-function DownloadV2SelectionState(props) {
-  const { store: vm$ } = props;
-  return combine(
+    },
     {
-      tasks: vm$.state.tasks,
-      selected_ids: vm$.state.selected_task_ids,
+      name: "created-at",
+      title: "下载时间",
+      cellClass: "wx-dl-page-task-time-cell",
+      cellAttributes(_task, context) {
+        return {
+          title: computed(context.itemSource, (task) =>
+            format_download_time(task && task.created_at),
+          ),
+        };
+      },
+      render(_task, context) {
+        return computed(context.itemSource, (task) =>
+          format_download_time(task && task.created_at),
+        );
+      },
     },
-    (data) => {
-      const task_ids = [];
-      (data.tasks || []).forEach((task_) => {
-        const task = task_value(task_);
-        if (!task || task.__placeholder || !task.id) return;
-        if (!task_ids.some((id) => id === task.id)) task_ids.push(task.id);
-      });
-      const selected_ids = data.selected_ids || [];
-      const selected = task_ids.filter((id) => {
-        return selected_ids.some((selected_id) => selected_id === id);
-      }).length;
-      return {
-        total: task_ids.length,
-        selected,
-        checked: task_ids.length > 0 && selected === task_ids.length,
-        indeterminate: selected > 0 && selected < task_ids.length,
-      };
+    {
+      name: "actions",
+      title: "操作",
+      headerClass: "wx-dl-page-table-head-action",
+      cellClass: "wx-dl-page-task-actions-cell",
+      render(_task, context) {
+        const state_ = DownloadV2TaskState(context.itemSource);
+        return DownloadV2TaskActions({
+          store: vm$,
+          task: context.itemSource,
+          state: state_,
+        });
+      },
     },
-  );
+  ];
 }
 
-export function DownloadV2TaskTable(props) {
-  const { store: vm$ } = props;
-  const selection_state_ = DownloadV2SelectionState({ store: vm$ });
-  return View({ class: "wx-dl-page-task-table" }, [
-    View({ class: "wx-dl-page-table-head" }, [
+export function DownloadV2TaskSkeletonRow() {
+  return View(
+    {
+      class: "wx-table-row wx-dl-page-task-row wx-dl-page-task-skeleton",
+      attributes: { n: "download-task-skeleton-row", role: "row" },
+    },
+    [
       View(
         {
-          class: "wx-dl-page-table-head-cell",
-          style: { display: "flex", "align-items": "center", "min-width": "0" },
+          class: "wx-table-selection-cell",
+          attributes: { n: "download-task-skeleton-selection", role: "cell" },
         },
         [
-          DownloadV2SelectionCheckbox({
-            checked: computed(selection_state_, (state) => state.checked),
-            indeterminate: computed(
-              selection_state_,
-              (state) => state.indeterminate,
-            ),
-            ariaLabel: "全选下载任务",
-            style: { "margin-right": "10px" },
-            onToggle() {
-              vm$.methods.setLoadedTasksSelected(
-                !selection_state_.value.checked,
-              );
+          DownloadV2Skeleton({
+            attributes: { n: "download-task-skeleton-checkbox" },
+            style: {
+              width: "18px",
+              height: "18px",
+              "border-radius": "4px",
+            },
+          }),
+        ],
+      ),
+      View(
+        {
+          class: "wx-dl-page-task-main-cell",
+          attributes: { n: "download-task-skeleton-main", role: "cell" },
+        },
+        [
+          DownloadV2Skeleton({
+            attributes: { n: "download-task-skeleton-cover" },
+            style: {
+              width: "var(--dm-control-height-lg)",
+              height: "var(--dm-control-height-lg)",
+              "border-radius": "6px",
+              "margin-right": "12px",
             },
           }),
           View(
             {
-              style: {
-                overflow: "hidden",
-                "text-overflow": "ellipsis",
-                "white-space": "nowrap",
-              },
+              class: "wx-dl-page-task-info",
+              attributes: { n: "download-task-skeleton-info" },
             },
-            ["下载任务"],
+            [
+              DownloadV2Skeleton({
+                class: "wx-dl-skeleton-line",
+                attributes: { n: "download-task-skeleton-title" },
+                style: {
+                  width: "56%",
+                  height: "14px",
+                  "border-radius": "5px",
+                },
+              }),
+              DownloadV2Skeleton({
+                class: "wx-dl-skeleton-line",
+                attributes: { n: "download-task-skeleton-status" },
+                style: {
+                  width: "36%",
+                  height: "12px",
+                  "border-radius": "5px",
+                  "margin-top": "7px",
+                },
+              }),
+            ],
           ),
         ],
       ),
+      DownloadV2Skeleton({
+        attributes: {
+          n: "download-task-skeleton-created-at",
+          role: "cell",
+        },
+        style: { width: "128px", height: "12px", "border-radius": "5px" },
+      }),
       View(
-        { class: "wx-dl-page-table-head-cell wx-dl-page-table-head-action" },
-        ["操作"],
+        {
+          class: "wx-dl-page-task-actions-cell",
+          attributes: { n: "download-task-skeleton-actions", role: "cell" },
+        },
+        [
+          DownloadV2Skeleton({
+            attributes: { n: "download-task-skeleton-primary-action" },
+            style: {
+              width: "34px",
+              height: "34px",
+              "border-radius": "8px",
+            },
+          }),
+          DownloadV2Skeleton({
+            attributes: { n: "download-task-skeleton-delete-action" },
+            style: {
+              width: "34px",
+              height: "34px",
+              "border-radius": "8px",
+            },
+          }),
+        ],
       ),
-    ]),
-    DownloadV2TaskList({ store: vm$ }),
-  ]);
+    ],
+  );
 }
 
 function DownloadV2StatusCounts(props) {
@@ -1279,16 +1150,22 @@ function preview_value(value, fallback = "-") {
   return String(value);
 }
 
-function resource_file_emoji(name) {
+function resource_file_icon(name) {
   const extension = String(name || "")
     .split(".")
     .pop()
     .toLowerCase();
-  if (/^(jpe?g|png|gif|webp|svg|bmp|ico)$/.test(extension)) return "🖼️";
-  if (/^(mp4|avi|mkv|mov|webm|flv|wmv|m4v)$/.test(extension)) return "🎬";
-  if (/^(mp3|wav|aac|flac|ogg|wma|m4a)$/.test(extension)) return "🎵";
-  if (/^(html?|css|js|json|xml)$/.test(extension)) return "🌐";
-  return "📄";
+  if (/^(jpe?g|png|gif|webp|svg|bmp|ico)$/.test(extension)) {
+    return "file-image";
+  }
+  if (/^(mp4|avi|mkv|mov|webm|flv|wmv|m4v)$/.test(extension)) {
+    return "file-play";
+  }
+  if (/^(mp3|wav|aac|flac|ogg|wma|m4a)$/.test(extension)) {
+    return "file-volume";
+  }
+  if (/^(html?|css|js|json|xml)$/.test(extension)) return "file-code";
+  return "file";
 }
 
 function build_preview_tree(preview) {
@@ -1360,7 +1237,13 @@ function PreviewResourceNode(props) {
           },
         },
         [
-          View({ style: { width: "18px", "flex-shrink": "0" } }, ["📁"]),
+          View(
+            {
+              style: { width: "18px", "flex-shrink": "0" },
+              attributes: { n: "preview-directory-icon" },
+            },
+            [Timeless.Icon({ name: "folder", size: 16 })],
+          ),
           View(
             {
               style: {
@@ -1398,9 +1281,18 @@ function PreviewResourceNode(props) {
         },
       },
       [
-        View({ style: { width: "18px", "flex-shrink": "0" } }, [
-          resource_file_emoji(node && node.name),
-        ]),
+        View(
+          {
+            style: { width: "18px", "flex-shrink": "0" },
+            attributes: { n: "preview-resource-icon" },
+          },
+          [
+            Timeless.Icon({
+              name: resource_file_icon(node && node.name),
+              size: 16,
+            }),
+          ],
+        ),
         View(
           {
             style: {

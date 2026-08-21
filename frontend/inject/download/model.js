@@ -65,7 +65,8 @@ function platform_preview_from_download_info(
     : [];
   const resources = raw_resources.map((item, index) => {
     const resource = item && item.Resource ? item.Resource : {};
-    const endpoints = item && Array.isArray(item.Endpoints) ? item.Endpoints : [];
+    const endpoints =
+      item && Array.isArray(item.Endpoints) ? item.Endpoints : [];
     return {
       index,
       name: resource.name || "",
@@ -822,28 +823,31 @@ function DownloaderPanelViewModel(props = {}) {
     if (websocket_ !== ws || ws.readyState !== WebSocket.OPEN) {
       return;
     }
-    websocket_probe_timer_ = setTimeout(async () => {
-      websocket_probe_timer_ = null;
-      if (websocket_ !== ws || ws.readyState !== WebSocket.OPEN) {
-        return;
-      }
-      const controller = new AbortController();
-      websocket_probe_controller_ = controller;
-      const timeout_timer = setTimeout(
-        () => controller.abort(),
-        WEBSOCKET_PROBE_TIMEOUT,
-      );
-      const result = await probe_download_service(controller.signal);
-      clearTimeout(timeout_timer);
-      if (websocket_probe_controller_ !== controller) {
-        return;
-      }
-      websocket_probe_controller_ = null;
-      if (websocket_ !== ws || ws.readyState !== WebSocket.OPEN) {
-        return;
-      }
-      on_result(result);
-    }, Math.max(0, Number(delay) || 0));
+    websocket_probe_timer_ = setTimeout(
+      async () => {
+        websocket_probe_timer_ = null;
+        if (websocket_ !== ws || ws.readyState !== WebSocket.OPEN) {
+          return;
+        }
+        const controller = new AbortController();
+        websocket_probe_controller_ = controller;
+        const timeout_timer = setTimeout(
+          () => controller.abort(),
+          WEBSOCKET_PROBE_TIMEOUT,
+        );
+        const result = await probe_download_service(controller.signal);
+        clearTimeout(timeout_timer);
+        if (websocket_probe_controller_ !== controller) {
+          return;
+        }
+        websocket_probe_controller_ = null;
+        if (websocket_ !== ws || ws.readyState !== WebSocket.OPEN) {
+          return;
+        }
+        on_result(result);
+      },
+      Math.max(0, Number(delay) || 0),
+    );
   }
 
   function set_websocket_connected(connected) {
@@ -3263,17 +3267,31 @@ function DownloaderPanelViewModel(props = {}) {
       }
     },
     async createDownloadTaskInDuplicate(body) {
+      const started_at = Date.now();
       var r = await reqs.task.createFromPlatform.run(body);
-      if (r.err) {
-        return [err, null];
+      WXU.log
+        .Info()
+        .Str("file", "frontend/inject/download/model.js")
+        .Int("elapsed_ms", Date.now() - started_at)
+        .JSON("error", r.error)
+        .JSON("data", r.data)
+        .Msg("[downloader.create] duplicate request completed");
+      if (r.error) {
+        WXU.log
+          .Info()
+          .Str("file", "frontend/inject/download/model.js")
+          .Msg("[downloader.create] duplicate request failed");
+        return [r.error, null];
       }
       const data = r.data;
       return [null, data];
     },
     /** 创建下载任务 */
     async createDownloadTask(feeds, opt = {}) {
+      const started_at = Date.now();
       WXU.log
         .Info()
+        .Str("file", "frontend/inject/download/model.js")
         .Str("feed_count", feeds.length)
         .Str("opt", JSON.stringify(opt))
         .Msg("[downloader.create]create");
@@ -3292,8 +3310,22 @@ function DownloaderPanelViewModel(props = {}) {
         }),
       };
       var r = await reqs.task.createFromPlatform.run(body);
-      if (r.err) {
-        return [err, null];
+      WXU.log
+        .Info()
+        .Str("file", "frontend/inject/download/model.js")
+        .Str("platform", opt.platform || "")
+        .Int("elapsed_ms", Date.now() - started_at)
+        .JSON("error", r && r.error ? r.error : null)
+        .JSON("data", r && typeof r.data !== "undefined" ? r.data : null)
+        .Msg("[downloader.create] request completed");
+      if (r.error) {
+        WXU.log
+          .Error(r.error)
+          .Str("file", "frontend/inject/download/model.js")
+          .Str("platform", opt.platform || "")
+          .Int("elapsed_ms", Date.now() - started_at)
+          .Msg("[downloader.create] request failed");
+        return [r.error, null];
       }
       const data = r.data;
       const conflicts = collect_duplicate_conflicts(data, body);

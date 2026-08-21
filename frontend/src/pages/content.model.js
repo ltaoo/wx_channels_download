@@ -94,11 +94,13 @@ function normalize_content_item(raw) {
     : Array.isArray(source.DownloadTasks)
       ? source.DownloadTasks
       : [];
-  const resources = Array.isArray(source.resources)
-    ? source.resources
-    : Array.isArray(source.Resources)
-      ? source.Resources
-      : [];
+  const file_count = Math.max(
+    0,
+    number_or_default(
+      first_non_empty(source.file_count, source.fileCount, source.FileCount),
+      0,
+    ),
+  );
 
   return {
     ...source,
@@ -144,7 +146,7 @@ function normalize_content_item(raw) {
     ),
     accounts: accounts_source.map(normalize_content_account),
     download_tasks: tasks,
-    resources,
+    file_count,
   };
 }
 
@@ -200,20 +202,26 @@ function content_type_label(value, subtypeValue) {
   return labels[subtype] || labels[type] || subtype || type || "内容";
 }
 
-function content_download_status(tasks) {
-  if (!Array.isArray(tasks) || tasks.length === 0) {
-    return "未下载";
-  }
-  if (tasks.some((task) => [1, 2, 4].includes(Number(task.status)))) {
-    return "下载中";
-  }
-  if (tasks.some((task) => Number(task.status) === 6)) {
-    return "下载失败";
-  }
-  if (tasks.every((task) => Number(task.status) === 5)) {
-    return "已下载";
-  }
-  return `${tasks.length} 个任务`;
+function content_statistics(content) {
+  const source = content && typeof content === "object" ? content : {};
+  const tasks = Array.isArray(source.download_tasks)
+    ? source.download_tasks
+    : [];
+  const statistics = {
+    total_tasks: tasks.length,
+    in_progress: 0,
+    failed: 0,
+    files: Math.max(0, number_or_default(source.file_count, 0)),
+  };
+  tasks.forEach((task) => {
+    const status = task.status;
+    if ([2, 3, 4].includes(status)) {
+      statistics.in_progress += 1;
+    } else if ([6, 7].includes(status)) {
+      statistics.failed += 1;
+    }
+  });
+  return statistics;
 }
 
 function normalize_epoch_ms(value) {
@@ -248,6 +256,7 @@ function ContentViewModel(props) {
   const keyword_ = ref("");
   const content_type_ = ref("");
   const scope_ = ref("task");
+  const initial_ = ref(true);
   const loading_ = ref(false);
   const error_ = ref("");
   const detail_id_ = ref("");
@@ -263,16 +272,10 @@ function ContentViewModel(props) {
         set_keyword(value);
       },
     }),
-    select_scope$: new Timeless.vm.SelectCore({
-      defaultValue: scope_.value,
-      placeholder: "下载内容",
-      options: [
-        new Timeless.vm.SelectItemCore({ label: "下载内容", value: "task" }),
-        new Timeless.vm.SelectItemCore({ label: "全部对象", value: "all" }),
-      ],
+    checkbox_all$: new Timeless.vm.CheckboxCore({
+      checked: scope_.value === "all",
       onChange(value) {
-        scope_.as(String(value || "task"));
-        load(1);
+        set_all_scope(value);
       },
     }),
     select_content_type$: new Timeless.vm.SelectCore({
@@ -317,6 +320,7 @@ function ContentViewModel(props) {
     contentDetailDrawer$: new Timeless.vm.DialogCore({
       title: "内容详情",
       closeable: true,
+      footer: false,
     }),
   };
 
@@ -324,6 +328,14 @@ function ContentViewModel(props) {
     onChange(value) {
       if (ui.input_keyword$.value !== value) {
         ui.input_keyword$.setValue(value, { silence: true });
+      }
+    },
+  });
+  scope_.subscribe({
+    onChange(value) {
+      const checked = value === "all";
+      if (ui.checkbox_all$.checked !== checked) {
+        ui.checkbox_all$.setValue(checked, { silence: true });
       }
     },
   });
@@ -378,12 +390,23 @@ function ContentViewModel(props) {
       return `第 ${start}-${start + state.count - 1} 条，共 ${state.total} 条`;
     },
   );
+  const list_status_ = combine(
+    {
+      initial: initial_,
+      error: error_,
+      contents: contents_,
+    },
+    (state) => {
+      if (state.initial) return "initial";
+      if (state.error) return "error";
+      return state.contents.length > 0 ? "normal" : "empty";
+    },
+  );
 
   async function load(targetPage = page_.value) {
     const sequence = ++request_sequence;
     const requestedPage = Math.max(1, Number(targetPage) || 1);
     loading_.as(true);
-    error_.as("");
 
     const params = {
       page: requestedPage,
@@ -403,22 +426,31 @@ function ContentViewModel(props) {
     if (sequence !== request_sequence) {
       return result;
     }
-    loading_.as(false);
     if (result.error) {
       error_.as(result.error.message || String(result.error));
+      loading_.as(false);
+      initial_.as(false);
       return result;
     }
 
     const data = result.data;
+    error_.as("");
     contents_.as(data.list.map(normalize_content_item), { reset: true });
     total_.as(data.total);
     page_.as(data.page);
     page_size_.as(data.page_size);
+    loading_.as(false);
+    initial_.as(false);
     return result;
   }
 
   function set_keyword(value) {
     keyword_.as(String(value || ""));
+  }
+
+  function set_all_scope(value) {
+    scope_.as(value ? "all" : "task");
+    return load(1);
   }
 
   const methods = {
@@ -461,7 +493,7 @@ function ContentViewModel(props) {
     detailHref: content_detail_href,
     platformName: content_platform_name,
     typeLabel: content_type_label,
-    downloadStatus: content_download_status,
+    statistics: content_statistics,
     formatTime: format_content_time,
   };
 
@@ -473,6 +505,8 @@ function ContentViewModel(props) {
     page_count: page_count_,
     range_text: range_text_,
     scope: scope_,
+    initial: initial_,
+    status: list_status_,
     loading: loading_,
     error: error_,
     detail_id: detail_id_,

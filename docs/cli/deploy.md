@@ -24,6 +24,7 @@ wx_video_download deploy <command>
 |------|------|
 | `wx_video_download deploy mp` | 部署公众号 RSS/API Worker |
 | `wx_video_download deploy sph` | 部署视频号查询 Worker |
+| `wx_video_download deploy bridge` | 部署 Bridge 桥接/转发 Worker 和 Pages 管理页面 |
 
 ## 通用配置
 
@@ -37,6 +38,42 @@ cloudflare:
 |--------|------|
 | `cloudflare.accountId` | Cloudflare 账户 ID，可在 Workers 页面找到 |
 | `cloudflare.apiToken` | Cloudflare API Token，需 Workers 读写权限 |
+
+## deploy bridge
+
+一次部署用于桥接/转发远程调用的 Durable Objects Bridge Worker 和受密码保护的 Pages 管理页面。
+
+部署完成后的设备注册、调用 Token 创建、API 协议和多语言示例请参阅 [Bridge 使用](/feature/bridge)。
+
+```sh
+wx_video_download deploy bridge
+```
+
+### 配置
+
+```yaml
+cloudflare:
+  accountId: "your-cloudflare-account-id"
+  apiToken: "your-cloudflare-api-token"
+
+bridge:
+  deploy:
+    workerName: "dm-bridge"
+    pagesProjectName: "" # 留空时使用 dm-bridge-admin
+    token: "bridge-client-token"
+    adminToken: "bridge-admin-token"
+```
+
+API Token 需要 Workers Scripts:Edit 和 Pages:Edit 权限。`token` 与 `adminToken` 必须使用不同的高强度随机值。
+
+部署命令会依次执行：
+
+1. 上传 Worker，并配置 Durable Objects、`BRIDGE_TOKEN` 和 `BRIDGE_ADMIN_TOKEN`；
+2. 创建或更新 Pages 项目；
+3. 为 Pages 配置 `BRIDGE_ADMIN_TOKEN` Secret 和指向 Worker 的 `BRIDGE` Service Binding；
+4. 上传管理页面静态资源和高级模式 Worker。
+
+任一步骤失败都会停止后续部署；如果 Pages 阶段失败，命令会明确提示 Worker 已经部署成功，不会回滚 Worker。
 
 ## deploy mp
 
@@ -73,8 +110,8 @@ mp:
 
 ### 部署内容
 
-- 部署 `pkg/scraper/wxmp/worker/index.js`。
-- 执行 `pkg/scraper/wxmp/worker/migrations/` 下的 D1 迁移。
+- 部署嵌入 `internal/workers/mp/index.js` 的 Worker。
+- 执行嵌入 `internal/workers/mp/migrations/` 的 D1 迁移。
 - 注入 D1 绑定 `DB`，以及 `ADMIN_TOKEN`、`REFRESH_TOKEN`、`REMOTE_SERVER` 环境变量。
 
 ### 可用 API
@@ -126,8 +163,8 @@ cloudflare:
 
 ### 部署内容
 
-- 部署 `pkg/scraper/wxchannels/worker/worker.js`。
-- 同时上传 `pkg/scraper/wxchannels/worker/index.html` 和 `build/icon.png`。
+- 部署嵌入 `internal/workers/sph/worker.js` 的 Worker。
+- 同时上传嵌入的 `internal/workers/sph/index.html` 和 `build/icon.png`。
 - Cookie 以 `COOKIE` 环境变量注入 Worker，用于调用视频号接口时的身份认证。
 - 访问凭证以 `ACCESS_CREDENTIAL` 环境变量注入 Worker；未配置时部署命令会拒绝部署。
 

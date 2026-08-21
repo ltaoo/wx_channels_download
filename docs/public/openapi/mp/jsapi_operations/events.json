@@ -1,0 +1,47 @@
+{
+  "post": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "调用微信 JSAPI - 原生事件",
+    "operationId": "invoke_wechat_jsapi_events",
+    "description": "等待下一次 WeixinJSBridge 原生事件，或取消当前页面中尚未完成的事件等待。",
+    "parameters": [
+      {
+        "$ref": "../jsapi_common.json#/token_parameter"
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "../jsapi/events.json"
+          },
+          "examples": {
+            "wait_event": {
+              "summary": "等待文章星标状态变化",
+              "value": {
+                "operation": "wait_event",
+                "event": "onPageStarStateChanged",
+                "timeout_ms": 30000
+              }
+            },
+            "remove_event": {
+              "summary": "取消事件等待",
+              "value": {
+                "operation": "remove_event",
+                "event": "onPageStarStateChanged"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "$ref": "../jsapi_common.json#/success_response"
+      }
+    }
+  }
+}

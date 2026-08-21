@@ -53,6 +53,10 @@
   padding: var(--dm-space-5);
 }
 
+.wx-content-detail-summary.wx-content-detail-summary-no-cover {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .wx-content-detail-cover,
 .wx-content-cover-wrap,
 .wx-content-cover-fallback {
@@ -378,6 +382,11 @@
       transparent 48%
     ),
     var(--dm-content-panel-soft);
+}
+
+.wx-content-detail-media-audio-stage.wx-content-detail-media-audio-stage-no-artwork {
+  min-height: 180px;
+  padding: var(--dm-space-6);
 }
 
 .wx-content-detail-media-artwork {

@@ -1,0 +1,129 @@
+{
+  "title": "日志与数据上报 JSAPI",
+  "description": "operation 固定为 invoke。上报能力可能写入微信内部监控系统，调用方应避免传入 Token、Cookie、pass_ticket 等敏感数据。",
+  "type": "object",
+  "required": [
+    "operation",
+    "method",
+    "args"
+  ],
+  "properties": {
+    "operation": {
+      "type": "string",
+      "enum": [
+        "invoke"
+      ],
+      "default": "invoke"
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "adDataReport",
+        "kvReport",
+        "log",
+        "writeLog"
+      ]
+    },
+    "args": {
+      "oneOf": [
+        {
+          "title": "adDataReport.args",
+          "description": "上报广告数据。字段由广告组件动态生成，当前页面没有稳定公开 schema。",
+          "type": "object",
+          "additionalProperties": true,
+          "example": {
+            "report_type": "exposure",
+            "ad_data": {}
+          }
+        },
+        {
+          "title": "kvReport.args",
+          "description": "客户端 KV 监控上报。常见字段为 logId 和 value；具体编号及编码格式由对应业务定义。",
+          "type": "object",
+          "properties": {
+            "logId": {
+              "type": "integer"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "logId": 100000,
+            "value": "key=value"
+          }
+        },
+        {
+          "title": "log.args",
+          "description": "写入客户端日志。部分客户端仅消费 msg，其他字段会原样透传。",
+          "type": "object",
+          "required": [
+            "msg"
+          ],
+          "properties": {
+            "msg": {
+              "type": "string"
+            },
+            "level": {
+              "type": "string",
+              "enum": [
+                "debug",
+                "info",
+                "warn",
+                "error"
+              ]
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "level": "info",
+            "msg": "external JSAPI test"
+          }
+        },
+        {
+          "title": "writeLog.args",
+          "description": "写入带级别的微信客户端日志。当前文章在 iOS 上使用 level 和 msg。",
+          "type": "object",
+          "required": [
+            "level",
+            "msg"
+          ],
+          "properties": {
+            "level": {
+              "type": "string",
+              "enum": [
+                "debug",
+                "info",
+                "warn",
+                "error"
+              ]
+            },
+            "msg": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "level": "info",
+            "msg": "external JSAPI test"
+          }
+        }
+      ]
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 120000,
+      "default": 15000
+    }
+  },
+  "example": {
+    "operation": "invoke",
+    "method": "writeLog",
+    "args": {
+      "level": "info",
+      "msg": "external JSAPI test"
+    }
+  }
+}

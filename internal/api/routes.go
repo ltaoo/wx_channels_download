@@ -79,6 +79,13 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/v1/third_party_downloader/probe", c.handle_probe_third_party_downloader)
 	c.engine.POST("/api/v1/third_party_downloader/create", c.handle_create_third_party_download)
 	c.engine.POST("/api/v1/third_party_downloader/status", c.handle_third_party_download_status)
+	c.engine.GET("/api/bridge/status", c.handle_bridge_status)
+	c.engine.GET("/api/bridge/tasks", c.handle_bridge_task_list)
+	c.engine.POST("/api/bridge/call", c.handle_bridge_call_submit)
+	c.engine.POST("/api/bridge/tasks", c.handle_bridge_call_submit)
+	c.engine.GET("/api/bridge/tasks/:id", c.handle_bridge_task_get)
+	c.engine.POST("/api/bridge/tasks/wxchannels", c.handle_bridge_wxchannels_submit)
+	c.engine.POST("/api/bridge/tasks/download", c.handle_bridge_download_submit)
 	// c.engine.GET("/api/influencers", c.handle_influencer_list)
 	// c.engine.GET("/api/influencers/:id", c.handle_influencer_get)
 	// c.engine.POST("/api/influencers", c.handle_influencer_create)
@@ -124,7 +131,6 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/proxy/certificate/replace", c.handle_proxy_certificate_replace)
 	c.engine.POST("/api/proxy/certificate/uninstall", c.handle_proxy_certificate_uninstall)
 	c.engine.POST("/api/proxy/certificate/uninstall_by_name", c.handle_proxy_certificate_uninstall_by_name)
-	c.engine.GET("/api/cookies/extract", c.handle_cookie_extract)
 	c.engine.POST("/api/cookies/update", c.handle_cookie_update)
 
 	c.engine.NoRoute(func(ctx *gin.Context) {

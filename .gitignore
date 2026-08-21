@@ -38,6 +38,7 @@ downloads
 temp_sunnynet
 
 node_modules
+.wrangler/
 docs/.vitepress/cache
 docs/.vitepress/dist
 *.db
@@ -48,4 +49,5 @@ docs/.vitepress/dist
 *.log
 
 .env
+.dev.vars*
 deploy.sh

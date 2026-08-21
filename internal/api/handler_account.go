@@ -3,15 +3,12 @@ package api
 import (
 	"errors"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
 	result "wx_channel/internal/apiresult"
-	"wx_channel/internal/database/model"
 	"wx_channel/internal/services"
-	// "wx_channel/pkg/scraper"
 )
 
 func (c *APIClient) handle_influencer_list(ctx *gin.Context) {
@@ -191,199 +188,37 @@ func (c *APIClient) handle_account_list(ctx *gin.Context) {
 	if page_size > 200 {
 		page_size = 200
 	}
-	keyword := strings.TrimSpace(ctx.Query("keyword"))
-	account_id := strings.TrimSpace(ctx.Query("account_id"))
-	account_query := c.db.Model(&model.Account{})
-	if account_id != "" {
-		account_query = account_query.Where("id = ?", account_id)
-	}
-	if keyword != "" {
-		pattern := "%" + keyword + "%"
-		account_query = account_query.Where(
-			"id LIKE ? OR external_id LIKE ? OR alias LIKE ? OR nickname LIKE ?",
-			pattern,
-			pattern,
-			pattern,
-			pattern,
-		)
-	}
-
-	var total int64
-	if err := account_query.Count(&total).Error; err != nil {
-		result.Err(ctx, 500, err.Error())
-		return
-	}
-	page_count := 1
-	if total > 0 {
-		page_count = int((total + int64(page_size) - 1) / int64(page_size))
-	}
-	if page > page_count {
-		page = page_count
-	}
-
-	var accounts []model.Account
-	if err := account_query.
-		Order("created_at DESC, id DESC").
-		Limit(page_size).
-		Offset((page - 1) * page_size).
-		Find(&accounts).Error; err != nil {
+	page_result, err := c.account_service.ListAccounts(ctx.Request.Context(), services.AccountListInput{
+		Page:      page,
+		PageSize:  page_size,
+		Keyword:   ctx.Query("keyword"),
+		AccountID: ctx.Query("account_id"),
+	})
+	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
 
-	list := make([]gin.H, 0, len(accounts))
-	for _, acc := range accounts {
-		type caRow struct {
-			ContentId string `json:"content_id"`
-			AccountId string `json:"account_id"`
-			Role      string `json:"role"`
-		}
-		var contentRows []caRow
-		_ = c.db.Table("content_account").
-			Select("content_account.content_id, content_account.account_id, content_account.role").
-			Joins("JOIN content ON content.id = content_account.content_id").
-			Where("content_account.account_id = ?", acc.Id).
-			Order("COALESCE(content.publish_time, content.updated_at, content.created_at) DESC").
-			Limit(24).
-			Scan(&contentRows).Error
-
-		contentIDs := make([]string, 0, len(contentRows))
-		for _, r := range contentRows {
-			contentIDs = append(contentIDs, r.ContentId)
-		}
-		contentByID := map[string]gin.H{}
-		if len(contentIDs) > 0 {
-			var contents []model.Content
-			_ = c.db.Where("id IN ?", contentIDs).Find(&contents).Error
-			for _, content := range contents {
-				contentByID[content.Id] = accountContentPayload(content)
-			}
-		}
-
-		var contentAccountCount int64
-		_ = c.db.Table("content_account").Where("account_id = ?", acc.Id).Count(&contentAccountCount).Error
-
+	list := make([]gin.H, 0, len(page_result.List))
+	for _, item := range page_result.List {
+		account := item.Account
 		list = append(list, gin.H{
-			"id":            acc.Id,
-			"platform_id":   acc.PlatformId,
-			"nickname":      acc.Nickname,
-			"avatar_url":    acc.AvatarURL,
-			"external_id":   acc.ExternalId,
-			"created_at":    acc.CreatedAt,
-			"updated_at":    acc.UpdatedAt,
-			"content_count": contentAccountCount,
-			"has_content":   contentAccountCount > 0,
-			"content_accounts": func() any {
-				out := make([]gin.H, 0, len(contentRows))
-				for _, r := range contentRows {
-					out = append(out, gin.H{
-						"content_id": r.ContentId,
-						"account_id": r.AccountId,
-						"role":       r.Role,
-						"content":    contentByID[r.ContentId],
-					})
-				}
-				return out
-			}(),
+			"id":               account.Id,
+			"platform_id":      account.PlatformId,
+			"nickname":         account.Nickname,
+			"avatar_url":       account.AvatarURL,
+			"external_id":      account.ExternalId,
+			"created_at":       account.CreatedAt,
+			"updated_at":       account.UpdatedAt,
+			"content_count":    item.ContentCount,
+			"has_content":      item.ContentCount > 0,
+			"content_accounts": item.ContentCount,
 		})
 	}
 	result.Ok(ctx, gin.H{
 		"list":      list,
-		"total":     total,
-		"page":      page,
-		"page_size": page_size,
+		"total":     page_result.Total,
+		"page":      page_result.Page,
+		"page_size": page_result.PageSize,
 	})
-}
-
-func accountContentPayload(content model.Content) gin.H {
-	// metadata := platformJSONMap(content.Metadata)
-	// outputFormat := firstNonEmpty(
-	// 	toCompatString(metadata["output_format"]),
-	// 	platformOutputFormatFromPath(content.DownloadPath),
-	// 	platformOutputFormatFromPath(content.URL),
-	// 	platformOutputFormatFromPath(content.ContentURL),
-	// 	platformOutputFormatFromPath(content.SourceURL),
-	// 	platformOutputFormatFromMimeType(toCompatString(metadata["mime_type"])),
-	// )
-	// mimeType := firstNonEmpty(
-	// 	toCompatString(metadata["mime_type"]),
-	// 	platformMimeTypeFromOutputFormat(outputFormat),
-	// )
-	// sourceContentType := firstNonEmpty(
-	// 	toCompatString(metadata["source_content_type"]),
-	// 	content.ContentType,
-	// )
-	// mediaType := platformContentTypeFromOutput(outputFormat, mimeType, content.ContentType)
-	// displayType := accountContentDisplayType(sourceContentType, outputFormat, mimeType, content.ContentType)
-	// publishTime := int64(0)
-	// if content.PublishTime != nil {
-	// 	publishTime = *content.PublishTime
-	// }
-	// title := firstNonEmpty(content.Title, content.Description, content.ExternalId)
-	// return gin.H{
-	// 	"id":                   content.Id,
-	// 	"content_type":         mediaType,
-	// 	"media_type":           mediaType,
-	// 	"source_content_type":  sourceContentType,
-	// 	"output_format":        outputFormat,
-	// 	"mime_type":            mimeType,
-	// 	"type_label":           displayType,
-	// 	"display_type":         displayType,
-	// 	"external_id":          content.ExternalId,
-	// 	"external_id1":         content.ExternalId,
-	// 	"external_id2":         content.ExternalId2,
-	// 	"external_id3":         content.ExternalId3,
-	// 	"title":                title,
-	// 	"description":          content.Description,
-	// 	"url":                  firstNonEmpty(content.URL, content.ContentURL),
-	// 	"content_url":          content.ContentURL,
-	// 	"source_url":           content.SourceURL,
-	// 	"cover_url":            content.CoverURL,
-	// 	"file_size":            content.FileSize,
-	// 	"size":                 content.Size,
-	// 	"duration":             content.Duration,
-	// 	"publish_time":         publishTime,
-	// 	"download_status":      content.DownloadStatus,
-	// 	"download_path":        content.DownloadPath,
-	// 	"error_msg":            content.ErrorMsg,
-	// }
-	return gin.H{}
-}
-
-func accountContentDisplayType(sourceContentType string, outputFormat string, mimeType string, fallback string) string {
-	return ""
-	// normalize := func(value string) string {
-	// 	return strings.ToLower(strings.TrimSpace(strings.TrimPrefix(value, ".")))
-	// }
-	// sourceContentType = normalize(sourceContentType)
-	// outputFormat = normalize(firstNonEmpty(outputFormat, platformOutputFormatFromMimeType(mimeType)))
-	// fallback = normalize(fallback)
-	// if outputFormat == "" {
-	// 	return firstNonEmpty(sourceContentType, fallback, "file")
-	// }
-	// switch sourceContentType {
-	// case "", "file", "download":
-	// 	return outputFormat
-	// case "video", "audio", "image", "article", "text":
-	// 	return outputFormat
-	// default:
-	// 	if sourceContentType == outputFormat {
-	// 		return outputFormat
-	// 	}
-	// 	return sourceContentType + " " + outputFormat
-	// }
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
-func platformNameOf(platformID string) string {
-	// return scraper.DisplayName(platformID)
-	return ""
 }

@@ -64,7 +64,7 @@ func (c *APIClient) handle_application_config_update(ctx *gin.Context) {
 		result.Err(ctx, 500, "配置未初始化")
 		return
 	}
-	if c.restart_service == nil {
+	if c.application_restart_service == nil {
 		result.Err(ctx, 503, "应用重启服务未初始化")
 		return
 	}
@@ -122,12 +122,12 @@ func (c *APIClient) handle_application_config_update(ctx *gin.Context) {
 		result.Err(ctx, 500, "配置已保存，但生成配置摘要失败: "+err.Error())
 		return
 	}
-	restart_token, err := c.restart_service.NewConfirmationToken(config_revision)
+	restart_token, err := c.application_restart_service.NewConfirmationToken(config_revision)
 	if err != nil {
 		result.Err(ctx, 500, "配置已保存，但生成重启确认令牌失败: "+err.Error())
 		return
 	}
-	if err := c.restart_service.Schedule(func(restart_err error) {
+	if err := c.application_restart_service.Schedule(func(restart_err error) {
 		if c.logger != nil {
 			c.logger.Error().Err(restart_err).Msg("restart after configuration update failed")
 		}
@@ -159,7 +159,7 @@ func (c *APIClient) handle_application_restart_status(ctx *gin.Context) {
 		result.Err(ctx, 500, "配置未初始化")
 		return
 	}
-	if c.restart_service == nil {
+	if c.application_restart_service == nil {
 		result.Err(ctx, 503, "应用重启服务未初始化")
 		return
 	}
@@ -169,7 +169,7 @@ func (c *APIClient) handle_application_restart_status(ctx *gin.Context) {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
-	confirmation, err := c.restart_service.CheckConfirmation(restart_token, config_revision)
+	confirmation, err := c.application_restart_service.CheckConfirmation(restart_token, config_revision)
 	if err != nil {
 		result.Err(ctx, 400, err.Error())
 		return

@@ -3,8 +3,10 @@ package wxmpadapter
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"wx_channel/frontend"
@@ -67,7 +69,7 @@ func create_official_account_interceptor_plugin(cfg *wxmp.OfficialAccountConfig,
 		OnResponse: func(ctx proxy.Context) {
 			response_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req().URL.Hostname()
-			if !cfg.Enabled || hostname != "mp.weixin.qq.com" || !strings.Contains(response_content_type, "text/html") {
+			if hostname != "mp.weixin.qq.com" || !strings.Contains(response_content_type, "text/html") {
 				return
 			}
 			response_body, err := ctx.GetResponseBody()
@@ -76,7 +78,9 @@ func create_official_account_interceptor_plugin(cfg *wxmp.OfficialAccountConfig,
 			}
 			html_content := string(response_body)
 			csp := ctx.GetResponseHeader("Content-Security-Policy") + " " + ctx.GetResponseHeader("Content-Security-Policy-Report-Only")
+			mp_websocket_url := build_mp_websocket_url(cfg)
 			interceptor.RewriteResponseCSPForLocalAssets(ctx, asset_base_url)
+			interceptor.RewriteResponseCSPForWebSocket(ctx, mp_websocket_url)
 			variables := wxmp.BuildOfficialAccountVariables(html_content)
 			script_attr := ""
 			style_attr := ""
@@ -88,11 +92,11 @@ func create_official_account_interceptor_plugin(cfg *wxmp.OfficialAccountConfig,
 			if cfg.DebugShowError {
 				frontend.AppendScripts(&injected, script_attr, url_build("/inject/error.js", version_query))
 			}
-			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.2/timeless.umd.min.js", version_query))
-			frontend.AppendStylesheets(&injected, style_attr, url_build("/public/timeless/0.31.2/timeless.weui.css", version_query))
-			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.2/timeless.weui.umd.min.js", version_query))
-			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.2/timeless.dom.umd.min.js", version_query))
-			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.2/timeless.web.umd.min.js", version_query))
+			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.4/timeless.umd.min.js", version_query))
+			frontend.AppendStylesheets(&injected, style_attr, url_build("/public/timeless/0.31.4/timeless.weui.css", version_query))
+			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.4/timeless.weui.umd.min.js", version_query))
+			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.4/timeless.dom.umd.min.js", version_query))
+			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.4/timeless.web.umd.min.js", version_query))
 			frontend.AppendStylesheets(&injected, style_attr, url_build("/inject/components.css"))
 			frontend_config := make(map[string]any, len(variables)+2)
 			cfg_byte, _ := json.Marshal(cfg)
@@ -102,6 +106,7 @@ func create_official_account_interceptor_plugin(cfg *wxmp.OfficialAccountConfig,
 			}
 			frontend_config["version"] = version
 			frontend_config["assets_base_url"] = asset_base_url
+			frontend_config["mpWSURL"] = mp_websocket_url
 			frontend_config_byte, _ := json.Marshal(frontend_config)
 			frontend.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`window.__d_config = %s;`, frontend_config_byte))
 			frontend.AppendScripts(
@@ -117,6 +122,7 @@ func create_official_account_interceptor_plugin(cfg *wxmp.OfficialAccountConfig,
 				url_build("/inject/download/model.js", version_query),
 				url_build("/inject/download/view.js", version_query),
 				asset_url(asset_base_url, "/inject/mp.utils.js", version_query),
+				asset_url(asset_base_url, "/inject/mp.ws.js", version_query),
 				asset_url(asset_base_url, "/inject/mp.components.js", version_query),
 				asset_url(asset_base_url, "/inject/mp.main.js", version_query),
 			)
@@ -130,4 +136,39 @@ func create_official_account_interceptor_plugin(cfg *wxmp.OfficialAccountConfig,
 			ctx.SetResponseBody(html_content)
 		},
 	}
+}
+
+func build_mp_websocket_url(cfg *wxmp.OfficialAccountConfig) string {
+	if cfg == nil {
+		return ""
+	}
+	protocol := cfg.Protocol
+	hostname := cfg.Hostname
+	port := cfg.Port
+	if cfg.RemoteServerEnabled && strings.TrimSpace(cfg.RemoteServerHostname) != "" {
+		protocol = cfg.RemoteServerProtocol
+		hostname = cfg.RemoteServerHostname
+		port = cfg.RemoteServerPort
+	}
+	hostname = strings.TrimSpace(hostname)
+	if hostname == "0.0.0.0" || hostname == "::" || hostname == "[::]" {
+		hostname = "127.0.0.1"
+	}
+	if hostname == "" {
+		return ""
+	}
+	websocket_protocol := "ws"
+	switch strings.ToLower(strings.TrimSuffix(strings.TrimSpace(protocol), ":")) {
+	case "https", "wss":
+		websocket_protocol = "wss"
+	}
+	host := hostname
+	if port > 0 {
+		host = net.JoinHostPort(strings.Trim(hostname, "[]"), strconv.Itoa(port))
+	}
+	return (&url.URL{
+		Scheme: websocket_protocol,
+		Host:   host,
+		Path:   WebsocketPath,
+	}).String()
 }

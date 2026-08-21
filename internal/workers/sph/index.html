@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>视频号视频信息查询</title>
+  <link rel="shortcut icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" href="/icon.png">
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f5f5;
+      --text: #333;
+      --muted: #999;
+      --secondary: #666;
+      --surface: #fff;
+      --surface-subtle: #fafafa;
+      --border: #eee;
+      --input-bg: #fff;
+      --input-border: #ddd;
+      --brand: #07c160;
+      --brand-hover: #06ad56;
+      --brand-disabled: #a0d9b8;
+      --error: #e74c3c;
+      --media-bg: #000;
+      --shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --bg: #0f1115;
+        --text: #e7e9ee;
+        --muted: #9098a8;
+        --secondary: #b6bcc8;
+        --surface: #171b22;
+        --surface-subtle: #11151c;
+        --border: #29313d;
+        --input-bg: #12161d;
+        --input-border: #3a4352;
+        --brand: #10c96b;
+        --brand-hover: #0fb960;
+        --brand-disabled: #315f43;
+        --error: #ff6b63;
+        --shadow: 0 12px 32px rgba(0,0,0,.32);
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 20px; margin-bottom: 20px; text-align: center; }
+    .input-row { display: flex; gap: 8px; margin-bottom: 20px; }
+    .input-row input {
+      flex: 1;
+      padding: 10px 14px;
+      border: 1px solid var(--input-border);
+      border-radius: 8px;
+      background: var(--input-bg);
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+    }
+    .input-row input::placeholder { color: var(--muted); }
+    .input-row input:focus { border-color: var(--brand); }
+    .input-row button {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 8px;
+      background: var(--brand);
+      color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .input-row button:hover { background: var(--brand-hover); }
+    .input-row button:disabled { background: var(--brand-disabled); cursor: not-allowed; }
+    .status { text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+    .status.error { color: var(--error); }
+    .error-card {
+      margin-bottom: 16px;
+      padding: 14px 16px;
+      border: 1px solid color-mix(in srgb, var(--error) 35%, transparent);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--error) 8%, var(--surface));
+      color: var(--error);
+    }
+    .error-card .error-title { font-size: 15px; font-weight: 600; }
+    .error-card .error-content { margin-top: 6px; font-size: 13px; line-height: 1.6; }
+    .result {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    .result-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .result-body { padding: 20px; }
+    /* 视频预览卡片 */
+    .video-card {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .video-card .cover {
+      width: 180px;
+      height: 320px;
+      border-radius: 8px;
+      object-fit: cover;
+      background: var(--media-bg);
+      cursor: pointer;
+    }
+    .video-card video {
+      width: 320px;
+      max-width: 100%;
+      border-radius: 8px;
+      background: var(--media-bg);
+    }
+    .picture-grid {
+      width: 320px;
+      max-width: 100%;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .picture-grid img {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 6px;
+      object-fit: cover;
+      background: var(--surface-subtle);
+    }
+    .download-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 12px;
+      padding: 8px 20px;
+      border: none;
+      border-radius: 8px;
+      background: var(--brand);
+      color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .download-btn:hover { background: var(--brand-hover); }
+    .video-card .meta {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 14px;
+      min-width: 0;
+    }
+    .video-card .meta .author {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .video-card .meta .author img {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+    }
+    .video-card .meta .author .name {
+      font-weight: 600;
+    }
+    .video-card .meta .desc {
+      color: var(--secondary);
+      line-height: 1.6;
+      word-break: break-all;
+    }
+    .video-card .meta .stats {
+      display: flex;
+      gap: 16px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .video-card .meta .video-link a {
+      color: var(--brand);
+      text-decoration: none;
+      font-size: 13px;
+      word-break: break-all;
+    }
+    /* JSON 区域 */
+    details.json-section { margin-top: 4px; }
+    details.json-section summary {
+      padding: 10px 20px;
+      font-size: 13px;
+      color: var(--secondary);
+      cursor: pointer;
+      border-top: 1px solid var(--border);
+    }
+    details.json-section pre {
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-x: auto;
+      padding: 16px 20px;
+      background: var(--surface-subtle);
+      margin: 0;
+    }
+    .footer {
+      text-align: center;
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .footer a {
+      color: var(--brand);
+      text-decoration: none;
+    }
+    .footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>视频号视频信息查询</h1>
+    <div class="input-row">
+      <input
+        id="urlInput"
+        type="text"
+        placeholder="粘贴视频号分享链接，如 https://weixin.qq.com/sph/xxx"
+        autofocus
+      >
+      <button id="fetchBtn">查询</button>
+    </div>
+    <div id="status" class="status" hidden></div>
+    <div id="errorDetail" class="error-card" role="alert" hidden>
+      <div id="errorTitle" class="error-title"></div>
+      <div id="errorContent" class="error-content" hidden></div>
+    </div>
+    <div id="result" hidden></div>
+    <div class="footer">
+      <a href="https://github.com/ltaoo/wx_channels_download" target="_blank">https://github.com/ltaoo/wx_channels_download</a>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "/api";
+
+    class FeedProfileModel {
+      constructor(apiBase) {
+        this.apiBase = apiBase;
+        this.listeners = new Set();
+        this.state = {
+          busy: false,
+          status: { message: "", type: "" },
+          error: null,
+          feed: null,
+          presentation: null,
+        };
+      }
+
+      subscribe(listener) {
+        this.listeners.add(listener);
+        listener(this.state);
+        return () => this.listeners.delete(listener);
+      }
+
+      update(patch) {
+        this.state = { ...this.state, ...patch };
+        this.listeners.forEach((listener) => listener(this.state));
+      }
+
+      async fetchProfile(shareUrl) {
+        if (this.state.busy) return;
+        const normalizedUrl = String(shareUrl || "").trim();
+        if (!normalizedUrl) {
+          this.update({
+            status: { message: "", type: "" },
+            error: { title: "请输入分享链接", content: "请粘贴视频号分享链接后再查询。" },
+            feed: null,
+            presentation: null,
+          });
+          return;
+        }
+
+        this.update({
+          busy: true,
+          status: { message: "查询中...", type: "" },
+          error: null,
+          feed: null,
+          presentation: null,
+        });
+        try {
+          const response = await fetch(`${this.apiBase}/fetch_video_profile`, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: normalizedUrl }),
+          });
+          const data = await this.readJson(response);
+          if (!response.ok) {
+            throw this.apiError(response, data);
+          }
+          this.update({
+            feed: data,
+            presentation: this.createPresentation(data),
+            status: { message: "", type: "" },
+          });
+        } catch (error) {
+          this.update({
+            error: this.displayError(error, "查询失败"),
+            status: { message: "", type: "" },
+          });
+        } finally {
+          this.update({ busy: false });
+        }
+      }
+
+      async downloadVideo(options) {
+        if (this.state.busy) return null;
+        const url = options.raw ? this.rawVideoUrl(options.url) : options.url;
+        return this.createDownload(
+          "下载中...",
+          async () => {
+            const response = await fetch(url);
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}`);
+            }
+            return {
+              blob: await response.blob(),
+              filename: this.sanitizeFilename(options.description, options.createtime, "mp4") || "video.mp4",
+            };
+          }
+        );
+      }
+
+      async downloadFeedZip() {
+        if (this.state.busy) return null;
+        const feed = this.state.feed;
+        return this.createDownload(
+          "压缩下载中...",
+          async () => {
+            const response = await fetch(`${this.apiBase}/download_feed_zip`, {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ feed }),
+            });
+            if (!response.ok) {
+              const data = await this.readJson(response).catch(() => ({}));
+              throw new Error(data.error || `HTTP ${response.status}`);
+            }
+            const feedInfo = feed && feed.data && feed.data.feedInfo ? feed.data.feedInfo : {};
+            return {
+              blob: await response.blob(),
+              filename: this.sanitizeFilename(feedInfo.description, feedInfo.createtime, "zip") || "channels_feed.zip",
+            };
+          }
+        );
+      }
+
+      async createDownload(statusMessage, operation) {
+        this.update({
+          busy: true,
+          status: { message: statusMessage, type: "" },
+          error: null,
+        });
+        try {
+          const download = await operation();
+          this.update({ status: { message: "", type: "" } });
+          return download;
+        } catch (error) {
+          this.update({
+            error: this.displayError(error, "下载失败"),
+            status: { message: "", type: "" },
+          });
+          return null;
+        } finally {
+          this.update({ busy: false });
+        }
+      }
+
+      async readJson(response) {
+        try {
+          return await response.json();
+        } catch (_) {
+          throw new Error(response.ok ? "服务返回了无法解析的数据" : response.statusText || `HTTP ${response.status}`);
+        }
+      }
+
+      apiError(response, data) {
+        const error = new Error((data && data.error) || response.statusText || `HTTP ${response.status}`);
+        error.code = data && data.code;
+        error.details = data && data.details;
+        return error;
+      }
+
+      displayError(error, fallbackTitle) {
+        const details = error && error.details;
+        if (details && details.title) {
+          return {
+            code: error.code || "",
+            title: String(details.title),
+            content: String(details.content || ""),
+          };
+        }
+        return {
+          code: (error && error.code) || "",
+          title: fallbackTitle,
+          content: (error && error.message) || "未知错误",
+        };
+      }
+
+      createPresentation(feed) {
+        const feedInfo = feed && feed.data && feed.data.feedInfo;
+        const authorInfo = feed && feed.data && feed.data.authorInfo;
+        if (!feedInfo) {
+          return { feedInfo: null, authorInfo: null, bestVideoUrl: "", picInfo: [], coverUrl: "", bgmUrl: "" };
+        }
+        const bestVideoUrl =
+          (feedInfo.h264VideoInfo && feedInfo.h264VideoInfo.videoUrl) ||
+          (feedInfo.h265VideoInfo && feedInfo.h265VideoInfo.videoUrl) ||
+          feedInfo.videoUrl ||
+          "";
+        const picInfo = Array.isArray(feedInfo.picInfo) ? feedInfo.picInfo : [];
+        const firstPicture = picInfo.find((item) => item && item.url);
+        const coverUrl = feedInfo.coverUrl || (firstPicture && firstPicture.url) || "";
+        const bgmInfo = feedInfo.bgmInfo || {};
+        return {
+          feedInfo,
+          authorInfo,
+          bestVideoUrl,
+          picInfo,
+          coverUrl,
+          bgmUrl: bgmInfo.bgmUrl || bgmInfo.mediaStreamingUrl || "",
+        };
+      }
+
+      rawVideoUrl(url) {
+        try {
+          const parsedUrl = new URL(decodeURIComponent(url));
+          const filekey = parsedUrl.searchParams.get("encfilekey");
+          const token = parsedUrl.searchParams.get("token");
+          if (filekey && token) {
+            const cleanUrl = new URL(parsedUrl.origin + parsedUrl.pathname);
+            cleanUrl.searchParams.set("encfilekey", filekey);
+            cleanUrl.searchParams.set("token", token);
+            return cleanUrl.toString();
+          }
+        } catch (_) {}
+        return url;
+      }
+
+      sanitizeFilename(description, createtime, extension) {
+        const suffix = "." + (extension || "mp4");
+        if (description) {
+          return String(description)
+            .replace(/[\\/:*?"<>|]/g, "")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 200) + suffix;
+        }
+        if (createtime) {
+          const date = new Date(Number(createtime) * 1000);
+          const pad = (value) => String(value).padStart(2, "0");
+          return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}${suffix}`;
+        }
+        return "";
+      }
+    }
+
+    class FeedProfileView {
+      constructor(model) {
+        this.model = model;
+        this.urlInput = document.getElementById("urlInput");
+        this.fetchButton = document.getElementById("fetchBtn");
+        this.statusElement = document.getElementById("status");
+        this.errorElement = document.getElementById("errorDetail");
+        this.errorTitleElement = document.getElementById("errorTitle");
+        this.errorContentElement = document.getElementById("errorContent");
+        this.resultElement = document.getElementById("result");
+        this.renderedFeed = undefined;
+      }
+
+      mount() {
+        this.fetchButton.addEventListener("click", () => this.model.fetchProfile(this.urlInput.value));
+        this.urlInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            this.model.fetchProfile(this.urlInput.value);
+          }
+        });
+        this.resultElement.addEventListener("click", (event) => this.handleResultClick(event));
+        this.model.subscribe((state) => this.render(state));
+      }
+
+      render(state) {
+        this.fetchButton.disabled = state.busy;
+        this.renderStatus(state.status);
+        this.renderError(state.error);
+        if (state.feed !== this.renderedFeed) {
+          this.renderResult(state.feed, state.presentation);
+          this.renderedFeed = state.feed;
+        }
+      }
+
+      renderStatus(status) {
+        this.statusElement.textContent = status.message;
+        this.statusElement.className = "status" + (status.type ? " " + status.type : "");
+        this.statusElement.hidden = !status.message;
+      }
+
+      renderError(error) {
+        this.errorElement.hidden = !error;
+        this.errorTitleElement.textContent = error ? error.title : "";
+        this.errorContentElement.textContent = error ? error.content : "";
+        this.errorContentElement.hidden = !error || !error.content;
+      }
+
+      renderResult(feed, presentation) {
+        if (!feed || !presentation) {
+          this.resultElement.hidden = true;
+          this.resultElement.innerHTML = "";
+          return;
+        }
+
+        const feedInfo = presentation.feedInfo;
+        const authorInfo = presentation.authorInfo;
+        const bestVideoUrl = presentation.bestVideoUrl;
+        const picInfo = presentation.picInfo;
+        const coverUrl = presentation.coverUrl;
+        let html = '<div class="result"><div class="result-header">查询结果</div><div class="result-body">';
+
+        if (feedInfo) {
+          html += '<div class="video-card">';
+          if (bestVideoUrl) {
+            html += `<video src="${this.escape(bestVideoUrl)}" poster="${this.escape(coverUrl)}" controls preload="metadata"></video>`;
+          } else {
+            const loading = picInfo.length > 0 ? ' loading="lazy"' : "";
+            html += `<img class="cover" src="${this.escape(coverUrl)}" alt="cover"${loading} onerror="this.style.display='none'">`;
+          }
+          html += '<div class="meta">';
+          if (authorInfo) {
+            html += '<div class="author">';
+            html += `<img src="${this.escape(authorInfo.headImgUrl)}" alt="" onerror="this.style.display='none'">`;
+            html += `<span class="name">${this.escape(authorInfo.nickname)}</span>`;
+            if (authorInfo.authIconUrl) {
+              html += `<img src="${this.escape(authorInfo.authIconUrl)}" style="width:16px;height:16px" onerror="this.style.display='none'">`;
+            }
+            html += '</div>';
+          }
+          if (feedInfo.description) {
+            html += `<div class="desc">${this.escape(feedInfo.description)}</div>`;
+          }
+          html += '<div class="stats">';
+          if (feedInfo.likeCountFmt) html += `<span>赞 ${this.escape(feedInfo.likeCountFmt)}</span>`;
+          if (feedInfo.favCountFmt) html += `<span>爱心 ${this.escape(feedInfo.favCountFmt)}</span>`;
+          if (feedInfo.forwardCountFmt) html += `<span>转发 ${this.escape(feedInfo.forwardCountFmt)}</span>`;
+          if (feedInfo.commentCountFmt) html += `<span>评论 ${this.escape(feedInfo.commentCountFmt)}</span>`;
+          html += '</div>';
+          if (bestVideoUrl) {
+            const attributes = `data-video-url="${this.escape(bestVideoUrl)}" data-desc="${this.escape(feedInfo.description || "")}" data-createtime="${this.escape(feedInfo.createtime || "")}"`;
+            html += `<div><button class="download-btn" data-action="download-video" ${attributes}>下载视频</button> <button class="download-btn" data-action="download-raw-video" ${attributes}>下载原始视频</button></div>`;
+          } else if (picInfo.length > 0) {
+            html += '<div><button class="download-btn" data-action="download-feed-zip">下载图集 ZIP</button></div>';
+          }
+          if (picInfo.length > 0) {
+            html += `<div class="stats"><span>图片 ${picInfo.length}</span>${presentation.bgmUrl ? '<span>BGM 1</span>' : ''}</div>`;
+          }
+          if (bestVideoUrl) {
+            html += `<div class="video-link"><a href="${this.escape(bestVideoUrl)}" target="_blank">${this.escape(bestVideoUrl)}</a></div>`;
+          }
+          html += '</div></div>';
+        }
+
+        html += '</div>';
+        html += '<details class="json-section"><summary>原始响应 JSON</summary>';
+        html += `<pre>${this.escape(JSON.stringify(feed, null, 2))}</pre>`;
+        html += '</details></div>';
+        this.resultElement.innerHTML = html;
+        this.resultElement.hidden = false;
+      }
+
+      async handleResultClick(event) {
+        const button = event.target.closest("button[data-action]");
+        if (!button) return;
+        const action = button.dataset.action;
+        let download = null;
+        if (action === "download-feed-zip") {
+          download = await this.model.downloadFeedZip();
+        } else if (action === "download-video" || action === "download-raw-video") {
+          download = await this.model.downloadVideo({
+            url: button.dataset.videoUrl,
+            description: button.dataset.desc,
+            createtime: button.dataset.createtime,
+            raw: action === "download-raw-video",
+          });
+        }
+        if (download) {
+          this.saveDownload(download);
+        }
+      }
+
+      saveDownload(download) {
+        const blobUrl = URL.createObjectURL(download.blob);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = download.filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(blobUrl);
+      }
+
+      escape(value) {
+        if (!value) return "";
+        const element = document.createElement("div");
+        element.textContent = value;
+        return element.innerHTML;
+      }
+    }
+
+    const feedProfileModel = new FeedProfileModel(API_BASE);
+    const feedProfileView = new FeedProfileView(feedProfileModel);
+    feedProfileView.mount();
+  </script>
+</body>
+</html>

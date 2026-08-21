@@ -66,6 +66,7 @@ func (h *http_handler) request_server(request *http.Request) *Server {
 	request_server := &Server{
 		api_client:   h.server.api_client,
 		data_reader:  h.server.data_reader,
+		scraper_jobs: h.server.scraper_jobs,
 		error_output: h.server.error_output,
 		version:      h.server.version,
 		pending:      make(map[string]context.CancelFunc),

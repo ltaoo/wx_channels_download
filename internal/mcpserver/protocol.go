@@ -27,7 +27,8 @@ var supported_legacy_protocol_versions = map[string]struct{}{
 	"2024-11-05": {},
 }
 
-// Config configures a stdio MCP server backed by a running downloader API.
+// Config configures a stdio MCP server backed by a downloader API, process-local
+// services, or both.
 type Config struct {
 	APIBaseURL   string
 	Version      string
@@ -37,12 +38,15 @@ type Config struct {
 	HTTPClient   *http.Client
 	PollInterval time.Duration
 	DataReader   DataReader
+	ScraperJobs  ScraperJobBackend
 }
 
-// Server implements the MCP stdio transport and exposes downloader tools.
+// Server implements the MCP stdio transport and exposes the tools supported by
+// its configured backends.
 type Server struct {
 	api_client       *api_client
 	data_reader      DataReader
+	scraper_jobs     ScraperJobBackend
 	input            io.Reader
 	output           io.Writer
 	error_output     io.Writer
@@ -105,13 +109,21 @@ func NewServer(config Config) (*Server, error) {
 	if strings.TrimSpace(config.Version) == "" {
 		config.Version = "dev"
 	}
-	client, err := new_api_client(config.APIBaseURL, config.HTTPClient, config.PollInterval)
-	if err != nil {
-		return nil, err
+	var client *api_client
+	if strings.TrimSpace(config.APIBaseURL) != "" {
+		var err error
+		client, err = new_api_client(config.APIBaseURL, config.HTTPClient, config.PollInterval)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if client == nil && config.DataReader == nil && config.ScraperJobs == nil {
+		return nil, fmt.Errorf("至少需要配置 API 地址、数据查询服务或抓取任务服务")
 	}
 	return &Server{
 		api_client:   client,
 		data_reader:  config.DataReader,
+		scraper_jobs: config.ScraperJobs,
 		input:        config.Input,
 		output:       config.Output,
 		error_output: config.ErrorOutput,
@@ -198,7 +210,7 @@ func (s *Server) handle_request(ctx context.Context, request rpc_request) rpc_re
 		response.Result = s.decorate_result(map[string]any{}, modern)
 	case "tools/list":
 		response.Result = s.decorate_result(map[string]any{
-			"tools":      tool_definitions(),
+			"tools":      s.tool_definitions(),
 			"ttlMs":      300000,
 			"cacheScope": "public",
 		}, modern)

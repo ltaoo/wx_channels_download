@@ -1,18 +1,22 @@
 import * as components from "./components.js";
-import {
+import * as store from "./store.js";
+
+const {
   app$,
   history$,
   http_client$,
   router,
   router$,
   storage$,
-} from "./store.js";
+} = store;
 
 const Timeless = window.Timeless;
 
 if (!Timeless) {
   throw new Error("应用无法启动：Timeless 运行时未加载");
 }
+
+window.__store = store;
 
 Object.assign(window, components);
 

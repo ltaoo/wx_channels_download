@@ -309,6 +309,7 @@ func tool_definitions() []any {
 			},
 		},
 	}
+	definitions = append(definitions, scraper_job_tool_definitions()...)
 	definitions = append(definitions, wxchannels_tool_definitions()...)
 	return append(definitions, data_tool_definitions()...)
 }
@@ -330,7 +331,40 @@ func ToolNames() []string {
 	return names
 }
 
+func (s *Server) tool_definitions() []any {
+	definitions := tool_definitions()
+	filtered := make([]any, 0, len(definitions))
+	for _, definition := range definitions {
+		tool, ok := definition.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := tool["name"].(string)
+		if s.supports_tool(name) {
+			filtered = append(filtered, definition)
+		}
+	}
+	return filtered
+}
+
+func (s *Server) supports_tool(name string) bool {
+	if s == nil {
+		return false
+	}
+	switch name {
+	case "fetch_content", "create_scraper_job", "get_scraper_job":
+		return s.scraper_jobs != nil || s.api_client != nil
+	case "get_download_tasks", "get_download_task_detail", "get_accounts", "get_browse_history", "get_logs", "get_certificate_status":
+		return s.data_reader != nil || s.api_client != nil
+	default:
+		return s.api_client != nil
+	}
+}
+
 func (s *Server) call_tool(ctx context.Context, params call_tool_params) (map[string]any, error) {
+	if !s.supports_tool(params.Name) {
+		return nil, fmt.Errorf("%w: %s", err_unknown_tool, params.Name)
+	}
 	switch params.Name {
 	case "get_config":
 		return s.get_config(ctx)
@@ -342,6 +376,10 @@ func (s *Server) call_tool(ctx context.Context, params call_tool_params) (map[st
 		return s.get_platform_status(ctx)
 	case "fetch_content":
 		return s.fetch_content(ctx, params.Arguments)
+	case "create_scraper_job":
+		return s.create_scraper_job_tool(ctx, params.Arguments)
+	case "get_scraper_job":
+		return s.get_scraper_job_tool(ctx, params.Arguments)
 	case "download_content":
 		return s.download_content(ctx, params.Arguments)
 	case "decrypt_wxchannels_video":
@@ -445,11 +483,11 @@ func (s *Server) fetch_content(ctx context.Context, raw_arguments json.RawMessag
 	}
 	fetch_context, cancel_fetch := context.WithTimeout(ctx, timeout)
 	defer cancel_fetch()
-	job, err := s.api_client.create_scraper_job(fetch_context, arguments.URL, arguments.ForceRefresh)
+	job, err := s.create_scraper_job(fetch_context, arguments.URL, arguments.ForceRefresh)
 	if err != nil {
 		return nil, err
 	}
-	job, err = s.api_client.wait_scraper_job(fetch_context, job)
+	job, err = s.wait_scraper_job(fetch_context, job)
 	if err != nil {
 		return nil, err
 	}
@@ -683,19 +721,80 @@ func (s *Server) download_content(ctx context.Context, raw_arguments json.RawMes
 	return successful_tool_result(result)
 }
 
-func (s *Server) resolve_download_job(ctx context.Context, arguments download_content_arguments) (*scraper_job, error) {
+func (s *Server) resolve_download_job(ctx context.Context, arguments download_content_arguments) (*ScraperJob, error) {
 	if arguments.JobID != "" {
-		job, err := s.api_client.get_scraper_job(ctx, arguments.JobID)
+		job, err := s.get_scraper_job(ctx, arguments.JobID)
 		if err != nil {
 			return nil, fmt.Errorf("读取 job_id %s 失败: %w；可改为传入 url 重新解析", arguments.JobID, err)
 		}
-		return s.api_client.wait_scraper_job(ctx, job)
+		return s.wait_scraper_job(ctx, job)
 	}
-	job, err := s.api_client.create_scraper_job(ctx, arguments.URL, arguments.ForceRefresh)
+	job, err := s.create_scraper_job(ctx, arguments.URL, arguments.ForceRefresh)
 	if err != nil {
 		return nil, err
 	}
-	return s.api_client.wait_scraper_job(ctx, job)
+	return s.wait_scraper_job(ctx, job)
+}
+
+func (s *Server) create_scraper_job(ctx context.Context, raw_url string, force_refresh bool) (*ScraperJob, error) {
+	if s.scraper_jobs != nil {
+		return s.scraper_jobs.CreateScraperJob(ctx, raw_url, force_refresh)
+	}
+	if s.api_client == nil {
+		return nil, fmt.Errorf("抓取任务服务未初始化")
+	}
+	return s.api_client.create_scraper_job(ctx, raw_url, force_refresh)
+}
+
+func (s *Server) get_scraper_job(ctx context.Context, job_id string) (*ScraperJob, error) {
+	if s.scraper_jobs != nil {
+		return s.scraper_jobs.GetScraperJob(ctx, job_id)
+	}
+	if s.api_client == nil {
+		return nil, fmt.Errorf("抓取任务服务未初始化")
+	}
+	return s.api_client.get_scraper_job(ctx, job_id)
+}
+
+func (s *Server) wait_scraper_job(ctx context.Context, job *ScraperJob) (*ScraperJob, error) {
+	if job == nil || strings.TrimSpace(job.ID) == "" {
+		return nil, fmt.Errorf("抓取任务响应缺少 id")
+	}
+	poll_interval := default_poll_interval
+	if s.api_client != nil && s.api_client.poll_interval > 0 {
+		poll_interval = s.api_client.poll_interval
+	}
+	poll_timer := time.NewTimer(poll_interval)
+	defer poll_timer.Stop()
+	current_job := job
+	for {
+		switch current_job.Status {
+		case "completed":
+			if !has_json_value(current_job.Output) {
+				return nil, fmt.Errorf("抓取任务已完成，但响应缺少 output")
+			}
+			return current_job, nil
+		case "failed":
+			return nil, new_tool_execution_error(value_or_default(current_job.Error, "抓取内容失败"), raw_json_value(current_job.Progress))
+		case "interrupted":
+			return nil, new_tool_execution_error(value_or_default(current_job.Error, "抓取任务已中断"), raw_json_value(current_job.Progress))
+		}
+
+		select {
+		case <-ctx.Done():
+			if s.scraper_jobs != nil {
+				s.scraper_jobs.InterruptScraperJob(current_job.ID)
+			}
+			return nil, new_tool_execution_error("等待抓取任务超时或已取消: "+ctx.Err().Error(), raw_json_value(current_job.Progress))
+		case <-poll_timer.C:
+		}
+		next_job, err := s.get_scraper_job(ctx, current_job.ID)
+		if err != nil {
+			return nil, err
+		}
+		current_job = next_job
+		poll_timer.Reset(poll_interval)
+	}
 }
 
 func successful_tool_result(value any) (map[string]any, error) {
@@ -752,7 +851,7 @@ func is_existing_action(action string) bool {
 	}
 }
 
-func download_source(job *scraper_job, output scraper_output) map[string]any {
+func download_source(job *ScraperJob, output scraper_output) map[string]any {
 	return map[string]any{
 		"job_id":   job.ID,
 		"platform": output.Platform,

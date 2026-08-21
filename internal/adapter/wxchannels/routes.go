@@ -268,19 +268,7 @@ func (r *WebsocketRoutes) HandleFetchFeedProfile(ctx *gin.Context) {
 	nid := ctx.Query("nid")
 	req_url := ctx.Query("url")
 	eid := ctx.Query("eid")
-
-	if eid == "" && req_url != "" {
-		if parsed_url, err := url.Parse(req_url); err == nil {
-			if _eid := parsed_url.Query().Get("eid"); _eid != "" {
-				eid = _eid
-				req_url = ""
-			}
-		}
-	}
-	// When oid/nid are provided directly, clear reqUrl to avoid browser-side timeout from relative URL parsing
-	if oid != "" && nid != "" {
-		req_url = ""
-	}
+	oid, nid, req_url, eid = normalize_feed_profile_args(oid, nid, req_url, eid)
 
 	resp, err := r.client.FetchChannelsFeedProfile(oid, nid, req_url, eid)
 	if err != nil {
@@ -288,6 +276,23 @@ func (r *WebsocketRoutes) HandleFetchFeedProfile(ctx *gin.Context) {
 		return
 	}
 	result.Ok(ctx, resp)
+}
+
+func normalize_feed_profile_args(oid string, nid string, req_url string, eid string) (string, string, string, string) {
+	if eid == "" && req_url != "" {
+		if parsed_url, err := url.Parse(req_url); err == nil {
+			if parsed_eid := parsed_url.Query().Get("eid"); parsed_eid != "" {
+				eid = parsed_eid
+				req_url = ""
+			}
+		}
+	}
+	// When oid/nid are provided directly, clear req_url to avoid a browser-side
+	// timeout while parsing a relative URL.
+	if oid != "" && nid != "" {
+		req_url = ""
+	}
+	return oid, nid, req_url, eid
 }
 
 // HandleFetchSharedFeedProfile fetches shared video details.

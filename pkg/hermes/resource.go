@@ -46,7 +46,7 @@ func (d *HermesEngine) download_resource(ctx context.Context, task *TaskJob, res
 			continue
 		}
 
-		prepared, prepare_err := prepare_with_retry(ctx, candidate.driver, candidate.endpoint)
+		prepared, prepare_err := d.prepare_with_retry(ctx, candidate.driver, candidate.endpoint)
 		if prepare_err != nil {
 			if errors.Is(prepare_err, context.Canceled) {
 				return "", prepare_err
@@ -632,10 +632,14 @@ func (d *HermesEngine) update_resource_progress(task_id, resource_id int, downlo
 	return d.store.UpdateProgress(task_id, downloaded, speed)
 }
 
-func prepare_with_retry(ctx context.Context, driver ProtocolDriver, endpoint Endpoint) (PreparedResource, error) {
+func (d *HermesEngine) prepare_with_retry(ctx context.Context, driver ProtocolDriver, endpoint Endpoint) (PreparedResource, error) {
 	var last_err error
 	for attempt := 0; attempt < max_read_attempts; attempt++ {
+		if err := d.acquire_connection(ctx); err != nil {
+			return PreparedResource{}, err
+		}
 		prepared, err := driver.Prepare(ctx, endpoint)
+		d.release_connection()
 		if err == nil {
 			return prepared, nil
 		}
@@ -754,49 +758,11 @@ func (d *HermesEngine) ensure_resource_sizes(ctx context.Context, task_id int, r
 	if len(resources) == 0 {
 		return nil
 	}
-	if len(resources) == 1 {
-		// Single resource: no benefit from parallelism overhead.
-		return d.probe_resource_sizes_seq(ctx, task_id, resources)
-	}
-	return d.probe_resource_sizes_parallel(ctx, task_id, resources)
-}
-
-func (d *HermesEngine) probe_resource_sizes_seq(ctx context.Context, task_id int, resources []ResourceJob) map[int]int64 {
-	var mu sync.Mutex
-	sizes := make(map[int]int64)
-	for i := range resources {
-		res := &resources[i]
-		if err := ctx.Err(); err != nil {
-			return sizes
-		}
-		d.probe_one_resource(ctx, task_id, res, &mu, &sizes)
-	}
-	return sizes
-}
-
-func (d *HermesEngine) probe_resource_sizes_parallel(ctx context.Context, task_id int, resources []ResourceJob) map[int]int64 {
 	sizes := make(map[int]int64)
 	var mu sync.Mutex
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, probe_concurrency)
-
-	for i := range resources {
-		if ctx.Err() != nil {
-			break
-		}
-		wg.Add(1)
-		go func(res *ResourceJob) {
-			defer wg.Done()
-			select {
-			case sem <- struct{}{}:
-			case <-ctx.Done():
-				return
-			}
-			defer func() { <-sem }()
-			d.probe_one_resource(ctx, task_id, res, &mu, &sizes)
-		}(&resources[i])
-	}
-	wg.Wait()
+	d.process_resources(ctx, resources, probe_concurrency, func(_ int, resource *ResourceJob) {
+		d.probe_one_resource(ctx, task_id, resource, &mu, &sizes)
+	})
 	return sizes
 }
 
@@ -812,7 +778,11 @@ func (d *HermesEngine) probe_one_resource(ctx context.Context, task_id int, res 
 		if c.driver == nil {
 			continue
 		}
+		if err := d.acquire_connection(ctx); err != nil {
+			return
+		}
 		prepared, err := c.driver.Prepare(ctx, c.endpoint)
+		d.release_connection()
 		if err != nil {
 			add_endpoint_diagnostic(d.logger.Info().
 				Int("task_id", task_id).

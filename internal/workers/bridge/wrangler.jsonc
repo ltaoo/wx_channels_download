@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "dm-bridge",
+  "main": "index.js",
+  "compatibility_date": "2026-05-03",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "BRIDGES",
+        "class_name": "BridgeDurableObject"
+      }
+    ]
+  },
+  "exports": {
+    "BridgeDurableObject": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  },
+  "secrets": {
+    "required": ["BRIDGE_TOKEN", "BRIDGE_ADMIN_TOKEN"]
+  }
+}

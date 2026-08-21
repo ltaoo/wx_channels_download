@@ -110,10 +110,18 @@ func answer_content_details(content *model.Content, page *zhihu.AnswerPage) ([]a
 	if err != nil {
 		return nil, err
 	}
+	question_account, err := ToAccount(&page.Question.Author)
+	if err != nil {
+		return nil, fmt.Errorf("convert zhihu question author: %w", err)
+	}
 	question_detail := adapter.ContentDetail{
 		Type:    "question",
 		Key:     question_content.Id,
 		Content: question_content,
+		Accounts: []adapter.ContentAccountReference{{
+			Account: question_account,
+			Role:    "owner",
+		}},
 		Data: &model.ContentArticle{
 			Id:   question_content.Id,
 			Type: model.ContentArticleTypeHTML,

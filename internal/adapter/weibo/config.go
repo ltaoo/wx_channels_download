@@ -6,22 +6,13 @@ import (
 
 // WeiboPluginConfig implements config.Configurable for weibo plugin config.
 type WeiboPluginConfig struct {
-	Enabled bool
-	Cookie  string
+	Cookie string
 }
 
 func (c *WeiboPluginConfig) ConfigNamespace() string { return "weibo" }
 
 func (c *WeiboPluginConfig) ConfigSchema() []config.ConfigField {
 	return []config.ConfigField{
-		{
-			Key:         "enabled",
-			Type:        config.ConfigTypeBool,
-			Default:     false,
-			Description: "是否记录微博页面浏览记录",
-			Title:       "记录微博浏览",
-			Group:       "Weibo",
-		},
 		{
 			Key:         "cookie",
 			Type:        config.ConfigTypeText,
@@ -35,7 +26,6 @@ func (c *WeiboPluginConfig) ConfigSchema() []config.ConfigField {
 }
 
 func (c *WeiboPluginConfig) ApplyConfig(sub *config.SubViper) error {
-	c.Enabled = sub.GetBool("enabled")
 	c.Cookie = sub.GetString("cookie")
 	return nil
 }

@@ -15,7 +15,6 @@ import (
 // InterceptorPluginConfig owns the zhihu scraper configuration used
 // by the local interceptor.
 type InterceptorPluginConfig struct {
-	enabled            bool
 	version            string
 	global_script_path string
 }
@@ -26,7 +25,6 @@ func NewConfig(cfg *config.Config) *InterceptorPluginConfig {
 		return &InterceptorPluginConfig{}
 	}
 	return &InterceptorPluginConfig{
-		enabled:            cfg.GetBool("zhihu.enabled"),
 		version:            cfg.Version,
 		global_script_path: cfg.GlobalScriptPath,
 	}
@@ -35,7 +33,7 @@ func NewConfig(cfg *config.Config) *InterceptorPluginConfig {
 // GetPlugins returns zhihu injection and callback plugins wired to
 // adapter-owned persistence and browse events.
 func (c *InterceptorPluginConfig) GetPlugins() []interface{} {
-	if c == nil || !c.enabled {
+	if c == nil {
 		return nil
 	}
 
@@ -85,11 +83,11 @@ func create_zhihu_interceptor_plugin(version, global_script_path string) *proxy.
 				"",
 				url_build("/inject/fetch.js", version_query),
 			)
-			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.31.2/timeless.umd.min.js", version_query))
-			frontend.AppendStylesheets(&early_injected, "", url_build("/public/timeless/0.31.2/timeless.weui.css", version_query))
-			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.31.2/timeless.weui.umd.min.js", version_query))
-			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.31.2/timeless.dom.umd.min.js", version_query))
-			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.31.2/timeless.web.umd.min.js", version_query))
+			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.31.4/timeless.umd.min.js", version_query))
+			frontend.AppendStylesheets(&early_injected, "", url_build("/public/timeless/0.31.4/timeless.weui.css", version_query))
+			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.31.4/timeless.weui.umd.min.js", version_query))
+			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.31.4/timeless.dom.umd.min.js", version_query))
+			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.31.4/timeless.web.umd.min.js", version_query))
 			html = strings.Replace(html, "<head>", "<head>"+early_injected.String(), 1)
 
 			var injected strings.Builder

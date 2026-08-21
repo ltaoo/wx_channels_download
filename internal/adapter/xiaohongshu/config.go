@@ -1,42 +1,24 @@
 package xiaohongshuadapter
 
-import (
-	"wx_channel/internal/config"
-)
+import "wx_channel/internal/config"
 
-// XiaohongshuPluginConfig implements config.Configurable for xiaohongshu plugin config.
-type XiaohongshuPluginConfig struct {
-	Enabled bool
-}
+// XiaohongshuPluginConfig implements config.Configurable for xiaohongshu.
+type XiaohongshuPluginConfig struct{}
 
 func (c *XiaohongshuPluginConfig) ConfigNamespace() string { return "xiaohongshu" }
 
-func (c *XiaohongshuPluginConfig) ConfigSchema() []config.ConfigField {
-	return []config.ConfigField{
-		{
-			Key:         "enabled",
-			Type:        config.ConfigTypeBool,
-			Default:     false,
-			Description: "是否记录小红书页面浏览记录",
-			Title:       "记录小红书浏览",
-			Group:       "Xiaohongshu",
-		},
-	}
-}
+func (c *XiaohongshuPluginConfig) ConfigSchema() []config.ConfigField { return nil }
 
-func (c *XiaohongshuPluginConfig) ApplyConfig(sub *config.SubViper) error {
-	c.Enabled = sub.GetBool("enabled")
-	return nil
-}
+func (c *XiaohongshuPluginConfig) ApplyConfig(_ *config.SubViper) error { return nil }
 
 // GetXiaohongshuConfig returns the registered xiaohongshu plugin config if available.
 func GetXiaohongshuConfig() *XiaohongshuPluginConfig {
-	return xiaohongshuPluginConfig
+	return xiaohongshu_plugin_config
 }
 
-var xiaohongshuPluginConfig *XiaohongshuPluginConfig
+var xiaohongshu_plugin_config *XiaohongshuPluginConfig
 
 func init() {
-	xiaohongshuPluginConfig = &XiaohongshuPluginConfig{}
-	config.RegisterPlugin(xiaohongshuPluginConfig)
+	xiaohongshu_plugin_config = &XiaohongshuPluginConfig{}
+	config.RegisterPlugin(xiaohongshu_plugin_config)
 }

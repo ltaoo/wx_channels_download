@@ -52,11 +52,11 @@ async function fetchExportIdWithShareId(data) {
 }
 async function fetchFeedProfileWith(data) {
   if (data.url) {
-    if (data.url.match(/sph/)) {
+    if (data.url.match(/\/sph/)) {
       var [err, eid] = await fetchExportIdWithShareId(data);
       if (err) {
         var m = data.url.match(/\/([a-zA-Z0-9]{1,})$/);
-        if (m[1]) {
+        if (m && m[1]) {
           data.eid = m[1];
         } else {
           return [err, null];

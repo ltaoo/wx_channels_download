@@ -2,14 +2,19 @@ package services
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 
+	"wx_channel/internal/config"
 	"wx_channel/pkg/certificate"
 )
 
@@ -27,6 +32,132 @@ type CertFilesInfo struct {
 	Source       CertSource
 	IsLegacy     bool
 	RiskWarnings []string
+}
+
+// CertificateService provides certificate status independently of any
+// transport such as HTTP or MCP.
+type CertificateService struct {
+	application_config *config.Config
+}
+
+func NewCertificateService(application_config *config.Config) *CertificateService {
+	return &CertificateService{application_config: application_config}
+}
+
+// Status returns the active certificate and every available alternative.
+func (s *CertificateService) Status() map[string]any {
+	cert_info := LoadCertFilesWithInfo()
+	cert := cert_info.Cert
+	installed, install_err := certificate.CheckHasCertificate(cert.Name)
+	data := map[string]any{
+		"name":          cert.Name,
+		"source":        string(cert_info.Source),
+		"is_legacy":     cert_info.IsLegacy,
+		"risk_warnings": cert_info.RiskWarnings,
+		"installed":     installed,
+		"trusted":       false,
+		"pem":           string(cert.Cert),
+	}
+	if installed {
+		trusted, trust_err := certificate.CheckCertificateDataTrusted(cert.Cert, cert.Name)
+		if trust_err == nil {
+			data["trusted"] = trusted
+		}
+		if trust_err != nil && install_err == nil {
+			install_err = trust_err
+		}
+	}
+	if install_err != nil {
+		data["install_status_error"] = install_err.Error()
+	}
+	if details, err := inspect_certificate(cert.Cert); err == nil {
+		data["detail"] = details
+	} else {
+		data["parse_error"] = err.Error()
+	}
+	if s != nil && s.application_config != nil {
+		data["configured"] = map[string]any{
+			"name": s.application_config.GetString("cert.name"),
+			"file": s.application_config.GetString("cert.file"),
+			"key":  s.application_config.GetString("cert.key"),
+		}
+	}
+
+	available_certs := ScanAvailableCerts()
+	cert_list := make([]map[string]any, 0, len(available_certs))
+	for _, available_cert := range available_certs {
+		cert_list = append(cert_list, certificate_status_entry(available_cert))
+	}
+	data["all_certificates"] = cert_list
+	return data
+}
+
+func certificate_status_entry(available_cert AvailableCert) map[string]any {
+	installed, _ := certificate.CheckHasCertificate(available_cert.Cert.Name)
+	entry := map[string]any{
+		"name":          available_cert.Cert.Name,
+		"source":        string(available_cert.Source),
+		"is_legacy":     available_cert.IsLegacy,
+		"is_active":     available_cert.IsActive,
+		"installed":     installed,
+		"trusted":       false,
+		"risk_warnings": available_cert.RiskWarnings,
+	}
+	if installed {
+		trusted, trust_err := certificate.CheckCertificateDataTrusted(available_cert.Cert.Cert, available_cert.Cert.Name)
+		if trust_err == nil {
+			entry["trusted"] = trusted
+		}
+	}
+	if details, err := inspect_certificate(available_cert.Cert.Cert); err == nil {
+		entry["detail"] = details
+	}
+	return entry
+}
+
+func inspect_certificate(data []byte) (map[string]any, error) {
+	cert, err := parse_first_certificate(data)
+	if err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256(cert.Raw)
+	return map[string]any{
+		"subject_common_name": cert.Subject.CommonName,
+		"issuer_common_name":  cert.Issuer.CommonName,
+		"serial_number":       cert.SerialNumber.String(),
+		"not_before":          cert.NotBefore.Format(time.RFC3339),
+		"not_after":           cert.NotAfter.Format(time.RFC3339),
+		"expired":             time.Now().After(cert.NotAfter),
+		"is_ca":               cert.IsCA,
+		"dns_names":           cert.DNSNames,
+		"organizations":       cert.Subject.Organization,
+		"fingerprint_sha256":  format_fingerprint(sum[:]),
+	}, nil
+}
+
+func parse_first_certificate(data []byte) (*x509.Certificate, error) {
+	rest := data
+	for {
+		block, next := pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		rest = next
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		return x509.ParseCertificate(block.Bytes)
+	}
+	return x509.ParseCertificate(data)
+}
+
+func format_fingerprint(data []byte) string {
+	encoded := strings.ToUpper(hex.EncodeToString(data))
+	parts := make([]string, 0, len(encoded)/2)
+	for index := 0; index+2 <= len(encoded); index += 2 {
+		parts = append(parts, encoded[index:index+2])
+	}
+	return strings.Join(parts, ":")
 }
 
 func LoadCertFilesWithInfo() CertFilesInfo {

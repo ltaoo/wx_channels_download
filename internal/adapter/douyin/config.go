@@ -6,22 +6,13 @@ import (
 
 // DouyinPluginConfig implements config.Configurable for douyin plugin config.
 type DouyinPluginConfig struct {
-	Enabled bool
-	Cookie  string
+	Cookie string
 }
 
 func (c *DouyinPluginConfig) ConfigNamespace() string { return "douyin" }
 
 func (c *DouyinPluginConfig) ConfigSchema() []config.ConfigField {
 	return []config.ConfigField{
-		{
-			Key:         "enabled",
-			Type:        config.ConfigTypeBool,
-			Default:     false,
-			Description: "是否启用抖音视频解析和下载",
-			Title:       "启用抖音下载",
-			Group:       "Douyin",
-		},
 		{
 			Key:         "cookie",
 			Type:        config.ConfigTypeText,
@@ -35,7 +26,6 @@ func (c *DouyinPluginConfig) ConfigSchema() []config.ConfigField {
 }
 
 func (c *DouyinPluginConfig) ApplyConfig(sub *config.SubViper) error {
-	c.Enabled = sub.GetBool("enabled")
 	c.Cookie = sub.GetString("cookie")
 	return nil
 }

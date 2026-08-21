@@ -1,0 +1,55 @@
+{
+  "post": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "调用微信 JSAPI - 图片与音频",
+    "operationId": "invoke_wechat_jsapi_media_audio",
+    "description": "微信图片预览、后台音频状态和听一听音频状态能力。",
+    "parameters": [
+      {
+        "$ref": "../jsapi_common.json#/token_parameter"
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "../jsapi/media_audio.json"
+          },
+          "examples": {
+            "image_preview": {
+              "summary": "预览图片",
+              "value": {
+                "operation": "invoke",
+                "method": "imagePreview",
+                "args": {
+                  "current": "https://mmbiz.qpic.cn/example/0",
+                  "urls": [
+                    "https://mmbiz.qpic.cn/example/0",
+                    "https://mmbiz.qpic.cn/example/1"
+                  ],
+                  "forbidForward": 0
+                }
+              }
+            },
+            "background_audio_state": {
+              "summary": "查询后台音频状态",
+              "value": {
+                "operation": "invoke",
+                "method": "getBackgroundAudioState",
+                "args": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "$ref": "../jsapi_common.json#/success_response"
+      }
+    }
+  }
+}

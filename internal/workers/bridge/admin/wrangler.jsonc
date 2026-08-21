@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "dm-bridge-admin",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-08-19",
+  "secrets": {
+    "required": ["BRIDGE_ADMIN_TOKEN"]
+  },
+  "services": [
+    {
+      "binding": "BRIDGE",
+      "service": "dm-bridge"
+    }
+  ]
+}

@@ -252,6 +252,7 @@ function BrowseHistoryViewModel(props) {
   const page_size_ = ref(PAGE_SIZE_DEFAULT);
   const keyword_ = ref("");
   const platform_id_ = ref("");
+  const initial_ = ref(true);
   const loading_ = ref(false);
   const error_ = ref("");
   let request_sequence = 0;
@@ -358,10 +359,6 @@ function BrowseHistoryViewModel(props) {
     },
   );
 
-  const initial_loading_ = combine(
-    { loading: loading_, histories: histories_ },
-    (state) => state.loading && state.histories.length === 0,
-  );
   const page_count_ = combine(
     { total: total_, pageSize: page_size_ },
     (state) =>
@@ -382,12 +379,23 @@ function BrowseHistoryViewModel(props) {
       return `第 ${start}-${start + state.count - 1} 条，共 ${state.total} 条`;
     },
   );
+  const list_status_ = combine(
+    {
+      initial: initial_,
+      error: error_,
+      histories: histories_,
+    },
+    (state) => {
+      if (state.initial) return "initial";
+      if (state.error) return "error";
+      return state.histories.length > 0 ? "normal" : "empty";
+    },
+  );
 
   async function load(targetPage = page_.value) {
     const sequence = ++request_sequence;
     const requestedPage = Math.max(1, Number(targetPage) || 1);
     loading_.as(true);
-    error_.as("");
     const params = {
       page: requestedPage,
       page_size: page_size_.value,
@@ -405,17 +413,21 @@ function BrowseHistoryViewModel(props) {
     if (sequence !== request_sequence) {
       return result;
     }
-    loading_.as(false);
     if (result.error) {
       error_.as(result.error.message || String(result.error));
+      loading_.as(false);
+      initial_.as(false);
       return result;
     }
 
     const data = result.data;
+    error_.as("");
     histories_.as(data.list.map(normalize_browse_history_item), { reset: true });
     total_.as(data.total);
     page_.as(data.page || requestedPage);
     page_size_.as(data.page_size);
+    loading_.as(false);
+    initial_.as(false);
     return result;
   }
 
@@ -467,7 +479,8 @@ function BrowseHistoryViewModel(props) {
     keyword: keyword_,
     page_count: page_count_,
     range_text: range_text_,
-    initial_loading: initial_loading_,
+    initial: initial_,
+    status: list_status_,
     platform_id: platform_id_,
     loading: loading_,
     error: error_,

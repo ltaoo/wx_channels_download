@@ -31,6 +31,8 @@ const (
 	scraper_platform_webpage    = "webpage"
 )
 
+const default_scraper_job_retention_limit = 20
+
 const (
 	ScraperJobStatusPending     = "pending"
 	ScraperJobStatusRunning     = "running"
@@ -133,6 +135,7 @@ type ScraperJobService struct {
 	fetch_runner     ScraperFetchRunner
 	platform_checker ScraperPlatformChecker
 	event_handler    ScraperJobEventHandler
+	retention_limit  int
 	logger           zerolog.Logger
 }
 
@@ -153,8 +156,24 @@ func NewScraperJobService(
 		jobs:             make(map[string]*ScraperFetchJob),
 		platform_checker: platform_checker,
 		event_handler:    event_handler,
+		retention_limit:  default_scraper_job_retention_limit,
 		logger:           logger,
 	}
+}
+
+// SetRetentionLimit bounds the number of terminal jobs and their potentially
+// large scraper payloads retained in memory.
+func (s *ScraperJobService) SetRetentionLimit(retention_limit int) {
+	if s == nil {
+		return
+	}
+	if retention_limit <= 0 {
+		retention_limit = default_scraper_job_retention_limit
+	}
+	s.job_mu.Lock()
+	s.retention_limit = retention_limit
+	s.prune_terminal_jobs_locked("")
+	s.job_mu.Unlock()
 }
 
 // SetFetchRunner replaces the default adapter-backed runner.
@@ -308,6 +327,7 @@ func (s *ScraperJobService) Create(request ScraperFetchRequest) (*ScraperFetchJo
 		cancel_fetch()
 		return nil, fmt.Errorf("id 正在使用中")
 	}
+	s.prune_terminal_jobs_locked("")
 	s.jobs[job_id] = job
 	snapshot := clone_scraper_fetch_job(job, true)
 	s.job_mu.Unlock()
@@ -920,6 +940,7 @@ func (s *ScraperJobService) finish_scraper_fetch_job(job_id string, output *Scra
 			"抓取完成，结果已生成",
 		)
 	}
+	s.prune_terminal_jobs_locked(job_id)
 	event_stage := ScraperJobEventFinished
 	if fetch_err != nil {
 		event_stage = ScraperJobEventFailed
@@ -1124,6 +1145,7 @@ func (s *ScraperJobService) Interrupt(job_id string) bool {
 		event.Current = progress.Current
 		event.Total = progress.Total
 	}
+	s.prune_terminal_jobs_locked(job_id)
 	snapshot := clone_scraper_fetch_job(job, false)
 	platform_id := job.Platform
 	s.job_mu.Unlock()
@@ -1151,6 +1173,52 @@ func (s *ScraperJobService) InterruptAll() {
 	for _, job_id := range job_ids {
 		s.Interrupt(job_id)
 	}
+}
+
+func (s *ScraperJobService) prune_terminal_jobs_locked(preserved_job_id string) {
+	retention_limit := s.retention_limit
+	if retention_limit <= 0 {
+		retention_limit = default_scraper_job_retention_limit
+	}
+	terminal_count := 0
+	for _, job := range s.jobs {
+		if job != nil && scraper_job_is_terminal(job.Status) {
+			terminal_count++
+		}
+	}
+	for terminal_count > retention_limit {
+		oldest_job_id := ""
+		oldest_timestamp := int64(0)
+		for job_id, job := range s.jobs {
+			if job_id == preserved_job_id || job == nil || !scraper_job_is_terminal(job.Status) {
+				continue
+			}
+			job_timestamp := terminal_job_timestamp(job)
+			if oldest_job_id == "" || job_timestamp < oldest_timestamp ||
+				(job_timestamp == oldest_timestamp && job_id < oldest_job_id) {
+				oldest_job_id = job_id
+				oldest_timestamp = job_timestamp
+			}
+		}
+		if oldest_job_id == "" {
+			return
+		}
+		delete(s.jobs, oldest_job_id)
+		terminal_count--
+	}
+}
+
+func terminal_job_timestamp(job *ScraperFetchJob) int64 {
+	if job == nil {
+		return 0
+	}
+	if job.FinishedAt > 0 {
+		return job.FinishedAt
+	}
+	if job.UpdatedAt > 0 {
+		return job.UpdatedAt
+	}
+	return job.CreatedAt
 }
 
 func new_scraper_fetch_job_id() string {

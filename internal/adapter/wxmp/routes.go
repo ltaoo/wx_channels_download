@@ -13,6 +13,18 @@ import (
 
 const WebsocketPath = "/ws/mp"
 
+var jsapi_category_paths = []string{
+	"/api/mp/jsapi/control",
+	"/api/mp/jsapi/network_auth",
+	"/api/mp/jsapi/page_navigation",
+	"/api/mp/jsapi/mini_program_finder",
+	"/api/mp/jsapi/contact_share_card",
+	"/api/mp/jsapi/media_audio",
+	"/api/mp/jsapi/ad_download_app",
+	"/api/mp/jsapi/reporting",
+	"/api/mp/jsapi/events",
+}
+
 // These numeric codes belong to the wxmp HTTP API contract. The scraper only
 // exposes ErrorKind values and does not depend on this transport convention.
 const (
@@ -28,6 +40,8 @@ const (
 	api_code_proxy_dispatch      = 2001
 	api_code_fetch_message       = 2002
 	api_code_data_parse          = 2003
+	api_code_fetch_page_content  = 2004
+	api_code_jsapi               = 2005
 	api_code_client_not_ready    = 5001
 	api_code_timeout             = 5002
 	api_code_client_busy         = 5003
@@ -46,6 +60,8 @@ var api_error_messages = map[int]string{
 	api_code_proxy_dispatch:      "代理请求转发失败",
 	api_code_fetch_message:       "获取消息列表失败",
 	api_code_data_parse:          "数据解析失败",
+	api_code_fetch_page_content:  "获取页面内容失败",
+	api_code_jsapi:               "JSAPI 调用失败",
 	api_code_client_not_ready:    "请先初始化客户端 socket 连接",
 	api_code_timeout:             "请求超时",
 	api_code_client_busy:         "发送缓冲区已满，请稍后重试",
@@ -83,6 +99,10 @@ func api_code_for_error_kind(kind wxmp.ErrorKind, fallback_code int) int {
 		return api_code_proxy_dispatch
 	case wxmp.ErrorKindFetchMessage:
 		return api_code_fetch_message
+	case wxmp.ErrorKindFetchPageContent:
+		return api_code_fetch_page_content
+	case wxmp.ErrorKindJSAPI:
+		return api_code_jsapi
 	case wxmp.ErrorKindDataParse:
 		return api_code_data_parse
 	case wxmp.ErrorKindClientNotReady:
@@ -126,6 +146,11 @@ func (r *Routes) RegisterRoutes(registrar adapter.RouteRegistrar) {
 	registrar.RegisterGET("/api/mp/list", r.handle_fetch_list)
 	registrar.RegisterGET("/api/mp/msg/list", r.handle_fetch_message_list)
 	registrar.RegisterGET("/api/mp/article/list", r.handle_fetch_article_list)
+	registrar.RegisterGET("/api/mp/page/content", r.handle_fetch_page_content)
+	registrar.RegisterPOST("/api/mp/jsapi", r.handle_jsapi)
+	for _, jsapi_category_path := range jsapi_category_paths {
+		registrar.RegisterPOST(jsapi_category_path, r.handle_jsapi)
+	}
 	registrar.RegisterGET("/api/mp/postprocess/flows", r.HandleFetchPostprocessFlows)
 	registrar.RegisterGET("/rss/mp", r.handle_official_account_rss)
 	registrar.RegisterGET("/mp/proxy", r.handle_official_account_proxy)

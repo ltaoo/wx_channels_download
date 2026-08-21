@@ -1,4 +1,5 @@
 import { BrowseHistoryViewModel } from "./browsehistory.model.js";
+import { Table } from "./table.js";
 
 function BrowseHistoryPageView(props) {
   const vm$ = BrowseHistoryViewModel(props);
@@ -115,21 +116,21 @@ function BrowseHistoryPageToolbar(props) {
   );
 }
 
+function browse_history_cover_url(history) {
+  return String((history && history.cover_url) || "").trim();
+}
+
 function BrowseHistoryRowCover(props) {
   const history = props.history;
-  if (!history.cover_url) {
-    return View(
-      { class: "wx-content-row-cover wx-content-row-cover-fallback" },
-      [Timeless.Icon({ name: "file", size: 18 })],
-    );
-  }
+  const cover_url = browse_history_cover_url(history);
+  if (!cover_url) return null;
   return View({ class: "wx-content-row-cover-wrap" }, [
     View({ class: "wx-content-row-cover wx-content-row-cover-fallback" }, [
       Timeless.Icon({ name: "file", size: 18 }),
     ]),
     Img({
       class: "wx-content-row-cover",
-      src: history.cover_url,
+      src: cover_url,
       alt: history.title,
       attributes: {
         loading: "lazy",
@@ -142,80 +143,63 @@ function BrowseHistoryRowCover(props) {
   ]);
 }
 
-function BrowseHistoryRow(props) {
-  const vm$ = props.store;
-  const history = props.history;
+function BrowseHistorySourceAction(props) {
   return View(
     {
-      class: [
-        "wx-content-row",
-        history.source_url ? "wx-content-row-clickable" : "",
-      ]
-        .filter(Boolean)
-        .join(" "),
-      onClick() {
-        vm$.methods.openSource(history);
+      type: "button",
+      class: "wx-browse-history-source-action dm-focus-ring",
+      attributes: { type: "button", title: "打开源站" },
+      onClick(event) {
+        event.stopPropagation();
+        props.onClick();
       },
     },
     [
-      // 封面
-      BrowseHistoryRowCover({ history: history }),
-      // 标题
-      View({ class: "wx-content-row-main" }, [
+      View({ class: "wx-browse-history-source-action-label" }, ["源站"]),
+      Timeless.Icon({ name: "external-link", size: 15 }),
+    ],
+  );
+}
+
+function BrowseHistoryRowMain(props) {
+  const vm$ = props.store;
+  const history = props.history;
+  return [
+    BrowseHistoryRowCover({ history }),
+    View(
+      {
+        class: "wx-content-row-main",
+        attributes: { n: "browse-history-main" },
+      },
+      [
         View(
           {
             class: "wx-content-row-title",
-            attributes: { title: history.title },
+            attributes: { n: "browse-history-title", title: history.title },
           },
           [history.title],
         ),
-        View({ class: "wx-content-row-badges" }, [
-          View({ class: "wx-content-row-platform" }, [
-            Show({
-              when: vm$.methods.platformFavicon(history),
-              ok() {
-                return Img({
-                  class: "wx-content-row-platform-icon",
-                  src: vm$.methods.platformFavicon(history),
-                  attributes: {
-                    alt: "",
-                    loading: "lazy",
-                    referrerpolicy: "no-referrer",
-                  },
-                  onError(event) {
-                    event.target.style.display = "none";
-                  },
-                });
+        View(
+          {
+            class: "wx-content-row-badges",
+            attributes: { n: "browse-history-badges" },
+          },
+          [
+            View(
+              {
+                class: "wx-content-row-platform",
+                attributes: { n: "browse-history-platform" },
               },
-            }),
-            vm$.methods.platformName(history),
-          ]),
-          View({ class: "wx-content-row-type" }, [
-            vm$.methods.typeLabel(history.content_type),
-          ]),
-        ]),
-      ]),
-      // 账号
-      View(
-        {
-          class: "wx-content-row-author",
-          attributes: { title: vm$.methods.authorName(history) },
-        },
-        [
-          For({
-            each: history.accounts || [],
-            render(acc_) {
-              const acc =
-                acc_ && acc_.value !== undefined ? acc_.value : acc_;
-              return View({ class: "wx-content-row-author-account" }, [
+              [
                 Show({
-                  when: acc.avatar_url,
+                  when: vm$.methods.platformFavicon(history),
                   ok() {
                     return Img({
-                      class: "wx-content-row-author-avatar",
-                      src: acc.avatar_url,
+                      class: "wx-content-row-platform-icon",
+                      src: vm$.methods.platformFavicon(history),
                       attributes: {
-                        alt: acc.nickname || acc.external_id || "",
+                        n: "browse-history-platform-icon",
+                        alt: "",
                         loading: "lazy",
                         referrerpolicy: "no-referrer",
                       },
@@ -225,177 +209,206 @@ function BrowseHistoryRow(props) {
                     });
                   },
                 }),
-                View(
-                  {
-                    class: "wx-content-row-author-name",
-                    attributes: {
-                      title: acc.nickname || acc.external_id || "",
-                    },
-                  },
-                  [acc.nickname || acc.external_id || "未知"],
-                ),
-              ]);
-            },
-          }),
-        ],
-      ),
-      // 访问时间
-      View({ class: "wx-content-row-meta" }, [
-        Timeless.Icon({ name: "clock3", size: 12 }),
-        vm$.methods.formatTime(history.updated_at),
-      ]),
-      // 访问次数
-      View({ class: "wx-content-row-visits" }, [
-        history.visited_times > 0 ? `浏览 ${history.visited_times} 次` : "",
-      ]),
-    ],
-  );
+                vm$.methods.platformName(history),
+              ],
+            ),
+            View(
+              {
+                class: "wx-content-row-type",
+                attributes: { n: "browse-history-content-type" },
+              },
+              [vm$.methods.typeLabel(history.content_type)],
+            ),
+          ],
+        ),
+      ],
+    ),
+  ];
 }
 
-function BrowseHistoryTableHead() {
-  return View({ class: "wx-content-row wx-content-row-head" }, [
-    View({ class: "wx-content-row-head-cell" }, ["封面"]),
-    View({ class: "wx-content-row-head-cell" }, ["标题"]),
-    View({ class: "wx-content-row-head-cell wx-content-row-col-author" }, [
-      "账号",
-    ]),
-    View({ class: "wx-content-row-head-cell wx-content-row-col-meta" }, [
-      "访问时间",
-    ]),
-    View({ class: "wx-content-row-head-cell wx-content-row-col-visits" }, [
-      "访问次数",
-    ]),
-  ]);
+function BrowseHistoryRowAccounts(props) {
+  return [
+    For({
+      each: props.history.accounts || [],
+      render(acc_) {
+        const acc = acc_ && acc_.value !== undefined ? acc_.value : acc_;
+        return View(
+          {
+            class: "wx-content-row-author-account",
+            attributes: { n: "browse-history-account" },
+          },
+          [
+            Show({
+              when: acc.avatar_url,
+              ok() {
+                return Img({
+                  class: "wx-content-row-author-avatar",
+                  src: acc.avatar_url,
+                  attributes: {
+                    n: "browse-history-account-avatar",
+                    alt: acc.nickname || acc.external_id || "",
+                    loading: "lazy",
+                    referrerpolicy: "no-referrer",
+                  },
+                  onError(event) {
+                    event.target.style.display = "none";
+                  },
+                });
+              },
+            }),
+            View(
+              {
+                class: "wx-content-row-author-name",
+                attributes: {
+                  n: "browse-history-account-name",
+                  title: acc.nickname || acc.external_id || "",
+                },
+              },
+              [acc.nickname || acc.external_id || "未知"],
+            ),
+          ],
+        );
+      },
+    }),
+  ];
+}
+
+function BrowseHistoryRowAccess(props) {
+  const vm$ = props.store;
+  const history = props.history;
+  return [
+    history.visited_times > 0
+      ? View(
+          {
+            class: "wx-content-row-visits",
+            attributes: { n: "browse-history-visit-count" },
+          },
+          [`浏览 ${history.visited_times} 次`],
+        )
+      : null,
+    View(
+      {
+        class: "wx-content-row-meta",
+        attributes: { n: "browse-history-updated-at" },
+      },
+      [
+        Timeless.Icon({ name: "clock3", size: 12 }),
+        vm$.methods.formatTime(history.updated_at),
+      ],
+    ),
+  ].filter(Boolean);
+}
+
+function BrowseHistoryRowActions(props) {
+  const vm$ = props.store;
+  const history = props.history;
+  return history.source_url
+    ? [
+        BrowseHistorySourceAction({
+          onClick() {
+            vm$.methods.openSource(history);
+          },
+        }),
+      ]
+    : [];
 }
 
 function BrowseHistorySkeletonRow() {
   return View({ class: "wx-content-row wx-content-skeleton-row" }, [
-    View({ class: "wx-content-row-col-cover" }, [
+    View({ class: "wx-content-row-main-cell" }, [
       View({ class: "wx-content-row-cover wx-content-skeleton" }),
-    ]),
-    View({ class: "wx-content-row-col-main" }, [
-      View({ class: "wx-content-skeleton wx-content-skeleton-title" }),
-      View({ class: "wx-content-skeleton wx-content-skeleton-tag" }),
+      View({ class: "wx-content-row-main" }, [
+        View({ class: "wx-content-skeleton wx-content-skeleton-title" }),
+        View({ class: "wx-content-skeleton wx-content-skeleton-tag" }),
+      ]),
     ]),
     View({ class: "wx-content-row-col-author" }, [
       View({ class: "wx-content-skeleton wx-content-skeleton-line" }),
     ]),
-    View({ class: "wx-content-row-col-meta" }, [
+    View({ class: "wx-browse-history-access" }, [
+      View({ class: "wx-content-skeleton wx-content-skeleton-line-short" }),
       View({ class: "wx-content-skeleton wx-content-skeleton-line-short" }),
     ]),
-    View({ class: "wx-content-row-col-visits" }, [
-      View({ class: "wx-content-skeleton wx-content-skeleton-line-short" }),
+    View({ class: "wx-browse-history-action-cell" }, [
+      View({ class: "wx-content-skeleton wx-browse-history-action-skeleton" }),
     ]),
   ]);
-}
-
-function BrowseHistoryListView(props) {
-  const vm$ = props.store;
-  const histories_ = vm$.state.histories;
-
-  return View(
-    {
-      class: props.class || "wx-content-history-list",
-      style: props.style || {},
-    },
-    [
-      VirtualListView({
-        style: {
-          height: "100%",
-          "max-height": "100%",
-          overflow: "auto",
-          position: "relative",
-          "box-sizing": "border-box",
-          "background-color": "transparent",
-          ...(props.listViewStyle || {}),
-        },
-        key: "id",
-        size: props.size || 10,
-        buffer: props.buffer || 6,
-        gutter: props.gutter ?? 0,
-        itemHeight: props.itemHeight || 72,
-        each: histories_,
-        render(history_) {
-          const history =
-            history_ && history_.value !== undefined
-              ? history_.value
-              : history_;
-          return BrowseHistoryRow({ store: vm$, history });
-        },
-      }),
-    ],
-  );
 }
 
 function BrowseHistoryPageBody(props) {
   const vm$ = props.store;
-  return View({ class: "wx-content-main dm-container" }, [
-    Show({
-      when: vm$.state.initial_loading,
-      ok() {
-        return View(
-          { class: "wx-content-rows dm-panel" },
-          Array.from({ length: 8 }, () => BrowseHistorySkeletonRow()),
-        );
+  return Table({
+    name: "browse-history-table",
+    containerAttributes: { n: "browse-history-page-main" },
+    panelAttributes: { n: "browse-history-table-panel" },
+    columns: [
+      {
+        name: "main",
+        title: "封面 / 标题",
+        cellClass: "wx-content-row-main-cell",
+        render(history) {
+          return BrowseHistoryRowMain({ store: vm$, history });
+        },
       },
-      else() {
-        return Show({
-          when: computed(vm$.state.error, (error) => Boolean(error)),
-          ok() {
-            return View({ class: "wx-content-state" }, [
-              Timeless.Icon({ name: "circle-alert", size: 32 }),
-              View({ class: "wx-content-state-title" }, ["浏览记录加载失败"]),
-              View({ class: "wx-content-state-text" }, [vm$.state.error]),
-              BrowseHistoryPageActionButton({
-                store: vm$.ui.btn_retry$,
-                icon: "refresh-cw",
-                label: "重试",
-              }),
-            ]);
-          },
-          else() {
-            return Show({
-              when: computed(
-                vm$.state.histories,
-                (histories) => histories.length > 0,
-              ),
-              ok() {
-                return View(
-                  {
-                    class:
-                      "wx-content-rows wx-content-history-rows dm-panel",
-                  },
-                  [
-                    BrowseHistoryTableHead(),
-                    BrowseHistoryListView({ store: vm$ }),
-                  ],
-                );
-              },
-              else() {
-                return View({ class: "wx-content-state" }, [
-                  Timeless.Icon({ name: "inbox", size: 36 }),
-                  View({ class: "wx-content-state-title" }, [
-                    computed(vm$.state.keyword, (keyword) =>
-                      String(keyword || "").trim()
-                        ? "没有匹配的浏览记录"
-                        : "暂无浏览记录",
-                    ),
-                  ]),
-                  View({ class: "wx-content-state-text" }, [
-                    computed(vm$.state.keyword, (keyword) =>
-                      String(keyword || "").trim()
-                        ? "请尝试其他标题、账号或链接"
-                        : "当前条件下未找到浏览记录",
-                    ),
-                  ]),
-                ]);
-              },
-            });
-          },
-        });
+      {
+        name: "account",
+        title: "账号",
+        headerClass: "wx-content-row-col-author",
+        cellClass: "wx-content-row-author",
+        cellAttributes(history) {
+          return { title: vm$.methods.authorName(history) };
+        },
+        render(history) {
+          return BrowseHistoryRowAccounts({ history });
+        },
       },
-    }),
-  ]);
+      {
+        name: "access",
+        title: "最近访问时间",
+        headerClass: "wx-content-row-col-meta",
+        cellClass: "wx-browse-history-access",
+        render(history) {
+          return BrowseHistoryRowAccess({ store: vm$, history });
+        },
+      },
+      {
+        name: "actions",
+        title: "操作",
+        headerClass: "wx-browse-history-action-head",
+        cellClass: "wx-browse-history-action-cell",
+        render(history) {
+          return BrowseHistoryRowActions({ store: vm$, history });
+        },
+      },
+    ],
+    rows: vm$.state.histories,
+    status: vm$.state.status,
+    loading: vm$.state.loading,
+    error: vm$.state.error,
+    skeletonCount: 8,
+    renderSkeletonRow: BrowseHistorySkeletonRow,
+    onRow(history) {
+      return {
+        class: browse_history_cover_url(history)
+          ? ""
+          : "wx-content-row-no-cover",
+      };
+    },
+    errorTitle: "浏览记录加载失败",
+    retry: {
+      store: vm$.ui.btn_retry$,
+    },
+    emptyTitle: computed(vm$.state.keyword, (keyword) =>
+      String(keyword || "").trim()
+        ? "没有匹配的浏览记录"
+        : "暂无浏览记录",
+    ),
+    emptyDescription: computed(vm$.state.keyword, (keyword) =>
+      String(keyword || "").trim()
+        ? "请尝试其他标题、账号或链接"
+        : "当前条件下未找到浏览记录",
+    ),
+  });
 }
 
 export default BrowseHistoryPageView;

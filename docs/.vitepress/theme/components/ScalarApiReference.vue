@@ -49,34 +49,94 @@ async function fetchJson(url, cache) {
   return cache.get(url)
 }
 
-async function resolvePathRefs(document, baseUrl) {
-  const spec = clone(document)
-  const cache = new Map()
-  const entries = Object.entries(spec.paths ?? {})
+function splitReference(reference) {
+  const hashIndex = reference.indexOf('#')
+  if (hashIndex === -1) {
+    return { path: reference, pointer: '' }
+  }
 
-  await Promise.all(entries.map(async ([path, pathItem]) => {
-    const ref = pathItem?.$ref
-    if (typeof ref !== 'string') return
+  return {
+    path: reference.slice(0, hashIndex),
+    pointer: reference.slice(hashIndex + 1)
+  }
+}
 
-    const [refPath, pointer = ''] = ref.split('#')
-    const refUrl = refPath ? new URL(refPath, baseUrl).toString() : baseUrl
-    const refDocument = refUrl === baseUrl ? spec : await fetchJson(refUrl, cache)
-    const resolved = pointer ? getJsonPointerValue(refDocument, pointer) : refDocument
+async function resolveOpenAPIValue(value, document, documentUrl, cache, ancestors = new Set()) {
+  if (Array.isArray(value)) {
+    return Promise.all(value.map((item) => (
+      resolveOpenAPIValue(item, document, documentUrl, cache, ancestors)
+    )))
+  }
 
-    if (!resolved || typeof resolved !== 'object') {
-      throw new Error(`Invalid OpenAPI path reference: ${ref}`)
+  if (!value || typeof value !== 'object') {
+    return value
+  }
+
+  if (typeof value.$ref === 'string') {
+    const reference = value.$ref
+    const { path, pointer } = splitReference(reference)
+    const targetUrl = path ? new URL(path, documentUrl).toString() : documentUrl
+    const targetDocument = targetUrl === documentUrl
+      ? document
+      : await fetchJson(targetUrl, cache)
+    const target = pointer
+      ? getJsonPointerValue(targetDocument, pointer)
+      : targetDocument
+
+    if (target === undefined) {
+      throw new Error(`Invalid OpenAPI reference: ${reference} (from ${documentUrl})`)
     }
 
-    spec.paths[path] = clone(resolved)
-  }))
+    const referenceKey = `${targetUrl}#${pointer}`
+    if (ancestors.has(referenceKey)) {
+      throw new Error(`Circular OpenAPI reference: ${referenceKey}`)
+    }
 
-  return spec
+    const nextAncestors = new Set(ancestors)
+    nextAncestors.add(referenceKey)
+    const resolved = await resolveOpenAPIValue(
+      clone(target),
+      targetDocument,
+      targetUrl,
+      cache,
+      nextAncestors
+    )
+    const siblingEntries = Object.entries(value).filter(([key]) => key !== '$ref')
+
+    if (siblingEntries.length === 0) {
+      return resolved
+    }
+
+    const siblings = await resolveOpenAPIValue(
+      Object.fromEntries(siblingEntries),
+      document,
+      documentUrl,
+      cache,
+      ancestors
+    )
+
+    return resolved && typeof resolved === 'object' && !Array.isArray(resolved)
+      ? { ...resolved, ...siblings }
+      : resolved
+  }
+
+  const entries = await Promise.all(Object.entries(value).map(async ([key, item]) => ([
+    key,
+    await resolveOpenAPIValue(item, document, documentUrl, cache, ancestors)
+  ])))
+
+  return Object.fromEntries(entries)
+}
+
+async function resolveOpenAPIRefs(document, baseUrl, cache) {
+  return resolveOpenAPIValue(clone(document), document, baseUrl, cache)
 }
 
 async function loadSpec() {
   const url = new URL(sourceUrl.value, window.location.href).toString()
-  const document = await fetchJson(url, new Map())
-  resolvedSpec.value = await resolvePathRefs(document, url)
+  const cache = new Map()
+  const document = await fetchJson(url, cache)
+  resolvedSpec.value = await resolveOpenAPIRefs(document, url, cache)
 }
 
 onMounted(async () => {
@@ -101,9 +161,15 @@ const config = computed(() => ({
 </script>
 
 <template>
-  <div class="scalar-api-page">
-    <ApiReference v-if="resolvedSpec" :configuration="config" />
-    <div v-else-if="loadError" class="scalar-api-error">{{ loadError }}</div>
+  <div class="scalar-api-page" data-n="scalar-api-page">
+    <ApiReference
+      v-if="resolvedSpec"
+      :configuration="config"
+      data-n="scalar-api-reference"
+    />
+    <div v-else-if="loadError" class="scalar-api-error" data-n="scalar-api-load-error">
+      {{ loadError }}
+    </div>
   </div>
 </template>
 

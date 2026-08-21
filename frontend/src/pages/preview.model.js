@@ -1,11 +1,21 @@
 const TYPE_ICONS = {
-  image: "\u{1F5BC}",
-  video: "\u{1F3AC}",
-  audio: "\u{1F3B5}",
-  html: "\u{1F310}",
-  zip: "\u{1F4E6}",
-  pdf: "\u{1F4C4}",
-  other: "\u{1F4C1}",
+  image: "file-image",
+  video: "file-play",
+  audio: "file-volume",
+  html: "file-code",
+  zip: "file-box",
+  pdf: "file-text",
+  other: "file",
+};
+
+const TYPE_LABELS = {
+  image: "图片",
+  video: "视频",
+  audio: "音频",
+  html: "HTML",
+  zip: "压缩包",
+  pdf: "PDF",
+  other: "文件",
 };
 
 const PLATFORM_FAVICONS = {
@@ -96,11 +106,18 @@ function error_message(error, fallback) {
 }
 
 function platform_favicon(platform_id) {
-  return PLATFORM_FAVICONS[platform_id] || "";
+  const key = String(platform_id || "")
+    .trim()
+    .toLowerCase();
+  const favicons = window.PLATFORM_FAVICONS || {};
+  return favicons[key] || PLATFORM_FAVICONS[key] || "";
 }
 
 function platform_name(platform_id) {
-  return PLATFORM_NAMES[platform_id] || platform_id || "";
+  const key = String(platform_id || "")
+    .trim()
+    .toLowerCase();
+  return PLATFORM_NAMES[key] || platform_id || "";
 }
 
 function format_bytes(bytes) {
@@ -118,6 +135,10 @@ function format_bytes(bytes) {
 
 function file_type_icon(file_type) {
   return TYPE_ICONS[file_type] || TYPE_ICONS.other;
+}
+
+function file_type_label(file_type) {
+  return TYPE_LABELS[file_type] || TYPE_LABELS.other;
 }
 
 function file_url(file) {
@@ -249,6 +270,7 @@ function PreviewViewModel(props) {
   const loading_ = ref(false);
   const error_ = ref("");
   const active_file_ = ref(null);
+  const gallery_file_ = ref(null);
   const zip_images_ = refarr([]);
   const zip_loading_ = ref(false);
   const zip_error_ = ref("");
@@ -280,6 +302,7 @@ function PreviewViewModel(props) {
       loading_.as(false);
       error_.as("Missing task id");
       task_.as(null);
+      gallery_file_.as(null);
       return null;
     }
     if (task_id === detail_task_id && loading_.value) {
@@ -289,6 +312,7 @@ function PreviewViewModel(props) {
     detail_task_id = task_id;
     if (task_changed) {
       task_.as(null);
+      gallery_file_.as(null);
     }
 
     const sequence = ++detail_request_sequence;
@@ -302,11 +326,15 @@ function PreviewViewModel(props) {
     if (result.error) {
       error_.as(error_message(result.error, "获取下载任务详情失败"));
       task_.as(null);
+      gallery_file_.as(null);
       return result;
     }
 
     const task = normalize_task(result.data);
     task_.as(task);
+    gallery_file_.as(
+      task.files.find((file) => file.exists) || task.files[0] || null,
+    );
     if (!props.embedded && props.app) {
       props.app.setTitle(task.name || "Preview");
     }
@@ -345,6 +373,12 @@ function PreviewViewModel(props) {
       methods.closePreview();
       return load(task_id);
     },
+    selectGalleryFile(file) {
+      if (!file || !file.exists) {
+        return;
+      }
+      gallery_file_.as(file);
+    },
     openPreview(file) {
       if (!file || !file.exists) {
         return;
@@ -367,24 +401,16 @@ function PreviewViewModel(props) {
     },
     fileURL: file_url,
     fileTypeIcon: file_type_icon,
+    fileTypeLabel: file_type_label,
     formatBytes: format_bytes,
   };
-
-  if (props.taskId && typeof props.taskId.subscribe === "function") {
-    props.taskId.subscribe({
-      onChange(task_id) {
-        const id = String(task_id || "").trim();
-        if (!id || id === detail_task_id) return;
-        methods.loadTask(id);
-      },
-    });
-  }
 
   const state = {
     task: task_,
     loading: loading_,
     error: error_,
     active_file: active_file_,
+    gallery_file: gallery_file_,
     zip_images: zip_images_,
     zip_loading: zip_loading_,
     zip_error: zip_error_,

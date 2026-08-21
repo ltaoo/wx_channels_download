@@ -1,0 +1,56 @@
+{
+  "post": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "调用微信 JSAPI - 网络与鉴权",
+    "operationId": "invoke_wechat_jsapi_network_auth",
+    "description": "网络状态、页面信息、请求转发、页面鉴权与客户端数据传输能力。",
+    "parameters": [
+      {
+        "$ref": "../jsapi_common.json#/token_parameter"
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "../jsapi/network_auth.json"
+          },
+          "examples": {
+            "get_network_type": {
+              "summary": "获取网络类型",
+              "value": {
+                "operation": "invoke",
+                "method": "getNetworkType",
+                "args": {},
+                "timeout_ms": 15000
+              }
+            },
+            "request": {
+              "summary": "通过 Bridge 发起请求",
+              "value": {
+                "operation": "invoke",
+                "method": "request",
+                "args": {
+                  "url": "https://mp.weixin.qq.com/mp/profile_ext?action=home",
+                  "method": "GET",
+                  "data": {},
+                  "header": {
+                    "Accept": "application/json"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "$ref": "../jsapi_common.json#/success_response"
+      }
+    }
+  }
+}

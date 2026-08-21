@@ -326,6 +326,8 @@ type HermesEngine struct {
 	mu             sync.Mutex
 	event_mu       sync.RWMutex
 	sem            chan struct{}
+	resource_sem   chan struct{}
+	connection_sem chan struct{}
 	jobs           map[int]*TaskJob
 	store          Store
 	logger         zerolog.Logger
@@ -335,7 +337,7 @@ type HermesEngine struct {
 	drivers        map[string]ProtocolDriver
 	hooks          *HookManager
 	postprocessor  Postprocessor
-	progress_mu    sync.Mutex
+	progress_mu    sync.RWMutex
 	progress_cache map[int]*progress_tracker // keyed by task ID
 	cfg            HermesEngineConfig
 }
@@ -344,7 +346,10 @@ type HermesEngine struct {
 type progress_tracker struct {
 	mu                   sync.Mutex
 	resources            map[int]*resource_tracker
-	order                []int     // resource IDs in merge_order
+	order                []int // resource IDs in merge_order
+	total_size           int64
+	total_downloaded     int64
+	total_speed          int64
 	last_emit_downloaded int64     // last emitted total downloaded, used to skip duplicate broadcasts
 	last_emit_speed      int64     // last emitted total speed
 	last_emit_time       time.Time // last emission time, used for keepalive when segments are connecting
@@ -409,24 +414,35 @@ func (j *TaskJob) cancellation_reason() cancellation_reason {
 
 // HermesEngineConfig contains the download scheduler's runtime configuration.
 type HermesEngineConfig struct {
-	MaxConcurrent        int
-	FilenameTemplate     string
-	BasePath             string        // Absolute download root directory.
-	ProgressEmitInterval time.Duration // Progress event emission interval, <=0 uses default 180ms
-	SpeedLimit           int64         // Per-segment download speed limit (bytes/sec), 0 means unlimited
-	SegmentConcurrency   int           // Max concurrent segments per resource, <=0 uses default 5
-	ReadTimeout          time.Duration // Timeout for a single Read() call, <=0 uses default 10s
+	MaxConcurrent         int
+	ResourceConcurrency   int // Max concurrent resources across all tasks, <=0 uses default 5
+	ConnectionConcurrency int // Optional overall safety cap; <=0 derives ResourceConcurrency*SegmentConcurrency
+	FilenameTemplate      string
+	BasePath              string        // Absolute download root directory.
+	ProgressEmitInterval  time.Duration // Progress event emission interval, <=0 uses default 180ms
+	SpeedLimit            int64         // Per-segment download speed limit (bytes/sec), 0 means unlimited
+	SegmentConcurrency    int           // Max concurrent segments per resource, <=0 uses default 5
+	ReadTimeout           time.Duration // Timeout for a single Read() call, <=0 uses default 10s
 }
 
 func (cfg HermesEngineConfig) with_defaults() HermesEngineConfig {
 	if cfg.MaxConcurrent <= 0 {
 		cfg.MaxConcurrent = 3
 	}
+	if cfg.ResourceConcurrency <= 0 {
+		cfg.ResourceConcurrency = 5
+	}
 	if cfg.ProgressEmitInterval <= 0 {
 		cfg.ProgressEmitInterval = 180 * time.Millisecond
 	}
 	if cfg.SegmentConcurrency <= 0 {
 		cfg.SegmentConcurrency = 5
+	}
+	if cfg.ConnectionConcurrency <= 0 {
+		// Match aria2's concurrency layers: active items multiplied by the
+		// per-item split count. The derived guard prevents accidental growth but
+		// does not reduce throughput permitted by those two primary limits.
+		cfg.ConnectionConcurrency = cfg.ResourceConcurrency * cfg.SegmentConcurrency
 	}
 	if cfg.ReadTimeout <= 0 {
 		cfg.ReadTimeout = default_read_timeout
@@ -463,6 +479,8 @@ func New(opt HermesNewConfig) *HermesEngine {
 	}
 	e := &HermesEngine{
 		sem:            make(chan struct{}, cfg.MaxConcurrent),
+		resource_sem:   make(chan struct{}, cfg.ResourceConcurrency),
+		connection_sem: make(chan struct{}, cfg.ConnectionConcurrency),
 		jobs:           make(map[int]*TaskJob),
 		store:          store,
 		logger:         logger,
@@ -872,68 +890,61 @@ func (d *HermesEngine) run(info *TaskJob) error {
 	download_ctx, cancel_downloads := context.WithCancel(ctx)
 	defer cancel_downloads()
 
-	var wg sync.WaitGroup
 	var first_err error
 	var err_once sync.Once
 
-	for i := range resources {
-		resource := &resources[i]
+	d.process_resources(download_ctx, resources, d.cfg.ResourceConcurrency, func(idx int, resource *ResourceJob) {
 		d.logger.Info().
 			Int("task_id", task_id).
 			Int("resource_id", resource.ID).
-			Int("resource_index", i+1).
+			Int("resource_index", idx+1).
 			Int("total_resources", len(resources)).
 			Str("resource_name", resource.Name).
 			Str("resource_unique_id", resource.UniqueID).
 			Msg("run - before download resource")
 
-		wg.Add(1)
-		go func(idx int, res *ResourceJob) {
-			defer wg.Done()
-			res_start := time.Now()
-			res.StartTime = res_start
-			file_path, err := d.download_resource(download_ctx, info, res)
-			res.FinishTime = time.Now()
-			res.Error = err
-			res.Speed = 0
-			if err == nil && res.Size > 0 {
-				res.Downloaded = res.Size
-			}
-			elapsed := time.Since(res_start).Round(time.Millisecond)
+		resource_start := time.Now()
+		resource.StartTime = resource_start
+		file_path, err := d.download_resource(download_ctx, info, resource)
+		resource.FinishTime = time.Now()
+		resource.Error = err
+		resource.Speed = 0
+		if err == nil && resource.Size > 0 {
+			resource.Downloaded = resource.Size
+		}
+		elapsed := time.Since(resource_start).Round(time.Millisecond)
 
-			results[idx] = &resource_result{file_path: file_path, err: err, elapsed: elapsed}
+		results[idx] = &resource_result{file_path: file_path, err: err, elapsed: elapsed}
 
-			if err != nil {
-				if info.cancellation_reason() == cancel_stop ||
-					(!errors.Is(err, context.Canceled) && download_ctx.Err() == nil) {
-					err_once.Do(func() {
-						first_err = fmt.Errorf("failed to download resource %s: %w", res.Name, err)
-						cancel_downloads()
-					})
-				}
-				d.logger.Error().
-					Int("task_id", task_id).
-					Int("resource_id", res.ID).
-					Int("resource_index", idx+1).
-					Str("resource_name", res.Name).
-					Str("elapsed", elapsed.String()).
-					Err(err).
-					Msg("run - resource download failed")
-				return
+		if err != nil {
+			if info.cancellation_reason() == cancel_stop ||
+				(!errors.Is(err, context.Canceled) && download_ctx.Err() == nil) {
+				err_once.Do(func() {
+					first_err = fmt.Errorf("failed to download resource %s: %w", resource.Name, err)
+					cancel_downloads()
+				})
 			}
-
-			if sz, ok := resource_sizes[res.ID]; ok {
-				completed_size.Add(sz)
-			}
-			d.logger.Info().
+			d.logger.Error().
 				Int("task_id", task_id).
-				Int("resource_id", res.ID).
-				Int("total_resources", len(resources)).
+				Int("resource_id", resource.ID).
+				Int("resource_index", idx+1).
+				Str("resource_name", resource.Name).
 				Str("elapsed", elapsed.String()).
-				Msg("run - resource downloaded")
-		}(i, resource)
-	}
-	wg.Wait()
+				Err(err).
+				Msg("run - resource download failed")
+			return
+		}
+
+		if size, ok := resource_sizes[resource.ID]; ok {
+			completed_size.Add(size)
+		}
+		d.logger.Info().
+			Int("task_id", task_id).
+			Int("resource_id", resource.ID).
+			Int("total_resources", len(resources)).
+			Str("elapsed", elapsed.String()).
+			Msg("run - resource downloaded")
+	})
 
 	// Pause/delete must not finalize. A live stop is different: the stream
 	// recorder has already merged its chunks, so continue through postprocess.

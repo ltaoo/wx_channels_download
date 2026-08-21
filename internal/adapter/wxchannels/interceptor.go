@@ -274,14 +274,14 @@ func create_interceptor_plugins(cfg *interceptor_settings) []*proxy.Plugin {
 					frontend.AppendScripts(&injected, crossorigin_attr, url_build("/inject/error.js", version_query))
 				}
 				frontend.AppendStylesheets(&injected, "", url_build("/inject/components.css", version_query))
-				frontend.AppendStylesheets(&injected, "", url_build("/public/timeless/0.31.2/timeless.weui.css"))
+				frontend.AppendStylesheets(&injected, "", url_build("/public/timeless/0.31.4/timeless.weui.css"))
 				frontend.AppendScripts(
 					&injected,
 					crossorigin_attr,
-					url_build("/public/timeless/0.31.2/timeless.umd.min.js"),
-					url_build("/public/timeless/0.31.2/timeless.weui.umd.min.js"),
-					url_build("/public/timeless/0.31.2/timeless.dom.umd.min.js"),
-					url_build("/public/timeless/0.31.2/timeless.web.umd.min.js"),
+					url_build("/public/timeless/0.31.4/timeless.umd.min.js"),
+					url_build("/public/timeless/0.31.4/timeless.weui.umd.min.js"),
+					url_build("/public/timeless/0.31.4/timeless.dom.umd.min.js"),
+					url_build("/public/timeless/0.31.4/timeless.web.umd.min.js"),
 				)
 				frontend_config := make(map[string]any, len(variables)+2)
 				for key, value := range variables {
@@ -378,6 +378,36 @@ func create_interceptor_plugins(cfg *interceptor_settings) []*proxy.Plugin {
 				js_script = js_import_reg.ReplaceAllString(js_script, `import"$1.js`+v+`"`)
 
 				if strings.Contains(pathname, "virtual_svg-icons-register.publish") {
+					flow_list_variable_name := "yt"
+					if m := js_flow_tab_reg.FindStringSubmatch(js_script); len(m) >= 2 {
+						flow_list_variable_name = m[1]
+					}
+					{
+						js_go_next_feed := fmt.Sprintf(`goToNextFlowFeed:async function(v){
+						await $1(v);
+						// console.log('goToNextFlowFeed', %[1]s);
+						if (!%[1]s || !%[1]s.value.feeds) {
+							return;
+						}
+						var feed = %[1]s.value.feeds[%[1]s.value.currentFeedIndex];
+						// console.log("before GotoNextFeed", %[1]s, feed);
+						typeof WXU !== "undefined" && WXU.emit("channels:GotoNextFeed", feed);
+					}`, flow_list_variable_name)
+						js_script = js_go_to_next_flow_reg.ReplaceAllString(js_script, js_go_next_feed)
+					}
+					{
+						js_go_prev_feed := fmt.Sprintf(`goToPrevFlowFeed:async function(v){
+						await $1(v);
+						// console.log('goToPrevFlowFeed', %[1]s);
+						if (!%[1]s || !%[1]s.value.feeds) {
+							return;
+						}
+						var feed = %[1]s.value.feeds[%[1]s.value.currentFeedIndex];
+						// console.log("before GotoPrevFeed", %[1]s, feed);
+						typeof WXU !== "undefined" && WXU.emit("channels:GotoPrevFeed", feed);
+					}`, flow_list_variable_name)
+						js_script = js_go_to_prev_flow_reg.ReplaceAllString(js_script, js_go_prev_feed)
+					}
 					{
 						js_init := `async finderInit() {
 					var result = await (async () => {

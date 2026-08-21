@@ -1,0 +1,66 @@
+{
+  "post": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "调用微信 JSAPI - 小程序与视频号",
+    "operationId": "invoke_wechat_jsapi_mini_program_finder",
+    "description": "小程序预加载与跳转、视频号内容、微信搜索和企业微信跳转能力。",
+    "parameters": [
+      {
+        "$ref": "../jsapi_common.json#/token_parameter"
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "../jsapi/mini_program_finder.json"
+          },
+          "examples": {
+            "open_weapp": {
+              "summary": "打开小程序",
+              "value": {
+                "operation": "invoke",
+                "method": "openWeApp",
+                "args": {
+                  "userName": "gh_xxxxxxxx@app",
+                  "relativeURL": "pages/index/index.html?from=mp",
+                  "scene": 1058,
+                  "sceneNote": "mp:wx1234567890abcdef:article",
+                  "appVersion": 1,
+                  "sourceAppId": "wx1234567890abcdef"
+                }
+              }
+            },
+            "open_finder_view": {
+              "summary": "打开视频号内容",
+              "value": {
+                "operation": "invoke",
+                "method": "openFinderView",
+                "args": {
+                  "extInfo": {
+                    "action": "openFinderFeed",
+                    "feedID": "finder_feed_id",
+                    "nonceID": "finder_username",
+                    "notGetReleatedList": 0,
+                    "shareScene": 25,
+                    "commentScene": 26,
+                    "requestScene": 27,
+                    "reportExtraInfo": "{}"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "$ref": "../jsapi_common.json#/success_response"
+      }
+    }
+  }
+}

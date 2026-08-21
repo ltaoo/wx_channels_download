@@ -63,27 +63,6 @@
     "/play": {
       "$ref": "./channels/play.json"
     },
-    "/api/mp/list": {
-      "$ref": "./mp/list.json"
-    },
-    "/api/mp/msg/list": {
-      "$ref": "./mp/msg_list.json"
-    },
-    "/api/mp/delete": {
-      "$ref": "./mp/delete.json"
-    },
-    "/api/mp/refresh_with_frontend": {
-      "$ref": "./mp/refresh_with_frontend.json"
-    },
-    "/api/mp/refresh": {
-      "$ref": "./mp/refresh.json"
-    },
-    "/rss/mp": {
-      "$ref": "./mp/rss.json"
-    },
-    "/mp/proxy": {
-      "$ref": "./mp/proxy.json"
-    },
     "/api/v1/download_task/prepare": {
       "$ref": "./download_task/prepare.json"
     },
@@ -134,15 +113,6 @@
     },
     "/ws/v1/download_task": {
       "$ref": "./download_task/ws.json"
-    },
-    "/api/mp/ws_pool": {
-      "$ref": "./mp/ws_pool.json"
-    },
-    "/api/mp/article/list": {
-      "$ref": "./mp/article_list.json"
-    },
-    "/api/mp/download_all": {
-      "$ref": "./mp/download_all.json"
     }
   }
 }

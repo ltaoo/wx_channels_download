@@ -314,7 +314,7 @@ function LogsPageJsonPreviewDialog(props) {
       class: "wx-logs-json-dialog",
       closeLabel: "关闭 JSON 预览",
     },
-    [
+    () => [
       DialogTitle({ class: "wx-logs-json-dialog-header" }, [
         View({ class: "wx-logs-json-dialog-heading-icon" }, [
           Timeless.Icon({ name: "braces", size: 18 }),
