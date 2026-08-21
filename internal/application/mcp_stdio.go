@@ -114,7 +114,7 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 		cfg.WorkDir,
 		api_config.DownloadDir,
 	)
-	scraper_job_service := services.NewScraperJobService(new_scraper_platform_checker(cfg), nil, logger)
+	scraper_job_service := services.NewScraperJobService(new_scraper_platform_checker(), nil, logger)
 	scraper_job_service.SetRetentionLimit(cfg.GetInt("scraper.retainedJobs"))
 	data_service := services.NewDataQueryService(services.DataQueryServiceConfig{
 		DB:                   app.DB,
@@ -130,9 +130,6 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 	adapter_handles := make([]adapter.RuntimeHandle, 0)
 	for _, platform_id := range adapter.IDs() {
 		handler := adapter.Get(platform_id)
-		if !adapter.RuntimeEnabled(handler, cfg) {
-			continue
-		}
 		runtime_adapter, ok := handler.(adapter.RuntimeAdapter)
 		if !ok {
 			continue

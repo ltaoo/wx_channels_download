@@ -9,7 +9,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"wx_channel/internal/adapter"
-	"wx_channel/internal/config"
 	"wx_channel/internal/events"
 	"wx_channel/pkg/cache"
 	"wx_channel/pkg/scraper/wxmp"
@@ -31,7 +30,6 @@ type OfficialAccountAdapter struct {
 var (
 	_ adapter.PlatformAdapter          = (*OfficialAccountAdapter)(nil)
 	_ adapter.RuntimeAdapter           = (*OfficialAccountAdapter)(nil)
-	_ adapter.RuntimeEnablement        = (*OfficialAccountAdapter)(nil)
 	_ adapter.RuntimeHandle            = (*OfficialAccountAdapter)(nil)
 	_ adapter.FetchCacheAdapter        = (*OfficialAccountAdapter)(nil)
 	_ adapter.FetchDownloadTaskBuilder = (*OfficialAccountAdapter)(nil)
@@ -48,17 +46,6 @@ func NewOfficialAccountAdapter() *OfficialAccountAdapter {
 }
 
 func (a *OfficialAccountAdapter) PlatformID() string { return PlatformID }
-
-// RuntimeEnabled reports whether the official-account runtime is enabled.
-func (adapter_instance *OfficialAccountAdapter) RuntimeEnabled(application_config *config.Config) bool {
-	if adapter_instance == nil || application_config == nil {
-		return false
-	}
-	if application_config.IsSet("mp.enabled") {
-		return application_config.GetBool("mp.enabled")
-	}
-	return !application_config.GetBool("mp.disabled")
-}
 
 func (a *OfficialAccountAdapter) Fetch(raw_url string) (any, error) {
 	raw_url = strings.TrimSpace(raw_url)

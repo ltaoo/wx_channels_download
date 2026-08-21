@@ -10,7 +10,6 @@ import (
 
 // MPPluginConfig implements config.Configurable for wxmp (official account) plugin config.
 type MPPluginConfig struct {
-	Enabled                   bool
 	RemoteServerProtocol      string
 	RemoteServerHostname      string
 	RemoteServerPort          int
@@ -24,15 +23,6 @@ func (c *MPPluginConfig) ConfigNamespace() string { return "mp" }
 
 func (c *MPPluginConfig) ConfigSchema() []config.ConfigField {
 	return []config.ConfigField{
-		{
-			Key:         "enabled",
-			Type:        config.ConfigTypeBool,
-			Default:     false,
-			Description: "是否启用公众号本地服务，本地服务会提供接口、RSS 等功能",
-			Title:       "启用本地服务",
-			Group:       "OfficialAccount",
-			Deprecated:  true,
-		},
 		{
 			Key:         "remoteServer.protocol",
 			Type:        config.ConfigTypeString,
@@ -97,7 +87,6 @@ func (c *MPPluginConfig) ConfigSchema() []config.ConfigField {
 }
 
 func (c *MPPluginConfig) ApplyConfig(sub *config.SubViper) error {
-	c.Enabled = sub.GetBool("enabled")
 	c.RemoteServerProtocol = sub.GetString("remoteServer.protocol")
 	c.RemoteServerHostname = sub.GetString("remoteServer.hostname")
 	c.RemoteServerPort = sub.GetInt("remoteServer.port")
@@ -112,13 +101,9 @@ func new_official_account_config(cfg *config.Config) *wxmp.OfficialAccountConfig
 	protocol := cfg.GetString("api.protocol")
 	hostname := cfg.GetString("api.hostname")
 	port := cfg.GetInt("api.port")
-	enabled := !cfg.GetBool("mp.disabled")
-	if cfg.IsSet("mp.enabled") {
-		enabled = cfg.GetBool("mp.enabled")
-	}
 	settings := &wxmp.OfficialAccountConfig{
 		RootDir:                   cfg.RootDir,
-		Enabled:                   enabled,
+		Enabled:                   true,
 		WorkDir:                   cfg.WorkDir,
 		DebugShowError:            cfg.GetBool("debug.error"),
 		Protocol:                  protocol,

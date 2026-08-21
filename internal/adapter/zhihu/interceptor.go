@@ -15,7 +15,6 @@ import (
 // InterceptorPluginConfig owns the zhihu scraper configuration used
 // by the local interceptor.
 type InterceptorPluginConfig struct {
-	enabled            bool
 	version            string
 	global_script_path string
 }
@@ -26,7 +25,6 @@ func NewConfig(cfg *config.Config) *InterceptorPluginConfig {
 		return &InterceptorPluginConfig{}
 	}
 	return &InterceptorPluginConfig{
-		enabled:            cfg.GetBool("zhihu.enabled"),
 		version:            cfg.Version,
 		global_script_path: cfg.GlobalScriptPath,
 	}
@@ -35,7 +33,7 @@ func NewConfig(cfg *config.Config) *InterceptorPluginConfig {
 // GetPlugins returns zhihu injection and callback plugins wired to
 // adapter-owned persistence and browse events.
 func (c *InterceptorPluginConfig) GetPlugins() []interface{} {
-	if c == nil || !c.enabled {
+	if c == nil {
 		return nil
 	}
 

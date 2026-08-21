@@ -1204,13 +1204,6 @@ func config_value_float64(value interface{}) float64 {
 	}
 }
 
-func IsMPEnabled() bool {
-	if viper.IsSet("mp.enabled") {
-		return viper.GetBool("mp.enabled")
-	}
-	return !viper.GetBool("mp.disabled")
-}
-
 func EnsureDirIfMissing(path string) error {
 	_, err := os.Stat(path)
 	if err == nil {

@@ -69,7 +69,7 @@ func create_official_account_interceptor_plugin(cfg *wxmp.OfficialAccountConfig,
 		OnResponse: func(ctx proxy.Context) {
 			response_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req().URL.Hostname()
-			if !cfg.Enabled || hostname != "mp.weixin.qq.com" || !strings.Contains(response_content_type, "text/html") {
+			if hostname != "mp.weixin.qq.com" || !strings.Contains(response_content_type, "text/html") {
 				return
 			}
 			response_body, err := ctx.GetResponseBody()

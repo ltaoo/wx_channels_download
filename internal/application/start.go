@@ -154,7 +154,7 @@ func Start(cfg *config.Config) error {
 	fs_service := services.NewFSService()
 	certificate_service := services.NewCertificateService(cfg)
 	scraper_job_service := services.NewScraperJobService(
-		new_scraper_platform_checker(cfg),
+		new_scraper_platform_checker(),
 		api.BroadcastScraperJobEvent,
 		logger,
 	)
@@ -288,7 +288,7 @@ func Start(cfg *config.Config) error {
 			_ = api_srv.Stop()
 		}
 	})
-	publish_registered_adapter_statuses(bus, cfg)
+	publish_registered_adapter_statuses(bus)
 	// admin_srv := admin.NewAdminServer(cfg, b, bus)
 	if cfg.GlobalScriptPath != "" {
 		table_data = append(table_data, []string{"Global Script", cfg.GlobalScriptPath})
@@ -302,10 +302,6 @@ func Start(cfg *config.Config) error {
 	adapter_handles := make([]adapter.RuntimeHandle, 0)
 	for _, platform_id := range adapter.IDs() {
 		handler := adapter.Get(platform_id)
-		if !adapter.RuntimeEnabled(handler, cfg) {
-			logger.Info().Str("platform", platform_id).Msg("adapter runtime disabled by config")
-			continue
-		}
 		runtime_adapter, ok := handler.(adapter.RuntimeAdapter)
 		if !ok {
 			continue
@@ -482,34 +478,26 @@ func http_service_url(addr string) string {
 	return "http://" + addr
 }
 
-func publish_registered_adapter_statuses(bus *events.Bus, application_config *config.Config) {
+func publish_registered_adapter_statuses(bus *events.Bus) {
 	if bus == nil {
 		return
 	}
 	for _, descriptor := range adapter.StatusDescriptors() {
-		reason := "等待 adapter 状态上报"
-		if !adapter.RuntimeEnabled(adapter.Get(descriptor.Platform), application_config) {
-			reason = "已在配置中禁用"
-		}
 		bus.Publish(events.PlatformStatusChanged{
 			Platform:  descriptor.Platform,
 			Key:       descriptor.Key,
 			Name:      descriptor.Name,
 			Status:    "unavailable",
 			Available: false,
-			Reason:    reason,
+			Reason:    "等待 adapter 状态上报",
 		})
 	}
 }
 
-func new_scraper_platform_checker(application_config *config.Config) services.ScraperPlatformChecker {
+func new_scraper_platform_checker() services.ScraperPlatformChecker {
 	return func(platform_id string, _ string) error {
-		handler := adapter.Get(platform_id)
-		if handler == nil {
+		if adapter.Get(platform_id) == nil {
 			return fmt.Errorf("未注册的平台 adapter: %s", platform_id)
-		}
-		if !adapter.RuntimeEnabled(handler, application_config) {
-			return fmt.Errorf("平台 adapter 未启用: %s", platform_id)
 		}
 		return nil
 	}

@@ -30,7 +30,6 @@ type ChannelsAdapter struct {
 var (
 	_ adapter.PlatformAdapter          = (*ChannelsAdapter)(nil)
 	_ adapter.RuntimeAdapter           = (*ChannelsAdapter)(nil)
-	_ adapter.RuntimeEnablement        = (*ChannelsAdapter)(nil)
 	_ adapter.RuntimeHandle            = (*ChannelsAdapter)(nil)
 	_ adapter.FetchDownloadTaskBuilder = (*ChannelsAdapter)(nil)
 	_ adapter.Postprocessor            = (*ChannelsAdapter)(nil)
@@ -52,11 +51,6 @@ func NewChannelsAdapter() *ChannelsAdapter {
 }
 
 func (a *ChannelsAdapter) PlatformID() string { return PlatformID }
-
-// RuntimeEnabled reports whether the Channels runtime is enabled in config.
-func (adapter_instance *ChannelsAdapter) RuntimeEnabled(application_config *config.Config) bool {
-	return adapter_instance != nil && application_config != nil && application_config.GetBool("channels.enabled")
-}
 
 func (a *ChannelsAdapter) PlatformStatuses() []adapter.PlatformStatusDescriptor {
 	return []adapter.PlatformStatusDescriptor{

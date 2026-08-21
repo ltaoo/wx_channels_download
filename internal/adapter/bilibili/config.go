@@ -6,22 +6,13 @@ import (
 
 // BilibiliPluginConfig implements config.Configurable for bilibili plugin config.
 type BilibiliPluginConfig struct {
-	Enabled bool
-	Cookie  string
+	Cookie string
 }
 
 func (c *BilibiliPluginConfig) ConfigNamespace() string { return "bilibili" }
 
 func (c *BilibiliPluginConfig) ConfigSchema() []config.ConfigField {
 	return []config.ConfigField{
-		{
-			Key:         "enabled",
-			Type:        config.ConfigTypeBool,
-			Default:     false,
-			Description: "是否记录 B 站页面浏览记录",
-			Title:       "记录 B 站浏览",
-			Group:       "Bilibili",
-		},
 		{
 			Key:         "cookie",
 			Type:        config.ConfigTypeText,
@@ -35,7 +26,6 @@ func (c *BilibiliPluginConfig) ConfigSchema() []config.ConfigField {
 }
 
 func (c *BilibiliPluginConfig) ApplyConfig(sub *config.SubViper) error {
-	c.Enabled = sub.GetBool("enabled")
 	c.Cookie = sub.GetString("cookie")
 	return nil
 }

@@ -72,7 +72,6 @@ update:
   mirror: ""
 
 channels:
-  enabled: true
   disableLocationToHome: false
   download:
     defaultHighest: false
@@ -82,7 +81,6 @@ channels:
     forceCheckAllFeeds: false
 
 mp:
-  enabled: false
   remoteServer:
     protocol: "http"
     hostname: ""

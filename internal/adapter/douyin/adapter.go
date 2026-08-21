@@ -39,16 +39,10 @@ var (
 	_ adapter.ProgressFetchAdapter     = (*handler)(nil)
 	_ adapter.FetchDownloadTaskBuilder = (*handler)(nil)
 	_ adapter.RuntimeAdapter           = (*handler)(nil)
-	_ adapter.RuntimeEnablement        = (*handler)(nil)
 	_ adapter.RuntimeHandle            = (*handler)(nil)
 )
 
 func (h *handler) PlatformID() string { return PlatformID }
-
-// RuntimeEnabled reports whether the Douyin runtime is enabled in config.
-func (handler_instance *handler) RuntimeEnabled(application_config *config.Config) bool {
-	return handler_instance != nil && application_config != nil && application_config.GetBool("douyin.enabled")
-}
 
 // RegisterRuntime attaches the application logger to the Douyin adapter.
 func (h *handler) RegisterRuntime(deps *adapter.AdapterOptions) (adapter.RuntimeHandle, error) {

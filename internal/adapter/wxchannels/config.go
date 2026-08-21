@@ -4,7 +4,6 @@ import "wx_channel/internal/config"
 
 // ChannelsPluginConfig implements config.Configurable for wxchannels plugin config.
 type ChannelsPluginConfig struct {
-	Enabled                    bool
 	DisableLocationToHome      bool
 	RefreshInterval            int
 	DownloadDefaultHighest     bool
@@ -18,14 +17,6 @@ func (c *ChannelsPluginConfig) ConfigNamespace() string { return "channels" }
 
 func (c *ChannelsPluginConfig) ConfigSchema() []config.ConfigField {
 	return []config.ConfigField{
-		{
-			Key:         "enabled",
-			Type:        config.ConfigTypeBool,
-			Default:     true,
-			Description: "是否启用视频号运行时、页面通信和流量拦截",
-			Title:       "启用视频号",
-			Group:       "Channels",
-		},
 		{
 			Key:         "disableLocationToHome",
 			Type:        config.ConfigTypeBool,
@@ -93,7 +84,6 @@ func (c *ChannelsPluginConfig) ConfigSchema() []config.ConfigField {
 }
 
 func (c *ChannelsPluginConfig) ApplyConfig(sub *config.SubViper) error {
-	c.Enabled = sub.GetBool("enabled")
 	c.DisableLocationToHome = sub.GetBool("disableLocationToHome")
 	c.RefreshInterval = sub.GetInt("refreshInterval")
 	c.DownloadDefaultHighest = sub.GetBool("download.defaultHighest")
