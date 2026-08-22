@@ -529,6 +529,7 @@ function TableList(props) {
         when: table_has_rows(props.rows),
         ok() {
           return For({
+            key: props.rowKey,
             each: props.rows,
             render(item_) {
               return TableDataRow({ ...props, itemSource: item_ });
@@ -600,7 +601,15 @@ function TableLoading(props) {
   const render_skeleton_row = props.renderSkeletonRow;
   return View(
     {
-      class: table_class_names(["wx-table-panel", props.loadingClass]),
+      class: table_class_names([
+        "wx-table-list",
+        props.listClass,
+        props.loadingClass,
+      ]),
+      style: {
+        overflow: "auto",
+        ...(props.listStyle || {}),
+      },
       attributes: { n: `${props.name}-loading`, role: "status" },
     },
     typeof render_skeleton_row === "function"
@@ -659,6 +668,7 @@ function TablePanel(props, render_list) {
 function table_render(props, render_list) {
   const name = props.name || "table";
   const status = props.status || "normal";
+  const show_header_when_empty = props.showHeaderWhenEmpty !== false;
   const table_props = {
     ...props,
     name,
@@ -688,11 +698,13 @@ function table_render(props, render_list) {
   }
 
   function render_initial() {
-    return TableLoading({
-      ...table_props,
-      loadingClass: props.loadingClass || "wx-content-rows dm-panel",
-      skeletonCount: props.skeletonCount || 8,
-    });
+    return TablePanel(table_props, () =>
+      TableLoading({
+        ...table_props,
+        loadingClass: props.loadingClass,
+        skeletonCount: props.skeletonCount || 8,
+      }),
+    );
   }
 
   function render_error() {
@@ -718,7 +730,7 @@ function table_render(props, render_list) {
         cases: {
           initial: render_initial,
           empty() {
-            return props.showHeaderWhenEmpty ? render_panel() : render_empty();
+            return show_header_when_empty ? render_panel() : render_empty();
           },
           error: render_error,
           normal: render_panel,

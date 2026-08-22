@@ -21,7 +21,13 @@
     },
   });
 
-  if (global.DL && global.DownloaderModel && global.DownloadTaskModel) {
+  if (
+    global.DL &&
+    global.DownloaderModel &&
+    global.DownloadTaskModel &&
+    global.ScraperModel &&
+    global.ScraperJobModel
+  ) {
     return;
   }
 
@@ -351,6 +357,9 @@
     let finished_state = deferred();
     let terminal_state = null;
     let last_failure = null;
+    let success_detail = null;
+    let success_detail_promise = null;
+    let success_detail_generation = 0;
     let disposed = false;
 
     const state = {
@@ -385,6 +394,7 @@
       fail,
       begin,
       dispose,
+      set_success_detail,
     };
     const model = {
       state,
@@ -408,14 +418,96 @@
       _fail: handler.fail,
       _begin: handler.begin,
       _dispose: handler.dispose,
+      _setSuccessDetail: handler.set_success_detail,
     };
 
     function on_success(listener) {
+      if (typeof listener !== "function") {
+        throw new TypeError("event listener must be a function");
+      }
       const unsubscribe = events.success.subscribe(listener);
       if (terminal_state === "success") {
-        global.queueMicrotask(() => listener(model));
+        if (success_detail) {
+          global.queueMicrotask(() => listener(success_detail));
+        } else {
+          start_success_detail_load();
+        }
       }
       return unsubscribe;
+    }
+
+    function reset_success_detail() {
+      success_detail_generation += 1;
+      success_detail = null;
+      success_detail_promise = null;
+    }
+
+    function set_success_detail(detail) {
+      success_detail = detail && typeof detail === "object" ? detail : null;
+      success_detail_promise = null;
+      return model;
+    }
+
+    function start_success_detail_load() {
+      if (disposed || terminal_state !== "success") {
+        return;
+      }
+      if (success_detail) {
+        events.success.emit(success_detail);
+        return;
+      }
+      if (success_detail_promise) {
+        return;
+      }
+      const id = id_.value;
+      const detail_request = reqs.download && reqs.download.detail;
+      if (
+        id === undefined ||
+        id === null ||
+        id === "" ||
+        !detail_request ||
+        typeof detail_request.run !== "function"
+      ) {
+        success_detail = raw_.value;
+        events.success.emit(success_detail);
+        return;
+      }
+
+      const generation = success_detail_generation;
+      success_detail_promise = detail_request
+        .run({ id })
+        .then((result) => {
+          if (!result || result.error) {
+            throw (
+              (result && result.error) ||
+              new Error("Load completed download task detail failed")
+            );
+          }
+          if (
+            disposed ||
+            terminal_state !== "success" ||
+            generation !== success_detail_generation
+          ) {
+            return null;
+          }
+          const detail = result.data || {};
+          success_detail = detail;
+          success_detail_promise = null;
+          update(detail);
+          events.success.emit(detail);
+          return detail;
+        })
+        .catch((error) => {
+          if (generation === success_detail_generation) {
+            success_detail_promise = null;
+            events.change.emit({
+              task: model,
+              type: "detail_error",
+              error: error_value(error),
+            });
+          }
+          return null;
+        });
     }
 
     function on_fail(listener) {
@@ -497,6 +589,7 @@
     function begin(status) {
       terminal_state = null;
       last_failure = null;
+      reset_success_detail();
       error_.as(null);
       finished_state = deferred();
       if (status) {
@@ -575,6 +668,7 @@
       ) {
         terminal_state = null;
         last_failure = null;
+        reset_success_detail();
         error_.as(null);
         finished_state = deferred();
       }
@@ -586,7 +680,14 @@
           finished_state.settled = true;
           finished_state.resolve(model);
         }
-        events.success.emit(model);
+        // A completed task restored from the list already has enough data for
+        // the table. Hydrating every restored task here runs the shared detail
+        // RequestCore concurrently, which coalesces calls and can apply one
+        // task's detail response to the other task models. A late onSuccess
+        // subscriber still loads the detail on demand.
+        if (!success_statuses.has(previous_status)) {
+          start_success_detail_load();
+        }
       } else if (failure_statuses.has(next_status) && terminal_state !== "fail") {
         fail(message || `Download task ${next_status}`, {
           creation: false,
@@ -761,6 +862,12 @@
     return request.get("/api/v1/download_task/list", params);
   }
 
+  function get_download_task_detail(params) {
+    return request.get("/api/v1/download_task/detail", {
+      id: params && (params.id ?? params.task_id),
+    });
+  }
+
   function delete_download_task(params) {
     return request.post("/api/v1/download_task/delete", {
       task_ids: params.ids,
@@ -828,7 +935,7 @@
    *   platform: "wxchannels",
    *   skip: true,
    * });
-   * task$.onSuccess((task) => console.log(task.files[0].output_path));
+   * task$.onSuccess((detail) => console.log(detail.files[0].local_path));
    * task$.onFailed((error) => console.error(error));
    */
   function DownloaderModel(props) {
@@ -851,7 +958,7 @@
       download: {
         create: new RequestCore(create_download_task, { client: http_client }),
         list: new RequestCore(list_download_tasks, { client: http_client }),
-        detail: new RequestCore(list_download_tasks, { client: http_client }),
+        detail: new RequestCore(get_download_task_detail, { client: http_client }),
         delete: new RequestCore(delete_download_task, { client: http_client }),
         start: new RequestCore(start_download_task, { client: http_client }),
         resume: new RequestCore(resume_download_task, { client: http_client }),
@@ -1059,13 +1166,16 @@
       return task;
     }
 
-    function adopt_pending_task(task, record) {
+    function adopt_pending_task(task, record, success_detail) {
       const id = record && (record.id ?? record.task_id);
       if (id === undefined || id === null || id === "") {
         throw new Error("Created download task has no id");
       }
       const key = String(id);
       const existing = tasks_by_id.get(key);
+      if (success_detail) {
+        task._setSuccessDetail(success_detail);
+      }
       task._update(
         Object.prototype.hasOwnProperty.call(record, "status")
           ? record
@@ -1107,9 +1217,10 @@
           throw (result && result.error) || new Error("Create download task failed");
         }
         let record = created_task_record(result.data);
+        let success_detail = null;
         if (task_was_skipped(record)) {
           const detail_result = await reqs.download.detail.run({
-            task_id: record.id ?? record.task_id,
+            id: record.id ?? record.task_id,
           });
           if (!detail_result || detail_result.error) {
             throw (
@@ -1117,9 +1228,10 @@
               new Error("Load skipped download task failed")
             );
           }
-          record = Object.assign({}, record, detail_result.data || {});
+          success_detail = detail_result.data || {};
+          record = Object.assign({}, record, success_detail);
         }
-        return adopt_pending_task(task, record);
+        return adopt_pending_task(task, record, success_detail);
       } catch (error) {
         task._fail(error, { creation: true, terminal: true });
         task_list_.as((task_list_.value || []).filter((current) => current !== task));
@@ -1683,6 +1795,1104 @@
     return domain;
   }
 
+  const scraper_terminal_statuses = new Set([
+    "completed",
+    "failed",
+    "interrupted",
+  ]);
+
+  function scraper_result_lower_camel_case(value) {
+    const key = String(value || "");
+    if (!/^[A-Z]/.test(key)) {
+      return key;
+    }
+    let uppercase_end = 0;
+    while (uppercase_end < key.length && /[A-Z]/.test(key[uppercase_end])) {
+      uppercase_end += 1;
+    }
+    if (uppercase_end > 1 && uppercase_end < key.length) {
+      uppercase_end -= 1;
+    }
+    return key.slice(0, uppercase_end).toLowerCase() + key.slice(uppercase_end);
+  }
+
+  function normalize_scraper_result_keys(value) {
+    if (Array.isArray(value)) {
+      let normalized = value;
+      value.forEach((item, index) => {
+        const normalized_item = normalize_scraper_result_keys(item);
+        if (normalized_item !== item) {
+          if (normalized === value) normalized = value.slice();
+          normalized[index] = normalized_item;
+        }
+      });
+      return normalized;
+    }
+    if (!value || typeof value !== "object") {
+      return value;
+    }
+
+    let normalized = value;
+    Object.keys(value).forEach((key) => {
+      const normalized_key = scraper_result_lower_camel_case(key);
+      const normalized_item = normalize_scraper_result_keys(value[key]);
+      if (normalized_key === key && normalized_item === value[key]) {
+        return;
+      }
+      if (normalized === value) normalized = Object.assign({}, value);
+      if (normalized_key !== key) {
+        delete normalized[key];
+      }
+      if (
+        normalized_key === key ||
+        !Object.prototype.hasOwnProperty.call(value, normalized_key)
+      ) {
+        normalized[normalized_key] = normalized_item;
+      }
+    });
+    return normalized;
+  }
+
+  function normalize_scraper_job_output(output) {
+    if (
+      !output ||
+      typeof output !== "object" ||
+      !Object.prototype.hasOwnProperty.call(output, "result")
+    ) {
+      return output;
+    }
+    const normalized_result = normalize_scraper_result_keys(output.result);
+    return normalized_result === output.result
+      ? output
+      : Object.assign({}, output, { result: normalized_result });
+  }
+
+  function scraper_item_key(item) {
+    if (!item || typeof item !== "object") {
+      return "";
+    }
+    return String(item.key || item.type || item.path || item.id || "").trim();
+  }
+
+  function merge_scraper_items(current, updates) {
+    const merged = Array.isArray(current) ? current.slice() : [];
+    if (!Array.isArray(updates)) {
+      return merged;
+    }
+    updates.forEach((item) => {
+      const key = scraper_item_key(item);
+      const index = key
+        ? merged.findIndex((current_item) => scraper_item_key(current_item) === key)
+        : -1;
+      if (index >= 0) {
+        merged[index] = item;
+      } else {
+        merged.push(item);
+      }
+    });
+    return merged;
+  }
+
+  function scraper_output(current, record, event) {
+    const job = record && typeof record === "object" ? record : {};
+    const final_output = normalize_scraper_job_output(
+      job.output && typeof job.output === "object" ? job.output : {},
+    );
+    const next = Object.assign({}, current || {}, final_output);
+    const job_id = job.id || final_output.job_id;
+    if (job_id) {
+      next.job_id = job_id;
+    }
+    if (job.platform || final_output.platform) {
+      next.platform = job.platform || final_output.platform;
+    }
+    if (job.url || final_output.url) {
+      next.url = job.url || final_output.url;
+    }
+
+    const raw_sources = [job, final_output, event];
+    raw_sources.forEach((source) => {
+      if (
+        source &&
+        Object.prototype.hasOwnProperty.call(source, "raw_result")
+      ) {
+        next.raw_result = source.raw_result;
+      }
+    });
+
+    next.content =
+      (event && event.content) ||
+      final_output.content ||
+      job.content ||
+      next.content ||
+      null;
+    next.account =
+      (event && event.account) ||
+      final_output.account ||
+      job.account ||
+      next.account ||
+      null;
+    next.content_details = merge_scraper_items(
+      merge_scraper_items(
+        merge_scraper_items(next.content_details, job.content_details),
+        final_output.content_details,
+      ),
+      event && event.content_detail ? [event.content_detail] : [],
+    );
+    next.cache_entries = merge_scraper_items(
+      merge_scraper_items(
+        merge_scraper_items(next.cache_entries, job.cache_entries),
+        final_output.cache_entries,
+      ),
+      event && event.cache_entry ? [event.cache_entry] : [],
+    );
+    if (final_output.download_info) {
+      next.download_info = final_output.download_info;
+    }
+    if (Object.prototype.hasOwnProperty.call(final_output, "result")) {
+      next.result = final_output.result;
+    }
+    return next;
+  }
+
+  function scraper_requests(client) {
+    return {
+      create: new RequestCore(
+        (body) => request.post("/api/scraper/fetch", body),
+        { client },
+      ),
+      detail: new RequestCore(
+        (params) => request.get("/api/scraper/job", params),
+        { client },
+      ),
+      interrupt: new RequestCore(
+        (body) => request.post("/api/scraper/fetch/interrupt", body),
+        { client },
+      ),
+    };
+  }
+
+  /**
+   * A stable domain object for one asynchronous scraper job.
+   *
+   * `onMessage` receives the `/ws/scraper` envelope. `onComplete` receives
+   * the final `/api/scraper/job` output and this model as its second argument.
+   */
+  function ScraperJobModel(props) {
+    const options = props || {};
+    const initial = options.record || {};
+    const owner = options.owner || null;
+    const shared_channel = options.channel || null;
+    const client = options.client;
+    const socket_client =
+      options.socket_client ||
+      new SocketClientCore();
+    const reqs = options.requests || scraper_requests(client);
+    const poll_interval = Math.max(
+      100,
+      number_value(options.poll_interval, 1000),
+    );
+    const reconnect_interval = Math.max(
+      250,
+      number_value(options.reconnect_interval, 1000),
+    );
+    const websocket_url = options.ws_url || "/ws/scraper";
+
+    const id_ = timeless.ref(String(initial.id || "").trim());
+    const url_ = timeless.ref(String(initial.url || options.url || "").trim());
+    const platform_ = timeless.ref(String(initial.platform || "").trim());
+    const status_ = timeless.ref(String(initial.status || "pending").trim());
+    const progress_ = timeless.refobj(initial.progress || {});
+    const output_ = timeless.ref(null);
+    const content_ = timeless.ref(initial.content || null);
+    const account_ = timeless.ref(initial.account || null);
+    const content_details_ = timeless.refarr([]);
+    const cache_entries_ = timeless.refarr([]);
+    const raw_ = timeless.refobj({});
+    const message_ = timeless.ref(null);
+    const error_ = timeless.ref(null);
+    const connected_ = timeless.ref(false);
+    const events = {
+      change: event_channel(),
+      complete: event_channel(),
+      fail: event_channel(),
+      interrupted: event_channel(),
+      message: event_channel(),
+      progress: event_channel(),
+    };
+    const finished_state = deferred();
+    let poll_timer = null;
+    let resolving_terminal = false;
+    let terminal_state = null;
+    let terminal_error = null;
+    let disposed = false;
+
+    const state = {
+      id: id_,
+      url: url_,
+      platform: platform_,
+      status: status_,
+      progress: progress_,
+      output: output_,
+      result: output_,
+      content: content_,
+      account: account_,
+      content_details: content_details_,
+      cache_entries: cache_entries_,
+      raw: raw_,
+      message: message_,
+      error: error_,
+      connected: connected_,
+      websocket_connected: connected_,
+    };
+    const methods = {
+      onMessage: on_message,
+      onComplete: on_complete,
+      onSuccess: on_complete,
+      onFail: on_fail,
+      onFailed: on_fail,
+      onInterrupted: on_interrupted,
+      onProgress: on_progress,
+      onChange: on_change,
+      refresh,
+      detail: refresh,
+      interrupt,
+      connect,
+      disconnect,
+      wait,
+      snapshot,
+      destroy,
+    };
+    const channel =
+      shared_channel ||
+      new ChannelCore(websocket_url, {
+        client: socket_client,
+        process: decode_message,
+        reconnect: {
+          enabled: options.reconnect !== false,
+          interval: reconnect_interval,
+        },
+      });
+    const model = {
+      state,
+      methods,
+      reqs,
+      channel,
+      ...state,
+      ...methods,
+      get finished() {
+        return finished_state.promise;
+      },
+      get completed() {
+        return finished_state.promise;
+      },
+      _handleMessage: handle_message,
+      _update: apply_record,
+      _start: start_tracking,
+      _syncChannelState: sync_channel_state,
+      _dispose: dispose,
+    };
+
+    if (!shared_channel) {
+      channel.onMessage(handle_message);
+      channel.onStateChange(sync_channel_state);
+      if (typeof channel.onReconnected === "function") {
+        channel.onReconnected(() => {
+          refresh().catch(() => {});
+        });
+      }
+    }
+
+    function subscribe_with(channel_event, listener, transform, replay) {
+      if (typeof listener !== "function") {
+        throw new TypeError("event listener must be a function");
+      }
+      const wrapped = (payload) => transform(listener, payload);
+      const unsubscribe = channel_event.subscribe(wrapped);
+      if (replay) {
+        global.queueMicrotask(() => wrapped(replay));
+      }
+      return unsubscribe;
+    }
+
+    function on_message(listener) {
+      return subscribe_with(
+        events.message,
+        listener,
+        (callback, payload) => callback(payload, model),
+        message_.value,
+      );
+    }
+
+    function on_complete(listener) {
+      return subscribe_with(
+        events.complete,
+        listener,
+        (callback, payload) => callback(payload.output, model),
+        terminal_state === "completed"
+          ? { output: output_.value, job: model }
+          : null,
+      );
+    }
+
+    function on_fail(listener) {
+      return subscribe_with(
+        events.fail,
+        listener,
+        (callback, payload) => callback(payload.error, model),
+        terminal_state === "failed" || terminal_state === "interrupted"
+          ? { error: terminal_error, job: model }
+          : null,
+      );
+    }
+
+    function on_interrupted(listener) {
+      return subscribe_with(
+        events.interrupted,
+        listener,
+        (callback, payload) => callback(payload.error, model),
+        terminal_state === "interrupted"
+          ? { error: terminal_error, job: model }
+          : null,
+      );
+    }
+
+    function on_progress(listener) {
+      return subscribe_with(
+        events.progress,
+        listener,
+        (callback, payload) => callback(payload, model),
+        null,
+      );
+    }
+
+    function on_change(listener) {
+      return subscribe_with(
+        events.change,
+        listener,
+        (callback, payload) => callback(payload, model),
+        null,
+      );
+    }
+
+    function decode_message(value) {
+      if (typeof value !== "string") {
+        return value;
+      }
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    }
+
+    function synthetic_message(record, event, source) {
+      return {
+        type: "scraper_job",
+        job: record,
+        event: event || null,
+        source,
+      };
+    }
+
+    function handle_message(message) {
+      if (!message || message.type !== "scraper_job" || !message.job) {
+        return;
+      }
+      const message_id = String(message.job.id || "").trim();
+      if (message_id && id_.value && message_id !== id_.value) {
+        return;
+      }
+      apply_record(
+        message.job,
+        message.event || null,
+        "websocket",
+        message,
+      );
+    }
+
+    function apply_record(record, event, source, incoming_message) {
+      if (
+        disposed ||
+        terminal_state ||
+        !record ||
+        typeof record !== "object"
+      ) {
+        return model;
+      }
+      const record_id = String(record.id || "").trim();
+      if (record_id && id_.value && record_id !== id_.value) {
+        return model;
+      }
+      if (record_id) {
+        id_.as(record_id);
+      }
+      if (record.url) {
+        url_.as(String(record.url));
+      }
+      if (record.platform) {
+        platform_.as(String(record.platform));
+      }
+
+      const previous_raw = raw_.value || {};
+      const next_raw = Object.assign({}, previous_raw, record);
+      next_raw.content_details = merge_scraper_items(
+        previous_raw.content_details,
+        record.content_details,
+      );
+      next_raw.cache_entries = merge_scraper_items(
+        previous_raw.cache_entries,
+        record.cache_entries,
+      );
+      raw_.as(next_raw);
+
+      const next_output = scraper_output(output_.value, next_raw, event);
+      output_.as(next_output);
+      content_.as(next_output.content || null);
+      account_.as(next_output.account || null);
+      content_details_.as(next_output.content_details || []);
+      cache_entries_.as(next_output.cache_entries || []);
+
+      if (record.progress || (event && event.progress)) {
+        const progress = (event && event.progress) || record.progress;
+        progress_.as(progress);
+        events.progress.emit(progress);
+      }
+      const next_status = String(
+        (event && event.status) || record.status || status_.value,
+      ).trim();
+      if (!terminal_state && next_status) {
+        status_.as(next_status);
+      }
+
+      const message =
+        incoming_message || synthetic_message(record, event, source || "update");
+      message_.as(message);
+      events.message.emit(message);
+      events.change.emit({
+        job: model,
+        record: next_raw,
+        event: event || null,
+        source: source || "update",
+      });
+
+      if (scraper_terminal_statuses.has(next_status) && !terminal_state) {
+        if (source === "detail" || source === "poll") {
+          finish(record);
+        } else {
+          resolve_terminal();
+        }
+      }
+      return model;
+    }
+
+    function clear_poll() {
+      if (poll_timer !== null) {
+        global.clearTimeout(poll_timer);
+        poll_timer = null;
+      }
+    }
+
+    function schedule_poll(delay) {
+      clear_poll();
+      if (disposed || terminal_state || !id_.value) {
+        return;
+      }
+      poll_timer = global.setTimeout(async () => {
+        poll_timer = null;
+        try {
+          await refresh();
+        } catch {
+          // The WebSocket may still finish the job; polling will retry below.
+        }
+        if (!disposed && !terminal_state) {
+          schedule_poll(poll_interval);
+        }
+      }, delay === undefined ? poll_interval : delay);
+    }
+
+    async function resolve_terminal() {
+      if (disposed || terminal_state || resolving_terminal || !id_.value) {
+        return;
+      }
+      resolving_terminal = true;
+      let result;
+      try {
+        result = await reqs.detail.run({ id: id_.value });
+      } catch (error) {
+        result = { error };
+      }
+      resolving_terminal = false;
+      if (disposed || terminal_state) {
+        return;
+      }
+      if (!result || result.error) {
+        error_.as(
+          error_value(
+            result && result.error,
+            "Load final scraper job detail failed",
+          ),
+        );
+        schedule_poll(500);
+        return;
+      }
+      const final_record = result.data || {};
+      apply_record(
+        final_record,
+        null,
+        "detail",
+        synthetic_message(final_record, null, "detail"),
+      );
+      if (!scraper_terminal_statuses.has(String(final_record.status || ""))) {
+        schedule_poll(poll_interval);
+      }
+    }
+
+    function finish(record) {
+      if (terminal_state || disposed) {
+        return;
+      }
+      clear_poll();
+      const status = String(record.status || status_.value).trim();
+      status_.as(status);
+      if (status === "completed") {
+        if (!record.output || typeof record.output !== "object") {
+          fail_terminal(
+            error_value("Scraper job completed without a result"),
+            "failed",
+          );
+          return;
+        }
+        // Match the scraper page contract: once the detail request completes,
+        // expose the server's canonical final output instead of the incremental
+        // working copy assembled from WebSocket artifacts.
+        const final_output = normalize_scraper_job_output(record.output);
+        output_.as(final_output);
+        content_.as(final_output.content || null);
+        account_.as(final_output.account || null);
+        content_details_.as(final_output.content_details || []);
+        cache_entries_.as(final_output.cache_entries || []);
+        terminal_state = "completed";
+        error_.as(null);
+        if (!finished_state.settled) {
+          finished_state.settled = true;
+          finished_state.resolve(output_.value);
+        }
+        events.complete.emit({ output: output_.value, job: model });
+        return;
+      }
+      fail_terminal(
+        error_value(
+          record.error ||
+            (status === "interrupted"
+              ? "Scraper job interrupted"
+              : "Scraper job failed"),
+        ),
+        status === "interrupted" ? "interrupted" : "failed",
+      );
+    }
+
+    function fail_terminal(error, status) {
+      terminal_state = status;
+      terminal_error = error;
+      error_.as(error);
+      status_.as(status);
+      if (!finished_state.settled) {
+        finished_state.settled = true;
+        finished_state.reject(error);
+      }
+      const payload = { error, job: model };
+      events.fail.emit(payload);
+      if (status === "interrupted") {
+        events.interrupted.emit(payload);
+      }
+    }
+
+    async function refresh() {
+      if (disposed) {
+        throw new Error("Scraper job has been destroyed");
+      }
+      if (!id_.value) {
+        throw new Error("Scraper job id is required");
+      }
+      const result = await reqs.detail.run({ id: id_.value });
+      if (!result || result.error) {
+        const error = error_value(
+          (result && result.error) || new Error("Load scraper job failed"),
+        );
+        error_.as(error);
+        throw error;
+      }
+      apply_record(
+        result.data || {},
+        null,
+        "poll",
+        synthetic_message(result.data || {}, null, "poll"),
+      );
+      return model;
+    }
+
+    async function interrupt() {
+      if (disposed) {
+        throw new Error("Scraper job has been destroyed");
+      }
+      const result = await reqs.interrupt.run({ id: id_.value });
+      if (!result || result.error) {
+        throw error_value(
+          result && result.error,
+          "Interrupt scraper job failed",
+        );
+      }
+      await refresh();
+      return model;
+    }
+
+    async function connect() {
+      if (disposed) {
+        throw new Error("Scraper job has been destroyed");
+      }
+      if (owner && typeof owner.connect === "function") {
+        return owner.connect();
+      }
+      const result = await channel.connect();
+      if (!result || result.error) {
+        throw (
+          (result && result.error) ||
+          new Error("Scraper progress channel connection failed")
+        );
+      }
+      return true;
+    }
+
+    async function disconnect() {
+      if (owner && typeof owner.disconnect === "function") {
+        return owner.disconnect();
+      }
+      const result = await channel.disconnect(1000, "manual disconnect");
+      if (!result || result.error) {
+        throw (
+          (result && result.error) ||
+          new Error("Scraper progress channel disconnect failed")
+        );
+      }
+      connected_.as(false);
+      return true;
+    }
+
+    function sync_channel_state(channel_state) {
+      const connected = !!(channel_state && channel_state.connected);
+      connected_.as(connected);
+      if (!terminal_state) {
+        schedule_poll(connected ? poll_interval : 250);
+      }
+    }
+
+    function start_tracking() {
+      if (
+        disposed ||
+        terminal_state ||
+        scraper_terminal_statuses.has(status_.value)
+      ) {
+        return Promise.resolve(model);
+      }
+      const tracking = [refresh()];
+      if (!shared_channel && options.websocket !== false) {
+        tracking.push(connect());
+      }
+      schedule_poll(poll_interval);
+      return Promise.allSettled(tracking).then(() => model);
+    }
+
+    function wait() {
+      return finished_state.promise;
+    }
+
+    function snapshot() {
+      return {
+        id: id_.value,
+        url: url_.value,
+        platform: platform_.value,
+        status: status_.value,
+        progress: progress_.value,
+        output: output_.value,
+        content: content_.value,
+        account: account_.value,
+        content_details: content_details_.value,
+        cache_entries: cache_entries_.value,
+        error: error_.value,
+        connected: connected_.value,
+        raw: raw_.value,
+      };
+    }
+
+    function destroy() {
+      if (owner && typeof owner._remove === "function") {
+        owner._remove(model, true);
+        return;
+      }
+      dispose();
+    }
+
+    function dispose() {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      clear_poll();
+      if (!shared_channel) {
+        channel.destroy();
+      }
+      if (!finished_state.settled) {
+        const error = new Error("Scraper job destroyed before completion");
+        error.name = "AbortError";
+        finished_state.settled = true;
+        finished_state.reject(error);
+      }
+      Object.values(events).forEach((event) => event.clear());
+    }
+
+    apply_record(
+      initial,
+      null,
+      "create",
+      synthetic_message(initial, null, "create"),
+    );
+    return model;
+  }
+
+  /**
+   * Scraper job manager. Like DownloaderModel, it owns one shared WebSocket
+   * channel and requires its transport clients to be injected explicitly.
+   *
+   * @example
+   * const scraper$ = ScraperModel({
+   *   client: http_client$,
+   *   socket_client: socket_client$,
+   *   build_from_fetch: true,
+   * });
+   * const job$ = await scraper$.create("https://example.com/post");
+   * job$.onMessage((message) => console.log(message.event));
+   * job$.onComplete((result) => console.log(result.content_details));
+   */
+  function ScraperModel(props) {
+    const model_options = props || {};
+    const {
+      client: http_client,
+      socket_client,
+      auto_start = true,
+      reconnect = true,
+      reconnect_interval: reconnect_interval_value = 1000,
+      poll_interval: poll_interval_value = 1000,
+      ws_url = "/ws/scraper",
+    } = model_options;
+    const create_defaults = {};
+    if (
+      Object.prototype.hasOwnProperty.call(model_options, "build_from_fetch")
+    ) {
+      create_defaults.build_from_fetch = model_options.build_from_fetch === true;
+    }
+    if (!http_client) {
+      throw new TypeError("ScraperModel requires a client");
+    }
+    if (!socket_client) {
+      throw new TypeError("ScraperModel requires a socket_client");
+    }
+
+    const reqs = scraper_requests(http_client);
+    const jobs_ = timeless.refarr([]);
+    const websocket_connected_ = timeless.ref(false);
+    const websocket_connecting_ = timeless.ref(false);
+    const last_error_ = timeless.ref(null);
+    const messages = event_channel();
+    const jobs_by_id = new Map();
+    const reconnect_interval = Math.max(
+      250,
+      number_value(reconnect_interval_value, 1000),
+    );
+    const poll_interval = Math.max(
+      100,
+      number_value(poll_interval_value, 1000),
+    );
+    let destroyed = false;
+    let ready_promise = null;
+
+    const state = {
+      jobs: jobs_,
+      job_list: jobs_,
+      websocket_connected: websocket_connected_,
+      websocket_connecting: websocket_connecting_,
+      last_error: last_error_,
+      websocket_url: ws_url,
+    };
+    const methods = {
+      create,
+      get,
+      onMessage: on_message,
+      connect,
+      reconnect: reconnect_channel,
+      disconnect,
+      ready,
+      destroy,
+    };
+    const channel = new ChannelCore(ws_url, {
+      client: socket_client,
+      process: decode_message,
+      reconnect: {
+        enabled: reconnect !== false,
+        interval: reconnect_interval,
+      },
+    });
+    const domain = {
+      state,
+      methods,
+      reqs,
+      channel,
+      ...state,
+      ...methods,
+      _remove: remove_job,
+    };
+
+    channel.onMessage(handle_message);
+    channel.onStateChange(sync_channel_state);
+    if (typeof channel.onReconnected === "function") {
+      channel.onReconnected(refresh_jobs);
+    }
+
+    function decode_message(value) {
+      if (typeof value !== "string") {
+        return value;
+      }
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    }
+
+    function job_id(target) {
+      const value =
+        target && typeof target === "object"
+          ? target.id && typeof target.id === "object" && "value" in target.id
+            ? target.id.value
+            : target.id
+          : target;
+      return String(value === undefined || value === null ? "" : value).trim();
+    }
+
+    function get(target) {
+      const id = job_id(target);
+      return id ? jobs_by_id.get(id) || null : null;
+    }
+
+    function append_job(job) {
+      jobs_.as([job, ...(jobs_.value || [])]);
+    }
+
+    function remove_job(target, dispose) {
+      const id = job_id(target);
+      const job = get(id) || (target && target._dispose ? target : null);
+      if (!job) {
+        return null;
+      }
+      if (id) {
+        jobs_by_id.delete(id);
+      }
+      jobs_.as((jobs_.value || []).filter((current) => current !== job));
+      if (dispose !== false) {
+        job._dispose();
+      }
+      return job;
+    }
+
+    function on_message(listener) {
+      return messages.subscribe(listener);
+    }
+
+    function handle_message(message) {
+      if (!message || typeof message !== "object") {
+        return;
+      }
+      messages.emit(message);
+      if (message.type !== "scraper_job" || !message.job) {
+        return;
+      }
+      const job = get(message.job.id);
+      if (job) {
+        job._handleMessage(message);
+      }
+    }
+
+    function sync_channel_state(channel_state) {
+      const connected = !!(channel_state && channel_state.connected);
+      const connecting = !!(channel_state && channel_state.connecting);
+      websocket_connected_.as(connected);
+      websocket_connecting_.as(connecting);
+      if (channel_state && channel_state.error) {
+        last_error_.as(error_value(channel_state.error));
+      } else if (connected) {
+        last_error_.as(null);
+      }
+      (jobs_.value || []).forEach((job) => {
+        job._syncChannelState(channel_state || {});
+      });
+    }
+
+    function refresh_jobs() {
+      return Promise.allSettled(
+        (jobs_.value || []).map((job) => job.refresh()),
+      );
+    }
+
+    async function create(input, options) {
+      if (destroyed) {
+        throw new Error("ScraperModel has been destroyed");
+      }
+      const input_options =
+        input && typeof input === "object" && !Array.isArray(input)
+          ? Object.assign({}, input)
+          : { url: input };
+      const config = Object.assign(
+        {},
+        create_defaults,
+        input_options,
+        options || {},
+      );
+      const url = String(config.url || "").trim();
+      if (!url) {
+        throw new TypeError("ScraperModel.create requires a URL");
+      }
+      const body = {
+        url,
+        force_refresh: config.force_refresh === true,
+      };
+      if (Object.prototype.hasOwnProperty.call(config, "build_from_fetch")) {
+        body.build_from_fetch = config.build_from_fetch === true;
+      }
+      const request_id = String(config.id || config.request_id || "").trim();
+      if (request_id) {
+        body.id = request_id;
+      }
+      const result = await reqs.create.run(body);
+      if (!result || result.error) {
+        throw error_value(result && result.error, "Create scraper job failed");
+      }
+      const record = result.data || {};
+      const id = String(record.id || "").trim();
+      if (!id) {
+        throw new Error("Create scraper job response has no id");
+      }
+
+      const existing = jobs_by_id.get(id);
+      if (existing) {
+        existing._update(
+          record,
+          null,
+          "create",
+          { type: "scraper_job", job: record, event: null, source: "create" },
+        );
+        existing._start().catch(() => {});
+        return existing;
+      }
+
+      const job = ScraperJobModel(
+        Object.assign({}, config, {
+          owner: domain,
+          channel,
+          client: http_client,
+          socket_client,
+          requests: reqs,
+          record,
+          url,
+          poll_interval,
+          reconnect_interval,
+        }),
+      );
+      jobs_by_id.set(id, job);
+      append_job(job);
+      job._syncChannelState({
+        connected: websocket_connected_.value,
+        connecting: websocket_connecting_.value,
+      });
+      job._start().catch(() => {});
+      return job;
+    }
+
+    async function connect() {
+      if (destroyed) {
+        throw new Error("ScraperModel has been destroyed");
+      }
+      const result = await channel.connect();
+      if (!result || result.error) {
+        const error = error_value(
+          result && result.error,
+          "Scraper progress channel connection failed",
+        );
+        last_error_.as(error);
+        throw error;
+      }
+      return true;
+    }
+
+    async function reconnect_channel() {
+      if (destroyed) {
+        throw new Error("ScraperModel has been destroyed");
+      }
+      const result = await channel.reconnect();
+      if (!result || result.error) {
+        const error = error_value(
+          result && result.error,
+          "Scraper progress channel reconnect failed",
+        );
+        last_error_.as(error);
+        throw error;
+      }
+      return true;
+    }
+
+    async function disconnect() {
+      const result = await channel.disconnect(1000, "manual disconnect");
+      if (!result || result.error) {
+        const error = error_value(
+          result && result.error,
+          "Scraper progress channel disconnect failed",
+        );
+        last_error_.as(error);
+        throw error;
+      }
+      sync_channel_state({ connected: false, connecting: false });
+      return true;
+    }
+
+    function ready() {
+      if (!ready_promise) {
+        ready_promise = connect().catch((error) => {
+          last_error_.as(error_value(error));
+          return false;
+        });
+      }
+      return ready_promise;
+    }
+
+    function destroy() {
+      if (destroyed) {
+        return;
+      }
+      destroyed = true;
+      channel.destroy();
+      (jobs_.value || []).forEach((job) => job._dispose());
+      jobs_by_id.clear();
+      jobs_.as([]);
+      messages.clear();
+      websocket_connected_.as(false);
+      websocket_connecting_.as(false);
+    }
+
+    if (auto_start !== false) {
+      global.queueMicrotask(() => ready().catch(() => {}));
+    }
+    return domain;
+  }
+
   /** SDK entry point. */
   function DL(props) {
     return DownloaderModel(props);
@@ -1690,10 +2900,15 @@
 
   DL.DownloadTaskModel = DownloadTaskModel;
   DL.DownloaderModel = DownloaderModel;
+  DL.ScraperJobModel = ScraperJobModel;
+  DL.ScraperModel = ScraperModel;
   DL.TaskStatus = task_status;
   DownloaderModel.DownloadTaskModel = DownloadTaskModel;
   DownloaderModel.TaskStatus = task_status;
+  ScraperModel.ScraperJobModel = ScraperJobModel;
   global.DownloadTaskModel = DownloadTaskModel;
   global.DownloaderModel = DownloaderModel;
+  global.ScraperJobModel = ScraperJobModel;
+  global.ScraperModel = ScraperModel;
   global.DL = DL;
 })(window);

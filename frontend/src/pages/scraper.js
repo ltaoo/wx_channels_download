@@ -446,7 +446,13 @@ function ScraperContentCard(props) {
         ]),
       ]),
     ]),
-    View({ class: "wx-home-content-card-body" }, [
+    View({
+      class: computed(content.cover_url, (cover_url) =>
+        cover_url
+          ? "wx-home-content-card-body"
+          : "wx-home-content-card-body is-coverless",
+      ),
+    }, [
       ScraperContentCover({ content }),
       View({ class: "wx-home-content-info" }, [
         View({ class: "wx-home-badges" }, [

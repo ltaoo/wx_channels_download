@@ -996,6 +996,10 @@
   grid-template-columns: minmax(220px, 31%) minmax(0, 1fr);
 }
 
+.wx-home-content-card-body.is-coverless {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .wx-home-content-cover {
   position: relative;
   min-height: 260px;

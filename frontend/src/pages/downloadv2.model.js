@@ -724,7 +724,9 @@ function DownloadV2Model(props = {}) {
   }
 
   function refresh_tasks() {
-    return load_page(page_.value);
+    page_.as(1);
+    reset_list_scroll();
+    return load_page(1);
   }
 
   function start_task(task) {

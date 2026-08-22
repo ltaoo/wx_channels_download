@@ -3644,7 +3644,7 @@ div[data-lazy-img-state="error"] {
   justify-content: space-between;
   gap: var(--dm-space-3);
   /* padding: var(--dm-space-3); */
-  background: var(--dm-content-panel);
+  /* background: var(--dm-content-panel); */
   /* border: var(--dm-border-width) solid var(--dm-content-border);
   border-radius: var(--dm-radius-lg); */
   /* box-shadow: var(--dm-shadow-sm); */
@@ -4037,8 +4037,9 @@ div[data-lazy-img-state="error"] {
   padding: var(--dm-space-8);
   color: var(--dm-content-muted);
   text-align: center;
-  border: var(--dm-border-width) solid var(--dm-content-border);
-  border-radius: var(--dm-radius-lg);
+  border: 0;
+  /* border: var(--dm-border-width) solid var(--dm-content-border); */
+  /* border-radius: var(--dm-radius-lg); */
 }
 
 .wx-content-state > svg,
