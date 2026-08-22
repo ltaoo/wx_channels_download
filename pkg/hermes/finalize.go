@@ -333,7 +333,15 @@ func (d *HermesEngine) finalize_resource_filenames(job *TaskJob) {
 		}
 		final_name := preferred_name
 		if filepath.Clean(old_path) != filepath.Clean(d.abs_file_path(resource_path, preferred_name)) {
-			final_name = d.resolve_duplicate_filename(resource_path, resolved.Directories, resolved.BaseName, resolved.Extension)
+			var resolve_err error
+			final_name, resolve_err = d.resolve_duplicate_filename(resource_path, resolved.Directories, resolved.BaseName, resolved.Extension)
+			if resolve_err != nil {
+				d.logger.Warn().
+					Int("resource_id", r.ID).
+					Err(resolve_err).
+					Msg("run - failed to resolve final resource filename")
+				continue
+			}
 		}
 		new_path := d.abs_file_path(resource_path, final_name)
 		if old_path == new_path {
@@ -394,13 +402,17 @@ func final_output_name_with_suffix(base_name, ext, suffix string) string {
 // sanitizeOutputComponent replaces path separators and characters unsafe for
 // filenames. A component can therefore never create another directory level.
 func sanitize_output_component(value string) string {
-	replacer := strings.NewReplacer(
-		"/", "_", "\\", "_", ":", "_", "*", "_",
-		"?", "_", "\"", "_", "<", "_", ">", "_", "|", "_",
-	)
-	sanitized := strings.TrimSpace(replacer.Replace(value))
+	fp := NewFilenameProcessor("", nil)
+	sanitized := fp.forbidden_chars.ReplaceAllString(value, "_")
+	sanitized = strings.TrimSpace(sanitized)
 	if sanitized == "." || sanitized == ".." {
 		return strings.Repeat("_", len(sanitized))
+	}
+	// Win32 silently strips trailing dots, which can make the path used for
+	// duplicate checks differ from the path used by Rename.
+	sanitized = strings.TrimRight(sanitized, ". ")
+	if is_windows_reserved_filename(sanitized) {
+		sanitized = "_" + sanitized
 	}
 	return sanitized
 }

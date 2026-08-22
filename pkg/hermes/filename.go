@@ -62,7 +62,6 @@ func (fp *FilenameProcessor) SanitizeFilename(filename string) (string, error) {
 		return "", fmt.Errorf("filename cannot be empty")
 	}
 
-	filename = fp.truncate_string(filename, fp.max_name_length)
 	filename = fp.forbidden_chars.ReplaceAllString(filename, "")
 	filename = strings.TrimSpace(filename)
 	filename = strings.Trim(filename, ".")
@@ -70,19 +69,25 @@ func (fp *FilenameProcessor) SanitizeFilename(filename string) (string, error) {
 		return "", fmt.Errorf("filename contains only invalid characters")
 	}
 
-	reserved_names := map[string]bool{
-		"CON": true, "PRN": true, "AUX": true, "NUL": true,
-		"COM1": true, "COM2": true, "COM3": true, "COM4": true,
-		"COM5": true, "COM6": true, "COM7": true, "COM8": true, "COM9": true,
-		"LPT1": true, "LPT2": true, "LPT3": true, "LPT4": true,
-		"LPT5": true, "LPT6": true, "LPT7": true, "LPT8": true, "LPT9": true,
-	}
-	base_name := strings.ToUpper(strings.SplitN(filename, ".", 2)[0])
-	if reserved_names[base_name] {
-		return filename + "_", nil
+	if is_windows_reserved_filename(filename) {
+		// Prefixing makes names such as CON.txt safe. Appending after the
+		// extension would still address the reserved CON device on Windows.
+		filename = "_" + filename
 	}
 
-	return filename, nil
+	return fp.truncate_string(filename, fp.max_name_length), nil
+}
+
+func is_windows_reserved_filename(filename string) bool {
+	base_name := strings.ToUpper(strings.SplitN(filename, ".", 2)[0])
+	switch base_name {
+	case "CON", "PRN", "AUX", "NUL",
+		"COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+		"LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9":
+		return true
+	default:
+		return false
+	}
 }
 
 // AppendExtension appends a known extension without exceeding the filename
