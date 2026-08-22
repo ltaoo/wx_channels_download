@@ -18,6 +18,7 @@ cache
 fixtures
 cookies.json
 design
+.gocache
 
 cache
 tmp

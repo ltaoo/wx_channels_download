@@ -189,6 +189,7 @@ function AccountViewModel(props) {
   const page_size_ = ref(PAGE_SIZE_DEFAULT);
   const keyword_ = ref(initial_search.keyword);
   const account_id_ = ref(initial_search.account_id);
+  const initial_ = ref(true);
   const loading_ = ref(false);
   const error_ = ref("");
   let request_sequence = 0;
@@ -207,9 +208,17 @@ function AccountViewModel(props) {
     (state) =>
       Math.max(1, Math.ceil(state.total / Math.max(1, state.pageSize))),
   );
-  const initial_loading_ = combine(
-    { loading: loading_, accounts: accounts_ },
-    (state) => state.loading && state.accounts.length === 0,
+  const list_status_ = combine(
+    {
+      initial: initial_,
+      error: error_,
+      accounts: accounts_,
+    },
+    (state) => {
+      if (state.initial) return "initial";
+      if (state.error) return "error";
+      return state.accounts.length === 0 ? "empty" : "normal";
+    },
   );
   const range_text_ = combine(
     {
@@ -327,6 +336,7 @@ function AccountViewModel(props) {
     loading_.as(false);
     if (r.error) {
       error_.as(r.error.message || String(r.error));
+      initial_.as(false);
       return r;
     }
     const data = normalize_account_list_response(
@@ -338,6 +348,7 @@ function AccountViewModel(props) {
     total_.as(data.total);
     page_.as(data.page);
     page_size_.as(data.page_size);
+    initial_.as(false);
     return r;
   }
 
@@ -385,7 +396,8 @@ function AccountViewModel(props) {
     page_size: page_size_,
     keyword: keyword_,
     page_count: page_count_,
-    initial_loading: initial_loading_,
+    initial: initial_,
+    status: list_status_,
     range_text: range_text_,
     loading: loading_,
     error: error_,

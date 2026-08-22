@@ -1,4 +1,5 @@
 import { AccountViewModel } from "./account.model.js";
+import { TableWithVirtualList } from "./table.js";
 
 function AccountPageView(props) {
   const vm$ = AccountViewModel(props);
@@ -153,54 +154,25 @@ function AccountPlatform(props) {
   ]);
 }
 
-function AccountRow(props) {
+function AccountIdentity(props) {
   const vm$ = props.store;
   const account = props.account;
-  return View({ class: "wx-content-row wx-account-row" }, [
-    View(
-      {
-        class: "wx-account-identity",
-        attributes: {
-          title: account.nickname || account.external_id || "",
-        },
-      },
-      [
-        AccountAvatar({ account }),
-        View({ class: "wx-account-details" }, [
-          View({ class: "wx-account-name" }, [account.nickname]),
-          View({ class: "wx-account-meta" }, [
-            AccountPlatform({ store: vm$, account }),
-            View(
-              {
-                class: "wx-account-id",
-                attributes: { title: account.id || "" },
-              },
-              [`ID: ${account.id || "-"}`],
-            ),
-          ]),
-        ]),
-      ],
-    ),
-    View({ class: "wx-account-content-count" }, [
-      Timeless.Icon({ name: "file", size: 12 }),
-      vm$.methods.formatContentCount(account.content_count),
+  return [
+    AccountAvatar({ account }),
+    View({ class: "wx-account-details" }, [
+      View({ class: "wx-account-name" }, [account.nickname]),
+      View({ class: "wx-account-meta" }, [
+        AccountPlatform({ store: vm$, account }),
+        View(
+          {
+            class: "wx-account-id",
+            attributes: { title: account.id || "" },
+          },
+          [`ID: ${account.id || "-"}`],
+        ),
+      ]),
     ]),
-    View({ class: "wx-account-added" }, [
-      Timeless.Icon({ name: "clock3", size: 12 }),
-      vm$.methods.formatTime(account.created_at),
-    ]),
-  ]);
-}
-
-function AccountTableHead() {
-  return View(
-    { class: "wx-content-row wx-content-row-head wx-account-row" },
-    [
-      View({ class: "wx-content-row-head-cell" }, ["账号"]),
-      View({ class: "wx-content-row-head-cell" }, ["关联内容"]),
-      View({ class: "wx-content-row-head-cell" }, ["添加时间"]),
-    ],
-  );
+  ];
 }
 
 function AccountSkeletonRow() {
@@ -222,101 +194,75 @@ function AccountSkeletonRow() {
   );
 }
 
-function AccountListView(props) {
-  const vm$ = props.store;
-  return View({ class: "wx-content-history-list" }, [
-    VirtualListView({
-      style: {
-        height: "100%",
-        "max-height": "100%",
-        overflow: "auto",
-        position: "relative",
-        "box-sizing": "border-box",
-        "background-color": "transparent",
-      },
-      key: "id",
-      size: 10,
-      buffer: 6,
-      gutter: 0,
-      itemHeight: 72,
-      each: vm$.state.accounts,
-      render(account_) {
-        const account =
-          account_ && account_.value !== undefined
-            ? account_.value
-            : account_;
-        return AccountRow({ store: vm$, account });
-      },
-    }),
-  ]);
-}
-
 function AccountPageBody(props) {
   const vm$ = props.store;
-  return View({ class: "wx-content-main dm-container" }, [
-    Show({
-      when: vm$.state.initial_loading,
-      ok() {
-        return View(
-          { class: "wx-content-rows dm-panel" },
-          Array.from({ length: 8 }, () => AccountSkeletonRow()),
-        );
+  return TableWithVirtualList({
+    name: "account-table",
+    containerAttributes: { n: "account-page-main" },
+    panelAttributes: { n: "account-table-panel" },
+    headerClass: "wx-content-row wx-content-row-head wx-account-row",
+    columns: [
+      {
+        name: "account",
+        title: "账号",
+        cellClass: "wx-account-identity",
+        cellAttributes(account) {
+          return {
+            title: account.nickname || account.external_id || "",
+          };
+        },
+        render(account) {
+          return AccountIdentity({ store: vm$, account });
+        },
       },
-      else() {
-        return Show({
-          when: computed(vm$.state.error, (error) => Boolean(error)),
-          ok() {
-            return View({ class: "wx-content-state" }, [
-              Timeless.Icon({ name: "circle-alert", size: 32 }),
-              View({ class: "wx-content-state-title" }, ["账号加载失败"]),
-              View({ class: "wx-content-state-text" }, [vm$.state.error]),
-              AccountPageActionButton({
-                store: vm$.ui.btn_retry$,
-                icon: "refresh-cw",
-                label: "重试",
-              }),
-            ]);
-          },
-          else() {
-            return Show({
-              when: computed(
-                vm$.state.accounts,
-                (accounts) => accounts.length > 0,
-              ),
-              ok() {
-                return View(
-                  {
-                    class:
-                      "wx-content-rows wx-content-history-rows dm-panel",
-                  },
-                  [AccountTableHead(), AccountListView({ store: vm$ })],
-                );
-              },
-              else() {
-                return View({ class: "wx-content-state" }, [
-                  Timeless.Icon({ name: "inbox", size: 36 }),
-                  View({ class: "wx-content-state-title" }, [
-                    computed(vm$.state.keyword, (keyword) =>
-                      String(keyword || "").trim()
-                        ? "没有匹配的账号"
-                        : "暂无账号",
-                    ),
-                  ]),
-                  View({ class: "wx-content-state-text" }, [
-                    computed(vm$.state.keyword, (keyword) =>
-                      String(keyword || "").trim()
-                        ? "请尝试其他昵称或账号 ID"
-                        : "还没有记录任何账号",
-                    ),
-                  ]),
-                ]);
-              },
-            });
-          },
-        });
+      {
+        name: "content-count",
+        title: "关联内容",
+        cellClass: "wx-account-content-count",
+        render(account) {
+          return [
+            Timeless.Icon({ name: "file", size: 12 }),
+            vm$.methods.formatContentCount(account.content_count),
+          ];
+        },
       },
-    }),
-  ]);
+      {
+        name: "added",
+        title: "添加时间",
+        cellClass: "wx-account-added",
+        render(account) {
+          return [
+            Timeless.Icon({ name: "clock3", size: 12 }),
+            vm$.methods.formatTime(account.created_at),
+          ];
+        },
+      },
+    ],
+    rows: vm$.state.accounts,
+    rowKey: "id",
+    status: vm$.state.status,
+    loading: vm$.state.loading,
+    error: vm$.state.error,
+    rowClass: "wx-content-row wx-account-row",
+    skeletonCount: 8,
+    renderSkeletonRow: AccountSkeletonRow,
+    size: 10,
+    buffer: 6,
+    gutter: 0,
+    itemHeight: 72,
+    errorTitle: "账号加载失败",
+    retry: {
+      store: vm$.ui.btn_retry$,
+    },
+    emptyTitle: computed(vm$.state.keyword, (keyword) =>
+      String(keyword || "").trim() ? "没有匹配的账号" : "暂无账号",
+    ),
+    emptyDescription: computed(vm$.state.keyword, (keyword) =>
+      String(keyword || "").trim()
+        ? "请尝试其他昵称或账号 ID"
+        : "还没有记录任何账号",
+    ),
+  });
 }
 
 export default AccountPageView;

@@ -996,6 +996,10 @@
   grid-template-columns: minmax(220px, 31%) minmax(0, 1fr);
 }
 
+.wx-home-content-card-body.is-coverless {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .wx-home-content-cover {
   position: relative;
   min-height: 260px;
@@ -2041,9 +2045,17 @@ button.wx-home-novel-chapter {
 .wx-home-download-resource-row {
   min-width: 0;
   display: grid;
-  grid-template-columns: 22px 34px minmax(0, 1fr);
+  grid-template-columns: 22px 34px minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--dm-space-2);
+}
+
+.wx-home-download-resource-action {
+  flex: 0 0 auto;
+}
+
+.wx-home-download-resource-action-label {
+  white-space: nowrap;
 }
 
 .wx-home-download-resource-index,
@@ -2448,7 +2460,7 @@ button.wx-home-novel-chapter {
   }
 
   .wx-home-download-resource-row {
-    grid-template-columns: 20px 32px minmax(0, 1fr);
+    grid-template-columns: 20px 32px minmax(0, 1fr) auto;
   }
 
   .wx-home-download-task {

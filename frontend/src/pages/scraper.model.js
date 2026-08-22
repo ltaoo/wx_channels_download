@@ -174,6 +174,7 @@ function ScraperPageViewModel(props) {
   const download_loading_ = ref(false);
   const download_error_ = ref("");
   const download_success_ = ref("");
+  const download_resource_success_ = ref("");
   const download_overwrite_action_ = ref("overwrite");
   const download_overwrite_processing_ = ref(false);
   const download_overwrite_conflict_ = refobj({ name: "" });
@@ -395,6 +396,7 @@ function ScraperPageViewModel(props) {
       download_loading: download_loading_,
       download_error: download_error_,
       download_success: download_success_,
+      download_resource_success: download_resource_success_,
       download_preview_loading: download_preview_loading_,
       download_preview_error: download_preview_error_,
       fetch_progress: fetch_progress_,
@@ -429,6 +431,7 @@ function ScraperPageViewModel(props) {
         state.cache_error ||
         state.fetch_notice ||
         state.download_success ||
+        state.download_resource_success ||
         ""
       );
     },
@@ -469,8 +472,13 @@ function ScraperPageViewModel(props) {
   );
   const normalized_raw_result_ = computed(result_, normalize_raw_result);
   const raw_result_visible_ = combine(
-    { raw: normalized_raw_result_, result_visible: result_visible_ },
-    (state) => state.raw.present && !state.result_visible,
+    {
+      raw: normalized_raw_result_,
+      result_visible: result_visible_,
+      loading: loading_,
+    },
+    (state) =>
+      state.raw.present && !state.result_visible && !state.loading,
   );
   const normalized_cache_ = computed(result_, normalize_cache);
   const normalized_download_info_ = computed(
@@ -917,6 +925,21 @@ function ScraperPageViewModel(props) {
       return state.success ? "已创建" : "下载";
     },
   );
+  const download_resource_disabled_ = combine(
+    {
+      result: result_,
+      fetch_loading: loading_,
+      loading: download_loading_,
+      preview_loading: download_preview_loading_,
+      preview_error: download_preview_error_,
+    },
+    (state) =>
+      !state.result ||
+      state.fetch_loading ||
+      state.loading ||
+      state.preview_loading ||
+      Boolean(state.preview_error),
+  );
 
   const ui = {
     input_url$: new Timeless.vm.InputCore({
@@ -988,6 +1011,11 @@ function ScraperPageViewModel(props) {
         return create_download_task();
       },
     }),
+    btn_download_resource$: new Timeless.vm.ButtonInListCore({
+      onClick(resource) {
+        return create_download_task(resource);
+      },
+    }),
     btn_third_party_download$: new Timeless.vm.ButtonCore({
       disabled: third_party_download_disabled_.value,
       variant: "outline",
@@ -1043,7 +1071,7 @@ function ScraperPageViewModel(props) {
         return confirm_task_overwrite();
       },
       onCancel() {
-        clear_pending_download_conflict(false);
+        clear_pending_download_conflict();
       },
     }),
   };
@@ -1151,6 +1179,12 @@ function ScraperPageViewModel(props) {
   });
   bind_ui_button_state(ui.btn_create_download_task$, {
     disabled: download_disabled_,
+    loading: download_loading_,
+  });
+  configure_ui_button_list(ui.btn_download_resource$, {
+    variant: "outline",
+    size: "sm",
+    disabled: download_resource_disabled_,
     loading: download_loading_,
   });
   bind_ui_button_state(ui.btn_third_party_download$, {
@@ -1728,6 +1762,7 @@ function ScraperPageViewModel(props) {
     json_expanded_.as(false);
     download_error_.as("");
     download_success_.as("");
+    download_resource_success_.as("");
     fetch_notice_.as("");
     cache_error_.as("");
     fetch_progress_.as({
@@ -1883,12 +1918,14 @@ function ScraperPageViewModel(props) {
     );
   }
 
-  function clear_pending_download_conflict(hide_dialog = true) {
+  function clear_pending_download_conflict() {
     pending_download_object = null;
     download_overwrite_conflict_.as({ name: "" });
-    // if (hide_dialog) {
-    //   ui.task_overwrite_confirm_dialog$.hide();
-    // }
+  }
+
+  function close_download_overwrite_dialog() {
+    clear_pending_download_conflict();
+    ui.task_overwrite_confirm_dialog$.hide();
   }
 
   function handle_download_task_create_failure(error, object, options) {
@@ -1908,45 +1945,40 @@ function ScraperPageViewModel(props) {
 
   async function create_download_task_from_object(object, options) {
     const create_options = options || {};
-    const task$ = downloader.create(object);
-    let failure_handled = false;
-    let unsubscribe_fail = null;
-
-    if (task$ && typeof task$.onFail === "function") {
-      unsubscribe_fail = task$.onFail((event) => {
-        const error = event && event.error ? event.error : event;
-        failure_handled = true;
-        handle_download_task_create_failure(error, object, create_options);
-      });
-    }
-
+    let task$ = null;
     try {
-      await task$.ready;
+      task$ = await downloader.create(object.content, object);
     } catch (error) {
-      if (!failure_handled) {
-        handle_download_task_create_failure(error, object, create_options);
-      }
+      handle_download_task_create_failure(error, object, create_options);
       return task$;
     } finally {
-      if (typeof unsubscribe_fail === "function") {
-        unsubscribe_fail();
-      }
       download_loading_.as(false);
     }
 
-    download_success_.as("下载任务创建成功");
+    if (
+      Array.isArray(object.resource_indexes) &&
+      object.resource_indexes.length > 0
+    ) {
+      download_resource_success_.as("单个资源下载任务创建成功");
+    } else {
+      download_success_.as("下载任务创建成功");
+    }
     if (create_options.overwrite_retry) {
-      clear_pending_download_conflict();
+      close_download_overwrite_dialog();
     }
     return task$;
   }
 
-  async function create_download_task() {
+  async function create_download_task(resource) {
+    const resource_index = Number(resource && resource.resource_index);
+    const resource_indexes = Number.isInteger(resource_index)
+      ? [resource_index]
+      : [];
     if (
       download_loading_.value ||
       download_preview_loading_.value ||
       download_preview_error_.value ||
-      download_success_.value
+      (resource_indexes.length === 0 && download_success_.value)
     ) {
       return null;
     }
@@ -1964,6 +1996,7 @@ function ScraperPageViewModel(props) {
     download_loading_.as(true);
     download_error_.as("");
     download_success_.as("");
+    download_resource_success_.as("");
     if (!downloader || typeof downloader.create !== "function") {
       download_loading_.as(false);
       download_error_.as("下载服务尚未初始化");
@@ -1975,6 +2008,9 @@ function ScraperPageViewModel(props) {
       build_from_fetch: Boolean(fetch_result.download_info),
       config: selected_video_variant_config(platform),
     };
+    if (resource_indexes.length > 0) {
+      object.resource_indexes = resource_indexes;
+    }
     return create_download_task_from_object(object);
   }
 
@@ -2008,6 +2044,7 @@ function ScraperPageViewModel(props) {
     download_loading_.as(true);
     download_error_.as("");
     download_success_.as("");
+    download_resource_success_.as("");
     try {
       return await create_download_task_from_object(object, {
         overwrite_retry: true,
@@ -2071,6 +2108,7 @@ function ScraperPageViewModel(props) {
     download_preview_error_.as("");
     download_error_.as("");
     download_success_.as("");
+    download_resource_success_.as("");
     const sequence = ++download_preview_request_sequence;
     if (!downloader || typeof downloader.prepare !== "function") {
       download_preview_loading_.as(false);
@@ -2223,6 +2261,9 @@ function ScraperPageViewModel(props) {
     json_toggle_text: json_toggle_text_,
     download_disabled: download_disabled_,
     download_button_text: download_button_text_,
+    download_all_button_text: computed(download_button_text_, (text) =>
+      text === "下载" ? "全部下载" : text,
+    ),
     platform_status: {
       has_items: platform_status_has_items_,
       items: platform_status_items_,
@@ -2801,6 +2842,7 @@ function normalize_download_resource(resource_info, index, content_id) {
       ),
     ),
     index_text: String(index + 1).padStart(2, "0"),
+    resource_index: index,
     name,
     display_name,
     kind,

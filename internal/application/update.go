@@ -15,10 +15,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ltaoo/velo/updater/applier"
 	update_util "github.com/ltaoo/velo/updater/util"
 	"github.com/pterm/pterm"
-	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
 
 	"wx_channel/internal/config"
@@ -516,15 +514,9 @@ func download_and_apply_update_with_progress(
 
 func apply_downloaded_update(update_path string, exe_path string) error {
 	if err := apply_update_archive_fn(update_path, exe_path); err != nil {
-		return fmt.Errorf("apply update with Velo: %w", err)
+		return fmt.Errorf("prepare downloaded update: %w", err)
 	}
 	return nil
-}
-
-func apply_update_archive_with_velo(update_path string, exe_path string) error {
-	logger := zerolog.Nop()
-	update_applier := applier.NewPlatformUpdater(&logger)
-	return update_applier.Apply(update_path, exe_path)
 }
 
 func create_update_http_client() *http.Client {

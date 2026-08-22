@@ -1,6 +1,7 @@
 package services
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -73,15 +74,64 @@ type CreateDownloadTaskRequest struct {
 }
 
 type CreateDownloadTaskBody struct {
-	Platform       string          `json:"platform"`
-	Content        json.RawMessage `json:"content"`
-	BuildFromFetch bool            `json:"build_from_fetch"`
-	DownloadDir    string          `json:"download_dir"`
-	Filename       string          `json:"filename"`
-	Config         map[string]any  `json:"config"`
-	AutoStart      *bool           `json:"auto_start"`
-	ParentTaskID   *int            `json:"parent_task_id"`
-	RelationType   string          `json:"relation_type"`
+	Platform        string          `json:"platform"`
+	Content         json.RawMessage `json:"content"`
+	BuildFromFetch  bool            `json:"build_from_fetch"`
+	ResourceIndexes []int           `json:"resource_indexes"`
+	DownloadDir     string          `json:"download_dir"`
+	Filename        string          `json:"filename"`
+	Config          map[string]any  `json:"config"`
+	AutoStart       *bool           `json:"auto_start"`
+	ParentTaskID    *int            `json:"parent_task_id"`
+	RelationType    string          `json:"relation_type"`
+}
+
+// SelectDownloadTaskResources limits a built task to the requested resource
+// indexes. Empty indexes preserve the complete task.
+func SelectDownloadTaskResources(info *adapter.DownloadTaskResult, resource_indexes []int) error {
+	if len(resource_indexes) == 0 {
+		return nil
+	}
+	if info == nil {
+		return fmt.Errorf("下载任务为空")
+	}
+
+	selected_resources := make([]*adapter.ResourceInfo, 0, len(resource_indexes))
+	selection_keys := make([]string, 0, len(resource_indexes))
+	selected_indexes := make(map[int]struct{}, len(resource_indexes))
+	for _, resource_index := range resource_indexes {
+		if resource_index < 0 || resource_index >= len(info.Resources) {
+			return fmt.Errorf("下载资源序号 %d 超出范围", resource_index)
+		}
+		if _, exists := selected_indexes[resource_index]; exists {
+			continue
+		}
+		resource_info := info.Resources[resource_index]
+		if resource_info == nil {
+			return fmt.Errorf("下载资源序号 %d 为空", resource_index)
+		}
+		selected_indexes[resource_index] = struct{}{}
+		selected_resources = append(selected_resources, resource_info)
+		selection_key := strings.TrimSpace(resource_info.Resource.UniqueID)
+		if selection_key == "" {
+			selection_key = strconv.Itoa(resource_index)
+		}
+		selection_keys = append(selection_keys, selection_key)
+	}
+	if len(selected_resources) == 0 {
+		return fmt.Errorf("未选择可下载资源")
+	}
+
+	info.Resources = selected_resources
+	if info.Task != nil && strings.TrimSpace(info.Task.UniqueID) != "" {
+		selection_hash := sha256.Sum256([]byte(strings.Join(selection_keys, "\x00")))
+		info.Task.UniqueID = fmt.Sprintf(
+			"%s_resources_%x",
+			info.Task.UniqueID,
+			selection_hash[:8],
+		)
+	}
+	return nil
 }
 
 type TaskV1IDBody struct {
@@ -583,6 +633,9 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 	if info == nil {
 		s.logger.Warn().Str("platform", body.Platform).Msg("platform returned no download task info")
 		return nil, fmt.Errorf("构建下载任务失败: 平台未返回下载任务")
+	}
+	if err := SelectDownloadTaskResources(info, body.ResourceIndexes); err != nil {
+		return nil, err
 	}
 
 	content := info.Content
@@ -2263,7 +2316,28 @@ func save_content_video(db *gorm.DB, content_video *model.ContentVideo) error {
 		if err != nil {
 			return err
 		}
-		variants := []model.ContentVideoVariant{selected_variant}
+		variants := append([]model.ContentVideoVariant(nil), content_video.Variants...)
+		has_selected_variant := false
+		for variant_index := range variants {
+			if variants[variant_index].IsDefault != 0 {
+				has_selected_variant = true
+				break
+			}
+		}
+		if !has_selected_variant {
+			default_variant_index := -1
+			for variant_index := range variants {
+				if variants[variant_index].VariantKey == selected_variant.VariantKey {
+					default_variant_index = variant_index
+					break
+				}
+			}
+			if default_variant_index >= 0 {
+				variants[default_variant_index] = selected_variant
+			} else {
+				variants = append(variants, selected_variant)
+			}
+		}
 		if err := tx.Omit("Variants").Save(content_video).Error; err != nil {
 			return err
 		}

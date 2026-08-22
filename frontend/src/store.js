@@ -243,6 +243,10 @@ if (!window.dl$) {
     socket_client: socket_client$,
     auto_start: false,
   });
+  window.scraper$ = window.ScraperModel({
+    client: http_client$,
+    socket_client: socket_client$,
+  });
 }
 Timeless.web.provide_history(history$);
 Timeless.web.provide_app(app$);

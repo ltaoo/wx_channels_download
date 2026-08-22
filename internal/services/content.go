@@ -332,11 +332,57 @@ type ContentRelationListResult struct {
 
 type ContentDetailItem struct {
 	ContentListItem
-	Content    model.Content             `json:"content"`
-	Resources  []ContentResourceRecord   `json:"resources"`
-	DetailType string                    `json:"detail_type"`
-	Detail     any                       `json:"detail"`
-	Relations  ContentRelationListResult `json:"relations"`
+	Content          model.Content               `json:"content"`
+	Resources        []ContentResourceRecord     `json:"resources"`
+	DetailType       string                      `json:"detail_type"`
+	Detail           any                         `json:"detail"`
+	EmbeddedContents []ContentEmbeddedDetailItem `json:"embedded_contents"`
+	Relations        ContentRelationListResult   `json:"relations"`
+}
+
+// ContentEmbeddedDetailItem exposes the extension data for media directly
+// contained by an article. The media remains independently addressable while
+// article clients can render its assets as part of the article itself.
+type ContentEmbeddedDetailItem struct {
+	RelationType string        `json:"relation_type"`
+	SortOrder    int           `json:"sort_order"`
+	Content      model.Content `json:"content"`
+	DetailType   string        `json:"detail_type"`
+	Detail       any           `json:"detail"`
+}
+
+var embedded_content_parent_types = []string{
+	model.ContentTypeArticle,
+	model.ContentTypePost,
+	model.ContentTypeWebpage,
+	"blog",
+	"question",
+	"answer",
+	"news",
+	"newsletter",
+}
+
+var embedded_content_media_types = []string{
+	model.ContentTypeVideo,
+	model.ContentTypeAudio,
+	model.ContentTypeImage,
+	model.ContentTypeAlbum,
+	model.ContentTypeDocument,
+	model.ContentTypeOther,
+	"short_video",
+	"image_set",
+	"music",
+	"audiobook",
+}
+
+func content_supports_embedded_media(content_type string) bool {
+	content_type = strings.ToLower(strings.TrimSpace(content_type))
+	for _, candidate := range embedded_content_parent_types {
+		if content_type == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 type ContentListResult struct {
@@ -1171,18 +1217,9 @@ func (s *ContentService) ListContentRelations(options ContentRelationListOptions
 	}, nil
 }
 
-func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem, error) {
-	if s.db == nil {
-		return nil, ErrDBNotInitialized
-	}
-
-	content_id = strings.TrimSpace(content_id)
-	if content_id == "" {
-		return nil, fmt.Errorf("content id is required")
-	}
-
+func (s *ContentService) load_content_record(content_id string) (model.Content, error) {
 	var content model.Content
-	if err := s.db.
+	err := s.db.
 		Preload("Assets", func(db *gorm.DB) *gorm.DB {
 			return db.Where("deleted_at IS NULL").Order("sort_order ASC, id ASC")
 		}).
@@ -1200,14 +1237,86 @@ func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem
 			return db.Where("deleted_at IS NULL").Order("created_at DESC, id DESC")
 		}).
 		Where("id = ?", content_id).
-		First(&content).Error; err != nil {
+		First(&content).Error
+	return content, err
+}
+
+func (s *ContentService) load_embedded_content_details(content model.Content) ([]ContentEmbeddedDetailItem, error) {
+	embedded_contents := make([]ContentEmbeddedDetailItem, 0)
+	if !content_supports_embedded_media(content.Type) {
+		return embedded_contents, nil
+	}
+
+	type embedded_content_row struct {
+		ContentID    string `gorm:"column:content_id"`
+		RelationType string `gorm:"column:relation_type"`
+		SortOrder    int    `gorm:"column:sort_order"`
+	}
+	var rows []embedded_content_row
+	if err := s.db.Table("content_relation AS relation").
+		Select(`related_content.id AS content_id, relation.type AS relation_type,
+			relation.sort_order`).
+		Joins("JOIN content AS related_content ON related_content.id = relation.target_content_id").
+		Where(`relation.source_content_id = ? AND relation.type = ?
+			AND related_content.type IN ? AND related_content.deleted_at IS NULL`,
+			content.Id, model.ContentRelationContains, embedded_content_media_types).
+		Order("relation.sort_order ASC, relation.created_at ASC, related_content.id ASC").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	for _, row := range rows {
+		embedded_content, err := s.load_content_record(row.ContentID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		detail_type, detail, err := s.load_content_extension(embedded_content)
+		if err != nil {
+			return nil, err
+		}
+		embedded_contents = append(embedded_contents, ContentEmbeddedDetailItem{
+			RelationType: row.RelationType,
+			SortOrder:    row.SortOrder,
+			Content:      embedded_content,
+			DetailType:   detail_type,
+			Detail:       detail,
+		})
+	}
+	return embedded_contents, nil
+}
+
+func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem, error) {
+	if s.db == nil {
+		return nil, ErrDBNotInitialized
+	}
+
+	content_id = strings.TrimSpace(content_id)
+	if content_id == "" {
+		return nil, fmt.Errorf("content id is required")
+	}
+
+	content, err := s.load_content_record(content_id)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("content not found: %s", content_id)
 		}
 		return nil, err
 	}
 
-	accounts_by_content_id, influencers_by_content_id, download_tasks_by_content_id, resources_by_content_id, err := s.load_content_relations([]string{content.Id}, true)
+	embedded_contents, err := s.load_embedded_content_details(content)
+	if err != nil {
+		return nil, err
+	}
+	effective_content_ids := make([]string, 0, len(embedded_contents)+1)
+	effective_content_ids = append(effective_content_ids, content.Id)
+	for _, embedded_content := range embedded_contents {
+		effective_content_ids = append(effective_content_ids, embedded_content.Content.Id)
+	}
+
+	accounts_by_content_id, influencers_by_content_id, download_tasks_by_content_id, resources_by_content_id, err := s.load_content_relations(effective_content_ids, true)
 	if err != nil {
 		return nil, err
 	}
@@ -1224,13 +1333,18 @@ func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem
 	if influencers == nil {
 		influencers = make([]ContentInfluencerRecord, 0)
 	}
-	download_tasks := download_tasks_by_content_id[content.Id]
-	if download_tasks == nil {
-		download_tasks = make([]ContentDownloadTaskRecord, 0)
-	}
-	resources := resources_by_content_id[content.Id]
-	if resources == nil {
-		resources = make([]ContentResourceRecord, 0)
+	download_tasks := make([]ContentDownloadTaskRecord, 0)
+	resources := make([]ContentResourceRecord, 0)
+	seen_task_ids := make(map[int]bool)
+	for _, effective_content_id := range effective_content_ids {
+		for _, task := range download_tasks_by_content_id[effective_content_id] {
+			if seen_task_ids[task.ID] {
+				continue
+			}
+			seen_task_ids[task.ID] = true
+			download_tasks = append(download_tasks, task)
+		}
+		resources = append(resources, resources_by_content_id[effective_content_id]...)
 	}
 	sort_content_resources_by_created_at_desc(resources)
 	detail_type, detail, err := s.load_content_extension(content)
@@ -1269,11 +1383,12 @@ func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem
 			DownloadTasks: download_tasks,
 			FileCount:     int64(len(resources)),
 		},
-		Content:    content,
-		Resources:  resources,
-		DetailType: detail_type,
-		Detail:     detail,
-		Relations:  *relations,
+		Content:          content,
+		Resources:        resources,
+		DetailType:       detail_type,
+		Detail:           detail,
+		EmbeddedContents: embedded_contents,
+		Relations:        *relations,
 	}, nil
 }
 
@@ -1382,6 +1497,33 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 		}
 		for _, file_count_row := range file_count_rows {
 			file_counts_by_content_id[file_count_row.ContentID] = file_count_row.Count
+		}
+
+		type embedded_file_count_row struct {
+			ContentID string `gorm:"column:content_id"`
+			Count     int64  `gorm:"column:count"`
+		}
+		var embedded_file_count_rows []embedded_file_count_row
+		if err := s.db.Table("content_relation AS relation").
+			Select("relation.source_content_id AS content_id, COUNT(download_resource.id) AS count").
+			Joins("JOIN content AS parent_content ON parent_content.id = relation.source_content_id").
+			Joins("JOIN content AS embedded_content ON embedded_content.id = relation.target_content_id").
+			Joins(`JOIN download_resource ON download_resource.content_id = embedded_content.id
+				AND download_resource.deleted_at IS NULL`).
+			Where(`relation.source_content_id IN ? AND relation.type = ?
+				AND parent_content.type IN ? AND parent_content.deleted_at IS NULL
+				AND embedded_content.type IN ? AND embedded_content.deleted_at IS NULL`,
+				content_ids,
+				model.ContentRelationContains,
+				embedded_content_parent_types,
+				embedded_content_media_types,
+			).
+			Group("relation.source_content_id").
+			Scan(&embedded_file_count_rows).Error; err != nil {
+			return nil, err
+		}
+		for _, file_count_row := range embedded_file_count_rows {
+			file_counts_by_content_id[file_count_row.ContentID] += file_count_row.Count
 		}
 	}
 

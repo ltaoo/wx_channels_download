@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"net/url"
 	"strconv"
 	"strings"
 	"unicode"
@@ -450,6 +451,17 @@ func (a *OfficialAccountAdapter) BuildDownloadTask(content_json json.RawMessage,
 	} else {
 		image_resources = parse_content_images(data.ContentNoencode, content_id, external_id, extra_json)
 	}
+	video_resources, video_details := build_wxmp_embedded_videos(
+		&data,
+		content,
+		external_id,
+		extra_json,
+		config_string(config, "video_variant_key"),
+		first_non_empty_str(
+			config_string(config, "video_variant_spec"),
+			config_string(config, "spec"),
+		),
+	)
 
 	// Keep the cover URL as task metadata only. The wxmp adapter must not add a
 	// separate cover DownloadResource by default.
@@ -474,7 +486,7 @@ func (a *OfficialAccountAdapter) BuildDownloadTask(content_json json.RawMessage,
 		Enabled:  1,
 	}
 
-	resources := make([]*adapter.ResourceInfo, 0, len(image_resources)+1)
+	resources := make([]*adapter.ResourceInfo, 0, len(image_resources)+len(video_resources)+1)
 	resources = append(resources, &adapter.ResourceInfo{
 		Resource:  html_resource,
 		Endpoints: []model.DownloadEndpoint{html_endpoint},
@@ -486,6 +498,9 @@ func (a *OfficialAccountAdapter) BuildDownloadTask(content_json json.RawMessage,
 		}},
 	})
 	for _, r := range image_resources {
+		resources = append(resources, r)
+	}
+	for _, r := range video_resources {
 		resources = append(resources, r)
 	}
 
@@ -503,7 +518,7 @@ func (a *OfficialAccountAdapter) BuildDownloadTask(content_json json.RawMessage,
 		},
 		Resources:      resources,
 		ContentDetail:  ext,
-		ContentDetails: wxmp_content_details(content, ext),
+		ContentDetails: wxmp_content_details(content, ext, video_details...),
 		Account:        account,
 		Content:        content,
 	}, nil
@@ -580,6 +595,399 @@ func parse_content_images(content_html, content_id, external_id, extra_json stri
 	})
 
 	return resources
+}
+
+// parse_content_videos creates one selected resource for each video embedded in
+// the article body. The richer ContentVideo graph is built by
+// build_wxmp_embedded_videos and exposed through ContentDetails.
+func parse_content_videos(data *wxmp.ArticleCgiDataNew, content_id, external_id, extra_json string) []*adapter.ResourceInfo {
+	resources, _ := build_wxmp_embedded_videos(
+		data,
+		&model.Content{Id: content_id},
+		external_id,
+		extra_json,
+		"",
+		"",
+	)
+	return resources
+}
+
+func build_wxmp_embedded_videos(
+	data *wxmp.ArticleCgiDataNew,
+	root_content *model.Content,
+	external_id string,
+	extra_json string,
+	selected_variant_key string,
+	selected_variant_spec string,
+) ([]*adapter.ResourceInfo, []adapter.ContentDetail) {
+	if data == nil || root_content == nil || len(data.VideoPageInfos) == 0 {
+		return nil, nil
+	}
+
+	video_info_by_id := make(map[string]*wxmp.VideoPageInfoItem, len(data.VideoPageInfos))
+	for video_index := range data.VideoPageInfos {
+		video_info := &data.VideoPageInfos[video_index]
+		video_id := wxmp_video_info_id(video_info)
+		if video_id != "" {
+			video_info_by_id[video_id] = video_info
+		}
+	}
+
+	ordered_video_ids := embedded_wxmp_video_ids(data.ContentNoencode)
+	if len(ordered_video_ids) == 0 {
+		for video_index := range data.VideoPageInfos {
+			if video_id := wxmp_video_info_id(&data.VideoPageInfos[video_index]); video_id != "" {
+				ordered_video_ids = append(ordered_video_ids, video_id)
+			}
+		}
+	}
+
+	resources := make([]*adapter.ResourceInfo, 0, len(ordered_video_ids))
+	details := make([]adapter.ContentDetail, 0, len(ordered_video_ids))
+	seen_video_ids := make(map[string]bool, len(ordered_video_ids))
+	for _, video_id := range ordered_video_ids {
+		if seen_video_ids[video_id] {
+			continue
+		}
+		seen_video_ids[video_id] = true
+		video_info := video_info_by_id[video_id]
+		if video_info == nil {
+			continue
+		}
+
+		variants := wxmp_content_video_variants(
+			video_id,
+			video_info.MpVideoTransInfo,
+			selected_variant_key,
+			selected_variant_spec,
+		)
+		selected_variant := selected_wxmp_content_video_variant(variants)
+		if selected_variant == nil {
+			continue
+		}
+
+		video_number := len(resources) + 1
+		video_content := wxmp_embedded_video_content(root_content, video_info, video_id, video_number)
+		content_video := wxmp_embedded_content_video(video_content.Id, variants, selected_variant)
+		resources = append(resources, wxmp_embedded_video_resource(
+			video_content.Id,
+			external_id,
+			extra_json,
+			video_id,
+			video_number,
+			selected_variant,
+		))
+		details = append(details, adapter.ContentDetail{
+			Type:    "video",
+			Key:     video_content.Id,
+			Data:    content_video,
+			Content: video_content,
+			Relation: &model.ContentRelation{
+				SourceContentId: root_content.Id,
+				TargetContentId: video_content.Id,
+				Type:            model.ContentRelationContains,
+			},
+		})
+	}
+	return resources, details
+}
+
+func wxmp_embedded_video_content(
+	root_content *model.Content,
+	video_info *wxmp.VideoPageInfoItem,
+	video_id string,
+	video_number int,
+) *model.Content {
+	video_title := fmt.Sprintf("视频 %d", video_number)
+	if strings.TrimSpace(root_content.Title) != "" {
+		video_title = fmt.Sprintf("%s - 视频 %d", strings.TrimSpace(root_content.Title), video_number)
+	}
+	video_url := strings.TrimSpace(video_info.SourceLink)
+	if video_url == "" {
+		video_url = strings.TrimSpace(root_content.URL)
+	}
+	source_url := strings.TrimSpace(root_content.SourceURL)
+	if source_url == "" {
+		source_url = strings.TrimSpace(root_content.URL)
+	}
+	return &model.Content{
+		Id:         BuildContentID(video_id),
+		PlatformId: PlatformID,
+		Type:       "video",
+		ExternalId: video_id,
+		Title:      video_title,
+		URL:        video_url,
+		SourceURL:  source_url,
+		CoverURL: normalize_image_url(first_non_empty_str(
+			video_info.CoverUrl169,
+			video_info.CoverUrl,
+			video_info.CoverUrl11,
+		)),
+		PublishTime: root_content.PublishTime,
+		Timestamps:  root_content.Timestamps,
+	}
+}
+
+func wxmp_embedded_content_video(
+	video_content_id string,
+	variants []model.ContentVideoVariant,
+	selected_variant *model.ContentVideoVariant,
+) *model.ContentVideo {
+	content_video := &model.ContentVideo{
+		Id:       video_content_id,
+		Duration: wxmp_variant_duration_seconds(selected_variant),
+		Size:     selected_variant.Size,
+		Format:   selected_variant.Format,
+		URL:      selected_variant.URL,
+		Variants: variants,
+	}
+	if selected_variant.Width != nil {
+		content_video.Width = *selected_variant.Width
+	}
+	if selected_variant.Height != nil {
+		content_video.Height = *selected_variant.Height
+	}
+	return content_video
+}
+
+func wxmp_embedded_video_resource(
+	content_id string,
+	external_id string,
+	extra_json string,
+	video_id string,
+	video_number int,
+	selected_variant *model.ContentVideoVariant,
+) *adapter.ResourceInfo {
+	resource := model.DownloadResource{
+		ContentId:  &content_id,
+		Name:       fmt.Sprintf("video_%02d", video_number),
+		Kind:       "video/mp4",
+		UniqueID:   fmt.Sprintf("%s_video_%s_%s", external_id, video_id, wxmp_video_resource_variant_id(selected_variant)),
+		Size:       selected_variant.Size,
+		MergeOrder: 200 + video_number,
+		Duration:   wxmp_variant_duration_seconds(selected_variant),
+		Extra:      extra_json,
+	}
+	return &adapter.ResourceInfo{
+		Resource: resource,
+		Endpoints: []model.DownloadEndpoint{{
+			Protocol: download_endpoint_protocol(selected_variant.URL),
+			URL:      selected_variant.URL,
+			Enabled:  1,
+			Headers:  wechat_headers,
+		}},
+		ContentAssets: []adapter.ContentAssetReference{{
+			Kind:     model.ContentAssetKindVideo,
+			Role:     model.ContentAssetRoleVideoVariant,
+			AssetKey: selected_variant.VariantKey,
+			Relation: model.DownloadResourceAssetRelationSource,
+		}},
+	}
+}
+
+func wxmp_video_resource_variant_id(variant *model.ContentVideoVariant) string {
+	if variant != nil && strings.TrimSpace(variant.Spec) != "" {
+		return "format_" + strings.TrimSpace(variant.Spec)
+	}
+	video_url := ""
+	if variant != nil {
+		video_url = variant.URL
+	}
+	hash := md5.Sum([]byte(video_url))
+	return "url_" + hex.EncodeToString(hash[:8])
+}
+
+func embedded_wxmp_video_ids(content_html string) []string {
+	if strings.TrimSpace(content_html) == "" {
+		return nil
+	}
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(content_html))
+	if err != nil {
+		return nil
+	}
+
+	video_ids := make([]string, 0)
+	doc.Find("iframe.video_iframe, iframe[data-mpvid], iframe[data-vid]").Each(func(_ int, selection *goquery.Selection) {
+		video_id := strings.TrimSpace(first_non_empty_str(
+			selection.AttrOr("data-mpvid", ""),
+			selection.AttrOr("data-vid", ""),
+			selection.AttrOr("vid", ""),
+		))
+		if video_id == "" {
+			video_id = wxmp_video_id_from_player_url(selection.AttrOr("data-src", ""))
+		}
+		if video_id != "" {
+			video_ids = append(video_ids, video_id)
+		}
+	})
+	return video_ids
+}
+
+func wxmp_video_id_from_player_url(raw_url string) string {
+	player_url, err := url.Parse(html.UnescapeString(strings.TrimSpace(raw_url)))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(player_url.Query().Get("vid"))
+}
+
+func wxmp_video_info_id(video_info *wxmp.VideoPageInfoItem) string {
+	if video_info == nil {
+		return ""
+	}
+	return strings.TrimSpace(first_non_empty_str(video_info.VideoID, video_info.HitVid))
+}
+
+func wxmp_content_video_variants(
+	video_id string,
+	trans_info []wxmp.MpVideoTransInfo,
+	selected_variant_key string,
+	selected_variant_spec string,
+) []model.ContentVideoVariant {
+	variants := make([]model.ContentVideoVariant, 0, len(trans_info))
+	seen_urls := make(map[string]bool, len(trans_info))
+	for trans_index := range trans_info {
+		candidate := &trans_info[trans_index]
+		video_url := normalize_image_url(candidate.Url)
+		if video_url == "" || seen_urls[video_url] {
+			continue
+		}
+		seen_urls[video_url] = true
+		variant_key := wxmp_video_variant_key(video_id, candidate, video_url)
+		spec := ""
+		if candidate.FormatID > 0 {
+			spec = strconv.Itoa(candidate.FormatID)
+		}
+		metadata, _ := json.Marshal(map[string]any{
+			"duration_ms":         candidate.DurationMs,
+			"format_id":           candidate.FormatID,
+			"video_quality_level": candidate.VideoQualityLevel,
+		})
+		variant := model.ContentVideoVariant{
+			VideoId:      BuildContentID(video_id),
+			VariantKey:   variant_key,
+			Spec:         spec,
+			Quality:      strings.TrimSpace(candidate.VideoQualityWording),
+			Size:         wxmp_video_file_size(candidate.Filesize),
+			Format:       "mp4",
+			StreamType:   model.ContentVideoVariantStreamTypeProgressive,
+			HasVideo:     1,
+			HasAudio:     1,
+			URL:          video_url,
+			URLExpiresAt: wxmp_video_url_expires_at(video_url),
+			Metadata:     string(metadata),
+		}
+		variant.Width = positive_wxmp_int_pointer(candidate.Width)
+		variant.Height = positive_wxmp_int_pointer(candidate.Height)
+		variants = append(variants, variant)
+	}
+
+	selected_variant_key = strings.TrimSpace(selected_variant_key)
+	selected_variant_spec = strings.TrimSpace(selected_variant_spec)
+	selected_index := -1
+	for variant_index := range variants {
+		variant := &variants[variant_index]
+		if selected_variant_key != "" && variant.VariantKey == selected_variant_key {
+			selected_index = variant_index
+			break
+		}
+		if selected_variant_key == "" && selected_variant_spec != "" && variant.Spec == selected_variant_spec {
+			selected_index = variant_index
+			break
+		}
+	}
+	if selected_index < 0 && len(variants) > 0 {
+		selected_index = 0
+	}
+	if selected_index >= 0 {
+		variants[selected_index].IsDefault = 1
+	}
+	return variants
+}
+
+func wxmp_video_variant_key(video_id string, trans_info *wxmp.MpVideoTransInfo, video_url string) string {
+	if trans_info != nil && trans_info.FormatID > 0 {
+		return fmt.Sprintf("%s:format:%d", video_id, trans_info.FormatID)
+	}
+	hash := md5.Sum([]byte(video_url))
+	return fmt.Sprintf("%s:url:%s", video_id, hex.EncodeToString(hash[:8]))
+}
+
+func selected_wxmp_content_video_variant(variants []model.ContentVideoVariant) *model.ContentVideoVariant {
+	for variant_index := range variants {
+		if variants[variant_index].IsDefault != 0 {
+			return &variants[variant_index]
+		}
+	}
+	if len(variants) == 0 {
+		return nil
+	}
+	return &variants[0]
+}
+
+func positive_wxmp_int_pointer(value int) *int {
+	if value <= 0 {
+		return nil
+	}
+	result := value
+	return &result
+}
+
+func wxmp_video_url_expires_at(raw_url string) *int64 {
+	parsed_url, err := url.Parse(strings.TrimSpace(raw_url))
+	if err != nil {
+		return nil
+	}
+	expires_at, err := strconv.ParseInt(parsed_url.Query().Get("dis_t"), 10, 64)
+	if err != nil || expires_at <= 0 {
+		return nil
+	}
+	expires_at *= 1000
+	return &expires_at
+}
+
+func wxmp_variant_duration_seconds(variant *model.ContentVideoVariant) int64 {
+	if variant == nil || strings.TrimSpace(variant.Metadata) == "" {
+		return 0
+	}
+	var metadata struct {
+		DurationMs int64 `json:"duration_ms"`
+	}
+	if err := json.Unmarshal([]byte(variant.Metadata), &metadata); err != nil {
+		return 0
+	}
+	return duration_milliseconds_to_seconds(metadata.DurationMs)
+}
+
+func download_endpoint_protocol(raw_url string) string {
+	parsed_url, err := url.Parse(strings.TrimSpace(raw_url))
+	if err == nil && parsed_url.Scheme != "" {
+		return strings.ToLower(parsed_url.Scheme)
+	}
+	return "https"
+}
+
+func wxmp_video_file_size(value any) int64 {
+	switch size := value.(type) {
+	case int:
+		return int64(size)
+	case int32:
+		return int64(size)
+	case int64:
+		return size
+	case float32:
+		return int64(size)
+	case float64:
+		return int64(size)
+	case json.Number:
+		parsed_size, _ := size.Int64()
+		return parsed_size
+	case string:
+		parsed_size, _ := strconv.ParseInt(strings.TrimSpace(size), 10, 64)
+		return parsed_size
+	default:
+		return 0
+	}
 }
 
 // content_image_values copies album images into model values.
@@ -714,7 +1122,7 @@ func duration_milliseconds_to_seconds(duration_ms int64) int64 {
 	return seconds
 }
 
-// normalize_image_url cleans image URLs: handles HTML entities, protocol prefix, enforces HTTPS.
+// normalize_image_url cleans WeChat media URLs: handles HTML entities and protocol prefixes.
 func normalize_image_url(raw string) string {
 	u := strings.TrimSpace(raw)
 	if u == "" {
@@ -726,7 +1134,7 @@ func normalize_image_url(raw string) string {
 	if strings.HasPrefix(u, "//") {
 		u = "https:" + u
 	}
-	if strings.HasPrefix(u, "http://mmbiz.qpic.cn/") {
+	if strings.HasPrefix(u, "http://mmbiz.qpic.cn/") || strings.HasPrefix(u, "http://mpvideo.qpic.cn/") {
 		u = "https://" + strings.TrimPrefix(u, "http://")
 	}
 	return u

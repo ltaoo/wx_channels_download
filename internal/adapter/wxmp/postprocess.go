@@ -67,18 +67,28 @@ func (a *OfficialAccountAdapter) Postprocess(ctx context.Context, info *hermes.T
 		return nil
 	}
 
-	if deps.DB == nil {
-		return fmt.Errorf("wxmp postprocess: database is nil")
-	}
-
 	var html_resource *hermes.ResourceJob
+	has_html_resource := false
 	for i := range info.Resources {
 		resource := &info.Resources[i]
 		kind := strings.ToLower(strings.TrimSpace(resource.Kind))
-		if (kind == "html" || kind == "text/html") && resource.FilePath != "" {
-			html_resource = resource
-			break
+		if kind == "html" || kind == "text/html" {
+			has_html_resource = true
+			if resource.FilePath != "" {
+				html_resource = resource
+				break
+			}
 		}
+	}
+	if !has_html_resource {
+		deps.Logger.Info().
+			Int("task_id", task_id).
+			Int("resource_count", len(info.Resources)).
+			Msg("Postprocessor.wxmp: resource-only task, skipping HTML assembly")
+		return nil
+	}
+	if deps.DB == nil {
+		return fmt.Errorf("wxmp postprocess: database is nil")
 	}
 	if html_resource == nil {
 		return fmt.Errorf("wxmp postprocess: article task %d has no downloaded HTML resource", task_id)

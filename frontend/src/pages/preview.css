@@ -464,6 +464,7 @@
 
 .wx-preview-gallery-file-list-wrap {
   flex: 0 0 auto;
+  padding: 0 12px 12px 12px;
 }
 
 .wx-preview-gallery-file-list {

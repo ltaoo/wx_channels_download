@@ -998,7 +998,7 @@ func (d *HermesEngine) find_next_duplicate_name(task *TaskJob, resource *Resourc
 
 // resolveDuplicateFilename appends (1), (2), ... to baseName when the final
 // filename already exists on disk. ext is appended after the duplicate suffix.
-func (d *HermesEngine) resolve_duplicate_filename(download_dir string, directories []string, base_name, ext string) string {
+func (d *HermesEngine) resolve_duplicate_filename(download_dir string, directories []string, base_name, ext string) (string, error) {
 	for counter := 0; ; counter++ {
 		candidate_name := final_output_name(base_name, ext)
 		if counter > 0 {
@@ -1006,8 +1006,11 @@ func (d *HermesEngine) resolve_duplicate_filename(download_dir string, directori
 		}
 		candidate := join_output_path(directories, candidate_name)
 		candidate_path := d.abs_file_path(download_dir, candidate)
-		if _, err := os.Stat(candidate_path); os.IsNotExist(err) {
-			return candidate
+		if _, err := os.Stat(candidate_path); err != nil {
+			if os.IsNotExist(err) {
+				return candidate, nil
+			}
+			return "", fmt.Errorf("check final filename %q: %w", candidate_path, err)
 		}
 	}
 }

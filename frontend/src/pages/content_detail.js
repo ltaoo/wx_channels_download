@@ -321,6 +321,7 @@ function content_detail_assets(content) {
     }
   };
   visit_detail(content.detail);
+  visit_detail(content.embedded_contents);
 
   return Array.from(assets_by_key.values());
 }
@@ -904,7 +905,12 @@ function ContentDetailResource(props) {
   const resource = props.resource || {};
   const deleted = resource.local_file_deleted === true;
   const name = resource.name || resource.local_path || "未命名文件";
+  const owner_content = resource.owner_content || null;
+  const owner_label = owner_content
+    ? `内嵌${vm$.methods.typeLabel(owner_content.content_type)}：${owner_content.title}`
+    : "";
   const meta = [
+    owner_label,
     resource.kind,
     resource.type,
     vm$.methods.formatBytes(resource.size),
