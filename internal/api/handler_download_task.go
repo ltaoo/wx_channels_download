@@ -1317,7 +1317,7 @@ func (c *APIClient) deleteDownloadTaskLocalFiles(task model.DownloadTask, resour
 		}
 		for _, candidate := range candidates {
 			info, err := os.Lstat(candidate.Path)
-			if os.IsNotExist(err) {
+			if isMissingDownloadTaskLocalFileError(err) {
 				c.logger.Info().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("path_source", candidate.PathSource).Str("candidate_type", candidate.CandidateType).Str("path", candidate.Path).Bool("exists", false).Msg("Associated local file did not exist; cleanup skipped")
 				continue
 			}
@@ -1337,7 +1337,12 @@ func (c *APIClient) deleteDownloadTaskLocalFiles(task model.DownloadTask, resour
 			if isRecordingDir {
 				remove = os.RemoveAll
 			}
-			if err := remove(candidate.Path); err != nil {
+			if err := remove(candidate.Path); isMissingDownloadTaskLocalFileError(err) {
+				// The file can disappear after Lstat when a downloader finishes or
+				// cancels concurrently. File cleanup is intentionally idempotent.
+				c.logger.Info().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("path_source", candidate.PathSource).Str("candidate_type", candidate.CandidateType).Str("path", candidate.Path).Bool("exists", false).Msg("Associated local file no longer existed during removal; cleanup completed")
+				continue
+			} else if err != nil {
 				deletionErrors = append(deletionErrors, fmt.Sprintf("删除 %q 失败: %v", candidate.Path, err))
 				c.logger.Error().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("path_source", candidate.PathSource).Str("candidate_type", candidate.CandidateType).Str("path", candidate.Path).Int64("size", info.Size()).Err(err).Msg("Failed to remove associated local file")
 				continue

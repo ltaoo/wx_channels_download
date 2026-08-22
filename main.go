@@ -14,10 +14,19 @@ import (
 	"wx_channel/internal/config"
 )
 
-var AppVer = "26082001"
+var AppVer = "260822"
 var Mode = "debug"
 
 func main() {
+	if handled, err := application.RunApplicationUpdateHelperIfRequested(); handled {
+		if err != nil {
+			fmt.Printf("Failed to apply staged update: %v\n", err)
+		}
+		return
+	}
+	if err := application.CleanupApplicationUpdateHelperIfRequested(); err != nil {
+		fmt.Printf("Failed to clean up update helper: %v\n", err)
+	}
 	if Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
 	}

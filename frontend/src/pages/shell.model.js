@@ -149,7 +149,7 @@ function createUpdateModel(options = {}) {
       case "downloading":
         return "更新包下载完成后将自动替换程序并重启服务。";
       case "ready":
-        return "更新已安装，正在准备重启。";
+        return "更新包已准备完成，正在重启并安装。";
       case "restarting":
         return "服务恢复后页面会自动刷新，请勿关闭此页面。";
       case "error":
