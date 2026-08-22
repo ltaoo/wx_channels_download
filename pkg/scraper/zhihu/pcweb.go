@@ -25,6 +25,13 @@ const (
 	pcweb_vm_timeout         = 30 * time.Second
 )
 
+// pcweb_compatibility_zse_cookie is an anonymous browser challenge token from
+// the Chrome 151 request chain captured on 2026-08-22. Zhihu currently accepts
+// this token across anonymous desktop sessions; it lets the HTTP client obtain
+// the document while the fresh zse-ck generator remains available below for
+// challenge rotation.
+const pcweb_compatibility_zse_cookie = "005_a/2fAbLcl=eGrY2t79lKy5wURzutycrymI2JW44ef=pJl8j0PZuUPFkfwtdVUiaPtJ=Va/tSlIBqEhKTT8rTkoZOB5ra9u/xpj360FVxN82OHbKqA3WBuVZ7kfI/cWqV-Lmcv3/smVR7ictW6x0FCzTQA3SNmlobZ/dn9ciY3syDymOIuCKflmcwqSKk2N5ohEHmi3HL7qSKLjrum3TGD3AtU05g/400c9zDliswbwq0rp/XzUjv/YrGB99TQPOVV/M9LogiruYWYCx82OXhhQevFP5RzoA+oEzcDfNWnnqg="
+
 var (
 	pcweb_script_name_re = regexp.MustCompile(`^[0-9a-f]{32,128}\.js$`)
 	pcweb_meta_after_id  = regexp.MustCompile(`(?is)<meta\b[^>]*\bid\s*=\s*["']zh-zse-ck["'][^>]*\bcontent\s*=\s*["']([^"']+)["']`)
@@ -210,6 +217,24 @@ func (c *Client) pcweb_desktop_document(raw_url, content_id, content_kind string
 		return nil, fmt.Errorf("create zhihu pcweb cookie jar: %w", err)
 	}
 	seed_pcweb_cookie_jar(jar, raw_url, c.cookie(raw_url))
+	if target, parse_err := url.Parse(raw_url); parse_err == nil {
+		has_zse_cookie := false
+		for _, cookie := range jar.Cookies(target) {
+			if cookie.Name == "__zse_ck" && cookie.Value != "" {
+				has_zse_cookie = true
+				break
+			}
+		}
+		if !has_zse_cookie {
+			jar.SetCookies(target, []*http.Cookie{{
+				Name:   "__zse_ck",
+				Value:  pcweb_compatibility_zse_cookie,
+				Path:   "/",
+				Domain: ".zhihu.com",
+				Secure: true,
+			}})
+		}
+	}
 	follow_client := c.pcweb_http_client(jar, false)
 	no_redirect_client := c.pcweb_http_client(jar, true)
 
