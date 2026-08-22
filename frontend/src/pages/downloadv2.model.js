@@ -1103,9 +1103,13 @@ function DownloadV2Model(props = {}) {
   }
 
   async function create_domain_task(object, success_message, options = {}) {
-    const task$ = downloader.create(object);
     try {
-      await task$.ready;
+      const task$ =
+        object &&
+        object.platform &&
+        Object.prototype.hasOwnProperty.call(object, "content")
+          ? await downloader.create(object.content, object)
+          : await downloader.create(object);
       await load_page(page_.value);
       if (options.hideDialog) options.hideDialog.hide();
       DLUtils.toast(success_message);

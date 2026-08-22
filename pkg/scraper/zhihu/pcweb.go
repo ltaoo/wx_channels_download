@@ -52,15 +52,19 @@ type pcweb_vm_result struct {
 type pcweb_document_validator func(body []byte, content_id string) bool
 
 type pcweb_article_api_payload struct {
-	ID          any    `json:"id"`
-	Title       string `json:"title"`
-	Content     string `json:"content"`
-	Excerpt     string `json:"excerpt"`
-	ImageURL    string `json:"image_url"`
-	ImageURLAlt string `json:"imageUrl"`
-	Author      User   `json:"author"`
-	CreatedTime int64  `json:"created"`
-	UpdatedTime int64  `json:"updated"`
+	ID                          any    `json:"id"`
+	Title                       string `json:"title"`
+	Content                     string `json:"content"`
+	ContentNeedTruncated        bool   `json:"content_need_truncated"`
+	ContentNeedTruncatedCamel   bool   `json:"contentNeedTruncated"`
+	ForceLoginWhenClickReadMore bool   `json:"force_login_when_click_read_more"`
+	ForceLoginWhenReadMoreCamel bool   `json:"forceLoginWhenClickReadMore"`
+	Excerpt                     string `json:"excerpt"`
+	ImageURL                    string `json:"image_url"`
+	ImageURLAlt                 string `json:"imageUrl"`
+	Author                      User   `json:"author"`
+	CreatedTime                 int64  `json:"created"`
+	UpdatedTime                 int64  `json:"updated"`
 }
 
 // fetch_pcweb_answer_document first requests the original Answer URL through
@@ -93,19 +97,26 @@ func (c *Client) fetch_pcweb_answer_document(raw_url string) ([]byte, error) {
 }
 
 // fetch_pcweb_article_document follows Zhihu's anonymous Article recovery
-// chain: AppView SSR first, desktop zse-ck challenge second, then the official
-// Article API rendered into the same initial-data shape consumed by this
-// package.
+// chain. The canonical zhuanlan document must be requested first with the same
+// navigation headers used by the web client: it currently carries the complete
+// Article while AppView may only expose a login-gated truncated copy.
 func (c *Client) fetch_pcweb_article_document(raw_url string) ([]byte, error) {
 	article_url, ok := ParseArticleURL(raw_url)
 	if !ok {
 		return nil, fmt.Errorf("unsupported zhihu article url")
 	}
 
+	canonical_response, canonical_err := c.pcweb_article_canonical_request(article_url.Canonical)
+	if canonical_err == nil && canonical_response != nil &&
+		canonical_response.status >= 200 && canonical_response.status < 300 &&
+		pcweb_has_article(canonical_response.body, article_url.ArticleID) {
+		return canonical_response.body, nil
+	}
+
 	appview_url := pcweb_article_appview_url(article_url.ArticleID)
-	direct, direct_err := c.pcweb_hybrid_request(appview_url)
-	if direct_err == nil && direct != nil && direct.status >= 200 && direct.status < 300 && pcweb_has_article(direct.body, article_url.ArticleID) {
-		return direct.body, nil
+	appview_response, appview_err := c.pcweb_hybrid_request(appview_url)
+	if appview_err == nil && appview_response != nil && appview_response.status >= 200 && appview_response.status < 300 && pcweb_has_article(appview_response.body, article_url.ArticleID) {
+		return appview_response.body, nil
 	}
 
 	desktop_body, desktop_err := c.pcweb_desktop_document(
@@ -135,19 +146,41 @@ func (c *Client) fetch_pcweb_article_document(raw_url string) ([]byte, error) {
 		return api_body, nil
 	}
 
-	direct_status := 0
-	if direct != nil {
-		direct_status = direct.status
+	canonical_status := 0
+	if canonical_response != nil {
+		canonical_status = canonical_response.status
+	}
+	appview_status := 0
+	if appview_response != nil {
+		appview_status = appview_response.status
 	}
 	return nil, fmt.Errorf(
-		"zhihu pcweb AppView status %d did not contain Article %s (request error: %v); desktop challenge failed: %v; AppView retry failed: %v; Article API fallback failed: %w",
-		direct_status,
+		"zhihu canonical Article status %d did not contain complete Article %s (request error: %v); AppView status %d did not contain complete Article (request error: %v); desktop challenge failed: %v; AppView retry failed: %v; Article API fallback failed: %w",
+		canonical_status,
 		article_url.ArticleID,
-		direct_err,
+		canonical_err,
+		appview_status,
+		appview_err,
 		desktop_err,
 		appview_retry_err,
 		api_err,
 	)
+}
+
+func (c *Client) pcweb_article_canonical_request(raw_url string) (*pcweb_response, error) {
+	req, err := http.NewRequest(http.MethodGet, raw_url, nil)
+	if err != nil {
+		return nil, err
+	}
+	set_pcweb_desktop_document_headers(req, "same-origin", raw_url)
+	c.log_request(http.MethodGet, raw_url, "")
+	resp, err := c.pcweb_http_client(nil, false).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	c.log_response(http.MethodGet, raw_url, resp.StatusCode)
+	return read_pcweb_response(resp, 32<<20)
 }
 
 func (c *Client) pcweb_hybrid_request(raw_url string) (*pcweb_response, error) {
@@ -362,7 +395,13 @@ func pcweb_has_article(body []byte, article_id string) bool {
 		return false
 	}
 	article, ok := article_from_initial_data(initial_data, article_id)
-	return ok && article.ID != "" && strings.TrimSpace(article.Content) != ""
+	return ok && article_has_complete_content(article)
+}
+
+func article_has_complete_content(article Article) bool {
+	return strings.TrimSpace(article.ID) != "" &&
+		strings.TrimSpace(article.Content) != "" &&
+		!article.ContentNeedTruncated
 }
 
 func pcweb_article_appview_url(article_id string) string {
@@ -452,16 +491,22 @@ func decode_pcweb_article_api(body []byte, article_id string) (Article, error) {
 	if strings.TrimSpace(payload.Content) == "" {
 		return Article{}, errors.New("Zhihu Article API returned no HTML content")
 	}
+	content_need_truncated := payload.ContentNeedTruncated || payload.ContentNeedTruncatedCamel
+	if content_need_truncated {
+		return Article{}, errors.New("Zhihu Article API returned truncated HTML content")
+	}
 	return Article{
-		ID:          payload_id,
-		Title:       payload.Title,
-		Content:     payload.Content,
-		Excerpt:     payload.Excerpt,
-		ImageURL:    payload.ImageURLAlt,
-		ImageURLAlt: payload.ImageURL,
-		Author:      payload.Author,
-		CreatedTime: payload.CreatedTime,
-		UpdatedTime: payload.UpdatedTime,
+		ID:                          payload_id,
+		Title:                       payload.Title,
+		Content:                     payload.Content,
+		ContentNeedTruncated:        content_need_truncated,
+		ForceLoginWhenClickReadMore: payload.ForceLoginWhenClickReadMore || payload.ForceLoginWhenReadMoreCamel,
+		Excerpt:                     payload.Excerpt,
+		ImageURL:                    payload.ImageURLAlt,
+		ImageURLAlt:                 payload.ImageURL,
+		Author:                      payload.Author,
+		CreatedTime:                 payload.CreatedTime,
+		UpdatedTime:                 payload.UpdatedTime,
 	}, nil
 }
 

@@ -186,6 +186,9 @@ func (c *APIClient) prepareDownloadTaskSingle(body services.CreateDownloadTaskBo
 	if info == nil {
 		return nil, fmt.Errorf("构建下载任务失败: 平台未返回下载任务")
 	}
+	if err := services.SelectDownloadTaskResources(info, body.ResourceIndexes); err != nil {
+		return nil, err
+	}
 
 	for _, ri := range info.Resources {
 		if len(ri.Endpoints) == 0 {

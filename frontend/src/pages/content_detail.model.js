@@ -28,6 +28,48 @@ function normalize_content_account(raw) {
   };
 }
 
+function normalize_embedded_content(raw) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const raw_content = first_non_empty(source.content, source.Content);
+  const content =
+    raw_content && typeof raw_content === "object" ? raw_content : {};
+  return {
+    ...source,
+    relation_type: first_non_empty(
+      source.relation_type,
+      source.RelationType,
+    ),
+    sort_order: number_or_default(
+      first_non_empty(source.sort_order, source.SortOrder),
+      0,
+    ),
+    content: {
+      ...content,
+      id: first_non_empty(content.id, content.ID),
+      platform_id: first_non_empty(content.platform_id, content.PlatformID),
+      content_type: first_non_empty(
+        content.content_type,
+        content.ContentType,
+        content.type,
+        content.Type,
+      ),
+      title: first_non_empty(
+        content.title,
+        content.Title,
+        content.description,
+        "未命名媒体",
+      ),
+      cover_url: first_non_empty(
+        content.cover_url,
+        content.CoverURL,
+        content.coverUrl,
+      ),
+    },
+    detail_type: first_non_empty(source.detail_type, source.DetailType),
+    detail: first_non_empty(source.detail, source.Detail) || null,
+  };
+}
+
 function normalize_content_detail(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
   const accounts_source = Array.isArray(source.accounts)
@@ -45,6 +87,18 @@ function normalize_content_detail(raw) {
     : Array.isArray(source.Resources)
       ? source.Resources
       : [];
+  const embedded_source = Array.isArray(source.embedded_contents)
+    ? source.embedded_contents
+    : Array.isArray(source.EmbeddedContents)
+      ? source.EmbeddedContents
+      : [];
+  const embedded_contents = embedded_source.map(normalize_embedded_content);
+  const embedded_content_by_id = new Map(
+    embedded_contents.map((item) => [
+      String((item.content && item.content.id) || ""),
+      item.content,
+    ]),
+  );
   const relations_source =
     source.relations && typeof source.relations === "object"
       ? source.relations
@@ -108,13 +162,22 @@ function normalize_content_detail(raw) {
     detail: first_non_empty(source.detail, source.Detail) || null,
     accounts: accounts_source.map(normalize_content_account).filter(Boolean),
     download_tasks: tasks,
+    embedded_contents,
     resources: resources.map((resource) => {
       const download_task_status = resource_download_task_status(
         resource,
         tasks,
       );
+      const resource_content_id = String(
+        first_non_empty(
+          resource && resource.content_id,
+          resource && resource.ContentID,
+          resource && resource.ContentId,
+        ),
+      );
       return {
         ...resource,
+        owner_content: embedded_content_by_id.get(resource_content_id) || null,
         download_task_status,
         download_task_in_progress: ["running", "paused"].includes(
           download_task_status,

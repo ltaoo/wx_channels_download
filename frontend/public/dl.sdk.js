@@ -138,6 +138,64 @@
     return files[0] || null;
   }
 
+  function join_file_path(directory, name) {
+    const normalized_directory = String(directory || "").trim();
+    const normalized_name = String(name || "").trim();
+    if (!normalized_directory) {
+      return normalized_name;
+    }
+    if (!normalized_name) {
+      return normalized_directory;
+    }
+    const separator =
+      normalized_directory.includes("\\") && !normalized_directory.includes("/")
+        ? "\\"
+        : "/";
+    return (
+      normalized_directory.replace(/[\\/]+$/, "") +
+      separator +
+      normalized_name.replace(/^[\\/]+/, "")
+    );
+  }
+
+  function is_absolute_file_path(value) {
+    const path = String(value || "").trim();
+    return /^(?:[a-zA-Z]:[\\/]|[\\/]{2}|\/)/.test(path);
+  }
+
+  function output_path(file) {
+    if (!file || typeof file !== "object") {
+      return "";
+    }
+    const explicit = String(
+      file.filepath || file.file_path || file.local_path || "",
+    ).trim();
+    if (explicit) {
+      return explicit;
+    }
+    const current_output_path = String(file.output_path || "").trim();
+    if (is_absolute_file_path(current_output_path)) {
+      return current_output_path;
+    }
+    return join_file_path(
+      file.download_dir || file.downloadDir,
+      current_output_path || file.name || file.filename,
+    );
+  }
+
+  function task_files(record) {
+    const files = Array.isArray(record && record.files)
+      ? record.files
+      : Array.isArray(record && record.resources)
+        ? record.resources
+        : [];
+    return files.map((file) =>
+      Object.assign({}, file, {
+        output_path: output_path(file),
+      }),
+    );
+  }
+
   function file_path(record) {
     const direct = String(
       (record && (record.filepath || record.file_path || record.local_path)) || "",
@@ -149,22 +207,7 @@
     if (!file) {
       return "";
     }
-    const explicit = String(
-      file.filepath || file.file_path || file.local_path || "",
-    ).trim();
-    if (explicit) {
-      return explicit;
-    }
-    const directory = String(file.download_dir || file.downloadDir || "").trim();
-    const name = String(file.name || file.filename || "").trim();
-    if (!directory) {
-      return name;
-    }
-    if (!name) {
-      return directory;
-    }
-    const separator = directory.includes("\\") && !directory.includes("/") ? "\\" : "/";
-    return directory.replace(/[\\/]+$/, "") + separator + name.replace(/^[\\/]+/, "");
+    return output_path(file);
   }
 
   function task_title(record, fallback) {
@@ -325,6 +368,7 @@
     const methods = {
       onSuccess: on_success,
       onFail: on_fail,
+      onFailed: on_failed,
       onProgress: on_progress,
       onChange: on_change,
       start,
@@ -355,6 +399,9 @@
       get finished() {
         return finished_state.promise;
       },
+      get files() {
+        return task_files(raw_.value);
+      },
       ...methods,
       _update: handler.update,
       _mark_ready: handler.mark_ready,
@@ -377,6 +424,13 @@
         global.queueMicrotask(() => listener({ error: last_failure, task: model }));
       }
       return unsubscribe;
+    }
+
+    function on_failed(listener) {
+      if (typeof listener !== "function") {
+        throw new TypeError("event listener must be a function");
+      }
+      return on_fail((event) => listener(event.error));
     }
 
     function on_progress(listener) {
@@ -420,6 +474,7 @@
         filepath: filepath_.value,
         progress: Object.assign({}, progress_.value),
         error: error_.value,
+        files: task_files(raw_.value),
         raw: Object.assign({}, raw_.value),
       };
     }
@@ -560,8 +615,52 @@
     return model;
   }
 
-  function resolve_create_request(input) {
-    const object = typeof input === "string" ? { url: input } : Object.assign({}, input || {});
+  function create_request_object(input, options) {
+    const create_options =
+      options && typeof options === "object" ? Object.assign({}, options) : null;
+    let object;
+    if (create_options && create_options.platform) {
+      object = {
+        platform: create_options.platform,
+        content: input,
+      };
+    } else {
+      object =
+        typeof input === "string" ? { url: input } : Object.assign({}, input || {});
+    }
+    if (!create_options) {
+      return object;
+    }
+
+    [
+      "build_from_fetch",
+      "resource_indexes",
+      "download_dir",
+      "filename",
+      "auto_start",
+      "parent_task_id",
+      "relation_type",
+    ].forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(create_options, key)) {
+        object[key] = create_options[key];
+      }
+    });
+
+    const config = Object.assign({}, object.config || {}, create_options.config || {});
+    if (typeof create_options.existing_action === "string") {
+      config.existing_action = create_options.existing_action;
+    }
+    if (create_options.skip === true) {
+      config.existing_action = "skip";
+    }
+    if (Object.keys(config).length > 0) {
+      object.config = config;
+    }
+    return object;
+  }
+
+  function resolve_create_request(input, options) {
+    const object = create_request_object(input, options);
     const is_url_task =
       !!object.url && !object.platform && !object.content && !object.platform_id;
     return {
@@ -611,6 +710,10 @@
       return Object.assign({}, data.task, resources.length ? { resources } : {});
     }
     return data;
+  }
+
+  function task_was_skipped(record) {
+    return !!record && (record.skipped === true || record.action === "skip");
   }
 
   function runtime_config_origin() {
@@ -721,10 +824,12 @@
    *
    * @example
    * const dl$ = DL({ client: http_client });
-   * const task$ = dl$.create({ url: "https://example.com/video.mp4" });
-   * task$.onProgress(({ progress }) => console.log(progress.percent));
-   * task$.onSuccess(() => console.log(task$.filepath.value));
-   * task$.onFail(({ error }) => console.error(error));
+   * const task$ = await dl$.create(feed, {
+   *   platform: "wxchannels",
+   *   skip: true,
+   * });
+   * task$.onSuccess((task) => console.log(task.files[0].output_path));
+   * task$.onFailed((error) => console.error(error));
    */
   function DownloaderModel(props) {
     const {
@@ -746,6 +851,7 @@
       download: {
         create: new RequestCore(create_download_task, { client: http_client }),
         list: new RequestCore(list_download_tasks, { client: http_client }),
+        detail: new RequestCore(list_download_tasks, { client: http_client }),
         delete: new RequestCore(delete_download_task, { client: http_client }),
         start: new RequestCore(start_download_task, { client: http_client }),
         resume: new RequestCore(resume_download_task, { client: http_client }),
@@ -987,27 +1093,38 @@
       };
     }
 
-    function create(object) {
-      const request_info = resolve_create_request(object);
+    async function create(object, options) {
+      const request_info = resolve_create_request(object, options);
       const task = DownloadTaskModel({
         owner: domain,
         pending: true,
         record: initial_create_record(request_info),
       });
       append_task(task, true);
-      Promise.resolve()
-        .then(() => reqs.download.create.run(request_info))
-        .then((result) => {
-          if (!result || result.error) {
-            throw (result && result.error) || new Error("Create download task failed");
+      try {
+        const result = await reqs.download.create.run(request_info);
+        if (!result || result.error) {
+          throw (result && result.error) || new Error("Create download task failed");
+        }
+        let record = created_task_record(result.data);
+        if (task_was_skipped(record)) {
+          const detail_result = await reqs.download.detail.run({
+            task_id: record.id ?? record.task_id,
+          });
+          if (!detail_result || detail_result.error) {
+            throw (
+              (detail_result && detail_result.error) ||
+              new Error("Load skipped download task failed")
+            );
           }
-          return adopt_pending_task(task, created_task_record(result.data));
-        })
-        .catch((error) => {
-          task._fail(error, { creation: true, terminal: true });
-          task_list_.as((task_list_.value || []).filter((current) => current !== task));
-        });
-      return task;
+          record = Object.assign({}, record, detail_result.data || {});
+        }
+        return adopt_pending_task(task, record);
+      } catch (error) {
+        task._fail(error, { creation: true, terminal: true });
+        task_list_.as((task_list_.value || []).filter((current) => current !== task));
+        throw error;
+      }
     }
 
     async function prepare(object) {

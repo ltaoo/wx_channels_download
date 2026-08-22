@@ -43,15 +43,17 @@ type InitialState struct {
 }
 
 type initial_appview_article struct {
-	ID          string          `json:"id"`
-	Title       string          `json:"title"`
-	Content     string          `json:"content"`
-	Excerpt     string          `json:"excerpt"`
-	ImageURL    string          `json:"imageUrl"`
-	ImageURLAlt string          `json:"image_url"`
-	Author      json.RawMessage `json:"author"`
-	CreatedTime int64           `json:"created"`
-	UpdatedTime int64           `json:"updated"`
+	ID                          string          `json:"id"`
+	Title                       string          `json:"title"`
+	Content                     string          `json:"content"`
+	ContentNeedTruncated        bool            `json:"contentNeedTruncated"`
+	ForceLoginWhenClickReadMore bool            `json:"forceLoginWhenClickReadMore"`
+	Excerpt                     string          `json:"excerpt"`
+	ImageURL                    string          `json:"imageUrl"`
+	ImageURLAlt                 string          `json:"image_url"`
+	Author                      json.RawMessage `json:"author"`
+	CreatedTime                 int64           `json:"created"`
+	UpdatedTime                 int64           `json:"updated"`
 }
 
 type InitialCommon struct {
@@ -318,14 +320,16 @@ func article_from_initial_data(initial_data *InitialData, article_id string) (Ar
 	}
 
 	article := Article{
-		ID:          post.ID,
-		Title:       post.Title,
-		Content:     post.Content,
-		Excerpt:     post.Excerpt,
-		ImageURL:    post.ImageURL,
-		ImageURLAlt: post.ImageURLAlt,
-		CreatedTime: post.CreatedTime,
-		UpdatedTime: post.UpdatedTime,
+		ID:                          post.ID,
+		Title:                       post.Title,
+		Content:                     post.Content,
+		ContentNeedTruncated:        post.ContentNeedTruncated,
+		ForceLoginWhenClickReadMore: post.ForceLoginWhenClickReadMore,
+		Excerpt:                     post.Excerpt,
+		ImageURL:                    post.ImageURL,
+		ImageURLAlt:                 post.ImageURLAlt,
+		CreatedTime:                 post.CreatedTime,
+		UpdatedTime:                 post.UpdatedTime,
 	}
 	article.Author = appview_article_author(initial_data, post.Author)
 	return article, true

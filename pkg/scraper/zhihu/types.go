@@ -138,15 +138,17 @@ type Answer struct {
 }
 
 type Article struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Content     string `json:"content"`
-	Excerpt     string `json:"excerpt"`
-	ImageURL    string `json:"imageUrl"`
-	ImageURLAlt string `json:"image_url"`
-	Author      User   `json:"author"`
-	CreatedTime int64  `json:"created"`
-	UpdatedTime int64  `json:"updated"`
+	ID                          string `json:"id"`
+	Title                       string `json:"title"`
+	Content                     string `json:"content"`
+	ContentNeedTruncated        bool   `json:"contentNeedTruncated"`
+	ForceLoginWhenClickReadMore bool   `json:"forceLoginWhenClickReadMore"`
+	Excerpt                     string `json:"excerpt"`
+	ImageURL                    string `json:"imageUrl"`
+	ImageURLAlt                 string `json:"image_url"`
+	Author                      User   `json:"author"`
+	CreatedTime                 int64  `json:"created"`
+	UpdatedTime                 int64  `json:"updated"`
 }
 
 type Comment struct {

@@ -1564,6 +1564,7 @@ function ScraperDownloadAssetRelation(props) {
 }
 
 function ScraperDownloadResourceItem(props) {
+  const vm$ = props.store;
   const resource = props.resource || {};
   return View({ class: "wx-home-download-resource" }, [
     View({ class: "wx-home-download-resource-row" }, [
@@ -1585,6 +1586,23 @@ function ScraperDownloadResourceItem(props) {
           resource.meta_text,
         ]),
       ]),
+      Button(
+        {
+          store: vm$.ui.btn_download_resource$.bind(resource),
+          class: "wx-home-download-resource-action",
+          attributes: {
+            type: "button",
+            title: `仅下载 ${resource.display_name}`,
+            "aria-label": `下载 ${resource.display_name}`,
+          },
+        },
+        [
+          Timeless.Icon({ name: "download", size: 14 }),
+          View({ class: "wx-home-download-resource-action-label" }, [
+            "下载",
+          ]),
+        ],
+      ),
     ]),
     Show({
       when: resource.has_content_assets,
@@ -1673,6 +1691,7 @@ function ScraperDownloadInfo(props) {
                   each: download_info.resources,
                   render(resource_) {
                     return ScraperDownloadResourceItem({
+                      store: vm$,
                       resource: ScraperDetailValue(resource_),
                     });
                   },
@@ -1801,7 +1820,7 @@ function ScraperResultActionBar(props) {
               attributes: {
                 n: "create-download-task-action",
                 type: "button",
-                title: "创建当前预览中的下载任务",
+                title: "下载当前预览中的全部资源",
               },
             },
             [
@@ -1811,7 +1830,7 @@ function ScraperResultActionBar(props) {
                   class: "wx-content-action-label",
                   attributes: { n: "create-download-task-action-label" },
                 },
-                [vm$.state.download_button_text],
+                [vm$.state.download_all_button_text],
               ),
             ],
           ),

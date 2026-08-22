@@ -90,6 +90,10 @@ interface DownloadProgress {
   speed: number;
 }
 
+interface DownloadTaskFile extends Record<string, unknown> {
+  output_path: string;
+}
+
 interface DownloadTaskSnapshot {
   id: string | number | null;
   status: string;
@@ -98,6 +102,7 @@ interface DownloadTaskSnapshot {
   filepath: string;
   progress: DownloadProgress;
   error: Error | null;
+  files: DownloadTaskFile[];
   raw: Record<string, unknown>;
 }
 
@@ -120,6 +125,7 @@ interface DownloadTaskMethods {
       task: DownloadTaskModelInstance;
     }) => void,
   ): () => void;
+  onFailed(listener: (error: Error) => void): () => void;
   onProgress(
     listener: (event: {
       task: DownloadTaskModelInstance;
@@ -150,6 +156,7 @@ interface DownloadTaskModelInstance
   handler: Record<string, (...args: any[]) => any>;
   readonly ready: Promise<DownloadTaskModelInstance>;
   readonly finished: Promise<DownloadTaskModelInstance>;
+  readonly files: DownloadTaskFile[];
 }
 
 type DownloadTaskTarget =
@@ -168,7 +175,22 @@ interface DownloaderState {
 }
 
 interface DownloaderMethods {
-  create(input: string | Record<string, unknown>): DownloadTaskModelInstance;
+  create(
+    input: unknown,
+    options?: {
+      platform?: string;
+      skip?: boolean;
+      existing_action?: "skip" | "duplicate" | "overwrite";
+      build_from_fetch?: boolean;
+      resource_indexes?: number[];
+      download_dir?: string;
+      filename?: string;
+      auto_start?: boolean;
+      parent_task_id?: number;
+      relation_type?: string;
+      config?: Record<string, unknown>;
+    },
+  ): Promise<DownloadTaskModelInstance>;
   prepare(input: string | Record<string, unknown>): Promise<Record<string, unknown>>;
   list(options?: Record<string, unknown>): Promise<
     DLRefArray<DownloadTaskModelInstance>
