@@ -717,6 +717,7 @@ function DownloaderPanelViewModel(props = {}) {
   const overwrite_ = refobj({ value: "overwrite" });
   const overwrite_apply_all_ = ref(false);
   const overwrite_processing_ = ref(false);
+  const overwrite_error_ = ref("");
   /** @type {object: {}; result: {}; index: number;} */
   const conflict_tasks_ = refarr([]);
   // 当前待处理的已存在下载任务
@@ -961,10 +962,33 @@ function DownloaderPanelViewModel(props = {}) {
     );
   }
 
+  function download_task_create_result_error(data, fallback) {
+    const tasks = data && Array.isArray(data.tasks) ? data.tasks : [];
+    const failed_result = tasks.find((result) => {
+      return !is_download_task_create_success(result);
+    });
+    if (!failed_result) {
+      return null;
+    }
+    const error = new Error(
+      download_task_create_result_message(failed_result, fallback),
+    );
+    error.code = duplicate_result_code(failed_result);
+    error.data = failed_result.data;
+    error.result = failed_result;
+    return error;
+  }
+
   function make_duplicate_conflict(object, result, index) {
     const conflict_task = result && typeof result === "object" ? result : {};
-    const conflict_data = conflict_task.data;
-    const name = conflict_data.name || conflict_data.title;
+    const conflict_data =
+      conflict_task.data && typeof conflict_task.data === "object"
+        ? conflict_task.data
+        : {};
+    const name =
+      conflict_data.name ||
+      conflict_data.title ||
+      download_create_object_title(object, index);
     return {
       object: clone_download_create_object(object),
       result: conflict_task,
@@ -1038,14 +1062,18 @@ function DownloaderPanelViewModel(props = {}) {
   function hide_duplicate_download_confirm_dialog() {
     ui.overwriteConfirmDialog$.hide();
     ui.batchOverwriteConfirmDialog$.hide();
+    overwrite_error_.as("");
   }
 
   function begin_duplicate_download_confirm(body, conflicts, options = {}) {
     if (!Array.isArray(conflicts) || conflicts.length === 0) {
       return false;
     }
+    conflict_tasks_.as(conflicts);
+    duplicated_feed_prepare_download = conflicts.length === 1 ? body : null;
     overwrite_.as({ value: "overwrite" });
     overwrite_apply_all_.as(false);
+    overwrite_error_.as("");
     console.log(
       "before show_duplicate_download_confirm_dialog",
       conflicts.length,
@@ -2252,6 +2280,11 @@ function DownloaderPanelViewModel(props = {}) {
           delete_task_ids_.as([]);
           ui.deleteConfirmDialog$.hide();
         }
+      } catch (error) {
+        WXU.error({
+          msg: (error && error.message) || "删除下载任务失败",
+          source: "model.js:confirmDeleteTask",
+        });
       } finally {
         deleting_task_.as(false);
       }
@@ -3182,6 +3215,7 @@ function DownloaderPanelViewModel(props = {}) {
       }
       WXU.log.Info().Str("action", action).Msg("select overwrite type");
       overwrite_.as({ value: action });
+      overwrite_error_.as("");
     },
     toggleOverwriteApplyAll() {
       overwrite_apply_all_.as((prev) => !prev);
@@ -3201,7 +3235,11 @@ function DownloaderPanelViewModel(props = {}) {
           .Msg("overwriteConfirmDialog: action is empty, aborting retry");
         return;
       }
-      const start = Math.max(0, Number(overwrite_conflict_.value.index) || 0);
+      overwrite_error_.as("");
+      const start = Math.max(
+        0,
+        (Number(overwrite_conflict_.value.index) || 1) - 1,
+      );
       const end = overwrite_apply_all_.value
         ? conflict_tasks_.value.length
         : Math.min(conflict_tasks_.value.length, start + 1);
@@ -3219,16 +3257,7 @@ function DownloaderPanelViewModel(props = {}) {
             selected_conflict_tasks,
           );
           const retry_objects = selected_conflict_tasks.map((conflict) => {
-            return {
-              object: {
-                ...conflict.object,
-                config: {
-                  ...conflict.object.config,
-                  overwrite: action === "overwrite",
-                  duplicate: action === "duplicate",
-                },
-              },
-            };
+            return build_duplicate_retry_object(conflict, action);
           });
           WXU.log
             .Info()
@@ -3240,27 +3269,30 @@ function DownloaderPanelViewModel(props = {}) {
           const body = { objects: retry_objects };
           const [err, data] = await methods.createDownloadTaskInDuplicate(body);
           if (err) {
+            overwrite_error_.as(err.message || "创建下载任务失败");
             WXU.error({
               msg: err.message || "创建下载任务失败",
-              source: "model.js:2381",
+              source: "model.js:confirmOverwriteDownloadConflict",
             });
             return;
           }
           WXU.toast("创建下载任务成功");
         }
-        if (overwrite_conflict_.value.index < conflict_tasks_.value.length) {
+        if (end < conflict_tasks_.value.length) {
           overwrite_.as({ value: action });
-          const task =
-            conflict_tasks_.value[overwrite_conflict_.value.index + 1];
+          const task = conflict_tasks_.value[end];
           console.log(
             "[download/model.js]confirmOverwriteDownloadConflict - update content",
             task,
           );
           overwrite_conflict_.as({
-            index: overwrite_conflict_.value.index + 1,
+            index: end + 1,
             total: conflict_tasks_.value.length,
             name: task.name,
           });
+        } else {
+          conflict_tasks_.as([]);
+          hide_duplicate_download_confirm_dialog();
         }
       } finally {
         overwrite_processing_.as(false);
@@ -3284,6 +3316,13 @@ function DownloaderPanelViewModel(props = {}) {
         return [r.error, null];
       }
       const data = r.data;
+      const task_error = download_task_create_result_error(
+        data,
+        "创建下载任务失败",
+      );
+      if (task_error) {
+        return [task_error, data];
+      }
       return [null, data];
     },
     /** 创建下载任务 */
@@ -3333,11 +3372,19 @@ function DownloaderPanelViewModel(props = {}) {
       if (conflicts.length) {
         if (conflicts.length === 1) {
           duplicated_feed_prepare_download = body;
+          overwrite_error_.as("");
           ui.overwriteConfirmDialog$.show();
           return [null, { skipped: true }];
         }
         begin_duplicate_download_confirm(body, conflicts);
         return [null, { skipped: true }];
+      }
+      const task_error = download_task_create_result_error(
+        data,
+        "创建下载任务失败",
+      );
+      if (task_error) {
+        return [task_error, data];
       }
       return [null, data];
     },
@@ -3427,7 +3474,7 @@ function DownloaderPanelViewModel(props = {}) {
     }),
     deleteConfirmDialog$: new Timeless.vm.DialogCore({
       onOk() {
-        methods.confirmDeleteTask();
+        return methods.confirmDeleteTask();
       },
     }),
     clearConfirmDialog$: new Timeless.vm.DialogCore({
@@ -3438,6 +3485,7 @@ function DownloaderPanelViewModel(props = {}) {
     overwriteConfirmDialog$: new Timeless.vm.DialogCore({
       async onOk() {
         const action = overwrite_.value.value;
+        overwrite_error_.as("");
         WXU.log
           .Info()
           .Str("action", action || "")
@@ -3478,6 +3526,7 @@ function DownloaderPanelViewModel(props = {}) {
           duplicate,
         });
         if (err) {
+          overwrite_error_.as(err.message || "创建下载任务失败");
           WXU.log
             .Error()
             .Str("error", err.message || "")
@@ -3490,6 +3539,7 @@ function DownloaderPanelViewModel(props = {}) {
           return;
         }
         if (data && data.skipped) {
+          overwrite_error_.as("创建下载任务失败：仍存在相同的下载任务");
           WXU.log
             .Warn()
             .Msg("overwriteConfirmDialog: retry still returned 409 conflict");
@@ -3502,6 +3552,7 @@ function DownloaderPanelViewModel(props = {}) {
             "overwriteConfirmDialog: retry creating download task succeeded",
           );
         duplicated_feed_prepare_download = null;
+        overwrite_error_.as("");
         ui.overwriteConfirmDialog$.hide();
         await reloadTasks();
         return;
@@ -3571,6 +3622,7 @@ function DownloaderPanelViewModel(props = {}) {
       overwrite: overwrite_,
       overwrite_apply_all: overwrite_apply_all_,
       overwrite_processing: overwrite_processing_,
+      overwrite_error: overwrite_error_,
       overwrite_conflict: overwrite_conflict_,
       fixed_list_height: fixed_list_height_,
       list_item_height: ITEM_HEIGHT,

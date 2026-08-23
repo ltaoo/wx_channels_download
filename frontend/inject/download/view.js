@@ -993,20 +993,20 @@ function ClearTasksConfirmDialog(props) {
   );
 }
 
+const OVERWRITE_DOWNLOAD_DIALOG_Z_INDEX = 10000;
+const OVERWRITE_DOWNLOAD_BATCH_DIALOG_Z_INDEX = 10001;
+
 function OverwriteDownloadConfirmDialog(props) {
   var selectedAction_ = props.store.state.overwrite;
 
   function select(actionValue) {
-    WXU.log.Info().Str("action", actionValue).Msg("select overwrite type");
-    selectedAction_.as({ value: actionValue });
+    props.store.methods.setOverwriteAction(actionValue);
   }
 
   return Timeless.weui.Dialog(
     {
       store: props.store.ui.overwriteConfirmDialog$,
-      style: {
-        "z-index": "10000",
-      },
+      zIndex: OVERWRITE_DOWNLOAD_DIALOG_Z_INDEX,
     },
     [
       View(
@@ -1169,6 +1169,7 @@ function OverwriteDownloadConfirmDialog(props) {
               View({}, ["重复下载"]),
             ],
           ),
+          OverwriteDownloadErrorHint(props),
         ],
       ),
     ],
@@ -1471,6 +1472,33 @@ function OverwriteDownloadProcessingHint(props) {
   });
 }
 
+function OverwriteDownloadErrorHint(props) {
+  return Show({
+    when: computed(props.store.state.overwrite_error, function (message) {
+      return !!message;
+    }),
+    ok: function () {
+      return View(
+        {
+          role: "alert",
+          style: {
+            padding: "8px 10px",
+            "border-radius": "6px",
+            background: "rgba(250, 81, 81, 0.1)",
+            color: "#FA5151",
+            "font-size": "12px",
+            "line-height": "18px",
+            "margin-top": "10px",
+            "text-align": "left",
+            "word-break": "break-word",
+          },
+        },
+        [props.store.state.overwrite_error],
+      );
+    },
+  });
+}
+
 function OverwriteDownloadDialogContent(props, children) {
   return View(
     {
@@ -1488,29 +1516,24 @@ function SingleOverwriteDownloadConfirmDialog(props) {
   return Timeless.weui.Dialog(
     {
       store: props.store.ui.singleOverwriteConfirmDialog$,
-      style: {
-        "z-index": "10000",
-      },
+      zIndex: OVERWRITE_DOWNLOAD_DIALOG_Z_INDEX,
     },
     [
       OverwriteDownloadDialogContent(props, [
         OverwriteDownloadDialogTitle({ text: "已存在确认" }),
         OverwriteDownloadActionList(props),
+        OverwriteDownloadErrorHint(props),
         OverwriteDownloadProcessingHint(props),
       ]),
     ],
   );
 }
 
-const OVERWRITE_DOWNLOAD_BATCH_DIALOG_Z_INDEX = "10001";
-
 function BatchOverwriteDownloadConfirmDialog(props) {
   return Timeless.weui.Dialog(
     {
       store: props.store.ui.batchOverwriteConfirmDialog$,
-      style: {
-        "z-index": OVERWRITE_DOWNLOAD_BATCH_DIALOG_Z_INDEX,
-      },
+      zIndex: OVERWRITE_DOWNLOAD_BATCH_DIALOG_Z_INDEX,
     },
     [
       OverwriteDownloadDialogContent(props, [
@@ -1518,6 +1541,7 @@ function BatchOverwriteDownloadConfirmDialog(props) {
         OverwriteDownloadCurrentDuplicateTask(props),
         OverwriteDownloadActionList(props),
         OverwriteDownloadApplyAllControl(props),
+        OverwriteDownloadErrorHint(props),
         OverwriteDownloadProcessingHint(props),
       ]),
     ],
