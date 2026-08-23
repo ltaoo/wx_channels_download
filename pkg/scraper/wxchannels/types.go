@@ -169,6 +169,21 @@ type ChannelsLiveInfo struct {
 	LiveCoverImgs    []any                   `json:"liveCoverImgs"`
 }
 
+func (i *ChannelsLiveInfo) UnmarshalJSON(data []byte) error {
+	type alias ChannelsLiveInfo
+	aux := &struct {
+		AnchorStatusFlag flexibleString `json:"anchorStatusFlag"`
+		*alias
+	}{
+		alias: (*alias)(i),
+	}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	i.AnchorStatusFlag = string(aux.AnchorStatusFlag)
+	return nil
+}
+
 type ChannelsContactExtInfo struct {
 	Sex      int    `json:"sex,omitempty"`
 	Country  string `json:"country,omitempty"`
@@ -627,6 +642,21 @@ type ChannelsFollowLiveInfo struct {
 	LotterySetting   map[string]any                   `json:"lotterySetting"`
 	LiveCoverImgs    []any                            `json:"liveCoverImgs"`
 	ReplaySetting    *ChannelsFollowLiveReplaySetting `json:"replaySetting,omitempty"`
+}
+
+func (i *ChannelsFollowLiveInfo) UnmarshalJSON(data []byte) error {
+	type alias ChannelsFollowLiveInfo
+	aux := &struct {
+		AnchorStatusFlag flexibleString `json:"anchorStatusFlag"`
+		*alias
+	}{
+		alias: (*alias)(i),
+	}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	i.AnchorStatusFlag = string(aux.AnchorStatusFlag)
+	return nil
 }
 
 type ChannelsFollowContact struct {
