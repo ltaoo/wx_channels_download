@@ -124,7 +124,6 @@ function normalize_content_item(raw) {
       source.Title,
       source.description,
       source.Description,
-      "未命名内容",
     ),
     description: first_non_empty(source.description, source.Description),
     url: first_non_empty(
