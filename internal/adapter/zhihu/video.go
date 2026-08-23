@@ -146,6 +146,7 @@ func zhihu_video_scene_code(content_type string) string {
 
 func build_zhihu_embedded_videos(
 	root_content *model.Content,
+	account *model.Account,
 	video_infos []zhihu_embedded_video_info,
 	resource_key string,
 	selected_variant_key string,
@@ -183,10 +184,11 @@ func build_zhihu_embedded_videos(
 			first_non_empty_str(root_content.SourceURL, root_content.URL),
 		))
 		details = append(details, adapter.ContentDetail{
-			Type:    model.ContentTypeVideo,
-			Key:     video_content.Id,
-			Data:    content_video,
-			Content: video_content,
+			Type:     model.ContentTypeVideo,
+			Key:      video_content.Id,
+			Data:     content_video,
+			Content:  video_content,
+			Accounts: zhihu_content_account_references(account),
 			Relation: &model.ContentRelation{
 				SourceContentId: root_content.Id,
 				TargetContentId: video_content.Id,
@@ -197,6 +199,16 @@ func build_zhihu_embedded_videos(
 		})
 	}
 	return resources, details
+}
+
+func zhihu_content_account_references(account *model.Account) []adapter.ContentAccountReference {
+	if account == nil {
+		return nil
+	}
+	return []adapter.ContentAccountReference{{
+		Account: account,
+		Role:    "owner",
+	}}
 }
 
 func zhihu_embedded_video_content(root_content *model.Content, video_info zhihu_embedded_video_info, video_number int) *model.Content {

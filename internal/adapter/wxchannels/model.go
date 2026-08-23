@@ -87,22 +87,23 @@ func to_content_video_variants(obj *wxchannels.ChannelsObject, video_id string) 
 	}
 
 	variants := make([]model.ContentVideoVariant, 0, len(specs)+1)
-	variants = append(variants, model.ContentVideoVariant{
-		VideoId:    video_id,
-		VariantKey: "default",
-		Spec:       "original",
-		Width:      positive_dimension_pointer(media.Width),
-		Height:     positive_dimension_pointer(media.Height),
-		Size:       int64(media.FileSize),
-		StreamType: model.ContentVideoVariantStreamTypeProgressive,
-		HasVideo:   1,
-		HasAudio:   1,
-		IsDefault:  1,
-		URL:        BuildDownloadURLWithSpec(obj, ""),
-	})
+	// Temporarily disabled: do not expose the synthetic original-video option.
+	// variants = append(variants, model.ContentVideoVariant{
+	// 	VideoId:    video_id,
+	// 	VariantKey: "default",
+	// 	Spec:       "original",
+	// 	Width:      positive_dimension_pointer(media.Width),
+	// 	Height:     positive_dimension_pointer(media.Height),
+	// 	Size:       int64(media.FileSize),
+	// 	StreamType: model.ContentVideoVariantStreamTypeProgressive,
+	// 	HasVideo:   1,
+	// 	HasAudio:   1,
+	// 	IsDefault:  1,
+	// 	URL:        BuildDownloadURLWithSpec(obj, ""),
+	// })
 
 	seen_variant_keys := make(map[string]struct{}, len(specs)+1)
-	seen_variant_keys["default"] = struct{}{}
+	// seen_variant_keys["default"] = struct{}{}
 	for _, spec := range specs {
 		variant_key := strings.TrimSpace(spec.FileFormat)
 		if variant_key == "" {
@@ -176,6 +177,7 @@ func resolve_video_download_spec(obj *wxchannels.ChannelsObject, config map[stri
 	if configured_spec == "" {
 		configured_spec = config_string(config, "spec")
 	}
+	_, explicit_spec := config["spec"]
 	if configured_variant_key == "default" {
 		configured_spec = "original"
 	} else if configured_spec == "" && configured_variant_key != "" {
@@ -183,6 +185,12 @@ func resolve_video_download_spec(obj *wxchannels.ChannelsObject, config map[stri
 	}
 
 	if configured_spec == "" {
+		// The injected downloader historically uses spec: "" to request the
+		// original resource. Preserve the distinction between that explicit
+		// value and an omitted spec, which selects the normal default variant.
+		if explicit_spec {
+			return ""
+		}
 		if default_highest {
 			return ""
 		}

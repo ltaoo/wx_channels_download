@@ -26,8 +26,8 @@ func PickSpec(obj *wxchannels.ChannelsObject) string {
 // BuildDownloadURLWithSpec returns the download URL for the given spec.
 //
 //   - If spec is a codec name (e.g. "xWT111"), appends &X-snsvideoflag= to the base URL.
-//   - If spec is "" or "original", keeps the original resource identity and
-//     the minimum signed authorization parameters currently required by the CDN.
+//   - If spec is "" or "original", strips all query params except encfilekey and token,
+//     mirroring the JS __wx_channels_download4 original-video logic.
 //   - zip:// URLs are returned as-is.
 func BuildDownloadURLWithSpec(obj *wxchannels.ChannelsObject, spec string) string {
 	base_url := ObjectURL(obj)
@@ -39,13 +39,10 @@ func BuildDownloadURLWithSpec(obj *wxchannels.ChannelsObject, spec string) strin
 		}
 		base_query := parsed_url.Query()
 		original_query := url.Values{}
-		for _, key := range []string{"encfilekey", "token", "basedata", "sign"} {
+		for _, key := range []string{"encfilekey", "token"} {
 			for _, value := range base_query[key] {
 				original_query.Add(key, value)
 			}
-		}
-		if len(original_query) == 0 {
-			return base_url
 		}
 		parsed_url.RawQuery = original_query.Encode()
 		return parsed_url.String()
