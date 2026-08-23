@@ -48,7 +48,12 @@ func Start(cfg *config.Config) error {
 	cookie_reader := cookies.NewPersistentReader(cfg.WorkDir)
 
 	b := velo.NewApp(&velo.VeloAppOpt{Mode: velo.ModeHttp})
-	if err := b.Migrate(&velo.VeloDatabaseOpt{DBType: velo.DBTypeSQLite, DBPath: cfg.DBPath, Migrations: &database.Migrations}); err != nil {
+	if err := b.Migrate(&velo.VeloDatabaseOpt{
+		DBType:                    velo.DBTypeSQLite,
+		DBPath:                    cfg.DBPath,
+		Migrations:                &database.Migrations,
+		DisableTimestampCallbacks: true,
+	}); err != nil {
 		return fmt.Errorf("database initialization failed: %w", err)
 	}
 	if err := database.ConfigureSQLiteRuntime(b.DB); err != nil {

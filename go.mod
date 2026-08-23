@@ -34,7 +34,7 @@ require (
 	github.com/gin-gonic/gin v1.9.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/ltaoo/echo v0.12.1
-	github.com/ltaoo/velo v1.1.1
+	github.com/ltaoo/velo v1.1.2
 	github.com/pterm/pterm v0.12.50
 	github.com/qtgolang/SunnyNet v1.4.0
 	github.com/rs/zerolog v1.34.0

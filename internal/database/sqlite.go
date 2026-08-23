@@ -15,9 +15,6 @@ func ConfigureSQLiteRuntime(db *gorm.DB) error {
 	if db == nil {
 		return fmt.Errorf("database is nil")
 	}
-	if err := remove_velo_timestamp_callbacks(db); err != nil {
-		return err
-	}
 
 	sql_db, err := db.DB()
 	if err != nil {
@@ -38,21 +35,6 @@ func ConfigureSQLiteRuntime(db *gorm.DB) error {
 
 	return nil
 }
-
-// remove_velo_timestamp_callbacks removes Velo's string timestamp callbacks.
-// Application models use Unix-millisecond integer timestamps and GORM already
-// handles slices correctly. Velo's create callback assumes a single struct and
-// panics when CreateInBatches supplies a slice.
-func remove_velo_timestamp_callbacks(db *gorm.DB) error {
-	if err := db.Callback().Create().Remove("set_created_at"); err != nil {
-		return fmt.Errorf("remove incompatible create timestamp callback: %w", err)
-	}
-	if err := db.Callback().Update().Remove("set_updated_at"); err != nil {
-		return fmt.Errorf("remove incompatible update timestamp callback: %w", err)
-	}
-	return nil
-}
-
 func configure_sqlite_pool(sql_db *sql.DB) {
 	sql_db.SetMaxOpenConns(1)
 	sql_db.SetMaxIdleConns(1)

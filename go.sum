@@ -325,8 +325,8 @@ github.com/lithammer/fuzzysearch v1.1.8 h1:/HIuJnjHuXS8bKaiTMeeDlW2/AyIWk2brx1V8
 github.com/lithammer/fuzzysearch v1.1.8/go.mod h1:IdqeyBClc3FFqSzYq/MXESsS4S0FsZ5ajtkr5xPLts4=
 github.com/ltaoo/echo v0.12.1 h1:klxdpRe/xDsfwkpH6QvKQLxQODkOpgQ44Fi0b/lLs2U=
 github.com/ltaoo/echo v0.12.1/go.mod h1:nmKWEj6OLrEzEb7s5AX9+ZWAn7LUaVZyMaWaYvFCgao=
-github.com/ltaoo/velo v1.1.1 h1:3rZz6HCLSGFfT3kb5emFlNAd6SWYJbfpNORUlIbOAjo=
-github.com/ltaoo/velo v1.1.1/go.mod h1:XbI0mcHUvxWT/JXW04uRf+6e0S/mQfOkQPEKzlZ3MaI=
+github.com/ltaoo/velo v1.1.2 h1:8LAMnoN2ioPQvI1tUMcR0XQoOpGRExUaq0S3lo+9en0=
+github.com/ltaoo/velo v1.1.2/go.mod h1:XbI0mcHUvxWT/JXW04uRf+6e0S/mQfOkQPEKzlZ3MaI=
 github.com/lunixbochs/vtclean v1.0.0/go.mod h1:pHhQNgMf3btfWnGBVipUOjRYhoOsdGqdm/+2c2E2WMI=
 github.com/magiconair/properties v1.8.7 h1:IeQXZAiQcpL9mgcAe1Nu6cX9LLw6ExEHKjN0VQdvPDY=
 github.com/magiconair/properties v1.8.7/go.mod h1:Dhd985XPs7jluiymwWYZ0G4Z61jb3vdS329zhj2hYo0=
