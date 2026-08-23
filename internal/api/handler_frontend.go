@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -84,7 +85,7 @@ func (c *APIClient) renderFrontendHTML(data []byte) []byte {
 
 func (c *APIClient) build_http_handler() http.Handler {
 	frontendHandler := renderFrontendHTMLResponses(
-		frontend.NewServer(c.cfg.Mode),
+		renderFrontendJSImportResponses(frontend.NewServer(c.cfg.Mode), c.cfg.Version),
 		c.renderFrontendHTML,
 	)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -94,6 +95,439 @@ func (c *APIClient) build_http_handler() http.Handler {
 		}
 		frontendHandler.ServeHTTP(w, r)
 	})
+}
+
+// renderFrontendJSImportResponses adds the application version to local module
+// imports. Like Vite's import analysis, this makes every module in the graph use
+// a versioned URL instead of only versioning the entry module in index.html.
+func renderFrontendJSImportResponses(next http.Handler, version string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writer := &frontendJSImportResponseWriter{
+			ResponseWriter: w,
+			enabled:        r.Method == http.MethodGet && version != "",
+		}
+		next.ServeHTTP(writer, r)
+		writer.flush(version)
+	})
+}
+
+type frontendJSImportResponseWriter struct {
+	http.ResponseWriter
+	statusCode   int
+	wroteHeader  bool
+	bufferScript bool
+	enabled      bool
+	body         bytes.Buffer
+}
+
+func (w *frontendJSImportResponseWriter) WriteHeader(statusCode int) {
+	if w.wroteHeader {
+		return
+	}
+	w.wroteHeader = true
+	w.statusCode = statusCode
+	w.bufferScript = w.enabled &&
+		statusCode == http.StatusOK &&
+		w.Header().Get("Content-Encoding") == "" &&
+		isJavaScriptContentType(w.Header().Get("Content-Type"))
+	if !w.bufferScript {
+		w.ResponseWriter.WriteHeader(statusCode)
+	}
+}
+
+func (w *frontendJSImportResponseWriter) Write(data []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	if w.bufferScript {
+		return w.body.Write(data)
+	}
+	return w.ResponseWriter.Write(data)
+}
+
+func (w *frontendJSImportResponseWriter) flush(version string) {
+	if !w.bufferScript {
+		return
+	}
+	body := versionJSImportSpecifiers(w.body.Bytes(), version)
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.ResponseWriter.WriteHeader(w.statusCode)
+	_, _ = w.ResponseWriter.Write(body)
+}
+
+func isJavaScriptContentType(contentType string) bool {
+	if separator := strings.IndexByte(contentType, ';'); separator >= 0 {
+		contentType = contentType[:separator]
+	}
+	switch strings.ToLower(strings.TrimSpace(contentType)) {
+	case "application/javascript", "text/javascript", "application/ecmascript", "text/ecmascript", "application/x-javascript":
+		return true
+	default:
+		return false
+	}
+}
+
+type jsTokenKind uint8
+
+const (
+	jsTokenEOF jsTokenKind = iota
+	jsTokenIdentifier
+	jsTokenString
+	jsTokenPunctuation
+	jsTokenOther
+)
+
+type jsToken struct {
+	kind       jsTokenKind
+	text       string
+	start      int
+	end        int
+	valueStart int
+	valueEnd   int
+}
+
+type jsScanner struct {
+	source         []byte
+	position       int
+	canStartRegexp bool
+}
+
+type jsSpecifierRange struct {
+	start int
+	end   int
+}
+
+func versionJSImportSpecifiers(source []byte, version string) []byte {
+	if version == "" {
+		return source
+	}
+
+	ranges := findJSImportSpecifierRanges(source)
+	if len(ranges) == 0 {
+		return source
+	}
+
+	var output bytes.Buffer
+	output.Grow(len(source) + len(ranges)*(len(version)+3))
+	last := 0
+	changed := false
+	for _, item := range ranges {
+		specifier := string(source[item.start:item.end])
+		versioned, ok := versionJSImportSpecifier(specifier, version)
+		if !ok {
+			continue
+		}
+		output.Write(source[last:item.start])
+		output.WriteString(versioned)
+		last = item.end
+		changed = true
+	}
+	if !changed {
+		return source
+	}
+	output.Write(source[last:])
+	return output.Bytes()
+}
+
+func findJSImportSpecifierRanges(source []byte) []jsSpecifierRange {
+	scanner := jsScanner{source: source, canStartRegexp: true}
+	var ranges []jsSpecifierRange
+	for {
+		token := scanner.next()
+		if token.kind == jsTokenEOF {
+			return ranges
+		}
+		if token.kind != jsTokenIdentifier {
+			continue
+		}
+
+		var specifier jsToken
+		var ok bool
+		lookahead := scanner
+		switch token.text {
+		case "import":
+			specifier, ok = findImportSpecifier(&lookahead)
+		case "export":
+			specifier, ok = findExportSpecifier(&lookahead)
+		}
+		if ok {
+			if len(ranges) > 0 && ranges[len(ranges)-1].start == specifier.valueStart && ranges[len(ranges)-1].end == specifier.valueEnd {
+				continue
+			}
+			ranges = append(ranges, jsSpecifierRange{
+				start: specifier.valueStart,
+				end:   specifier.valueEnd,
+			})
+		}
+	}
+}
+
+func findImportSpecifier(scanner *jsScanner) (jsToken, bool) {
+	token := scanner.next()
+	if token.kind == jsTokenString { // import "./side-effect.js"
+		return token, true
+	}
+	if token.kind == jsTokenPunctuation {
+		switch token.text {
+		case ".": // import.meta
+			return jsToken{}, false
+		case "(": // import("./lazy.js")
+			token = scanner.next()
+			return token, token.kind == jsTokenString
+		}
+	}
+
+	braceDepth := 0
+	for token.kind != jsTokenEOF {
+		if token.kind == jsTokenPunctuation {
+			switch token.text {
+			case "{":
+				braceDepth++
+			case "}":
+				if braceDepth > 0 {
+					braceDepth--
+				}
+			case ";":
+				if braceDepth == 0 {
+					return jsToken{}, false
+				}
+			}
+		}
+		if braceDepth == 0 && token.kind == jsTokenIdentifier && token.text == "from" {
+			token = scanner.next()
+			return token, token.kind == jsTokenString
+		}
+		if braceDepth == 0 && token.kind == jsTokenIdentifier && (token.text == "import" || token.text == "export") {
+			return jsToken{}, false
+		}
+		token = scanner.next()
+	}
+	return jsToken{}, false
+}
+
+func findExportSpecifier(scanner *jsScanner) (jsToken, bool) {
+	braceDepth := 0
+	for token := scanner.next(); token.kind != jsTokenEOF; token = scanner.next() {
+		if token.kind == jsTokenPunctuation {
+			switch token.text {
+			case "{":
+				braceDepth++
+			case "}":
+				if braceDepth > 0 {
+					braceDepth--
+				}
+			case ";":
+				if braceDepth == 0 {
+					return jsToken{}, false
+				}
+			}
+		}
+		if braceDepth == 0 && token.kind == jsTokenIdentifier && token.text == "from" {
+			token = scanner.next()
+			return token, token.kind == jsTokenString
+		}
+		if braceDepth == 0 && token.kind == jsTokenIdentifier && (token.text == "import" || token.text == "export") {
+			return jsToken{}, false
+		}
+	}
+	return jsToken{}, false
+}
+
+func (scanner *jsScanner) next() jsToken {
+	for scanner.position < len(scanner.source) {
+		start := scanner.position
+		current := scanner.source[start]
+
+		if isJSSpace(current) {
+			scanner.position++
+			continue
+		}
+		if current == '/' && start+1 < len(scanner.source) {
+			switch scanner.source[start+1] {
+			case '/':
+				scanner.position = skipJSLineComment(scanner.source, start+2)
+				continue
+			case '*':
+				scanner.position = skipJSBlockComment(scanner.source, start+2)
+				continue
+			}
+			if scanner.canStartRegexp {
+				scanner.position = skipJSRegexp(scanner.source, start+1)
+				scanner.canStartRegexp = false
+				return jsToken{kind: jsTokenOther, start: start, end: scanner.position}
+			}
+		}
+		if current == '\'' || current == '"' {
+			end := skipJSQuotedString(scanner.source, start, current)
+			scanner.position = end
+			scanner.canStartRegexp = false
+			valueEnd := end
+			if valueEnd > start+1 && scanner.source[valueEnd-1] == current {
+				valueEnd--
+			}
+			return jsToken{
+				kind:       jsTokenString,
+				start:      start,
+				end:        end,
+				valueStart: start + 1,
+				valueEnd:   valueEnd,
+			}
+		}
+		if current == '`' {
+			scanner.position = skipJSTemplate(scanner.source, start+1)
+			scanner.canStartRegexp = false
+			return jsToken{kind: jsTokenOther, start: start, end: scanner.position}
+		}
+		if isJSIdentifierStart(current) {
+			scanner.position++
+			for scanner.position < len(scanner.source) && isJSIdentifierContinue(scanner.source[scanner.position]) {
+				scanner.position++
+			}
+			text := string(scanner.source[start:scanner.position])
+			scanner.canStartRegexp = jsKeywordAllowsRegexp(text)
+			return jsToken{kind: jsTokenIdentifier, text: text, start: start, end: scanner.position}
+		}
+		if current >= '0' && current <= '9' {
+			scanner.position++
+			for scanner.position < len(scanner.source) && isJSNumberContinue(scanner.source[scanner.position]) {
+				scanner.position++
+			}
+			scanner.canStartRegexp = false
+			return jsToken{kind: jsTokenOther, start: start, end: scanner.position}
+		}
+
+		scanner.position++
+		text := string(scanner.source[start:scanner.position])
+		scanner.canStartRegexp = current != ')' && current != ']' && current != '}' && current != '.'
+		return jsToken{kind: jsTokenPunctuation, text: text, start: start, end: scanner.position}
+	}
+	return jsToken{kind: jsTokenEOF, start: len(scanner.source), end: len(scanner.source)}
+}
+
+func versionJSImportSpecifier(specifier string, version string) (string, bool) {
+	if strings.ContainsRune(specifier, '\\') || !isLocalJSImportSpecifier(specifier) {
+		return specifier, false
+	}
+	parsed, err := url.Parse(specifier)
+	if err != nil {
+		return specifier, false
+	}
+	extension := strings.ToLower(parsed.Path)
+	if !strings.HasSuffix(extension, ".js") && !strings.HasSuffix(extension, ".mjs") {
+		return specifier, false
+	}
+	query := parsed.Query()
+	query.Set("v", version)
+	parsed.RawQuery = query.Encode()
+	return parsed.String(), true
+}
+
+func isLocalJSImportSpecifier(specifier string) bool {
+	return strings.HasPrefix(specifier, "./") ||
+		strings.HasPrefix(specifier, "../") ||
+		strings.HasPrefix(specifier, "/") && !strings.HasPrefix(specifier, "//") ||
+		strings.HasPrefix(specifier, "@/")
+}
+
+func skipJSQuotedString(source []byte, start int, quote byte) int {
+	for position := start + 1; position < len(source); position++ {
+		if source[position] == '\\' {
+			position++
+			continue
+		}
+		if source[position] == quote {
+			return position + 1
+		}
+	}
+	return len(source)
+}
+
+func skipJSTemplate(source []byte, position int) int {
+	for position < len(source) {
+		if source[position] == '\\' {
+			position += 2
+			continue
+		}
+		if source[position] == '`' {
+			return position + 1
+		}
+		position++
+	}
+	return len(source)
+}
+
+func skipJSLineComment(source []byte, position int) int {
+	for position < len(source) && source[position] != '\n' && source[position] != '\r' {
+		position++
+	}
+	return position
+}
+
+func skipJSBlockComment(source []byte, position int) int {
+	for position+1 < len(source) {
+		if source[position] == '*' && source[position+1] == '/' {
+			return position + 2
+		}
+		position++
+	}
+	return len(source)
+}
+
+func skipJSRegexp(source []byte, position int) int {
+	inCharacterClass := false
+	for position < len(source) {
+		switch source[position] {
+		case '\\':
+			position += 2
+			continue
+		case '[':
+			inCharacterClass = true
+		case ']':
+			inCharacterClass = false
+		case '/':
+			if !inCharacterClass {
+				position++
+				for position < len(source) && isJSIdentifierContinue(source[position]) {
+					position++
+				}
+				return position
+			}
+		case '\n', '\r':
+			return position
+		}
+		position++
+	}
+	return len(source)
+}
+
+func isJSSpace(value byte) bool {
+	switch value {
+	case ' ', '\t', '\n', '\r', '\v', '\f':
+		return true
+	default:
+		return false
+	}
+}
+
+func isJSIdentifierStart(value byte) bool {
+	return value == '_' || value == '$' || value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z'
+}
+
+func isJSIdentifierContinue(value byte) bool {
+	return isJSIdentifierStart(value) || value >= '0' && value <= '9'
+}
+
+func isJSNumberContinue(value byte) bool {
+	return isJSIdentifierContinue(value) || value == '.'
+}
+
+func jsKeywordAllowsRegexp(keyword string) bool {
+	switch keyword {
+	case "await", "case", "delete", "do", "else", "in", "instanceof", "new", "return", "throw", "typeof", "void", "yield":
+		return true
+	default:
+		return false
+	}
 }
 
 // renderFrontendHTMLResponses applies the same runtime-variable rendering used
