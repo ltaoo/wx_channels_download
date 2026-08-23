@@ -404,43 +404,52 @@ func (s *BrowseService) ensureAccount(account *model.Account) error {
 	if account == nil || account.Id == "" {
 		return nil
 	}
-	var existing model.Account
-	err := s.db.Where("id = ?", account.Id).First(&existing).Error
-	if err == nil {
-		updates := map[string]interface{}{"updated_at": account.UpdatedAt}
-		needUpdate := false
-		if nn := strings.TrimSpace(account.Nickname); nn != "" && strings.TrimSpace(existing.Nickname) == "" {
-			updates["nickname"] = nn
-			needUpdate = true
-		}
-		if av := strings.TrimSpace(account.AvatarURL); av != "" && strings.TrimSpace(existing.AvatarURL) == "" {
-			updates["avatar_url"] = av
-			needUpdate = true
-		}
-		if !needUpdate {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var existing model.Account
+		err := tx.Where("id = ?", account.Id).First(&existing).Error
+		if err == nil {
+			updates := map[string]interface{}{"updated_at": account.UpdatedAt}
+			needUpdate := false
+			if nn := strings.TrimSpace(account.Nickname); nn != "" && strings.TrimSpace(existing.Nickname) == "" {
+				updates["nickname"] = nn
+				needUpdate = true
+			}
+			avatar_changed, avatar_err := existing.ApplyObservedAvatarURL(account.AvatarURL)
+			if avatar_err != nil {
+				return avatar_err
+			}
+			if avatar_changed {
+				updates["avatar_url"] = existing.AvatarURL
+				updates["past_avatars"] = existing.PastAvatars
+				needUpdate = true
+			}
+			if !needUpdate {
+				return nil
+			}
+			if err := tx.Model(&existing).Updates(updates).Error; err != nil {
+				return err
+			}
+			s.logger.Info().
+				Str("method", "BrowseService.ensureAccount").
+				Str("account_id", account.Id).
+				Msg("updated account record")
 			return nil
 		}
-		if err := s.db.Model(&existing).Updates(updates).Error; err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		candidate := *account
+		candidate.PastAvatars = "[]"
+		if err := tx.Create(&candidate).Error; err != nil {
 			return err
 		}
 		s.logger.Info().
 			Str("method", "BrowseService.ensureAccount").
 			Str("account_id", account.Id).
-			Msg("updated account record")
+			Str("platform_id", account.PlatformId).
+			Msg("created account record")
 		return nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
-	if err := s.db.Create(account).Error; err != nil {
-		return err
-	}
-	s.logger.Info().
-		Str("method", "BrowseService.ensureAccount").
-		Str("account_id", account.Id).
-		Str("platform_id", account.PlatformId).
-		Msg("created account record")
-	return nil
+	})
 }
 
 func normalizePage(page int) int {

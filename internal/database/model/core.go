@@ -80,6 +80,9 @@ func (a *Account) BeforeCreate(tx *gorm.DB) error {
 	if a.Id == "" {
 		a.Id = a.PlatformId + ":" + a.ExternalId
 	}
+	if a.PastAvatars == "" {
+		a.PastAvatars = "[]"
+	}
 	return nil
 }
 
