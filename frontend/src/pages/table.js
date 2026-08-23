@@ -707,10 +707,17 @@ function table_render(props, render_list) {
     );
   }
 
-  function render_error() {
+  function render_error_state() {
     return typeof props.renderError === "function"
       ? props.renderError(props.error)
       : TableError(table_props);
+  }
+
+  function render_error() {
+    return TablePanel(
+      { ...table_props, rows: [], renderEmpty: render_error_state },
+      render_list,
+    );
   }
 
   return View(

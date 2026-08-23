@@ -454,6 +454,7 @@ func (a *OfficialAccountAdapter) BuildDownloadTask(content_json json.RawMessage,
 	video_resources, video_details := build_wxmp_embedded_videos(
 		&data,
 		content,
+		account,
 		external_id,
 		extra_json,
 		config_string(config, "video_variant_key"),
@@ -604,6 +605,7 @@ func parse_content_videos(data *wxmp.ArticleCgiDataNew, content_id, external_id,
 	resources, _ := build_wxmp_embedded_videos(
 		data,
 		&model.Content{Id: content_id},
+		nil,
 		external_id,
 		extra_json,
 		"",
@@ -615,6 +617,7 @@ func parse_content_videos(data *wxmp.ArticleCgiDataNew, content_id, external_id,
 func build_wxmp_embedded_videos(
 	data *wxmp.ArticleCgiDataNew,
 	root_content *model.Content,
+	account *model.Account,
 	external_id string,
 	extra_json string,
 	selected_variant_key string,
@@ -678,10 +681,11 @@ func build_wxmp_embedded_videos(
 			selected_variant,
 		))
 		details = append(details, adapter.ContentDetail{
-			Type:    "video",
-			Key:     video_content.Id,
-			Data:    content_video,
-			Content: video_content,
+			Type:     "video",
+			Key:      video_content.Id,
+			Data:     content_video,
+			Content:  video_content,
+			Accounts: content_account_references(account),
 			Relation: &model.ContentRelation{
 				SourceContentId: root_content.Id,
 				TargetContentId: video_content.Id,
@@ -690,6 +694,16 @@ func build_wxmp_embedded_videos(
 		})
 	}
 	return resources, details
+}
+
+func content_account_references(account *model.Account) []adapter.ContentAccountReference {
+	if account == nil {
+		return nil
+	}
+	return []adapter.ContentAccountReference{{
+		Account: account,
+		Role:    "owner",
+	}}
 }
 
 func wxmp_embedded_video_content(

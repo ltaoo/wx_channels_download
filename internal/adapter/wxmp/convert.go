@@ -67,11 +67,21 @@ func (a *OfficialAccountAdapter) ToContentDetails(data any) ([]adapter.ContentDe
 	_, video_details := build_wxmp_embedded_videos(
 		article_data,
 		content,
+		nil,
 		ArticleExternalID(article_data),
 		"",
 		"",
 		"",
 	)
+	if len(video_details) > 0 {
+		account, err := ToAccount(article_data)
+		if err != nil {
+			return nil, err
+		}
+		for detail_index := range video_details {
+			video_details[detail_index].Accounts = content_account_references(account)
+		}
+	}
 	return wxmp_content_details(content, detail, video_details...), nil
 }
 

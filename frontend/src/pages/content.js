@@ -283,6 +283,7 @@ function ContentRowMain(props) {
   const vm$ = props.store;
   const content = props.content;
   const favicon = window.PLATFORM_FAVICONS[content.platform_id] || "";
+  const title = content.title || "\u00a0";
   return [
     ContentRowCover({ content }),
     View({ class: "wx-content-row-main" }, [
@@ -291,7 +292,7 @@ function ContentRowMain(props) {
           class: "wx-content-row-title",
           attributes: { title: content.title },
         },
-        [content.title],
+        [title],
       ),
       View({ class: "wx-content-row-badges" }, [
         View({ class: "wx-content-row-platform" }, [

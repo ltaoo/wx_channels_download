@@ -6,7 +6,6 @@ import (
 	"io"
 
 	"github.com/ltaoo/velo"
-	gorm_logger "gorm.io/gorm/logger"
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/api"
@@ -62,15 +61,13 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 
 	app := velo.NewApp(&velo.VeloAppOpt{Mode: velo.ModeHttp})
 	if err := app.Migrate(&velo.VeloDatabaseOpt{
-		DBType:     velo.DBTypeSQLite,
-		DBPath:     cfg.DBPath,
-		Migrations: &database.Migrations,
+		DBType:                    velo.DBTypeSQLite,
+		DBPath:                    cfg.DBPath,
+		Migrations:                &database.Migrations,
+		DisableTimestampCallbacks: true,
 	}); err != nil {
 		return nil, fmt.Errorf("database initialization failed: %w", err)
 	}
-	// A stdio protocol must keep stdout reserved for JSON-RPC frames. Velo's
-	// default GORM logger writes callback warnings to stdout during SQLite setup.
-	app.DB.Logger = gorm_logger.Default.LogMode(gorm_logger.Silent)
 	if err := database.ConfigureSQLiteRuntime(app.DB); err != nil {
 		return nil, fmt.Errorf("database sqlite configuration failed: %w", err)
 	}

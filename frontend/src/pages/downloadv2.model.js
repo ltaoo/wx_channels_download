@@ -567,7 +567,11 @@ function DownloadV2Model(props = {}) {
     if (selected_ids.length !== selected_task_ids_.value.length) {
       selected_task_ids_.as(selected_ids);
     }
-    tasks_.as(records);
+    // Keep the reactive row objects registered by the keyed `For` renderer.
+    // `refarr.as()` releases those registrations before it publishes the new
+    // array, so rows with the same task id are reused with stale values. This
+    // is especially visible for lightweight WebSocket progress updates.
+    tasks_.assign(records);
   }
 
   async function load_page(target_page = page_.value) {

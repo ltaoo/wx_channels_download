@@ -3253,10 +3253,22 @@ func (s *DownloadTaskService) delete_task_with_files(task_id int) error {
 	if err := s.db.First(&task, task_id).Error; err != nil {
 		return fmt.Errorf("任务不存在: %w", err)
 	}
+	if !is_terminal_download_task_status(task.Status) {
+		return fmt.Errorf("下载任务仍在进行中，不能覆盖（任务 ID: %d）", task.Id)
+	}
 
 	return s.db.Model(&task).Updates(map[string]any{
 		"deleted_at": time.Now().UnixMilli(),
 	}).Error
+}
+
+func is_terminal_download_task_status(status int) bool {
+	switch status {
+	case model.TaskStatusFinished, model.TaskStatusFailed, model.TaskStatusCancelled:
+		return true
+	default:
+		return false
+	}
 }
 
 // StartCreatedTask hands a newly persisted task to the download scheduler.

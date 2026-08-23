@@ -3,6 +3,7 @@ package adapter
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -83,25 +84,45 @@ func UpsertAccount(db *gorm.DB, logger zerolog.Logger, profile *PlatformBrowserP
 			UpdatedAt: now,
 		},
 	}
-	var existingAccount model.Account
-	if err := db.Where("platform_id = ? AND external_id = ?", profile.PlatformId, accountExternalID).First(&existingAccount).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			if err := db.Create(&acc).Error; err != nil {
-				logger.Error().Err(err).Str("platform_id", profile.PlatformId).Str("account_external_id", accountExternalID).Msg("create platform account failed")
-				return false
+	transaction_err := db.Transaction(func(tx *gorm.DB) error {
+		var existingAccount model.Account
+		find_err := tx.
+			Where("platform_id = ? AND external_id = ?", profile.PlatformId, accountExternalID).
+			First(&existingAccount).Error
+		if errors.Is(find_err, gorm.ErrRecordNotFound) {
+			if err := tx.Create(&acc).Error; err != nil {
+				return fmt.Errorf("create platform account: %w", err)
 			}
-			return true
+			return nil
 		}
-		logger.Error().Err(err).Str("platform_id", profile.PlatformId).Str("account_external_id", accountExternalID).Msg("find platform account failed")
-		return false
-	}
+		if find_err != nil {
+			return fmt.Errorf("find platform account: %w", find_err)
+		}
 
-	if err := db.Model(&existingAccount).Updates(map[string]any{
-		"nickname":   profile.AccountNickname,
-		"avatar_url": profile.AccountAvatarURL,
-		"updated_at": now,
-	}).Error; err != nil {
-		logger.Error().Err(err).Str("account_id", existingAccount.Id).Msg("update platform account failed")
+		updates := map[string]any{
+			"nickname":   profile.AccountNickname,
+			"updated_at": now,
+		}
+		avatar_changed, err := existingAccount.ApplyObservedAvatarURL(profile.AccountAvatarURL)
+		if err != nil {
+			return err
+		}
+		if avatar_changed {
+			updates["avatar_url"] = existingAccount.AvatarURL
+			updates["past_avatars"] = existingAccount.PastAvatars
+		}
+		if err := tx.Model(&existingAccount).Updates(updates).Error; err != nil {
+			return fmt.Errorf("update platform account: %w", err)
+		}
+		return nil
+	})
+	if transaction_err != nil {
+		logger.Error().
+			Err(transaction_err).
+			Str("platform_id", profile.PlatformId).
+			Str("account_external_id", accountExternalID).
+			Msg("upsert platform account failed")
+		return false
 	}
 	return true
 }

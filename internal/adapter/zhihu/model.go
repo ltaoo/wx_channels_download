@@ -648,6 +648,7 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 	}
 	video_resources, video_details := build_zhihu_embedded_videos(
 		content,
+		account,
 		video_infos,
 		resource_key,
 		config_string(config, "video_variant_key"),

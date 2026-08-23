@@ -54,6 +54,10 @@ func (s *ContentService) UpsertAccountAndLinkContent(content_id string, account 
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			persisted = *account
+			// Avatar history is maintained internally from observed changes. A
+			// newly created account has no previous avatar regardless of caller
+			// input.
+			persisted.PastAvatars = "[]"
 			if persisted.CreatedAt == 0 {
 				persisted.CreatedAt = now
 			}
@@ -64,7 +68,10 @@ func (s *ContentService) UpsertAccountAndLinkContent(content_id string, account 
 		case err != nil:
 			return fmt.Errorf("查询账号失败: %w", err)
 		default:
-			updates := account_updates(account, now)
+			updates, err := account_updates(&persisted, account, now)
+			if err != nil {
+				return fmt.Errorf("更新账号头像历史失败: %w", err)
+			}
 			if len(updates) > 0 {
 				if err := tx.Model(&persisted).Updates(updates).Error; err != nil {
 					return fmt.Errorf("更新账号失败: %w", err)
@@ -110,7 +117,7 @@ func (s *ContentService) UpsertAccountAndLinkContent(content_id string, account 
 	return &persisted, nil
 }
 
-func account_updates(account *model.Account, now int64) map[string]any {
+func account_updates(existing *model.Account, account *model.Account, now int64) (map[string]any, error) {
 	updates := map[string]any{"updated_at": now}
 	if account.InfluencerId != nil {
 		updates["influencer_id"] = account.InfluencerId
@@ -124,8 +131,13 @@ func account_updates(account *model.Account, now int64) map[string]any {
 	if account.Signature != "" {
 		updates["signature"] = account.Signature
 	}
-	if account.AvatarURL != "" {
-		updates["avatar_url"] = account.AvatarURL
+	avatar_changed, err := existing.ApplyObservedAvatarURL(account.AvatarURL)
+	if err != nil {
+		return nil, err
+	}
+	if avatar_changed {
+		updates["avatar_url"] = existing.AvatarURL
+		updates["past_avatars"] = existing.PastAvatars
 	}
 	if account.ProfileURL != "" {
 		updates["profile_url"] = account.ProfileURL
@@ -139,10 +151,7 @@ func account_updates(account *model.Account, now int64) map[string]any {
 	if account.PastNames != "" {
 		updates["past_names"] = account.PastNames
 	}
-	if account.PastAvatars != "" {
-		updates["past_avatars"] = account.PastAvatars
-	}
-	return updates
+	return updates, nil
 }
 
 type ContentListOptions struct {
