@@ -52,6 +52,7 @@ func (r *WebsocketRoutes) RegisterRoutes(registrar adapter.RouteRegistrar) {
 	registrar.RegisterGET("/api/channels/contact/search", r.HandleSearchChannelsContact)
 	registrar.RegisterGET("/api/channels/contact/feed/list", r.HandleFetchFeedListOfContact)
 	registrar.RegisterGET("/api/channels/feed/profile", r.HandleFetchFeedProfile)
+	registrar.RegisterGET("/api/channels/live/profile", r.HandleFetchLiveProfile)
 	registrar.RegisterGET("/api/channels/live/replay/list", r.HandleFetchLiveReplayList)
 	registrar.RegisterGET("/api/channels/interactioned/list", r.HandleFetchInteractionedFeedList)
 	registrar.RegisterGET("/api/channels/follow/list", r.HandleFetchFollowList)
@@ -188,6 +189,21 @@ func (r *WebsocketRoutes) HandleFetchLiveReplayList(ctx *gin.Context) {
 	next_marker := ctx.Query("next_marker")
 
 	resp, err := r.client.FetchChannelsLiveReplayList(username, next_marker)
+	if err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	result.Ok(ctx, resp)
+}
+
+// HandleFetchLiveProfile fetches a live profile through the frontend joinLive API.
+func (r *WebsocketRoutes) HandleFetchLiveProfile(ctx *gin.Context) {
+	username := ctx.Query("username")
+	oid := ctx.Query("oid")
+	nid := ctx.Query("nid")
+	live_id := ctx.Query("id")
+
+	resp, err := r.client.FetchLiveInfo(username, oid, nid, live_id)
 	if err != nil {
 		result.Err(ctx, 400, err.Error())
 		return

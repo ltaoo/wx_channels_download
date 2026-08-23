@@ -23,6 +23,13 @@ type wxchannels_account_page_arguments struct {
 	NextMarker string `json:"next_marker"`
 }
 
+type wxchannels_live_profile_arguments struct {
+	Username      string `json:"username"`
+	ObjectID      string `json:"oid"`
+	ObjectNonceID string `json:"nid"`
+	LiveID        string `json:"id"`
+}
+
 type wxchannels_interacted_videos_arguments struct {
 	Flag       int    `json:"flag"`
 	NextMarker string `json:"next_marker"`
@@ -91,6 +98,38 @@ func wxchannels_tool_definitions() []any {
 			"获取微信视频号直播回放",
 			"获取指定视频号账号的直播回放列表。username 可使用搜索或关注列表返回的 username。",
 			wxchannels_account_page_schema("上一页响应 data.lastBuffer 中的分页游标。"),
+		),
+		wxchannels_tool_definition(
+			"get_wxchannels_live_profile",
+			"获取微信视频号直播详情",
+			"调用视频号页面的 joinLive API 获取直播详情和直播流信息。username、oid、nid 和 id 分别对应 finderUsername、objectId、objectNonceId 和 liveId。所有 ID 均以字符串传入，避免大整数精度损失。",
+			map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"properties": map[string]any{
+					"username": map[string]any{
+						"type":        "string",
+						"minLength":   1,
+						"description": "传给 joinLive 的 finderUsername。",
+					},
+					"oid": map[string]any{
+						"type":        "string",
+						"minLength":   1,
+						"description": "直播对象 ID，对应 objectId。",
+					},
+					"nid": map[string]any{
+						"type":        "string",
+						"minLength":   1,
+						"description": "直播对象 nonce ID，对应 objectNonceId。",
+					},
+					"id": map[string]any{
+						"type":        "string",
+						"minLength":   1,
+						"description": "直播 ID，对应 liveId。",
+					},
+				},
+				"required": []string{"username", "oid", "nid", "id"},
+			},
 		),
 		wxchannels_tool_definition(
 			"get_wxchannels_interacted_videos",
@@ -278,6 +317,35 @@ func (s *Server) get_wxchannels_account_videos(ctx context.Context, raw_argument
 
 func (s *Server) get_wxchannels_live_replays(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	return s.get_wxchannels_account_page(ctx, raw_arguments, "/api/channels/live/replay/list")
+}
+
+func (s *Server) get_wxchannels_live_profile(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+	var arguments wxchannels_live_profile_arguments
+	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
+		return nil, err
+	}
+	arguments.Username = strings.TrimSpace(arguments.Username)
+	arguments.ObjectID = strings.TrimSpace(arguments.ObjectID)
+	arguments.ObjectNonceID = strings.TrimSpace(arguments.ObjectNonceID)
+	arguments.LiveID = strings.TrimSpace(arguments.LiveID)
+	if arguments.Username == "" {
+		return nil, fmt.Errorf("username 不能为空")
+	}
+	if arguments.ObjectID == "" {
+		return nil, fmt.Errorf("oid 不能为空")
+	}
+	if arguments.ObjectNonceID == "" {
+		return nil, fmt.Errorf("nid 不能为空")
+	}
+	if arguments.LiveID == "" {
+		return nil, fmt.Errorf("id 不能为空")
+	}
+	return s.call_wxchannels_api(ctx, "/api/channels/live/profile", url.Values{
+		"username": []string{arguments.Username},
+		"oid":      []string{arguments.ObjectID},
+		"nid":      []string{arguments.ObjectNonceID},
+		"id":       []string{arguments.LiveID},
+	})
 }
 
 func (s *Server) get_wxchannels_account_page(ctx context.Context, raw_arguments json.RawMessage, path string) (map[string]any, error) {

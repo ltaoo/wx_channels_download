@@ -453,6 +453,12 @@ type ChannelsLiveReplayListBody struct {
 	Username   string `json:"username"`
 	NextMarker string `json:"next_marker"`
 }
+type ChannelsLiveInfoBody struct {
+	Username      string `json:"username"`
+	ObjectId      string `json:"oid"`
+	ObjectNonceId string `json:"nid"`
+	LiveId        string `json:"id"`
+}
 type ChannelsInteractionedFeedListBody struct {
 	Flag       string `json:"flag"`
 	NextMarker string `json:"next_marker"`

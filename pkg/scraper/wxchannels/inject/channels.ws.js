@@ -382,6 +382,42 @@ function ChannelsWebsocketClient() {
         }
         return;
       }
+      if (key === "key:channels:live_info") {
+        var payload = {
+          clientStatus: {
+            videoDecoderSupportMask: 1,
+          },
+          finderUsername: data.username,
+          liveId: data.id,
+          objectId: data.oid,
+          objectNonceId: data.nid,
+          scene: 2,
+        };
+        var liveAPI = WXU.LiveAPI;
+        if (!liveAPI || typeof liveAPI.joinLive !== "function") {
+          resp({
+            errCode: 1011,
+            errMsg: "joinLive API is unavailable",
+            payload,
+          });
+          return;
+        }
+        try {
+          var r = await liveAPI.joinLive(payload);
+          console.log("[DOWNLOADER]joinLive", r, payload);
+          resp({
+            ...r,
+            payload,
+          });
+        } catch (err) {
+          resp({
+            errCode: 1011,
+            errMsg: err.message,
+            payload,
+          });
+        }
+        return;
+      }
       if (key === "key:channels:feed_profile") {
         console.log("before finderGetCommentProfile", data);
         var [err, r, payload] = await fetchFeedProfileWith(data);

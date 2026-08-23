@@ -311,6 +311,7 @@ func tool_definitions() []any {
 	}
 	definitions = append(definitions, scraper_job_tool_definitions()...)
 	definitions = append(definitions, wxchannels_tool_definitions()...)
+	definitions = append(definitions, wxchannels_download_tool_definitions()...)
 	return append(definitions, data_tool_definitions()...)
 }
 
@@ -392,6 +393,8 @@ func (s *Server) call_tool(ctx context.Context, params call_tool_params) (map[st
 		return s.get_wxchannels_account_videos(ctx, params.Arguments)
 	case "get_wxchannels_live_replays":
 		return s.get_wxchannels_live_replays(ctx, params.Arguments)
+	case "get_wxchannels_live_profile":
+		return s.get_wxchannels_live_profile(ctx, params.Arguments)
 	case "get_wxchannels_interacted_videos":
 		return s.get_wxchannels_interacted_videos(ctx, params.Arguments)
 	case "get_wxchannels_followed_accounts":
@@ -404,6 +407,10 @@ func (s *Server) call_tool(ctx context.Context, params call_tool_params) (map[st
 		return s.get_wxchannels_video_comments(ctx, params.Arguments)
 	case "get_wxchannels_video_share_url":
 		return s.get_wxchannels_video_share_url(ctx, params.Arguments)
+	case "download_wxchannels_live":
+		return s.download_wxchannels_live(ctx, params.Arguments)
+	case "download_wxchannels_video":
+		return s.download_wxchannels_video(ctx, params.Arguments)
 	case "get_download_tasks":
 		return s.get_download_tasks(ctx, params.Arguments)
 	case "get_download_task_detail":

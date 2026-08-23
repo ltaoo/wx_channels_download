@@ -458,6 +458,25 @@ var WXBase64 = (() => {
     }
     return [false, feed];
   }
+
+  /**
+   * 检查是否存在直播数据
+   * @param {{ silence?: boolean }} opt
+   * @returns {[boolean, unknown, unknown]}
+   */
+  function __wx_check_live_existing(opt = {}) {
+    var profile = __wx_channels_live_store__.profile || null;
+    var live = __wx_channels_live_store__.liveData || null;
+    if (!live) {
+      WXU.error({
+        source: "channels.utils.js:check_live_existing",
+        alert: Number(!opt.silence),
+        msg: "检测不到直播，请提交 issue 反馈",
+      });
+      return [true, profile, null];
+    }
+    return [false, profile, live];
+  }
   /**
    *
    * @param {ChannelsFeed} feed
@@ -733,13 +752,13 @@ var WXBase64 = (() => {
 
     function build_download_menu_items() {
       return [
-        new Timeless.vm.MenuItemCore({
-          label: "原始视频",
-          onClick() {
-            __wx_channels_handle_click_download__({ spec: "original" });
-            close_dropdown();
-          },
-        }),
+        // new Timeless.vm.MenuItemCore({
+        //   label: "原始视频",
+        //   onClick() {
+        //     __wx_channels_handle_click_download__({ spec: "original" });
+        //     close_dropdown();
+        //   },
+        // }),
         ...(() => {
           const [err, feed] = WXU.check_feed_existing({
             silence: true,
@@ -814,6 +833,7 @@ var WXBase64 = (() => {
   var WXAPI2 = {};
   var WXAPI3 = {};
   var WXAPI4 = {};
+  var WXLiveAPI = {};
 
   WXU.onAPILoaded((variables) => {
     const keys = Object.keys(variables);
@@ -821,6 +841,9 @@ var WXBase64 = (() => {
       (() => {
         const variable = keys[i];
         const methods = variables[variable];
+        if (typeof methods.joinLive === "function") {
+          WXLiveAPI = methods;
+        }
         if (typeof methods.finderGetFollowList === "function") {
           WXAPI4 = methods;
           return;
@@ -870,6 +893,13 @@ var WXBase64 = (() => {
     API4: {
       get() {
         return WXAPI4;
+      },
+      configurable: true,
+      enumerable: true,
+    },
+    LiveAPI: {
+      get() {
+        return WXLiveAPI;
       },
       configurable: true,
       enumerable: true,
@@ -972,6 +1002,7 @@ var WXBase64 = (() => {
     pause_cur_video: __wx_channels_pause_cur_video,
     play_cur_video: __wx_channels_play_cur_video,
     check_feed_existing: __wx_check_feed_existing,
+    check_live_existing: __wx_check_live_existing,
     attach_download_dropdown_menu: __wx_attach_download_dropdown_menu,
     unshiftMenuItems(items) {
       items = __wx_download_menu_items(items);
