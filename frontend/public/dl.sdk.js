@@ -748,6 +748,13 @@
     });
 
     const config = Object.assign({}, object.config || {}, create_options.config || {});
+    // Keep the shorthand used by injected/global scripts compatible with the
+    // platform create API. An explicitly empty spec is meaningful for
+    // wxchannels: it selects the original resource rather than the default
+    // transcoded variant.
+    if (Object.prototype.hasOwnProperty.call(create_options, "spec")) {
+      config.spec = create_options.spec;
+    }
     if (typeof create_options.existing_action === "string") {
       config.existing_action = create_options.existing_action;
     }

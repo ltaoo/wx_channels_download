@@ -41,11 +41,21 @@ if (!window.DLUtils) {
 var WXU = (() => {
   const dl_utils = window.DLUtils;
   var APIOrigin = WXEnv.get("apiOrigin");
-  const http_client = new Timeless.kit.HttpClientCore({
+  var http_client = new Timeless.kit.HttpClientCore({
     headers: { "Content-Type": "application/json" },
     hostname: APIOrigin,
   });
+  var socket_client$ = new Timeless.kit.SocketClientCore();
   Timeless.web.provide_http_client(http_client);
+  Timeless.web.provide_socket_client(socket_client$, {
+    WebSocket,
+  });
+  window.dl$ = window.DL({
+    client: http_client,
+    socket_client: socket_client$,
+    auto_start: false,
+  });
+
   var defaultRandomAlphabet =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   function __wx_uid__() {
@@ -663,3 +673,5 @@ var WXU = (() => {
 })();
 
 window.WXU = WXU;
+
+WXU.log.Info().Str("file", "/inject/utils.js").Str("href", location.href).Msg("loaded");
