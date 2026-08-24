@@ -1,6 +1,7 @@
 package zhihuadapter
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -17,6 +18,7 @@ import (
 type InterceptorPluginConfig struct {
 	version            string
 	global_script_path string
+	frontend_variables map[string]any
 }
 
 // NewConfig creates an InterceptorPluginConfig from the application config.
@@ -24,9 +26,17 @@ func NewConfig(cfg *config.Config) *InterceptorPluginConfig {
 	if cfg == nil {
 		return &InterceptorPluginConfig{}
 	}
+	api_protocol := cfg.GetString("api.protocol")
+	api_bind_hostname := cfg.GetString("api.hostname")
+	api_port := cfg.GetInt("api.port")
 	return &InterceptorPluginConfig{
 		version:            cfg.Version,
 		global_script_path: cfg.GlobalScriptPath,
+		frontend_variables: map[string]any{
+			"apiHost":     config.APIClientHost(api_bind_hostname, api_port),
+			"apiOrigin":   config.APIClientOrigin(api_protocol, api_bind_hostname, api_port),
+			"apiProtocol": api_protocol,
+		},
 	}
 }
 
@@ -37,7 +47,7 @@ func (c *InterceptorPluginConfig) GetPlugins() []interface{} {
 		return nil
 	}
 
-	plugin := create_zhihu_interceptor_plugin(c.version, c.global_script_path)
+	plugin := create_zhihu_interceptor_plugin(c.version, c.global_script_path, c.frontend_variables)
 	if plugin == nil {
 		return nil
 	}
@@ -45,7 +55,7 @@ func (c *InterceptorPluginConfig) GetPlugins() []interface{} {
 }
 
 // create_zhihu_interceptor_plugin injects zhihu.main.js into www.zhihu.com pages.
-func create_zhihu_interceptor_plugin(version, global_script_path string) *proxy.Plugin {
+func create_zhihu_interceptor_plugin(version, global_script_path string, frontend_variables map[string]any) *proxy.Plugin {
 	asset_base_url := "/__assets"
 	url_build := frontend.NewURLBuild(asset_base_url, nil)
 	asset_version := version
@@ -91,10 +101,17 @@ func create_zhihu_interceptor_plugin(version, global_script_path string) *proxy.
 			html = strings.Replace(html, "<head>", "<head>"+early_injected.String(), 1)
 
 			var injected strings.Builder
+			frontend_config := make(map[string]any, len(frontend_variables)+2)
+			for key, value := range frontend_variables {
+				frontend_config[key] = value
+			}
+			frontend_config["version"] = version
+			frontend_config["assets_base_url"] = asset_base_url
+			frontend_config_byte, _ := json.Marshal(frontend_config)
 			frontend.AppendInlineScript(
 				&injected,
 				"",
-				fmt.Sprintf(`window.__d_config = { version: %q, assets_base_url: %q };`, version, asset_base_url),
+				fmt.Sprintf(`window.__d_config = %s;`, frontend_config_byte),
 			)
 			frontend.AppendScripts(
 				&injected,

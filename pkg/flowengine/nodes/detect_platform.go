@@ -37,7 +37,7 @@ func (n *DetectPlatformNode) Execute(ctx *engine.ProcessContext) (bool, []string
 			platform = "wechat"
 		} else if strings.Contains(strings.ToLower(raw), "bilibili") || strings.Contains(strings.ToLower(raw), "b23.tv") || strings.Contains(strings.ToLower(raw), "hdslb.com") {
 			platform = "bilibili"
-		} else if strings.Contains(strings.ToLower(raw), "xiaohongshu.com") || strings.Contains(strings.ToLower(raw), "xhslink.com") {
+		} else if strings.Contains(strings.ToLower(raw), "xiaohongshu.com") || strings.Contains(strings.ToLower(raw), "xhslink.cn") || strings.Contains(strings.ToLower(raw), "xhslink.com") {
 			platform = "xhs"
 		}
 	} else {
@@ -45,7 +45,7 @@ func (n *DetectPlatformNode) Execute(ctx *engine.ProcessContext) (bool, []string
 			platform = "wechat"
 		} else if strings.Contains(host, "bilibili.com") || strings.Contains(host, "hdslb.com") || strings.Contains(host, "b23.tv") {
 			platform = "bilibili"
-		} else if strings.Contains(host, "xiaohongshu.com") || strings.Contains(host, "xhslink.com") {
+		} else if strings.Contains(host, "xiaohongshu.com") || strings.Contains(host, "xhslink.cn") || strings.Contains(host, "xhslink.com") {
 			platform = "xhs"
 		}
 	}

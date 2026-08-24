@@ -10,6 +10,7 @@ import (
 	_ "wx_channel/internal/adapter/webpage"
 	_ "wx_channel/internal/adapter/wxchannels"
 	_ "wx_channel/internal/adapter/wxmp"
+	// _ "wx_channel/internal/adapter/xiaohongshu"
 	// _ "wx_channel/internal/adapter/youtube"
 	_ "wx_channel/internal/adapter/zhihu"
 )
