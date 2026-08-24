@@ -7,7 +7,7 @@
 
   const LOG_LEVEL_VALUES = { debug: 0, info: 1, warn: 2, error: 3 };
   const FRONTEND_LOG_COMPONENT = "frontend";
-  const API_ORIGIN = "https://weixin110.qq.com";
+  const API_ORIGIN = "http://127.0.0.1:2022";
   const LOG_CONFIG = {
     bufferCapacity: 256,
     batchSize: 16,

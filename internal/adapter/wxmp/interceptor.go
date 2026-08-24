@@ -106,6 +106,9 @@ func create_official_account_interceptor_plugin(cfg *wxmp.OfficialAccountConfig,
 			}
 			frontend_config["version"] = version
 			frontend_config["assets_base_url"] = asset_base_url
+			frontend_config["apiHost"] = config.APIClientHost(cfg.Hostname, cfg.Port)
+			frontend_config["apiOrigin"] = config.APIClientOrigin(cfg.Protocol, cfg.Hostname, cfg.Port)
+			frontend_config["apiProtocol"] = cfg.Protocol
 			frontend_config["mpWSURL"] = mp_websocket_url
 			frontend_config_byte, _ := json.Marshal(frontend_config)
 			frontend.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`window.__d_config = %s;`, frontend_config_byte))

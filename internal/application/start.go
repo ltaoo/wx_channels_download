@@ -94,29 +94,26 @@ func Start(cfg *config.Config) error {
 	interceptor_srv := interceptor.NewInterceptorServer(cfg, cert_files, logger)
 	interceptor_srv.SubscribeEvents(bus)
 
-	target_protocol := api_cfg.Protocol
-	target_hostname := api_cfg.Hostname
-	target_port := api_cfg.Port
 	if cfg.GetBool("download.remoteServer.enabled") {
-		target_protocol = cfg.GetString("download.remoteServer.protocol")
-		target_hostname = cfg.GetString("download.remoteServer.hostname")
-		target_port = cfg.GetInt("download.remoteServer.port")
+		target_protocol := cfg.GetString("download.remoteServer.protocol")
+		target_hostname := cfg.GetString("download.remoteServer.hostname")
+		target_port := cfg.GetInt("download.remoteServer.port")
 		logger.Info().
 			Str("file", "internal/application/start.go").
 			Str("protocol", target_protocol).
 			Str("hostname", target_hostname).
 			Int("port", target_port).
 			Msg("enable remote server")
+		plugin := &proxy.Plugin{
+			Match: "weixin110.qq.com",
+			Target: &proxy.TargetConfig{
+				Protocol: target_protocol,
+				Host:     target_hostname,
+				Port:     target_port,
+			},
+		}
+		interceptor_srv.Interceptor.AddPostPlugin(plugin)
 	}
-	plugin := &proxy.Plugin{
-		Match: "weixin110.qq.com",
-		Target: &proxy.TargetConfig{
-			Protocol: target_protocol,
-			Host:     target_hostname,
-			Port:     target_port,
-		},
-	}
-	interceptor_srv.Interceptor.AddPostPlugin(plugin)
 
 	table_data := pterm.TableData{{"Item", "Path"}, {"Work Dir", cfg.WorkDir}, {"Data Path", cfg.DBPath}}
 	if cfg.LogPath() != "" {

@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"wx_channel/frontend"
+	"wx_channel/internal/config"
 )
 
 func (c *APIClient) SetupRoutes() {
@@ -101,6 +102,7 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/api/content/relations", c.handle_content_relations)
 	// Other endpoints
 	c.engine.GET("/api/logs", c.handle_logs)
+	c.engine.POST("/api/logs/clear", c.handle_clear_logs)
 	c.engine.POST("/report", c.handle_frontend_report)
 	c.engine.GET("/api/status", c.handle_status)
 	c.engine.GET("/api/config", c.handle_application_config_get)
@@ -177,6 +179,7 @@ func (c *APIClient) handle_status(ctx *gin.Context) {
 		proxy_addr = fmt.Sprintf("%s:%d", host, port)
 	}
 	api_addr := fmt.Sprintf("%s:%d", api_host, api_port)
+	api_client_addr := config.APIClientHost(api_host, api_port)
 	statuses := gin.H{}
 	for name, status := range c.service_statuses_map() {
 		statuses[name] = status
@@ -186,7 +189,7 @@ func (c *APIClient) handle_status(ctx *gin.Context) {
 		"server_statuses": statuses,
 		"api": gin.H{
 			"addr":      api_addr,
-			"listening": check_port(api_addr),
+			"listening": check_port(api_client_addr),
 			"status":    statuses["api"],
 		},
 		"proxy": gin.H{

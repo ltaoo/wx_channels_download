@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -238,6 +239,32 @@ func resolve_path_value(value interface{}, base_dir string, cwd string, fallback
 		path = filepath.Join(base_dir, path)
 	}
 	return path
+}
+
+// APIClientHostname returns the hostname that local API clients should use.
+// An unspecified address is valid for listening, but it is not a destination
+// address, so clients must connect through the loopback interface instead.
+func APIClientHostname(bind_hostname string) string {
+	hostname := strings.Trim(strings.TrimSpace(bind_hostname), "[]")
+	parsed_ip := net.ParseIP(hostname)
+	if hostname == "" || (parsed_ip != nil && parsed_ip.IsUnspecified()) {
+		return "127.0.0.1"
+	}
+	return hostname
+}
+
+// APIClientHost returns the host and port that local API clients should use.
+func APIClientHost(bind_hostname string, port int) string {
+	return net.JoinHostPort(APIClientHostname(bind_hostname), strconv.Itoa(port))
+}
+
+// APIClientOrigin returns the HTTP origin that local API clients should use.
+func APIClientOrigin(protocol string, bind_hostname string, port int) string {
+	protocol = strings.TrimSuffix(strings.TrimSpace(protocol), ":")
+	if protocol == "" {
+		protocol = "http"
+	}
+	return protocol + "://" + APIClientHost(bind_hostname, port)
 }
 
 func (c *Config) LoadConfig() error {
@@ -541,8 +568,8 @@ func (c *Config) LoadConfig() error {
 		Key:         "api.hostname",
 		Type:        ConfigTypeString,
 		Default:     "127.0.0.1",
-		Description: "指定 API 服务的主机名",
-		Title:       "API 服务主机",
+		Description: "指定 API 服务的监听地址；0.0.0.0 表示监听所有 IPv4 接口，本机客户端仍通过 127.0.0.1 连接",
+		Title:       "API 监听地址",
 		Group:       "API",
 	})
 	Register(ConfigField{
@@ -803,7 +830,7 @@ func (c *Config) LoadConfig() error {
 
 	if c.Existing {
 		// config.FilePath = config_filepath
-		if err := viper.ReadInConfig(); err != nil {
+		if err := read_config_file(c.FullPath); err != nil {
 			var nf viper.ConfigFileNotFoundError
 			if !(errors.As(err, &nf) || errors.Is(err, os.ErrNotExist)) {
 				c.Error = err

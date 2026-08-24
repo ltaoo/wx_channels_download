@@ -6,32 +6,34 @@ if (typeof window.__d_config === "undefined") {
 }
 
 var WXEnv = (() => {
-  const proxy_origin = "https://weixin110.qq.com";
   const defaults = {
-    apiHost: "weixin110.qq.com",
-    apiOrigin: proxy_origin,
-    apiProtocol: "https",
+    apiHost: "127.0.0.1",
+    apiOrigin: "http://127.0.0.1:2022",
+    apiProtocol: "http",
     remoteServerEnabled: false,
-    remoteServerOrigin: proxy_origin,
+    remoteServerOrigin: "https://support.weixin.qq.com",
     maxRunning: 3,
     downloadFilenameTemplate: undefined,
     defaultHighest: false,
     downloadPauseWhenDownload: false,
     downloadInFrontend: false,
     downloadForceCheckAllFeeds: false,
-    assetsFallbackBase: `${proxy_origin}/__assets`,
+    assetsFallbackBase: "/__assets",
   };
   const runtime_env = { ...window.__d_config };
-  const api_url = new URL(proxy_origin);
-  const api_protocol = api_url.protocol.replace(":", "");
-  const api_host = api_url.host;
+  const api_origin = runtime_env.apiOrigin;
+  const api_protocol = runtime_env.apiProtocol;
+  const api_host = runtime_env.apiHost;
   const derived = {
-    apiOrigin: api_url.origin,
+    apiOrigin: api_origin,
     apiProtocol: api_protocol,
     apiHost: api_host,
-    downloaderOrigin: api_url.origin,
+    downloaderOrigin: api_origin,
     downloaderProtocol: api_protocol,
-    downloaderWSURL: `${ws_protocol(api_protocol)}://${api_host}/ws/v1/download_task`,
+    downloaderWSURL:
+      api_protocol && api_host
+        ? `${ws_protocol(api_protocol)}://${api_host}/ws/v1/download_task`
+        : undefined,
   };
   const ua = navigator.userAgent || navigator.platform || "";
 
@@ -48,6 +50,7 @@ var WXEnv = (() => {
 
   function get(name) {
     let v = own_value(derived, name);
+    console.log("env.js - get", name, v, derived, runtime_env);
     if (typeof v !== "undefined") {
       return v;
     }
@@ -67,7 +70,7 @@ var WXEnv = (() => {
   }
 
   function host_port(hostname, port) {
-    const host = normalize_hostname(hostname);
+    const host = String(hostname || "").trim();
     if (!host) {
       return "";
     }
@@ -80,32 +83,6 @@ var WXEnv = (() => {
       return host;
     }
     return host + ":" + port;
-  }
-
-  function normalize_hostname(hostname) {
-    const value = String(hostname || "").trim();
-    if (!value) {
-      return "";
-    }
-    const unwrapped =
-      value.startsWith("[") && value.endsWith("]") ? value.slice(1, -1) : value;
-    if (unwrapped === "0.0.0.0" || unwrapped === "::") {
-      return "127.0.0.1";
-    }
-    return value;
-  }
-
-  function normalize_host_addr(addr) {
-    const value = String(addr || "").trim();
-    if (!value) {
-      return "";
-    }
-    const match = value.match(/^(\[[^\]]+\]|[^:]+)(?::(\d+))?$/);
-    if (!match) {
-      return value;
-    }
-    const host = normalize_hostname(match[1]);
-    return match[2] ? host + ":" + match[2] : host;
   }
 
   function origin(protocol, addr) {
@@ -162,8 +139,6 @@ var WXEnv = (() => {
       return window.ua && window.ua.includes("wxwork");
     },
     hostPort: host_port,
-    normalizeHostname: normalize_hostname,
-    normalizeHostAddr: normalize_host_addr,
     origin,
     wsProtocol: ws_protocol,
     assetUrl: asset_URL,

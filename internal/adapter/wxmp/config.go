@@ -1,6 +1,7 @@
 package wxmpadapter
 
 import (
+	"net"
 	"strconv"
 
 	"wx_channel/frontend"
@@ -99,7 +100,8 @@ func (c *MPPluginConfig) ApplyConfig(sub *config.SubViper) error {
 
 func new_official_account_config(cfg *config.Config) *wxmp.OfficialAccountConfig {
 	protocol := cfg.GetString("api.protocol")
-	hostname := cfg.GetString("api.hostname")
+	bind_hostname := cfg.GetString("api.hostname")
+	hostname := config.APIClientHostname(bind_hostname)
 	port := cfg.GetInt("api.port")
 	settings := &wxmp.OfficialAccountConfig{
 		RootDir:                   cfg.RootDir,
@@ -109,7 +111,7 @@ func new_official_account_config(cfg *config.Config) *wxmp.OfficialAccountConfig
 		Protocol:                  protocol,
 		Hostname:                  hostname,
 		Port:                      port,
-		Addr:                      hostname + ":" + strconv.Itoa(port),
+		Addr:                      net.JoinHostPort(hostname, strconv.Itoa(port)),
 		RemoteServerEnabled:       cfg.GetBool("download.remoteServer.enabled"),
 		RemoteServerProtocol:      cfg.GetString("download.remoteServer.protocol"),
 		RemoteServerHostname:      cfg.GetString("download.remoteServer.hostname"),

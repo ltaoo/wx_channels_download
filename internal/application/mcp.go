@@ -3,9 +3,9 @@ package application
 import (
 	"net"
 	"strconv"
-	"strings"
 
 	"wx_channel/internal/api"
+	"wx_channel/internal/config"
 	"wx_channel/internal/services"
 )
 
@@ -28,11 +28,7 @@ func new_mcp_service(
 }
 
 func mcp_api_base_url(api_config *api.APIConfig) string {
-	hostname := strings.TrimSpace(api_config.Hostname)
-	parsed_ip := net.ParseIP(hostname)
-	if hostname == "" || (parsed_ip != nil && parsed_ip.IsUnspecified()) {
-		hostname = "127.0.0.1"
-	}
+	hostname := config.APIClientHostname(api_config.Hostname)
 	port := api_config.Port
 	if port <= 0 {
 		port = 2022

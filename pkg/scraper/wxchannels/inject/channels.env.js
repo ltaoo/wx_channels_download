@@ -22,8 +22,3 @@ var ChannelsEnv = (() => {
     },
   }
 })();
-// var ChannelsEnvGet = ChannelsEnv.get;
-// var ChannelsEnvOrigin = ChannelsEnv.origin;
-// var ChannelsEnvWSProtocol = ChannelsEnv.wsProtocol;
-// var ChannelsEnvNormalizeHostAddr = ChannelsEnv.normalizeHostAddr;
-// var ChannelsEnvConfig = ChannelsEnv.config;

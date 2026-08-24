@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"wx_channel/internal/application"
+	"wx_channel/internal/config"
 	"wx_channel/internal/mcpserver"
 )
 
@@ -71,10 +72,7 @@ func configured_api_base_url() string {
 	if protocol == "" {
 		protocol = "http"
 	}
-	hostname := strings.TrimSpace(Cfg.GetString("api.hostname"))
-	if hostname == "" || hostname == "0.0.0.0" || hostname == "::" {
-		hostname = "127.0.0.1"
-	}
+	hostname := config.APIClientHostname(Cfg.GetString("api.hostname"))
 	port := Cfg.GetInt("api.port")
 	return fmt.Sprintf("%s://%s", protocol, net.JoinHostPort(hostname, strconv.Itoa(port)))
 }

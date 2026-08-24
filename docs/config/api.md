@@ -14,5 +14,5 @@ api:
 ```
 
 - `protocol` API 服务协议，默认 `http`
-- `hostname` API 服务主机名
+- `hostname` API 服务监听地址。设为 `0.0.0.0` 时监听所有 IPv4 接口；本机前端和其他本机客户端仍通过 `127.0.0.1` 连接
 - `port` API 服务端口

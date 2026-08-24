@@ -16,6 +16,7 @@ import (
 
 	"wx_channel/frontend"
 	result "wx_channel/internal/apiresult"
+	"wx_channel/internal/config"
 )
 
 type FrontendTip struct {
@@ -63,9 +64,9 @@ func (c *APIClient) renderFrontendHTML(data []byte) []byte {
 	if max_running == 0 {
 		max_running = 3
 	}
-	frontendVariables := map[string]any{
-		"apiHost":                    fmt.Sprintf("%s:%d", c.cfg.Hostname, c.cfg.Port),
-		"apiOrigin":                  fmt.Sprintf("%s://%s:%d", c.cfg.Protocol, c.cfg.Hostname, c.cfg.Port),
+	frontend_variables := map[string]any{
+		"apiHost":                    config.APIClientHost(c.cfg.Hostname, c.cfg.Port),
+		"apiOrigin":                  config.APIClientOrigin(c.cfg.Protocol, c.cfg.Hostname, c.cfg.Port),
 		"apiProtocol":                c.cfg.Protocol,
 		"remoteServerEnabled":        c.cfg.Original.GetBool("download.remoteServer.enabled"),
 		"remoteServerOrigin":         fmt.Sprintf("%s://%s:%d", c.cfg.RemoteServerProtocol, c.cfg.RemoteServerHostname, c.cfg.RemoteServerPort),
@@ -76,9 +77,9 @@ func (c *APIClient) renderFrontendHTML(data []byte) []byte {
 		"downloadInFrontend":         c.cfg.Original.GetBool("channels.download.frontend"),
 		"downloadForceCheckAllFeeds": c.cfg.Original.GetBool("channels.download.forceCheckAllFeeds"),
 	}
-	cfgByte, _ := json.Marshal(frontendVariables)
+	cfg_byte, _ := json.Marshal(frontend_variables)
 	html := string(data)
-	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_CONFIG_JSON__", string(cfgByte))
+	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_CONFIG_JSON__", string(cfg_byte))
 	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_VERSION__", c.cfg.Version)
 	return []byte(html)
 }
