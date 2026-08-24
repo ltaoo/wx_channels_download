@@ -193,25 +193,27 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
         WXU.error({ msg: "创建下载任务失败: " + e.message, source: "channels.live.js:142" });
       }
     };
-    if (!WXU.API.finderJoinLiveMapper) {
-      console.log("missing WXU.API.finderJoinLiveMapper");
-      return;
-    }
-    if (!WXU.API.createAdapterFromGlobalMapper) {
-      console.log("missing WXU.API.createAdapterFromGlobalMapper");
-      return;
-    }
-    const i = WXU.API.createAdapterFromGlobalMapper(
-      live,
-      WXU.API.finderJoinLiveMapper,
-      ["room", "stream", "liveUser"],
-      "poll",
-    );
-    console.log("[live.js]has more options", i[1]);
-    if (i && i[1] && i[1].payload.channelParams) {
-      var options = i[1].payload.channelParams.cdn_trans_info.filter(
-        (vv) => vv.url,
+    var api = WXU.API || {};
+    var options = [];
+    if (api.finderJoinLiveMapper && api.createAdapterFromGlobalMapper) {
+      const i = api.createAdapterFromGlobalMapper(
+        live,
+        api.finderJoinLiveMapper,
+        ["room", "stream", "liveUser"],
+        "poll",
       );
+      console.log("[live.js]has more options", i && i[1]);
+      if (i && i[1] && i[1].payload.channelParams) {
+        options = i[1].payload.channelParams.cdn_trans_info.filter(
+          (vv) => vv.url,
+        );
+      }
+    }
+    if (
+      options.length > 0 ||
+      WXU.before_menu_items.length > 0 ||
+      WXU.after_menu_items.length > 0
+    ) {
       __wx_attach_live_download_dropdown_menu($btn, options);
     }
   }
