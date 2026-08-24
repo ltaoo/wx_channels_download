@@ -140,6 +140,61 @@ func (c *APIClient) handle_logs(ctx *gin.Context) {
 	})
 }
 
+func (c *APIClient) handle_clear_logs(ctx *gin.Context) {
+	if c.cfg == nil {
+		result.Err(ctx, 500, "配置未初始化")
+		return
+	}
+
+	files := c.discover_log_files()
+	if len(files) == 0 {
+		result.Err(ctx, 404, "日志文件不存在或不可用")
+		return
+	}
+
+	var active_log_file *os.File
+	if c.cfg.Original != nil {
+		active_log_file = c.cfg.Original.LogFile()
+	}
+	for file_index := range files {
+		if err := truncate_log_file(files[file_index].Path, active_log_file); err != nil {
+			result.Err(ctx, 500, "清空日志文件失败: "+err.Error())
+			return
+		}
+		files[file_index].Size = 0
+	}
+
+	result.Ok(ctx, gin.H{
+		"cleared": len(files),
+		"files":   files,
+	})
+}
+
+func truncate_log_file(log_path string, active_log_file *os.File) error {
+	path_info, path_err := os.Stat(log_path)
+	if path_err != nil {
+		return path_err
+	}
+	if path_info.IsDir() {
+		return fmt.Errorf("日志路径是目录")
+	}
+
+	if active_log_file != nil {
+		active_info, active_err := active_log_file.Stat()
+		if active_err == nil && os.SameFile(path_info, active_info) {
+			if err := active_log_file.Truncate(0); err != nil {
+				return err
+			}
+			if _, err := active_log_file.Seek(0, io.SeekStart); err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+
+	return os.Truncate(log_path, 0)
+}
+
 func sort_log_entries(entries []api_log_entry) {
 	for entry_index := range entries {
 		prepare_api_log_entry_sort(&entries[entry_index])
