@@ -491,9 +491,19 @@
             return null;
           }
           const detail = result.data || {};
+          // Keep the request pending while applying the detail. A listener
+          // registered synchronously by update() must wait for the shared
+          // emit below instead of also scheduling a late-subscriber replay.
+          update(detail);
+          if (
+            disposed ||
+            terminal_state !== "success" ||
+            generation !== success_detail_generation
+          ) {
+            return null;
+          }
           success_detail = detail;
           success_detail_promise = null;
-          update(detail);
           events.success.emit(detail);
           return detail;
         })
