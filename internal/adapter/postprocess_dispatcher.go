@@ -25,6 +25,7 @@ func NewPlatformPostprocessor(db *gorm.DB, logger zerolog.Logger, base_path stri
 func (pp *PlatformPostprocessor) Process(ctx context.Context, info *hermes.TaskJob) error {
 	platform := info.Platform
 	pp.deps.Logger.Info().
+		Str("file", "adapter/postprocess_dispatcher.go").
 		Int("task_id", info.ID).
 		Str("platform", platform).
 		Int("resource_count", len(info.Resources)).

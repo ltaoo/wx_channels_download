@@ -1,13 +1,46 @@
 /**
  * @file Error capture
  */
-class ErrorModal {
+class ErrorModel {
   constructor() {
-    this.mounted = false;
+    this.errors = [];
+    this.visible = false;
+    this.view = null;
   }
+
+  setView(view) {
+    this.view = view;
+  }
+
+  show(error) {
+    this.errors.push(normalize_error(error));
+    this.visible = true;
+    this.render();
+  }
+
+  hide() {
+    this.visible = false;
+    this.render();
+  }
+
+  render() {
+    if (this.view) {
+      this.view.render({ errors: this.errors, visible: this.visible });
+    }
+  }
+}
+
+class ErrorModalView {
+  constructor(model) {
+    this.model = model;
+    this.mounted = false;
+    this.renderScheduled = false;
+  }
+
   insertElements() {
     // Create styles
     var style = document.createElement("style");
+    style.setAttribute("data-n", "error-modal-style");
     style.textContent = `
     .error-modal {
         --error-modal-overlay: rgba(0, 0, 0, 0.5);
@@ -154,58 +187,99 @@ class ErrorModal {
     var modal = document.createElement("div");
     modal.id = "error-modal";
     modal.className = "error-modal";
+    modal.setAttribute("data-n", "error-modal");
+    modal.setAttribute("role", "alertdialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-labelledby", "error-modal-title");
 
     modal.innerHTML = `
-    <div class="error-modal-content">
-        <div class="error-modal-header">
-            <h3 class="error-modal-title">错误提示</h3>
-            <button class="error-modal-close">&times;</button>
+    <div class="error-modal-content" data-n="error-modal-content">
+        <div class="error-modal-header" data-n="error-modal-header">
+            <h3 id="error-modal-title" class="error-modal-title" data-n="error-modal-title">错误提示</h3>
+            <button class="error-modal-close" data-n="error-modal-close" type="button" aria-label="关闭">&times;</button>
         </div>
-        <div class="error-modal-body">
-            <p class="error-message">这里显示错误信息</p>
+        <div class="error-modal-body" data-n="error-modal-body">
+            <div class="error-message" data-n="error-modal-errors"></div>
         </div>
-        <div class="error-modal-footer">
-            <button class="error-modal-confirm">确定</button>
+        <div class="error-modal-footer" data-n="error-modal-footer">
+            <button class="error-modal-confirm" data-n="error-modal-confirm" type="button">确定</button>
         </div>
     </div>
     `;
-    if (document.body) {
-      document.body.appendChild(modal);
-    }
+    document.body.appendChild(modal);
+    this.modal = modal;
+    this.errorMessage = modal.querySelector('[data-n="error-modal-errors"]');
+    this.closeBtn = modal.querySelector('[data-n="error-modal-close"]');
+    this.confirmBtn = modal.querySelector('[data-n="error-modal-confirm"]');
+    this.closeBtn.addEventListener("click", () => this.model.hide());
+    this.confirmBtn.addEventListener("click", () => this.model.hide());
+    this.modal.addEventListener("click", (event) => {
+      if (event.target === this.modal) {
+        this.model.hide();
+      }
+    });
+    this.mounted = true;
   }
 
-  show(error) {
-    if (this.mounted === false) {
-      this.insertElements();
-      this.modal = document.getElementById("error-modal");
-      this.errorMessage = this.modal.querySelector(".error-message");
-      this.closeBtn = this.modal.querySelector(".error-modal-close");
-      this.confirmBtn = this.modal.querySelector(".error-modal-confirm");
-      this.closeBtn.addEventListener("click", () => this.hide());
-      this.confirmBtn.addEventListener("click", () => this.hide());
-      this.modal.addEventListener("click", (e) => {
-        if (e.target === this.modal) {
-          this.hide();
-        }
-      });
-      this.mounted = true;
+  render(state) {
+    if (!document.body) {
+      if (!this.renderScheduled) {
+        this.renderScheduled = true;
+        document.addEventListener(
+          "DOMContentLoaded",
+          () => {
+            this.renderScheduled = false;
+            this.model.render();
+          },
+          { once: true },
+        );
+      }
+      return;
     }
-    var text =
-      typeof error === "string" ? error : error.message || "发生未知错误";
-    this.errorMessage.innerHTML = text;
-    this.modal.classList.add("active");
-    document.body.style.overflow = "hidden";
+
+    if (!this.mounted) {
+      this.insertElements();
+    }
+    this.renderErrors(state.errors);
+    this.modal.classList.toggle("active", state.visible);
+    document.body.style.overflow = state.visible ? "hidden" : "";
   }
-  hide() {
-    this.modal.classList.remove("active");
-    document.body.style.overflow = "";
+
+  renderErrors(errors) {
+    var fragment = document.createDocumentFragment();
+    for (let i = 0; i < errors.length; i += 1) {
+      var error = errors[i];
+      var type = document.createElement("div");
+      type.setAttribute("data-n", "error-type");
+      type.style.cssText = "font-size: 18px";
+      type.textContent = error.type;
+
+      var message = document.createElement("div");
+      message.setAttribute("data-n", "error-message");
+      message.textContent = error.msg;
+
+      var source = document.createElement("div");
+      source.setAttribute("data-n", "error-source");
+      source.style.cssText = "margin-left: 12px; white-space: pre-wrap;";
+      source.textContent = "at " + error.source;
+
+      var container = document.createElement("div");
+      container.setAttribute("data-n", "error-item");
+      container.appendChild(type);
+      container.appendChild(message);
+      container.appendChild(source);
+      fragment.appendChild(container);
+    }
+    this.errorMessage.replaceChildren(fragment);
   }
 }
 
-window.errorModal = new ErrorModal();
-var errors = [];
+var errorModel = new ErrorModel();
+var errorModalView = new ErrorModalView(errorModel);
+errorModel.setView(errorModalView);
+window.errorModal = errorModel;
+
 window.addEventListener("error", function (event) {
-  event.preventDefault();
   // Print all error events to the console for easy DevTools debugging
   console.error("[ERROR.js]", {
     message: event.message,
@@ -216,74 +290,63 @@ window.addEventListener("error", function (event) {
     targetSrc: event.target && event.target.src,
     targetTag: event.target && event.target.tagName,
   });
-  if (event.error === null) {
-    // Cross-origin script error / resource load failure, browser hides details
-    var crossOriginInfo = {
-      type: "Script error",
-      msg: event.message || event.target
-        ? "Failed to load: " + (event.target.src || event.target.tagName)
-        : "No message (cross-origin sanitized)",
-      source: event.filename || event.target
-        ? event.target.src || event.target.tagName
-        : "Unknown",
-    };
-    errors.push(crossOriginInfo);
-  } else {
-    var r = parse_error_stack(event.error.stack);
-    if (r) {
-      errors.push(r);
-    }
-  }
-  if (errors.length) {
-    var text = render_errors(errors);
-    window.errorModal.show(text);
-  }
-});
+  errorModel.show(normalize_window_error(event));
+}, true);
+
 window.addEventListener("unhandledrejection", function (event) {
-  event.preventDefault();
-  var r = parse_error_stack(event.reason.stack);
-  if (r) {
-    errors.push(r);
-  }
-  if (errors.length) {
-    var text = render_errors(errors);
-    window.errorModal.show(text);
-  }
+  errorModel.show(event.reason);
 });
 
-function render_errors(errors) {
-  var result = [];
-  for (let i = 0; i < errors.length; i += 1) {
-    const e = errors[i];
-    var $type = document.createElement("div");
-    $type.style.cssText = "font-size: 18px";
-    $type.innerHTML = e.type;
-    var $msg = document.createElement("div");
-    $msg.innerHTML = e.msg;
-    /** @type {HTMLDivElement} */
-    var $source = document.createElement("div");
-    $source.style.cssText = "margin-left: 12px;";
-    $source.innerHTML = "at " + e.source;
-    var $container = document.createElement("div");
-    $container.appendChild($type);
-    $container.appendChild($msg);
-    $container.appendChild($source);
-    result.push($container.innerHTML);
+function normalize_window_error(event) {
+  if (event.error) {
+    return normalize_error(event.error, error_event_source(event));
   }
-  return result.join("");
-}
-function parse_error_stack(error_stack) {
-  if (!error_stack) {
-    return null;
-  }
-  var regexp = /^([a-zA-Z]{1,}):([\s\S]{1,})[\r\n ]{1,}at([\s\S]{1,})$/;
-  var matched = error_stack.match(regexp);
-  if (!matched) {
-    return null;
-  }
+
+  var target = event.target;
+  var target_source =
+    target && (target.src || target.href || target.tagName);
   return {
-    type: matched[1],
-    msg: matched[2],
-    source: matched[3],
+    type: target_source ? "Resource error" : "Script error",
+    msg:
+      event.message ||
+      (target_source
+        ? "Failed to load: " + target_source
+        : "No message (cross-origin sanitized)"),
+    source: event.filename || target_source || "Unknown",
   };
+}
+
+function normalize_error(error, fallback_source) {
+  if (error && error.type && error.msg) {
+    return {
+      type: String(error.type),
+      msg: String(error.msg),
+      source: String(error.source || fallback_source || "Unknown"),
+    };
+  }
+
+  if (error && typeof error === "object") {
+    return {
+      type: String(error.name || "Error"),
+      msg: String(error.message || "发生未知错误"),
+      source: String(error.stack || fallback_source || "Unknown"),
+    };
+  }
+
+  return {
+    type: "Error",
+    msg: error == null ? "发生未知错误" : String(error),
+    source: String(fallback_source || "Unknown"),
+  };
+}
+
+function error_event_source(event) {
+  var source = event.filename || "Unknown";
+  if (event.lineno) {
+    source += ":" + event.lineno;
+  }
+  if (event.colno) {
+    source += ":" + event.colno;
+  }
+  return source;
 }

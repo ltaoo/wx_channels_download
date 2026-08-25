@@ -33,8 +33,9 @@ type interceptor_settings struct {
 
 func new_interceptor_settings(c *config.Config, logger *zerolog.Logger) *interceptor_settings {
 	api_protocol := c.GetString("api.protocol")
-	api_hostname := c.GetString("api.hostname")
+	api_bind_hostname := c.GetString("api.hostname")
 	api_port := c.GetInt("api.port")
+	api_host := config.APIClientHost(api_bind_hostname, api_port)
 	remote_server_protocol := c.GetString("download.remoteServer.protocol")
 	remote_server_hostname := c.GetString("download.remoteServer.hostname")
 	remote_server_port := c.GetInt("download.remoteServer.port")
@@ -49,8 +50,8 @@ func new_interceptor_settings(c *config.Config, logger *zerolog.Logger) *interce
 		global_script_path:                c.GlobalScriptPath,
 		inject_content_script:             c.ContentScriptContent,
 		frontend_variables: map[string]any{
-			"apiHost":                    api_hostname + ":" + strconv.Itoa(api_port),
-			"apiOrigin":                  api_protocol + "://" + api_hostname + ":" + strconv.Itoa(api_port),
+			"apiHost":                    api_host,
+			"apiOrigin":                  config.APIClientOrigin(api_protocol, api_bind_hostname, api_port),
 			"apiProtocol":                api_protocol,
 			"remoteServerEnabled":        c.GetBool("download.remoteServer.enabled"),
 			"remoteServerOrigin":         remote_server_protocol + "://" + remote_server_hostname + ":" + strconv.Itoa(remote_server_port),

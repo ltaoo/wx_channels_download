@@ -5,43 +5,6 @@ const platform_status_popover_hide_delay = 240;
 const ChannelCore = Timeless.kit.ChannelCore;
 const { socket_client$ } = window.__store;
 
-const home_request = Timeless.kit.request_factory({
-  headers: { "Content-Type": "application/json" },
-  process(response) {
-    if (response.error) {
-      return Timeless.Result.Err(response.error);
-    }
-    const payload = response.data || {};
-    if (payload.code !== 0) {
-      return Timeless.Result.Err(
-        payload.msg || "获取失败",
-        payload.code,
-        payload.data,
-      );
-    }
-    return Timeless.Result.Ok(payload.data || {});
-  },
-});
-
-const platform_names = {
-  wxchannels: "视频号",
-  wxmp: "公众号",
-  officialaccount: "公众号",
-  douyin: "抖音",
-  bilibili: "Bilibili",
-  xiaohongshu: "小红书",
-  xhs: "小红书",
-  youtube: "YouTube",
-  zhihu: "知乎",
-  douban: "豆瓣",
-  weibo: "微博",
-  qidian: "起点中文网",
-  fanqienovel: "番茄小说",
-  "69shuba": "69书吧",
-  ttk: "TT看书",
-  webpage: "网页",
-};
-
 const scraper_fetch_stage_names = {
   start: "创建任务",
   queued: "排队中",
@@ -59,80 +22,6 @@ const scraper_fetch_stage_names = {
   finished: "完成",
   failed: "失败",
   interrupted: "已中断",
-};
-
-const content_type_names = {
-  video: "视频",
-  short_video: "短视频",
-  image: "图片",
-  image_set: "图集",
-  album: "图集",
-  article: "文章",
-  answer: "回答",
-  question: "问题",
-  post: "帖子",
-  blog: "文章",
-  webpage: "网页",
-  novel: "小说",
-  audio: "音频",
-  podcast: "播客",
-  music: "音乐",
-  document: "文档",
-  course: "课程",
-  comic: "漫画",
-  live: "直播",
-};
-
-const content_relation_names = {
-  answer_of: "回答所属问题",
-  contains: "包含",
-  part_of: "属于",
-  episode_of: "单集属于系列",
-  reply_to: "回复",
-  quote_of: "引用",
-  repost_of: "转发",
-  translation_of: "翻译自",
-  derived_from: "派生自",
-  related: "相关内容",
-};
-
-const download_resource_suffixes = {
-  image: ".jpg",
-  video: ".mp4",
-  audio: ".mp3",
-  html: ".html",
-  text: ".txt",
-  json: ".json",
-  "image/jpeg": ".jpg",
-  "image/png": ".png",
-  "image/gif": ".gif",
-  "image/webp": ".webp",
-  "image/avif": ".avif",
-  "image/svg+xml": ".svg",
-  "image/bmp": ".bmp",
-  "image/tiff": ".tiff",
-  "video/mp4": ".mp4",
-  "video/webm": ".webm",
-  "video/quicktime": ".mov",
-  "video/x-msvideo": ".avi",
-  "video/x-matroska": ".mkv",
-  "video/mp2t": ".ts",
-  "video/x-flv": ".flv",
-  "audio/mpeg": ".mp3",
-  "audio/mp4": ".m4a",
-  "audio/aac": ".aac",
-  "audio/ogg": ".ogg",
-  "audio/wav": ".wav",
-  "audio/flac": ".flac",
-  "text/html": ".html",
-  "text/plain": ".txt",
-  "text/css": ".css",
-  "text/csv": ".csv",
-  "text/markdown": ".md",
-  "application/json": ".json",
-  "application/xml": ".xml",
-  "application/pdf": ".pdf",
-  "application/zip": ".zip",
 };
 
 const content_detail_field_names = {
@@ -262,31 +151,31 @@ function ScraperPageViewModel(props) {
   }
 
   const fetch_request = new Timeless.kit.RequestCore(
-    (body) => home_request.post("/api/scraper/fetch", body),
+    (body) => window.request.post("/api/scraper/fetch", body),
     {
       client: home_http_client,
     },
   );
   const job_request = new Timeless.kit.RequestCore(
-    (params) => home_request.get("/api/scraper/job", params),
+    (params) => window.request.get("/api/scraper/job", params),
     {
       client: home_http_client,
     },
   );
   const interrupt_request = new Timeless.kit.RequestCore(
-    (body) => home_request.post("/api/scraper/fetch/interrupt", body),
+    (body) => window.request.post("/api/scraper/fetch/interrupt", body),
     {
       client: home_http_client,
     },
   );
   const cache_clear_request = new Timeless.kit.RequestCore(
-    (body) => home_request.post("/api/scraper/cache/clear", body),
+    (body) => window.request.post("/api/scraper/cache/clear", body),
     {
       client: home_http_client,
     },
   );
   const cache_content_request = new Timeless.kit.RequestCore(
-    (params) => home_request.get("/api/scraper/cache/content", params),
+    (params) => window.request.get("/api/scraper/cache/content", params),
     {
       client: home_http_client,
     },
@@ -558,7 +447,12 @@ function ScraperPageViewModel(props) {
   });
   const progress_updated_text_ = computed(fetch_progress_, (progress) => {
     const updated_at = number_or_default(progress && progress.updated_at, 0);
-    const text = format_clock_time(updated_at);
+    const text = window.format_time(updated_at, "", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
     return text ? `更新 ${text}` : "";
   });
   const progress_bar_class_ = combine(
@@ -1727,7 +1621,9 @@ function ScraperPageViewModel(props) {
     while (ui_source_unsubscribes_.length > 0) {
       ui_source_unsubscribes_.pop()();
     }
-    Object.values(ui).forEach((store) => store.destroy?.());
+    Object.values(ui).forEach((store) => {
+      if (typeof store.destroy === "function") store.destroy();
+    });
     third_party_downloader$.methods.destroy();
   }
 
@@ -2329,58 +2225,21 @@ function save_active_job_id(job_id) {
 
 function platform_name(value) {
   const platform_id = String(value || "").trim();
-  return platform_names[platform_id] || platform_id || "未知平台";
+  return window.PLATFORM_NAMES[platform_id] || platform_id || "未知平台";
 }
 
 function platform_favicon(value) {
   const platform_id = String(value || "")
     .trim()
     .toLowerCase();
-  const favicons = window.PLATFORM_FAVICONS || {};
-  return String(favicons[platform_id] || "").trim();
+  return String(window.PLATFORM_FAVICONS[platform_id] || "").trim();
 }
 
 function content_type_name(value) {
   const content_type = String(value || "")
     .trim()
     .toLowerCase();
-  return content_type_names[content_type] || content_type || "内容";
-}
-
-function normalize_epoch_ms(value) {
-  const timestamp = Number(value);
-  if (!Number.isFinite(timestamp) || timestamp <= 0) {
-    return 0;
-  }
-  return timestamp < 1000000000000 ? timestamp * 1000 : timestamp;
-}
-
-function format_time(value) {
-  const timestamp = normalize_epoch_ms(value);
-  if (!timestamp) {
-    return "时间未知";
-  }
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(timestamp));
-}
-
-function format_clock_time(value) {
-  const timestamp = normalize_epoch_ms(value);
-  if (!timestamp) {
-    return "";
-  }
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(new Date(timestamp));
+  return window.CONTENT_TYPE_NAMES[content_type] || content_type || "内容";
 }
 
 function format_count(value) {
@@ -2629,7 +2488,7 @@ function suffix_map(kind) {
     .split(";", 1)[0]
     .trim()
     .toLowerCase();
-  return download_resource_suffixes[normalized_kind] || "";
+  return window.DOWNLOAD_RESOURCE_SUFFIXES[normalized_kind] || "";
 }
 
 function normalize_content_video_variant(variant, index) {
@@ -3341,7 +3200,7 @@ function normalize_content_detail_relation(detail) {
   return {
     present: Boolean(type && source_content_id && target_content_id),
     type,
-    type_name: content_relation_names[type] || type,
+    type_name: window.CONTENT_RELATION_NAMES[type] || type,
     source_content_id,
     target_content_id,
   };
@@ -4132,7 +3991,7 @@ function normalize_content(result) {
     platform_name: platform_name(platform_id),
     platform_favicon: platform_favicon(platform_id),
     content_type_name: content_type_name(content_type),
-    publish_time_text: format_time(
+    publish_time_text: window.format_time(
       first_non_empty(source.publish_time, source.PublishTime),
     ),
     text_tracks,

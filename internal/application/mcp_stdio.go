@@ -103,6 +103,7 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 	account_service := services.NewAccountService(app.DB)
 	browse_history_service := services.NewBrowseService(app.DB, *logger)
 	certificate_service := services.NewCertificateService(cfg)
+	bus := events.NewBus()
 	download_task_service := services.NewDownloadTaskService(
 		app.DB,
 		logger,
@@ -110,6 +111,7 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 		hook_manager,
 		cfg.WorkDir,
 		api_config.DownloadDir,
+		bus,
 	)
 	scraper_job_service := services.NewScraperJobService(new_scraper_platform_checker(), nil, logger)
 	scraper_job_service.SetRetentionLimit(cfg.GetInt("scraper.retainedJobs"))
@@ -123,7 +125,6 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 		WorkDir:              api_config.WorkDir,
 	})
 
-	bus := events.NewBus()
 	adapter_handles := make([]adapter.RuntimeHandle, 0)
 	for _, platform_id := range adapter.IDs() {
 		handler := adapter.Get(platform_id)
@@ -157,12 +158,14 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 	}
 
 	server, err := mcpserver.NewServer(mcpserver.Config{
-		Version:     api_config.Version,
-		Input:       stdio_config.Input,
-		Output:      stdio_config.Output,
-		ErrorOutput: stdio_config.ErrorOutput,
-		DataReader:  new_mcp_data_reader(data_service),
-		ScraperJobs: new_mcp_scraper_job_backend(scraper_job_service),
+		Version:             api_config.Version,
+		Input:               stdio_config.Input,
+		Output:              stdio_config.Output,
+		ErrorOutput:         stdio_config.ErrorOutput,
+		DataReader:          new_mcp_data_reader(data_service),
+		ScraperJobs:         new_mcp_scraper_job_backend(scraper_job_service),
+		DownloadTaskCreator: new_mcp_download_task_creator(download_task_service),
+		DownloadTaskDeleter: new_mcp_download_task_deleter(download_task_service),
 	})
 	if err != nil {
 		stop_adapter_handles(adapter_handles)

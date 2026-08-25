@@ -19,6 +19,7 @@ import (
 	"wx_channel/internal/database"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/services"
+	"wx_channel/pkg/hermes"
 )
 
 const download_task_lookup_batch_size = 500
@@ -501,7 +502,6 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 	success_count := 0
 	fail_count := 0
 	skip_count := 0
-	manual_start_count := 0
 	for _, body := range req.Objects {
 		data, err := c.create_download_task_single(body)
 		if err != nil {
@@ -514,9 +514,8 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 					tasks = append(tasks, item)
 					if id > 0 {
 						ids = append(ids, id)
-						if body.AutoStart != nil && !*body.AutoStart {
+						if existing_action == download_existing_action_skip && body.AutoStart != nil && !*body.AutoStart {
 							c.download_task_broadcaster.broadcast_download_task_create(id)
-							manual_start_count++
 						}
 					}
 					if item.Code == api_code_success {
@@ -545,14 +544,7 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 			tasks = append(tasks, download_task_create_success_item(data))
 			ids = append(ids, data.ID)
 			success_count++
-			if body.AutoStart != nil && !*body.AutoStart {
-				c.download_task_broadcaster.broadcast_download_task_create(data.ID)
-				manual_start_count++
-			}
 		}
-	}
-	if manual_start_count > 0 {
-		c.download_task_broadcaster.broadcast_download_task_stats()
 	}
 
 	c.logger.Info().
@@ -723,7 +715,6 @@ func (c *APIClient) handle_create_download_task_by_url(ctx *gin.Context) {
 	tasks := make([]gin.H, 0, len(req.Objects))
 	success_count := 0
 	fail_count := 0
-	manual_start_count := 0
 	for _, body := range req.Objects {
 		data, err := c.createDownloadTaskByURLSingle(body)
 		if err != nil {
@@ -733,16 +724,7 @@ func (c *APIClient) handle_create_download_task_by_url(ctx *gin.Context) {
 		} else {
 			tasks = append(tasks, gin.H{"success": true, "data": data})
 			success_count++
-			if body.AutoStart != nil && !*body.AutoStart {
-				if task, ok := data["task"].(model.DownloadTask); ok {
-					c.download_task_broadcaster.broadcast_download_task_create(task.Id)
-					manual_start_count++
-				}
-			}
 		}
-	}
-	if manual_start_count > 0 {
-		c.download_task_broadcaster.broadcast_download_task_stats()
 	}
 
 	c.logger.Info().
@@ -1056,16 +1038,9 @@ func (c *APIClient) handle_delete_download_task(ctx *gin.Context) {
 	c.logger.Info().Str("api", "POST /api/v1/download_task/delete").Int("task_count", len(body.TaskIDs)).Bool("delete_files", body.DeleteFiles).Msg("Received batch delete download task request")
 
 	results := make([]gin.H, 0, len(body.TaskIDs))
-	successful_deletions := 0
 	for _, taskID := range body.TaskIDs {
 		r := c.deleteSingleDownloadTask(taskID, body.DeleteFiles)
 		results = append(results, r)
-		if success, _ := r["success"].(bool); success {
-			successful_deletions++
-		}
-	}
-	if successful_deletions > 0 {
-		c.download_task_broadcaster.broadcast_download_task_stats()
 	}
 
 	result.Ok(ctx, gin.H{"results": results})
@@ -1074,136 +1049,19 @@ func (c *APIClient) handle_delete_download_task(ctx *gin.Context) {
 // deleteSingleDownloadTask performs full deletion for a single download task
 // and returns a result entry for the batch response.
 func (c *APIClient) deleteSingleDownloadTask(taskID int, deleteFiles bool) gin.H {
-	startedAt := time.Now()
-
 	if taskID <= 0 {
 		c.logger.Warn().Str("api", "POST /api/v1/download_task/delete").Int("task_id", taskID).Bool("delete_files", deleteFiles).Msg("Rejected invalid task ID")
 		return gin.H{"task_id": taskID, "success": false, "error": "task_id 无效"}
 	}
-
-	requestLog := c.logger.Info().
-		Str("api", "POST /api/v1/download_task/delete").
-		Int("task_id", taskID).
-		Bool("delete_files", deleteFiles)
-	if c.cfg != nil {
-		requestLog.Str("download_root", c.cfg.DownloadDir)
-	}
-	requestLog.Msg("Processing delete download task")
-
-	var task model.DownloadTask
-	taskQuery := c.db
-	if deleteFiles {
-		taskQuery = taskQuery.Unscoped()
-	}
-	if err := taskQuery.Where("id = ?", taskID).First(&task).Error; err != nil {
-		c.logger.Warn().Int("task_id", taskID).Bool("delete_files", deleteFiles).Err(err).Msg("Download task deletion failed to load task")
-		return gin.H{"task_id": taskID, "success": false, "error": "下载任务不存在"}
-	}
-	alreadySoftDeleted := task.DeletedAt != nil
-
-	var resources []model.DownloadResource
-	resourceQuery := c.db
-	if alreadySoftDeleted {
-		resourceQuery = resourceQuery.Unscoped()
-	}
-	if err := resourceQuery.Where("task_id = ?", task.Id).Order("merge_order ASC, id ASC").Find(&resources).Error; err != nil {
-		c.logger.Error().Int("task_id", task.Id).Err(err).Msg("Download task deletion failed to load associated resources")
-		return gin.H{"task_id": taskID, "success": false, "error": "查询下载任务资源失败: " + err.Error()}
-	}
-	resourceIDs := make([]int, 0, len(resources))
-	for _, resource := range resources {
-		resourceIDs = append(resourceIDs, resource.Id)
-	}
-
-	c.logger.Info().
-		Int("task_id", task.Id).
-		Str("task_name", task.Name).
-		Int("task_status", task.Status).
-		Int("resource_count", len(resources)).
-		Ints("resource_ids", resourceIDs).
-		Bool("delete_files", deleteFiles).
-		Bool("already_soft_deleted", alreadySoftDeleted).
-		Msg("Download task deletion loaded task and resource snapshot")
-	c.logDownloadTaskLocalFiles(task, resources, "before_delete")
-
-	now := time.Now().UnixMilli()
-
-	if err := c.download_task_service.CancelTask(task.Id); err != nil {
-		c.logger.Error().Int("task_id", task.Id).Err(err).Msg("Download task deletion failed because Hermes engine is unavailable")
+	if err := c.download_task_service.DeleteTaskWithFiles(taskID, deleteFiles); err != nil {
+		c.logger.Error().Int("task_id", taskID).Bool("delete_files", deleteFiles).Err(err).Msg("Download task deletion failed")
 		return gin.H{"task_id": taskID, "success": false, "error": err.Error()}
 	}
-	if deleteFiles {
-		c.logger.Info().Int("task_id", task.Id).Bool("local_file_cleanup_attempted", true).Msg("Starting associated local file cleanup")
-		if err := c.deleteDownloadTaskLocalFiles(task, resources); err != nil {
-			c.logger.Error().Int("task_id", task.Id).Bool("local_file_cleanup_attempted", true).Err(err).Msg("Associated local file cleanup failed; database soft deletion was skipped")
-			return gin.H{"task_id": taskID, "success": false, "error": "删除任务关联的本地文件失败: " + err.Error()}
-		}
-		c.logger.Info().Int("task_id", task.Id).Bool("local_file_cleanup_attempted", true).Msg("Associated local file cleanup completed")
-	} else {
-		c.logger.Info().Int("task_id", task.Id).Bool("local_file_cleanup_attempted", false).Msg("Local file deletion was not requested; associated files will be left on disk")
-	}
-	if alreadySoftDeleted {
-		c.logDownloadTaskLocalFiles(task, resources, "after_delete")
-		c.logger.Info().
-			Int("task_id", task.Id).
-			Bool("delete_files", deleteFiles).
-			Bool("local_file_cleanup_attempted", deleteFiles).
-			Bool("already_soft_deleted", true).
-			Dur("elapsed", time.Since(startedAt)).
-			Msg("Recovered local file cleanup for previously soft-deleted download task")
-		return gin.H{"task_id": taskID, "success": true, "status_text": "cancelled"}
-	}
-	c.logger.Info().Int("task_id", task.Id).Msg("Starting database soft deletion")
-	taskDelete := c.db.Model(&task).Update("deleted_at", now)
-	c.logDownloadTaskSoftDeleteResult(task.Id, "task", taskDelete.Error, taskDelete.RowsAffected)
-
-	resourceDelete := c.db.Model(&model.DownloadResource{}).Where("task_id = ?", task.Id).Update("deleted_at", now)
-	c.logDownloadTaskSoftDeleteResult(task.Id, "resources", resourceDelete.Error, resourceDelete.RowsAffected)
-
-	if len(resourceIDs) > 0 {
-		var endpointIDs []int
-		endpointIDQuery := c.db.Model(&model.DownloadEndpoint{}).Where("resource_id IN ?", resourceIDs).Pluck("id", &endpointIDs)
-		if endpointIDQuery.Error != nil {
-			c.logger.Error().Int("task_id", task.Id).Ints("resource_ids", resourceIDs).Err(endpointIDQuery.Error).Msg("Download task deletion failed to query associated endpoint IDs")
-		} else {
-			c.logger.Info().Int("task_id", task.Id).Ints("endpoint_ids", endpointIDs).Msg("Download task deletion loaded associated endpoint IDs")
-		}
-
-		endpointDelete := c.db.Model(&model.DownloadEndpoint{}).Where("resource_id IN ?", resourceIDs).Update("deleted_at", now)
-		c.logDownloadTaskSoftDeleteResult(task.Id, "endpoints", endpointDelete.Error, endpointDelete.RowsAffected)
-		segmentDelete := c.db.Model(&model.DownloadSegment{}).Where("resource_id IN ?", resourceIDs).Update("deleted_at", now)
-		c.logDownloadTaskSoftDeleteResult(task.Id, "segments", segmentDelete.Error, segmentDelete.RowsAffected)
-
-		if len(endpointIDs) > 0 {
-			connectionDelete := c.db.Model(&model.DownloadConnection{}).Where("endpoint_id IN ?", endpointIDs).Update("deleted_at", now)
-			c.logDownloadTaskSoftDeleteResult(task.Id, "connections", connectionDelete.Error, connectionDelete.RowsAffected)
-		}
-	} else {
-		c.logger.Warn().Int("task_id", task.Id).Msg("Download task deletion found no associated resources to cascade")
-	}
-
-	c.download_task_broadcaster.broadcast_download_task_delete([]int{task.Id})
-	c.logger.Info().Int("task_id", task.Id).Msg("Download task deletion broadcast emitted")
-	c.logDownloadTaskLocalFiles(task, resources, "after_delete")
-	c.logger.Info().
-		Int("task_id", task.Id).
-		Bool("delete_files", deleteFiles).
-		Bool("local_file_cleanup_attempted", deleteFiles).
-		Dur("elapsed", time.Since(startedAt)).
-		Msg("Download task deletion request completed")
 
 	return gin.H{"task_id": taskID, "success": true, "status_text": "cancelled"}
 }
 
-func (c *APIClient) logDownloadTaskSoftDeleteResult(taskID int, entity string, err error, rowsAffected int64) {
-	if err != nil {
-		c.logger.Error().Int("task_id", taskID).Str("entity", entity).Int64("rows_affected", rowsAffected).Err(err).Msg("Download task cascade soft-delete failed")
-		return
-	}
-	c.logger.Info().Int("task_id", taskID).Str("entity", entity).Int64("rows_affected", rowsAffected).Msg("Download task cascade soft-delete completed")
-}
-
-type downloadTaskLocalFileCandidate struct {
+type download_task_local_file_candidate struct {
 	Path          string
 	PathSource    string
 	CandidateType string
@@ -1248,7 +1106,7 @@ func (c *APIClient) download_task_local_file_roots(task model.DownloadTask, reso
 	return roots
 }
 
-func pathWithinDownloadRoot(root, target string) bool {
+func path_within_download_root(root, target string) bool {
 	relative, err := filepath.Rel(root, target)
 	if err != nil || relative == "." || relative == ".." {
 		return false
@@ -1256,7 +1114,7 @@ func pathWithinDownloadRoot(root, target string) bool {
 	return !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
-func (c *APIClient) download_task_local_file_candidates(task model.DownloadTask, resource model.DownloadResource) []downloadTaskLocalFileCandidate {
+func (c *APIClient) download_task_local_file_candidates(task model.DownloadTask, resource model.DownloadResource) []download_task_local_file_candidate {
 	names := []struct {
 		value  string
 		source string
@@ -1269,7 +1127,7 @@ func (c *APIClient) download_task_local_file_candidates(task model.DownloadTask,
 	}
 	roots := c.download_task_local_file_roots(task, &resource)
 	seen := make(map[string]struct{})
-	candidates := make([]downloadTaskLocalFileCandidate, 0, len(roots)*6)
+	candidates := make([]download_task_local_file_candidate, 0, len(roots)*6)
 	for root, source := range roots {
 		for _, name := range names {
 			if name.value == "" {
@@ -1280,21 +1138,26 @@ func (c *APIClient) download_task_local_file_candidates(task model.DownloadTask,
 				path = filepath.Join(root, path)
 			}
 			path = filepath.Clean(path)
-			if !pathWithinDownloadRoot(root, path) {
+			if !path_within_download_root(root, path) {
 				c.logger.Error().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("resource_name", resource.Name).Str("download_root", root).Str("path", path).Msg("Rejected local file candidate outside download root")
 				continue
 			}
-			pathSource := source + ":" + name.source
-			resourceCandidates := []downloadTaskLocalFileCandidate{
-				{Path: path, PathSource: pathSource, CandidateType: "final"},
-				{Path: path + ".part", PathSource: pathSource, CandidateType: "partial"},
+			path_source := source + ":" + name.source
+			resource_candidates := []download_task_local_file_candidate{
+				{Path: path, PathSource: path_source, CandidateType: "final"},
+				{Path: path + ".part", PathSource: path_source, CandidateType: "partial"},
 			}
 			if strings.EqualFold(resource.Type, model.ResourceTypeStream) {
-				resourceCandidates = append(resourceCandidates, downloadTaskLocalFileCandidate{
-					Path: path + ".recording", PathSource: pathSource, CandidateType: "recording",
-				})
+				resource_candidates = append(resource_candidates,
+					download_task_local_file_candidate{
+						Path: hermes.StreamRecordingDir(path), PathSource: path_source, CandidateType: "recording",
+					},
+					download_task_local_file_candidate{
+						Path: hermes.StreamPlaybackDir(path), PathSource: path_source, CandidateType: "playback",
+					},
+				)
 			}
-			for _, candidate := range resourceCandidates {
+			for _, candidate := range resource_candidates {
 				if _, exists := seen[candidate.Path]; exists {
 					continue
 				}
@@ -1304,95 +1167,6 @@ func (c *APIClient) download_task_local_file_candidates(task model.DownloadTask,
 		}
 	}
 	return candidates
-}
-
-func (c *APIClient) deleteDownloadTaskLocalFiles(task model.DownloadTask, resources []model.DownloadResource) error {
-	var deletionErrors []string
-	for _, resource := range resources {
-		candidates := c.download_task_local_file_candidates(task, resource)
-		if len(candidates) == 0 {
-			deletionErrors = append(deletionErrors, fmt.Sprintf("资源 %d (%q) 没有可安全删除的本地文件路径", resource.Id, resource.Name))
-			c.logger.Warn().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("resource_name", resource.Name).Msg("No safe local file candidates were resolved for resource")
-			continue
-		}
-		for _, candidate := range candidates {
-			info, err := os.Lstat(candidate.Path)
-			if isMissingDownloadTaskLocalFileError(err) {
-				c.logger.Info().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("path_source", candidate.PathSource).Str("candidate_type", candidate.CandidateType).Str("path", candidate.Path).Bool("exists", false).Msg("Associated local file did not exist; cleanup skipped")
-				continue
-			}
-			if err != nil {
-				deletionErrors = append(deletionErrors, fmt.Sprintf("检查 %q 失败: %v", candidate.Path, err))
-				c.logger.Error().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("path", candidate.Path).Err(err).Msg("Failed to inspect associated local file before removal")
-				continue
-			}
-			isRecordingDir := candidate.CandidateType == "recording" && info.IsDir() && strings.HasSuffix(candidate.Path, ".recording")
-			if info.Mode()&os.ModeSymlink != 0 || (!info.Mode().IsRegular() && !isRecordingDir) {
-				err := fmt.Errorf("拒绝删除非普通文件 %q (mode=%s)", candidate.Path, info.Mode())
-				deletionErrors = append(deletionErrors, err.Error())
-				c.logger.Error().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("path", candidate.Path).Str("mode", info.Mode().String()).Msg("Rejected unsafe associated local file removal")
-				continue
-			}
-			remove := os.Remove
-			if isRecordingDir {
-				remove = os.RemoveAll
-			}
-			if err := remove(candidate.Path); isMissingDownloadTaskLocalFileError(err) {
-				// The file can disappear after Lstat when a downloader finishes or
-				// cancels concurrently. File cleanup is intentionally idempotent.
-				c.logger.Info().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("path_source", candidate.PathSource).Str("candidate_type", candidate.CandidateType).Str("path", candidate.Path).Bool("exists", false).Msg("Associated local file no longer existed during removal; cleanup completed")
-				continue
-			} else if err != nil {
-				deletionErrors = append(deletionErrors, fmt.Sprintf("删除 %q 失败: %v", candidate.Path, err))
-				c.logger.Error().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("path_source", candidate.PathSource).Str("candidate_type", candidate.CandidateType).Str("path", candidate.Path).Int64("size", info.Size()).Err(err).Msg("Failed to remove associated local file")
-				continue
-			}
-			c.logger.Info().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("path_source", candidate.PathSource).Str("candidate_type", candidate.CandidateType).Str("path", candidate.Path).Int64("size", info.Size()).Msg("Associated local file removed")
-		}
-	}
-	if len(deletionErrors) > 0 {
-		return errors.New(strings.Join(deletionErrors, "; "))
-	}
-	return nil
-}
-
-// logDownloadTaskLocalFiles records all plausible final and partial paths without
-// mutating the filesystem. The task config path is included because older tasks
-// may have been created with a per-task download_dir that differs from DownloadDir.
-func (c *APIClient) logDownloadTaskLocalFiles(task model.DownloadTask, resources []model.DownloadResource, phase string) {
-	roots := c.download_task_local_file_roots(task, nil)
-	c.logger.Info().Int("task_id", task.Id).Str("phase", phase).Int("resource_count", len(resources)).Int("candidate_root_count", len(roots)).Msg("Inspecting associated local file candidates")
-	for _, resource := range resources {
-		if strings.TrimSpace(resource.Name) == "" {
-			c.logger.Warn().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("phase", phase).Msg("Cannot resolve local file candidate because resource name is empty")
-			continue
-		}
-		for _, candidate := range c.download_task_local_file_candidates(task, resource) {
-			c.logDownloadTaskLocalFile(task.Id, resource, phase, candidate.PathSource, candidate.CandidateType, candidate.Path)
-		}
-	}
-}
-
-func (c *APIClient) logDownloadTaskLocalFile(taskID int, resource model.DownloadResource, phase, source, candidateType, path string) {
-	info, err := os.Stat(path)
-	event := c.logger.Info().
-		Int("task_id", taskID).
-		Int("resource_id", resource.Id).
-		Str("resource_name", resource.Name).
-		Str("resource_type", resource.Type).
-		Str("phase", phase).
-		Str("path_source", source).
-		Str("candidate_type", candidateType).
-		Str("path", path)
-	if err == nil {
-		event.Bool("exists", true).Bool("is_dir", info.IsDir()).Int64("size", info.Size()).Msg("Associated local file candidate inspected")
-		return
-	}
-	if os.IsNotExist(err) {
-		event.Bool("exists", false).Msg("Associated local file candidate inspected")
-		return
-	}
-	event.Bool("exists", false).Err(err).Msg("Associated local file candidate inspection failed")
 }
 
 // handle_check_download_task_files checks a page of task files without delaying the
@@ -1804,9 +1578,6 @@ func (c *APIClient) clear_download_task_records(task_ids []int, delete_files boo
 			cleared++
 		}
 	}
-	if cleared > 0 {
-		c.download_task_broadcaster.broadcast_download_task_stats()
-	}
 	return cleared, results
 }
 
@@ -1897,12 +1668,15 @@ func (c *APIClient) handle_download_task_detail(ctx *gin.Context) {
 	// Enrich files with local file info.
 	type fileWithPath struct {
 		services.DownloadTaskFileRecord
-		LocalPath string `json:"local_path"`
-		FileType  string `json:"file_type"`
-		FileURL   string `json:"file_url"`
-		Exists    bool   `json:"exists"`
+		LocalPath         string `json:"local_path"`
+		FileType          string `json:"file_type"`
+		FileURL           string `json:"file_url"`
+		PlaybackURL       string `json:"playback_url,omitempty"`
+		PlaybackAvailable bool   `json:"playback_available"`
+		Exists            bool   `json:"exists"`
 	}
 
+	playback_availability := c.stream_playback_availability(taskID)
 	files := make([]fileWithPath, 0, len(record.Files))
 	for _, f := range record.Files {
 		local_path := filepath.Join(f.DownloadDir, f.Name)
@@ -1910,11 +1684,23 @@ func (c *APIClient) handle_download_task_detail(ctx *gin.Context) {
 		if _, stat_err := os.Stat(local_path); stat_err == nil {
 			exists = true
 		}
+		file_type := file_type_by_ext(f.Name)
+		playback_url := ""
+		if strings.EqualFold(f.Type, model.ResourceTypeStream) {
+			playback_url = download_task_stream_playback_url(taskID, f.ID)
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(f.Kind)), "audio/") {
+				file_type = "audio"
+			} else {
+				file_type = "video"
+			}
+		}
 		files = append(files, fileWithPath{
 			DownloadTaskFileRecord: f,
 			LocalPath:              local_path,
-			FileType:               file_type_by_ext(f.Name),
+			FileType:               file_type,
 			FileURL:                api_file_url(local_path),
+			PlaybackURL:            playback_url,
+			PlaybackAvailable:      playback_availability[f.ID],
 			Exists:                 exists,
 		})
 	}

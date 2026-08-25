@@ -3136,7 +3136,6 @@ function DownloaderPanelViewModel(props = {}) {
         setTimeout(maybeLoadMoreTasks, 0);
         return;
       }
-      // console.log("[]update task", task);
       const oldStatus = current[index].status || "";
       const next = current.slice();
       const merged = partial_update
@@ -3342,6 +3341,7 @@ function DownloaderPanelViewModel(props = {}) {
             config: {
               spec: opt.spec,
               suffix: opt.suffix,
+              skip: !!opt.skip,
               overwrite: !!opt.overwrite,
               duplicate: !!opt.duplicate,
             },

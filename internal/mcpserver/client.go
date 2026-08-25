@@ -231,13 +231,13 @@ func (c *api_client) do_json(ctx context.Context, method string, path string, bo
 	if body != nil {
 		encoded_body, err := json.Marshal(body)
 		if err != nil {
-			return nil, fmt.Errorf("编码 API 请求失败: %w", err)
+			return nil, fmt.Errorf("编码下载器请求失败: %w", err)
 		}
 		request_body = bytes.NewReader(encoded_body)
 	}
 	request, err := http.NewRequestWithContext(ctx, method, c.base_url+path, request_body)
 	if err != nil {
-		return nil, fmt.Errorf("创建 API 请求失败: %w", err)
+		return nil, fmt.Errorf("创建下载器请求失败: %w", err)
 	}
 	request.Header.Set("Accept", "application/json")
 	if body != nil {
@@ -245,26 +245,26 @@ func (c *api_client) do_json(ctx context.Context, method string, path string, bo
 	}
 	response, err := c.http_client.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("调用下载器 API 失败（请确认主服务已启动）: %w", err)
+		return nil, fmt.Errorf("调用下载器服务失败（请确认主服务已启动）: %w", err)
 	}
 	defer response.Body.Close()
 	response_data, err := io.ReadAll(io.LimitReader(response.Body, 64*1024*1024+1))
 	if err != nil {
-		return nil, fmt.Errorf("读取下载器 API 响应失败: %w", err)
+		return nil, fmt.Errorf("读取下载器响应失败: %w", err)
 	}
 	if len(response_data) > 64*1024*1024 {
-		return nil, fmt.Errorf("下载器 API 响应超过 64 MB")
+		return nil, fmt.Errorf("下载器响应超过 64 MB")
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("下载器 API 返回 HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(response_data)))
+		return nil, fmt.Errorf("下载器服务返回状态码 %d: %s", response.StatusCode, strings.TrimSpace(string(response_data)))
 	}
 	var envelope api_envelope
 	if err := json.Unmarshal(response_data, &envelope); err != nil {
-		return nil, fmt.Errorf("解析下载器 API 响应失败: %w", err)
+		return nil, fmt.Errorf("解析下载器响应失败: %w", err)
 	}
 	if envelope.Code != 0 {
 		return nil, new_tool_execution_error(
-			value_or_default(envelope.Msg, fmt.Sprintf("下载器 API 返回错误码 %d", envelope.Code)),
+			value_or_default(envelope.Msg, fmt.Sprintf("下载器返回错误码 %d", envelope.Code)),
 			raw_json_value(envelope.Data),
 		)
 	}

@@ -20,15 +20,16 @@ import (
 )
 
 const (
-	scraper_platform_wxchannels = "wxchannels"
-	scraper_platform_wxmp       = "wxmp"
-	scraper_platform_douyin     = "douyin"
-	scraper_platform_bilibili   = "bilibili"
-	scraper_platform_cctv       = "cctv"
-	scraper_platform_zhihu      = "zhihu"
-	scraper_platform_ttk        = "ttk"
-	scraper_platform_youtube    = "youtube"
-	scraper_platform_webpage    = "webpage"
+	scraper_platform_wxchannels  = "wxchannels"
+	scraper_platform_wxmp        = "wxmp"
+	scraper_platform_douyin      = "douyin"
+	scraper_platform_bilibili    = "bilibili"
+	scraper_platform_youtube     = "youtube"
+	scraper_platform_xiaohongshu = "xiaohongshu"
+	scraper_platform_zhihu       = "zhihu"
+	scraper_platform_cctv        = "cctv"
+	scraper_platform_ttk         = "ttk"
+	scraper_platform_webpage     = "webpage"
 )
 
 const default_scraper_job_retention_limit = 20
@@ -244,6 +245,10 @@ func ResolveScraperPlatform(raw_url string) (ScraperPlatformResolution, error) {
 		return scraper_platform_resolution(scraper_platform_zhihu, ""), nil
 	case host == "ttks.tw" || host == "www.ttks.tw":
 		return scraper_platform_resolution(scraper_platform_ttk, ""), nil
+	case scraper_host_matches(host, "xiaohongshu.com") ||
+		scraper_host_matches(host, "xhslink.cn") ||
+		scraper_host_matches(host, "xhslink.com"):
+		return scraper_platform_resolution(scraper_platform_xiaohongshu, ""), nil
 	default:
 		return scraper_platform_resolution(scraper_platform_webpage, ""), nil
 	}

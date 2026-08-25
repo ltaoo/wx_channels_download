@@ -9,7 +9,9 @@ const (
 	TypeBrowseHistoryRecorded = "browsehistory.recorded"
 	TypeServiceCommand        = "service.command"
 	TypeServiceStatusChanged  = "service.status_changed"
+	TypeDownloadTaskCreated   = "downloadtask.created"
 	TypeDownloadTaskFinished  = "downloadtask.finished"
+	TypeDownloadTaskDeleted   = "downloadtask.deleted"
 	TypeScraperFetchProgress  = "scraper.fetch_progress"
 	TypePlatformStatusChanged = "platform.status_changed"
 )
@@ -64,12 +66,26 @@ type ServiceStatusChanged struct {
 
 func (e ServiceStatusChanged) Type() string { return TypeServiceStatusChanged }
 
+// DownloadTaskCreated is published when a task is persisted without starting Hermes.
+type DownloadTaskCreated struct {
+	TaskID int
+}
+
+func (e DownloadTaskCreated) Type() string { return TypeDownloadTaskCreated }
+
 // DownloadTaskFinished is published when a download task finishes.
 type DownloadTaskFinished struct {
 	TaskID int
 }
 
 func (e DownloadTaskFinished) Type() string { return TypeDownloadTaskFinished }
+
+// DownloadTaskDeleted is published after the task graph has been soft-deleted.
+type DownloadTaskDeleted struct {
+	TaskID int
+}
+
+func (e DownloadTaskDeleted) Type() string { return TypeDownloadTaskDeleted }
 
 // ScraperFetchProgress reports the current stage of a potentially long-running
 // scraper fetch. RequestID lets the application-level scraper WebSocket

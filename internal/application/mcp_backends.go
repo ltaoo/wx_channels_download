@@ -3,7 +3,9 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 
 	"wx_channel/internal/mcpserver"
 	"wx_channel/internal/services"
@@ -83,6 +85,89 @@ func (r *mcp_data_reader) GetCertificateStatus(ctx context.Context) (any, error)
 		return nil, fmt.Errorf("数据查询服务未初始化")
 	}
 	return r.data_service.GetCertificateStatus(ctx)
+}
+
+type mcp_download_task_deleter struct {
+	download_task_service *services.DownloadTaskService
+}
+
+type mcp_download_task_creator struct {
+	download_task_service *services.DownloadTaskService
+}
+
+func new_mcp_download_task_creator(download_task_service *services.DownloadTaskService) *mcp_download_task_creator {
+	return &mcp_download_task_creator{download_task_service: download_task_service}
+}
+
+func (c *mcp_download_task_creator) CreateDownloadTask(
+	ctx context.Context,
+	request mcpserver.DownloadTaskCreateRequest,
+) (*mcpserver.DownloadTaskCreateResult, error) {
+	if c == nil || c.download_task_service == nil {
+		return nil, fmt.Errorf("下载任务服务未初始化")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	created, err := c.download_task_service.CreateTask(services.CreateDownloadTaskBody{
+		Platform:        request.Platform,
+		Content:         request.Content,
+		BuildFromFetch:  request.BuildFromFetch,
+		ResourceIndexes: request.ResourceIndexes,
+		DownloadDir:     request.DownloadDir,
+		Filename:        request.Filename,
+		Config:          request.Config,
+		AutoStart:       request.AutoStart,
+		ParentTaskID:    request.ParentTaskID,
+		RelationType:    request.RelationType,
+	})
+	if err != nil {
+		var duplicate_err *services.DuplicateTaskError
+		existing_action, _ := request.Config["existing_action"].(string)
+		if errors.As(err, &duplicate_err) && strings.TrimSpace(existing_action) == "skip" {
+			return &mcpserver.DownloadTaskCreateResult{Task: map[string]any{
+				"id":      duplicate_err.ExistingTaskID,
+				"name":    duplicate_err.ExistingTaskName,
+				"skipped": true,
+				"action":  "skip",
+			}, Skipped: true}, nil
+		}
+		return nil, err
+	}
+	item := services.BuildDownloadTaskItem(created)
+	return &mcpserver.DownloadTaskCreateResult{
+		Task: item,
+		IDs:  []int{item.ID},
+	}, nil
+}
+
+func new_mcp_download_task_deleter(download_task_service *services.DownloadTaskService) *mcp_download_task_deleter {
+	return &mcp_download_task_deleter{download_task_service: download_task_service}
+}
+
+func (d *mcp_download_task_deleter) DeleteDownloadTasks(
+	ctx context.Context,
+	task_ids []int,
+	delete_files bool,
+) ([]mcpserver.DeleteDownloadTaskResult, error) {
+	if d == nil || d.download_task_service == nil {
+		return nil, fmt.Errorf("下载任务服务未初始化")
+	}
+	results := make([]mcpserver.DeleteDownloadTaskResult, 0, len(task_ids))
+	for _, task_id := range task_ids {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		item := mcpserver.DeleteDownloadTaskResult{TaskID: task_id}
+		if err := d.download_task_service.DeleteTaskWithFiles(task_id, delete_files); err != nil {
+			item.Error = err.Error()
+		} else {
+			item.Success = true
+			item.StatusText = "cancelled"
+		}
+		results = append(results, item)
+	}
+	return results, nil
 }
 
 type mcp_scraper_job_backend struct {

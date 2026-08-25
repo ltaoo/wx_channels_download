@@ -290,44 +290,13 @@ function platform_name(content) {
   if (content && content.platform_name) {
     return content.platform_name;
   }
-  const names = {
-    wxchannels: "视频号",
-    wxmp: "公众号",
-    officialaccount: "公众号",
-    douyin: "抖音",
-    bilibili: "Bilibili",
-    xiaohongshu: "小红书",
-    xhs: "小红书",
-    youtube: "YouTube",
-    zhihu: "知乎",
-    douban: "豆瓣",
-    qidian: "起点中文网",
-    fanqienovel: "番茄小说",
-    "69shuba": "69书吧",
-    ttk: "TT看书",
-  };
   const platform_id = String((content && content.platform_id) || "").trim();
-  return names[platform_id] || platform_id || "未知平台";
+  return window.PLATFORM_NAMES[platform_id] || platform_id || "未知平台";
 }
 
 function content_type_label(value) {
   const type = String(value || "").trim().toLowerCase();
-  const labels = {
-    video: "视频",
-    short_video: "短视频",
-    image: "图片",
-    image_set: "图集",
-    album: "图集",
-    article: "文章",
-    blog: "文章",
-    novel: "小说",
-    audio: "音频",
-    podcast: "播客",
-    music: "音乐",
-    document: "文档",
-    live: "直播",
-  };
-  return labels[type] || type || "内容";
+  return window.CONTENT_TYPE_NAMES[type] || type || "内容";
 }
 
 function normalize_task_status(status) {
@@ -454,22 +423,6 @@ function file_type_icon(resource) {
   );
 }
 
-function format_time(value) {
-  const timestamp = Number(value);
-  if (!Number.isFinite(timestamp) || timestamp <= 0) {
-    return "时间未知";
-  }
-  const normalized = timestamp < 1000000000000 ? timestamp * 1000 : timestamp;
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(normalized));
-}
-
 function format_bytes(value) {
   const bytes = Number(value);
   if (!Number.isFinite(bytes) || bytes <= 0) {
@@ -516,24 +469,6 @@ function content_media_assets(assets) {
   });
 }
 
-const content_detail_request = Timeless.kit.request_factory({
-  headers: { "Content-Type": "application/json" },
-  process(response) {
-    if (response.error) {
-      return Timeless.Result.Err(response.error);
-    }
-    const payload = response.data || {};
-    if (payload.code !== 0) {
-      return Timeless.Result.Err(
-        payload.msg || "获取内容详情失败",
-        payload.code,
-        payload.data,
-      );
-    }
-    return Timeless.Result.Ok(payload.data || {});
-  },
-});
-
 function ContentDetailViewModel(props) {
   const detail_id_ = ref(
     String(prop_value(props.contentId) || detail_id_from_location()).trim(),
@@ -544,7 +479,7 @@ function ContentDetailViewModel(props) {
   let request_sequence = 0;
 
   const request_ = new Timeless.kit.RequestCore(
-    (params) => content_detail_request.get("/api/content/detail", params),
+    (params) => window.request.get("/api/content/detail", params),
     {
       client: props.client,
       process(response) {
@@ -558,7 +493,7 @@ function ContentDetailViewModel(props) {
 
   const check_files_request_ = new Timeless.kit.RequestCore(
     (files) =>
-      content_detail_request.post("/api/v1/download_task/check_files", {
+      window.request.post("/api/v1/download_task/check_files", {
         files,
       }),
     { client: props.client },
@@ -701,7 +636,7 @@ function ContentDetailViewModel(props) {
     typeLabel: content_type_label,
     taskStatus: task_status,
     fileTypeIcon: file_type_icon,
-    formatTime: format_time,
+    formatTime: window.format_time,
     formatBytes: format_bytes,
     contentMediaAssets: content_media_assets,
   };

@@ -56,6 +56,7 @@
                 "id": 73,
                 "download_dir": "/data/downloads",
                 "name": "example.json",
+                "file_path": "/data/downloads/example.json",
                 "kind": "file",
                 "type": "file",
                 "status": "waiting",
@@ -100,6 +101,7 @@
                 "id": 73,
                 "download_dir": "/data/downloads",
                 "name": "example.json",
+                "file_path": "/data/downloads/example.json",
                 "kind": "application/json",
                 "type": "file",
                 "status": "finished",
@@ -131,6 +133,7 @@
             "files": [
               {
                 "id": 73,
+                "file_path": "/data/downloads/example.json",
                 "status": "downloading",
                 "size": 10485760,
                 "downloaded": 5242880,

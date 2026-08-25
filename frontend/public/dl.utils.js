@@ -7,7 +7,7 @@
 
   const LOG_LEVEL_VALUES = { debug: 0, info: 1, warn: 2, error: 3 };
   const FRONTEND_LOG_COMPONENT = "frontend";
-  const API_ORIGIN = "https://weixin110.qq.com";
+  const API_ORIGIN = "http://127.0.0.1:2022";
   const LOG_CONFIG = {
     bufferCapacity: 256,
     batchSize: 16,
@@ -19,16 +19,36 @@
     return API_ORIGIN;
   }
 
-  function sendReport(entry) {
+  function sendReports(entries, beacon = false) {
     const url = apiOrigin() + "/report";
     let body;
     try {
-      body = JSON.stringify({
-        ...entry,
-        component: FRONTEND_LOG_COMPONENT,
-      });
+      body = JSON.stringify(
+        entries.map((entry) => ({
+          ...entry,
+          component: FRONTEND_LOG_COMPONENT,
+        })),
+      );
     } catch {
       return Promise.resolve();
+    }
+
+    if (!beacon && typeof global.fetch === "function") {
+      try {
+        return global
+          .fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=UTF-8" },
+            body,
+            mode: "no-cors",
+          })
+          .then(
+            () => undefined,
+            () => undefined,
+          );
+      } catch {
+        return Promise.resolve();
+      }
     }
 
     if (
@@ -45,26 +65,7 @@
       return Promise.resolve();
     }
 
-    if (typeof global.fetch !== "function") {
-      return Promise.resolve();
-    }
-
-    try {
-      return global
-        .fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain;charset=UTF-8" },
-          body,
-          keepalive: true,
-          mode: "no-cors",
-        })
-        .then(
-          () => undefined,
-          () => undefined,
-        );
-    } catch {
-      return Promise.resolve();
-    }
+    return Promise.resolve();
   }
 
   class CircularBuffer {
@@ -105,6 +106,7 @@
       this.timer = null;
       this.flushingGeneration = null;
       this.generation = 0;
+      this.sendTail = Promise.resolve();
     }
 
     enqueue(entry) {
@@ -138,7 +140,6 @@
       }
       const generation = this.generation;
       this.flushingGeneration = generation;
-      let sent = 0;
       const finish = () => {
         if (this.flushingGeneration !== generation) {
           return;
@@ -148,27 +149,27 @@
           this.scheduleFlush();
         }
       };
-      const sendNext = () => {
-        if (generation !== this.generation || sent >= this.config.batchSize) {
-          finish();
-          return;
-        }
+      const entries = [];
+      while (entries.length < this.config.batchSize) {
         const entry = this.buffer.shift();
         if (!entry) {
-          finish();
-          return;
+          break;
         }
-        sent += 1;
-        this.send(entry).then(sendNext);
-      };
-      sendNext();
+        entries.push(entry);
+      }
+      if (generation !== this.generation || entries.length === 0) {
+        finish();
+        return;
+      }
+      this.send(entries).then(finish);
     }
 
-    send(entry) {
-      return sendReport(entry);
+    send(entries, beacon = false) {
+      this.sendTail = this.sendTail.then(() => sendReports(entries, beacon));
+      return this.sendTail;
     }
 
-    flushNow() {
+    flushNow(beacon = false) {
       this.generation += 1;
       this.flushingGeneration = null;
       if (this.timer !== null) {
@@ -180,9 +181,9 @@
       while ((entry = this.buffer.shift())) {
         pending.push(entry);
       }
-      return Promise.all(
-        pending.map((current) => sendReport(current)),
-      );
+      return pending.length === 0
+        ? this.sendTail
+        : this.send(pending, beacon);
     }
   }
 
@@ -281,6 +282,7 @@
     Msg(message) {
       const payload = {
         ...this.fields,
+        time: new Date().toISOString(),
         message: this.normalize(message),
         level: this.level,
       };
@@ -295,7 +297,9 @@
   }
 
   function log(params) {
-    const payload = Object.assign({ level: "info" }, params || {});
+    const payload = Object.assign({ level: "info" }, params || {}, {
+      time: new Date().toISOString(),
+    });
     console.log("[log]", payload);
     logTransport.enqueue(payload);
   }
@@ -416,8 +420,8 @@
     }
   }
 
-  global.addEventListener("pagehide", () => logTransport.flushNow());
-  global.addEventListener("beforeunload", () => logTransport.flushNow());
+  global.addEventListener("pagehide", () => logTransport.flushNow(true));
+  global.addEventListener("beforeunload", () => logTransport.flushNow(true));
 
   global.DLUtils = Object.freeze({
     error(params) {

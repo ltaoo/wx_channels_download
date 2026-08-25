@@ -75,6 +75,7 @@
                         "id": 73,
                         "download_dir": "/absolute/path/downloads",
                         "name": "示例视频.mp4",
+                        "file_path": "/absolute/path/downloads/示例视频.mp4",
                         "kind": "video/mp4",
                         "type": "FILE",
                         "status": "finished",

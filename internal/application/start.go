@@ -94,29 +94,26 @@ func Start(cfg *config.Config) error {
 	interceptor_srv := interceptor.NewInterceptorServer(cfg, cert_files, logger)
 	interceptor_srv.SubscribeEvents(bus)
 
-	target_protocol := api_cfg.Protocol
-	target_hostname := api_cfg.Hostname
-	target_port := api_cfg.Port
 	if cfg.GetBool("download.remoteServer.enabled") {
-		target_protocol = cfg.GetString("download.remoteServer.protocol")
-		target_hostname = cfg.GetString("download.remoteServer.hostname")
-		target_port = cfg.GetInt("download.remoteServer.port")
+		target_protocol := cfg.GetString("download.remoteServer.protocol")
+		target_hostname := cfg.GetString("download.remoteServer.hostname")
+		target_port := cfg.GetInt("download.remoteServer.port")
 		logger.Info().
 			Str("file", "internal/application/start.go").
 			Str("protocol", target_protocol).
 			Str("hostname", target_hostname).
 			Int("port", target_port).
 			Msg("enable remote server")
+		plugin := &proxy.Plugin{
+			Match: "weixin110.qq.com",
+			Target: &proxy.TargetConfig{
+				Protocol: target_protocol,
+				Host:     target_hostname,
+				Port:     target_port,
+			},
+		}
+		interceptor_srv.Interceptor.AddPostPlugin(plugin)
 	}
-	plugin := &proxy.Plugin{
-		Match: "weixin110.qq.com",
-		Target: &proxy.TargetConfig{
-			Protocol: target_protocol,
-			Host:     target_hostname,
-			Port:     target_port,
-		},
-	}
-	interceptor_srv.Interceptor.AddPostPlugin(plugin)
 
 	table_data := pterm.TableData{{"Item", "Path"}, {"Work Dir", cfg.WorkDir}, {"Data Path", cfg.DBPath}}
 	if cfg.LogPath() != "" {
@@ -176,7 +173,7 @@ func Start(cfg *config.Config) error {
 			ConnectionConcurrency: api_cfg.ConnectionConcurrency,
 			FilenameTemplate:      api_cfg.FilenameTemplate,
 			BasePath:              api_cfg.DownloadDir,
-			// SpeedLimit:       500 * 1024,
+			// SpeedLimit:            10 * 1024,
 		},
 	})
 	downloader.RegisterProtocol(protocol.NewHTTPDriver())
@@ -192,15 +189,28 @@ func Start(cfg *config.Config) error {
 		hook_manager,
 		cfg.WorkDir,
 		api_cfg.DownloadDir,
+		bus,
 	)
 	runtime_status_service := services.NewRuntimeStatusService()
 	download_task_broadcaster := api.NewDownloadTaskBroadcaster(b.DB, logger, download_task_service)
+	bus.Subscribe(events.TypeDownloadTaskCreated, func(event events.Event) {
+		created, ok := event.(events.DownloadTaskCreated)
+		if ok {
+			download_task_broadcaster.NotifyCreated(created.TaskID)
+		}
+	})
+	bus.Subscribe(events.TypeDownloadTaskDeleted, func(event events.Event) {
+		deleted, ok := event.(events.DownloadTaskDeleted)
+		if ok {
+			download_task_broadcaster.NotifyDeleted(deleted.TaskID)
+		}
+	})
 	downloader.OnEvent(func(event hermes.EventType, data hermes.EventData) {
 		task_id, progress, finished_resources, ok := download_task_event_data(event, data)
 		if !ok {
 			return
 		}
-		logger.Info().Int("task_id", task_id).Str("event", string(event)).Msg("Hermes task event")
+		logger.Info().Str("file", "/application/start.go").Int("task_id", task_id).Str("event", string(event)).Msg("Hermes task event")
 		download_task_broadcaster.Notify(task_id, event, progress, finished_resources)
 		if event == hermes.EventFinished {
 			go bus.Publish(events.DownloadTaskFinished{TaskID: task_id})
@@ -220,7 +230,7 @@ func Start(cfg *config.Config) error {
 		LogPath:              api_cfg.LogPath,
 		WorkDir:              api_cfg.WorkDir,
 	})
-	mcp_service, err := new_mcp_service(api_cfg, data_service, scraper_job_service, cfg.GetBool("mcp.enabled"))
+	mcp_service, err := new_mcp_service(api_cfg, data_service, download_task_service, scraper_job_service, cfg.GetBool("mcp.enabled"))
 	if err != nil {
 		task_store.Shutdown()
 		return fmt.Errorf("failed to initialize MCP service: %w", err)
@@ -518,9 +528,6 @@ func download_task_event_data(event hermes.EventType, data hermes.EventData) (in
 		return event_data.TaskID, nil, event_data.Resources, ok
 	case hermes.EventFailed:
 		event_data, ok := data.(hermes.TaskFailedEventData)
-		return event_data.TaskID, nil, nil, ok
-	case hermes.EventDeleted:
-		event_data, ok := data.(hermes.TaskDeletedEventData)
 		return event_data.TaskID, nil, nil, ok
 	case hermes.EventStarted:
 		event_data, ok := data.(hermes.TaskStartedEventData)

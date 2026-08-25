@@ -46,7 +46,6 @@ func (d *HermesEngine) finish_task(job *TaskJob) error {
 		d.logger.Info().Int("task_id", task_id).Msg("run - starting postprocessing")
 		if err := d.postprocessor.Process(context.Background(), job); err != nil {
 			d.logger.Error().Int("task_id", task_id).Err(err).Msg("postprocessing failed")
-			d.fail_task(task_id, err.Error())
 			return fmt.Errorf("post-processing failed: %w", err)
 		}
 		d.logger.Info().Int("task_id", task_id).Msg("postprocessing completed")
@@ -98,9 +97,10 @@ func (d *HermesEngine) finish_task(job *TaskJob) error {
 	}
 	d.logger.Info().Int("task_id", task_id).Str("file_path", d.rel_log_path(final_file_path)).Msg("download completed")
 
-	// 8. Post-download hook (async, non-blocking)
-	if d.hooks != nil && d.hooks.HasFinishHook() {
-		go d.invoke_finish_hook(job, final_file_path)
+	// 8. Terminal hooks (async, non-blocking). The outcome-specific hook runs
+	// before onTaskFinish so the latter has conventional finally semantics.
+	if d.hooks != nil && (d.hooks.HasSuccessHook() || d.hooks.HasFinishHook()) {
+		go d.invoke_terminal_hooks(job, hook_task_status_success, "", final_paths)
 	}
 
 	// 9. Emit final progress and EventFinished
@@ -481,8 +481,17 @@ func (d *HermesEngine) persist_resource_outputs(task_id int, resources []Resourc
 	return nil
 }
 
-func (d *HermesEngine) invoke_finish_hook(job *TaskJob, file_paths_str string) {
-	file_paths := strings.Split(file_paths_str, ", ")
+const (
+	hook_task_status_success = "success"
+	hook_task_status_failed  = "failed"
+)
+
+func (d *HermesEngine) invoke_terminal_hooks(job *TaskJob, status, err_msg string, file_paths []string) {
+	if d.hooks == nil || job == nil {
+		return
+	}
+	file_paths_copy := make([]string, len(file_paths))
+	copy(file_paths_copy, file_paths)
 
 	resources := make([]ResourceInfo, 0, len(job.Resources))
 	for _, r := range job.Resources {
@@ -496,7 +505,9 @@ func (d *HermesEngine) invoke_finish_hook(job *TaskJob, file_paths_str string) {
 		resources = append(resources, ResourceInfo{
 			ID:        r.ID,
 			Name:      r.Name,
-			Kind:      r.Type,
+			Kind:      r.Kind,
+			Size:      r.Size,
+			UniqueID:  r.UniqueID,
 			Extra:     r.Extra,
 			Endpoints: endpoints,
 		})
@@ -504,6 +515,7 @@ func (d *HermesEngine) invoke_finish_hook(job *TaskJob, file_paths_str string) {
 
 	ctx := &FinishContext{
 		Task: TaskInfo{
+			ID:          job.ID,
 			Name:        job.Name,
 			DownloadDir: job.DownloadDir,
 			Config:      job.Config,
@@ -511,11 +523,25 @@ func (d *HermesEngine) invoke_finish_hook(job *TaskJob, file_paths_str string) {
 		Config:      job.Config,
 		Metadata:    job.Metadata,
 		Resources:   resources,
-		FilePaths:   file_paths,
+		FilePaths:   file_paths_copy,
 		DownloadDir: job.DownloadDir,
+		Status:      status,
+		Error:       err_msg,
 	}
 
-	if err := d.hooks.InvokeFinishHook(ctx); err != nil {
-		d.logger.Warn().Err(err).Msg("finish hook execution failed")
+	if status == hook_task_status_success && d.hooks.HasSuccessHook() {
+		if err := d.hooks.InvokeSuccessHook(ctx); err != nil {
+			d.logger.Warn().Err(err).Msg("success hook execution failed")
+		}
+	}
+	if status == hook_task_status_failed && d.hooks.HasFailedHook() {
+		if err := d.hooks.InvokeFailedHook(ctx); err != nil {
+			d.logger.Warn().Err(err).Msg("failed hook execution failed")
+		}
+	}
+	if d.hooks.HasFinishHook() {
+		if err := d.hooks.InvokeFinishHook(ctx); err != nil {
+			d.logger.Warn().Err(err).Msg("finish hook execution failed")
+		}
 	}
 }

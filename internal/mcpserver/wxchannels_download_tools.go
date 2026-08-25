@@ -418,14 +418,14 @@ func (s *Server) fetch_wxchannels_data(ctx context.Context, path string, query u
 		Data    json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(raw_response, &response); err != nil {
-		return nil, fmt.Errorf("解析微信视频号 API 响应失败: %w", err)
+		return nil, fmt.Errorf("解析微信视频号响应失败: %w", err)
 	}
 	if response.ErrCode != 0 {
-		message := value_or_default(response.ErrMsg, fmt.Sprintf("微信视频号 API 返回错误码 %d", response.ErrCode))
+		message := value_or_default(response.ErrMsg, fmt.Sprintf("微信视频号返回错误码 %d", response.ErrCode))
 		return nil, new_tool_execution_error(message, raw_json_value(raw_response))
 	}
 	if !has_json_value(response.Data) {
-		return nil, fmt.Errorf("微信视频号 API 响应缺少 data")
+		return nil, fmt.Errorf("微信视频号响应缺少 data")
 	}
 	return response.Data, nil
 }
@@ -455,29 +455,24 @@ func (s *Server) create_wxchannels_download_task(ctx context.Context, content js
 	if existing_action == "duplicate" {
 		config["duplicate"] = true
 	}
-	create_response, err := s.api_client.create_download_task(ctx, map[string]any{
-		"objects": []any{map[string]any{
-			"platform":     "wxchannels",
-			"content":      content,
-			"download_dir": strings.TrimSpace(options.DownloadDir),
-			"filename":     strings.TrimSpace(options.Filename),
-			"config":       config,
-			"auto_start":   true,
-		}},
-	})
+	auto_start := true
+	create_result, err := s.create_download_task(ctx, DownloadTaskCreateRequest{
+		Platform:    "wxchannels",
+		Content:     content,
+		DownloadDir: strings.TrimSpace(options.DownloadDir),
+		Filename:    strings.TrimSpace(options.Filename),
+		Config:      config,
+		AutoStart:   &auto_start,
+	}, "创建视频号下载任务失败")
 	if err != nil {
 		return nil, err
 	}
-	item := create_response.Tasks[0]
-	if item.Code != 0 {
-		return nil, new_tool_execution_error(value_or_default(item.Msg, "创建视频号下载任务失败"), raw_json_value(item.Data))
-	}
-	if existing_action == "skip" && download_item_was_skipped(item.Data) {
+	if create_result.Skipped {
 		return successful_tool_result(map[string]any{
 			"created":       false,
 			"started":       false,
 			"skipped":       true,
-			"existing_task": raw_json_value(item.Data),
+			"existing_task": create_result.Task,
 			"source":        source,
 		})
 	}
@@ -485,8 +480,8 @@ func (s *Server) create_wxchannels_download_task(ctx context.Context, content js
 		"created": true,
 		"started": true,
 		"skipped": false,
-		"task":    raw_json_value(item.Data),
-		"ids":     create_response.IDs,
+		"task":    create_result.Task,
+		"ids":     create_result.IDs,
 		"source":  source,
 	})
 }

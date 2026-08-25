@@ -4,7 +4,7 @@ title: MCP Server
 
 # MCP Server
 
-项目提供 Streamable HTTP 与 stdio 两种 MCP 接入方式，能力与首页链接解析流程一致：
+项目提供 Streamable HTTP 与 stdio 两种 MCP 接入方式，包含以下语义化 tools：
 
 - `get_config`：获取应用配置 schema、当前值和解析后的生效值；敏感值不会返回明文。
 - `update_config`：批量修改非只读配置，保存成功后安排应用优雅重启。
@@ -25,6 +25,7 @@ title: MCP Server
 - `get_wxchannels_video_share_url`：通过 `oid` 获取视频分享链接。
 - `get_download_tasks`：分页获取下载任务和状态统计。
 - `get_download_task_detail`：获取下载任务、文件和关联内容详情。
+- `delete_download_tasks`：批量删除下载任务，可通过 `delete_files` 选择是否同时删除关联的本地文件。
 - `get_accounts`：分页获取数据库中的平台账号。
 - `get_browse_history`：分页获取浏览记录。
 - `get_logs`：分页读取并筛选应用日志。
@@ -32,31 +33,27 @@ title: MCP Server
 
 ## Streamable HTTP（推荐）
 
-启动下载器时，内置 MCP 服务会默认开启。Agent 使用前端「设置 → MCP」页面显示的连接地址；默认配置下为：
+启动下载器后，使用前端「设置 → MCP」页面显示的连接地址；默认地址为：
 
 ```text
 http://127.0.0.1:2022/mcp
 ```
 
-设置页修改会立即生效，但不会写入配置文件。应用每次启动时 MCP 均会默认开启；手动关闭后 `/mcp` 会立即停止接受 Agent 请求，下次启动应用时会再次开启。MCP 与下载器 API 使用相同的监听地址；如果把 `api.hostname` 配置为局域网地址，应只向可信网络开放。
+设置页可立即启用或关闭 Streamable HTTP MCP。将 `api.hostname` 配置为局域网地址时，只应向可信网络开放。
 
-该开关只控制主服务内置的 `/mcp` HTTP 入口；下面的 stdio 命令由 MCP 客户端独立启动，不受此开关影响。
+## 微信视频号工具
 
-## 微信视频号 API
-
-视频号 API 工具通过已打开的视频号页面访问微信接口。使用前先确认下载器代理工作正常，并已有页面连接到 `/ws/channels`；可调用 `get_wxchannels_status` 检查，返回的 `available` 应为 `true`。
+视频号工具通过已打开的视频号页面获取数据。使用前先确认下载器代理工作正常，并已有页面连接到 `/ws/channels`；可调用 `get_wxchannels_status` 检查，返回的 `available` 应为 `true`。
 
 列表工具返回微信原始分页字段。继续翻页时，把上一页的 `data.lastBuffer`（账号搜索使用 `data.lastBuff`）原样传给下一次调用的 `next_marker`，不要自行解码或改写。
 
-## 本地数据查询
-
-内置 Streamable HTTP MCP 直接使用下载器当前进程中的数据库和运行时 service，查询下载任务、账号、浏览记录、日志和证书状态。独立 stdio MCP 不会再次打开数据库，而是通过已经启动的下载器 API 返回同样的数据。
+## 数据查询
 
 所有数据查询工具均为只读。`get_download_tasks` 支持按状态、父任务和根任务筛选；`get_accounts` 支持账号 ID 和关键词；`get_browse_history` 支持平台、关联账号和关键词；`get_logs` 支持日志级别、来源和关键词。列表工具默认分页，并限制单页最大返回量。
 
 ## stdio
 
-stdio MCP server 同样复用下载器主服务的 API。先启动下载器：
+使用 stdio MCP 前先启动下载器：
 
 ```sh
 wx_video_download server
@@ -90,7 +87,7 @@ wx_video_download server
 
 ## 配置管理
 
-修改配置前先调用 `get_config` 获取合法字段、字段类型和枚举选项。响应中的 `application_fields` 对应 `internal/config/config.go` 注册的应用配置，`plugin_fields` 对应 adapter 插件配置，`fields` 是兼容用的完整合集。`update_config` 接收 `values` 对象，例如：
+修改配置前先调用 `get_config` 获取合法字段、字段类型和枚举选项。敏感字段只返回是否已配置，不返回明文。`update_config` 接收 `values` 对象，例如：
 
 ```json
 {
@@ -101,7 +98,7 @@ wx_video_download server
 }
 ```
 
-未知字段、只读字段、类型不匹配或不在 `options` 中的值会被拒绝。值发生变化时，配置将以原子方式写入 `config.yaml`，然后应用会优雅重启；MCP 客户端需要允许连接短暂中断并重新连接。修改 `api.hostname` 或 `api.port` 后，应使用新地址连接；stdio 客户端需要同步更新 API 地址或重新启动。相同值不会触发重启。密码、Cookie、Token 等敏感配置只能修改，`get_config` 只返回是否已经配置。
+未知字段、只读字段、类型不匹配或不在 `options` 中的值会被拒绝。值发生变化后应用会优雅重启，MCP 连接可能短暂中断。修改 `api.hostname` 或 `api.port` 后，应使用新地址连接；stdio 客户端需要同步更新 API 地址或重新启动。相同值不会触发重启。
 
 `update_config` 返回 `restart_scheduled: true` 时只表示已安排重启。调用方必须保留 `restart_token`，连接恢复后调用 `get_restart_status`。只有返回 `status: "completed"`、`restart_completed: true`、`config_applied: true` 时，才表示新进程已经启动并加载了保存后的配置；在此之前不应向用户声称重启完成。
 
@@ -116,7 +113,7 @@ wx_video_download server
 }
 ```
 
-旧参数名 `fetch_id` 仍然兼容，但新调用应统一使用 `job_id`。`download_content` 默认在任务创建并启动后返回；需要等待文件实际下载完成时，传入 `wait_for_completion: true`。重复任务默认报错，可通过 `existing_action` 选择 `skip`、`overwrite` 或 `duplicate`。其中 `overwrite` 会覆盖已有任务和文件。
+`download_content` 默认在任务创建并启动后返回；需要等待文件实际下载完成时，传入 `wait_for_completion: true`。重复任务默认报错，可通过 `existing_action` 选择 `skip`、`overwrite` 或 `duplicate`。其中 `overwrite` 会覆盖已有任务和文件。
 
 ## 微信视频号外部下载与解密
 

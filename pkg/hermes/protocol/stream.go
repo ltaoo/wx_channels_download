@@ -22,11 +22,15 @@ import (
 )
 
 const (
-	default_stream_rotate_minutes = 10
-	default_stream_attempts       = 3
-	stream_stop_grace_period      = 8 * time.Second
-	stream_finalize_timeout       = 30 * time.Minute
-	stream_stderr_limit           = 64 * 1024
+	default_stream_rotate_minutes  = 10
+	default_stream_preview_seconds = 4
+	default_stream_attempts        = 3
+	stream_stop_grace_period       = 8 * time.Second
+	stream_finalize_timeout        = 30 * time.Minute
+	stream_stderr_limit            = 64 * 1024
+	stream_playback_dir_name       = "playback"
+	stream_playback_manifest_name  = "index.m3u8"
+	stream_playback_segment_prefix = "segment-"
 )
 
 // StreamDriver records live media with FFmpeg. Unlike finite protocol drivers,
@@ -83,9 +87,13 @@ func (d *StreamDriver) RecordStream(
 		return hermes.StreamRecordResult{}, fmt.Errorf("ffmpeg is required for live recording: %w", err)
 	}
 
-	recording_dir := request.OutputPath + ".recording"
+	recording_dir := hermes.StreamRecordingDir(request.OutputPath)
 	if err := os.MkdirAll(recording_dir, 0755); err != nil {
 		return hermes.StreamRecordResult{}, fmt.Errorf("failed to create stream recording directory: %w", err)
+	}
+	playback_dir := filepath.Join(recording_dir, stream_playback_dir_name)
+	if err := os.MkdirAll(playback_dir, 0755); err != nil {
+		return hermes.StreamRecordResult{}, fmt.Errorf("failed to create stream playback directory: %w", err)
 	}
 
 	rotate_minutes := request.RotateMinutes
@@ -126,7 +134,7 @@ func (d *StreamDriver) RecordStream(
 			return hermes.StreamRecordResult{}, err
 		}
 		_, err = d.record_attempt(
-			ctx, endpoint, recording_dir, start_index, rotate_minutes, stop_at, started_at, on_progress,
+			ctx, endpoint, recording_dir, playback_dir, start_index, rotate_minutes, stop_at, started_at, on_progress,
 		)
 		if err == nil {
 			return d.finalize_recording(ctx, request.OutputPath, recording_dir, started_at, on_progress)
@@ -181,6 +189,7 @@ func (d *StreamDriver) record_attempt(
 	ctx context.Context,
 	endpoint hermes.Endpoint,
 	recording_dir string,
+	playback_dir string,
 	start_index int,
 	rotate_minutes int,
 	stop_at time.Time,
@@ -191,7 +200,19 @@ func (d *StreamDriver) record_attempt(
 	defer cancel_process()
 
 	pattern := filepath.Join(recording_dir, "segment-%06d.mkv")
-	args, err := build_stream_ffmpeg_args(endpoint, pattern, start_index, rotate_minutes)
+	playback_start_number, playback_continuation, err := stream_playback_start_number(playback_dir)
+	if err != nil {
+		return false, err
+	}
+	args, err := build_stream_ffmpeg_args(
+		endpoint,
+		pattern,
+		start_index,
+		rotate_minutes,
+		playback_dir,
+		playback_start_number,
+		playback_continuation,
+	)
 	if err != nil {
 		return false, err
 	}
@@ -301,7 +322,15 @@ func stop_ffmpeg(stdin io.WriteCloser, cancel context.CancelFunc, wait_ch <-chan
 	}
 }
 
-func build_stream_ffmpeg_args(endpoint hermes.Endpoint, output_pattern string, start_index, rotate_minutes int) ([]string, error) {
+func build_stream_ffmpeg_args(
+	endpoint hermes.Endpoint,
+	output_pattern string,
+	start_index int,
+	rotate_minutes int,
+	playback_dir string,
+	playback_start_number int,
+	playback_continuation bool,
+) ([]string, error) {
 	args := []string{
 		"-hide_banner",
 		"-loglevel", "warning",
@@ -340,6 +369,8 @@ func build_stream_ffmpeg_args(endpoint hermes.Endpoint, output_pattern string, s
 	}
 	args = append(args,
 		"-i", endpoint.URL,
+		// Archive output: retain the original codecs and the existing resilient
+		// Matroska chunk format used for pause/retry and final concatenation.
 		"-map", "0:v:0?",
 		"-map", "0:a:0?",
 		"-c", "copy",
@@ -352,7 +383,77 @@ func build_stream_ffmpeg_args(endpoint hermes.Endpoint, output_pattern string, s
 		"-y",
 		output_pattern,
 	)
+
+	if strings.TrimSpace(playback_dir) == "" {
+		return args, nil
+	}
+	playback_flags := "append_list+independent_segments+omit_endlist+temp_file"
+	if playback_continuation {
+		// FFmpeg preserves the existing EVENT playlist with append_list. Mark a
+		// new recorder attempt as discontinuous because archive timestamps reset
+		// across pause/reconnect boundaries.
+		playback_flags += "+discont_start"
+	}
+	playback_pattern := filepath.Join(
+		playback_dir,
+		stream_playback_segment_prefix+"%09d.ts",
+	)
+	playback_manifest := filepath.Join(playback_dir, stream_playback_manifest_name)
+	args = append(args,
+		// Playback output: this reuses the already-open input and only remuxes the
+		// media, so enabling live preview does not create another source request.
+		"-map", "0:v:0?",
+		"-map", "0:a:0?",
+		"-c", "copy",
+		"-avoid_negative_ts", "make_non_negative",
+		"-f", "hls",
+		"-hls_time", strconv.Itoa(default_stream_preview_seconds),
+		"-hls_list_size", "0",
+		"-hls_playlist_type", "event",
+		"-hls_segment_type", "mpegts",
+		"-hls_flags", playback_flags,
+		"-start_number", strconv.Itoa(playback_start_number),
+		"-hls_segment_filename", playback_pattern,
+		"-y",
+		playback_manifest,
+	)
 	return args, nil
+}
+
+func stream_playback_start_number(playback_dir string) (int, bool, error) {
+	manifest_path := filepath.Join(playback_dir, stream_playback_manifest_name)
+	if info, err := os.Lstat(manifest_path); err == nil {
+		if !info.Mode().IsRegular() {
+			return 0, false, fmt.Errorf("stream playback manifest is not a regular file")
+		}
+		// append_list derives the next media sequence from the existing manifest.
+		// Supplying that sequence again would make FFmpeg add it twice.
+		return 0, true, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return 0, false, fmt.Errorf("failed to inspect stream playback manifest: %w", err)
+	}
+
+	entries, err := os.ReadDir(playback_dir)
+	if err != nil {
+		return 0, false, fmt.Errorf("failed to read stream playback directory: %w", err)
+	}
+	next_index := 0
+	for _, entry := range entries {
+		index, ok := stream_playback_segment_index(entry.Name())
+		if ok && index >= next_index {
+			next_index = index + 1
+		}
+	}
+	return next_index, false, nil
+}
+
+func stream_playback_segment_index(name string) (int, bool) {
+	if !strings.HasPrefix(name, stream_playback_segment_prefix) || !strings.HasSuffix(name, ".ts") {
+		return 0, false
+	}
+	raw_index := strings.TrimSuffix(strings.TrimPrefix(name, stream_playback_segment_prefix), ".ts")
+	index, err := strconv.Atoi(raw_index)
+	return index, err == nil && index >= 0
 }
 
 func ffmpeg_headers(endpoint hermes.Endpoint) string {
@@ -683,6 +784,9 @@ func (d *StreamDriver) finalize_recording(
 	if err := emit_stream_progress(recording_dir, started_at, true, true, on_progress); err != nil {
 		return hermes.StreamRecordResult{}, err
 	}
+	if err := finalize_stream_playback(recording_dir, output_path); err != nil {
+		return hermes.StreamRecordResult{}, err
+	}
 	if err := os.RemoveAll(recording_dir); err != nil {
 		return hermes.StreamRecordResult{}, fmt.Errorf("failed to clean stream recording chunks: %w", err)
 	}
@@ -691,6 +795,40 @@ func (d *StreamDriver) finalize_recording(
 		Size:     info.Size(),
 		Duration: time.Since(started_at),
 	}, nil
+}
+
+func finalize_stream_playback(recording_dir, output_path string) error {
+	playback_dir := filepath.Join(recording_dir, stream_playback_dir_name)
+	manifest_path := filepath.Join(playback_dir, stream_playback_manifest_name)
+	manifest, err := os.ReadFile(manifest_path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to read stream playback manifest: %w", err)
+	}
+	trimmed_manifest := bytes.TrimSpace(manifest)
+	if !bytes.HasSuffix(trimmed_manifest, []byte("#EXT-X-ENDLIST")) {
+		trimmed_manifest = append(trimmed_manifest, []byte("\n#EXT-X-ENDLIST\n")...)
+	} else {
+		trimmed_manifest = append(trimmed_manifest, '\n')
+	}
+	tmp_manifest_path := manifest_path + ".finalizing"
+	if err := os.WriteFile(tmp_manifest_path, trimmed_manifest, 0644); err != nil {
+		return fmt.Errorf("failed to write finalized stream playback manifest: %w", err)
+	}
+	if err := os.Rename(tmp_manifest_path, manifest_path); err != nil {
+		return fmt.Errorf("failed to commit finalized stream playback manifest: %w", err)
+	}
+
+	final_playback_dir := hermes.StreamPlaybackDir(output_path)
+	if err := os.RemoveAll(final_playback_dir); err != nil {
+		return fmt.Errorf("failed to replace previous stream playback directory: %w", err)
+	}
+	if err := os.Rename(playback_dir, final_playback_dir); err != nil {
+		return fmt.Errorf("failed to commit stream playback directory: %w", err)
+	}
+	return nil
 }
 
 func (d *StreamDriver) valid_stream_segments(ctx context.Context, recording_dir string) ([]string, error) {

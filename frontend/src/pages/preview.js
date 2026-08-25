@@ -94,13 +94,11 @@ function PreviewSingleFileView(props) {
   const url = vm$.methods.fileURL(file);
   if (file.file_type === "video") {
     return View({ class: "wx-preview-video-container" }, [
-      Timeless.Video({
-        class: "wx-preview-video",
-        src: url,
-        controls: true,
+      PreviewVideoPlayerView({
+        store: vm$,
+        file,
+        videoClass: "wx-preview-video",
         autoplay: true,
-        playsInline: true,
-        preload: "metadata",
       }),
       View({ class: "wx-preview-filename" }, [file.name]),
     ]);
@@ -113,6 +111,58 @@ function PreviewSingleFileView(props) {
     }),
     View({ class: "wx-preview-filename" }, [file.name]),
   ]);
+}
+
+function PreviewVideoPlayerView(props) {
+  const vm$ = props.store;
+  const file = props.file;
+  const is_live_playback = vm$.methods.isLivePlayback(file);
+  return View(
+    {
+      class: [
+        "wx-preview-video-player",
+        is_live_playback ? "is-live-playback" : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+      attributes: { n: "preview-video-player" },
+    },
+    [
+      Timeless.Video({
+        class: props.videoClass,
+        src: vm$.methods.videoSource(file),
+        controls: true,
+        autoplay: Boolean(props.autoplay),
+        playsInline: true,
+        preload: is_live_playback ? "none" : "metadata",
+        attributes: { n: "preview-video-media" },
+        onMounted(event) {
+          vm$.methods.mountVideo(event, file, {
+            autoplay: Boolean(props.autoplay),
+          });
+        },
+        onUnmounted() {
+          vm$.methods.unmountVideo(file);
+        },
+      }),
+      is_live_playback
+        ? View(
+            {
+              class: computed(
+                vm$.state.live_playback_status,
+                (status) =>
+                  `wx-preview-live-status is-${status || "waiting"}`,
+              ),
+              attributes: {
+                n: "live-playback-status",
+                role: "status",
+              },
+            },
+            [vm$.state.live_playback_message],
+          )
+        : null,
+    ].filter(Boolean),
+  );
 }
 
 function PreviewFileThumbnail(props) {
@@ -160,19 +210,20 @@ function PreviewFileThumbnail(props) {
 function PreviewFileCardView(props) {
   const vm$ = props.store;
   const file = props.file;
+  const playable = vm$.methods.filePlayable(file);
   return View(
     {
       as: "button",
       class: [
         "wx-preview-file-card dm-panel--soft dm-focus-ring",
-        file.exists ? "" : "is-missing",
+        playable ? "" : "is-missing",
       ]
         .filter(Boolean)
         .join(" "),
       attributes: {
         type: "button",
         title: file.name,
-        disabled: !file.exists,
+        disabled: !playable,
       },
       onClick() {
         vm$.methods.openPreview(file);
@@ -195,7 +246,7 @@ function PreviewFileCardView(props) {
         ),
         View({ class: "wx-preview-file-meta" }, [
           View({}, [vm$.methods.formatBytes(file.size)]),
-          View({}, [file.exists ? "" : "missing"]),
+          View({}, [playable ? "" : "missing"]),
         ]),
         file.status === "downloading" && file.progress > 0
           ? View({ class: "wx-preview-progress" }, [
@@ -256,7 +307,7 @@ function PreviewGalleryPlaceholderView(props) {
       [file.name],
     ),
     View({ class: "wx-preview-gallery-placeholder-message" }, [
-      file.exists
+      vm$.methods.filePlayable(file)
         ? "此文件类型无法在画廊中直接预览，请打开文件查看。"
         : "文件尚未下载、下载未完成，或本地文件已被删除。",
     ]),
@@ -267,7 +318,7 @@ function PreviewGalleryMediaView(props) {
   const vm$ = props.store;
   const file = props.file;
   const url = vm$.methods.fileURL(file);
-  if (!file.exists) {
+  if (!vm$.methods.filePlayable(file)) {
     return PreviewGalleryPlaceholderView({ store: vm$, file });
   }
   if (file.file_type === "image") {
@@ -279,12 +330,11 @@ function PreviewGalleryMediaView(props) {
     });
   }
   if (file.file_type === "video") {
-    return Timeless.Video({
-      class: "wx-preview-gallery-video",
-      src: url,
-      controls: true,
-      playsInline: true,
-      preload: "metadata",
+    return PreviewVideoPlayerView({
+      store: vm$,
+      file,
+      videoClass: "wx-preview-gallery-video",
+      autoplay: vm$.methods.isLivePlayback(file),
     });
   }
   if (file.file_type === "audio") {
@@ -331,7 +381,7 @@ function PreviewGalleryStageView(props) {
   const meta = [
     vm$.methods.fileTypeLabel(file.file_type),
     vm$.methods.formatBytes(file.size),
-    file.exists ? file.status : "文件不存在",
+    vm$.methods.filePlayable(file) ? file.status : "文件不存在",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -395,6 +445,7 @@ function PreviewGalleryStageView(props) {
 function PreviewGalleryFileView(props) {
   const vm$ = props.store;
   const file = props.file;
+  const playable = vm$.methods.filePlayable(file);
   return View(
     {
       as: "button",
@@ -402,7 +453,7 @@ function PreviewGalleryFileView(props) {
         [
           "wx-preview-gallery-file dm-focus-ring",
           selected_file === file ? "is-selected" : "",
-          file.exists ? "" : "is-missing",
+          playable ? "" : "is-missing",
         ]
           .filter(Boolean)
           .join(" "),
@@ -410,7 +461,7 @@ function PreviewGalleryFileView(props) {
       attributes: {
         type: "button",
         title: file.name,
-        disabled: !file.exists,
+        disabled: !playable,
         "aria-pressed": computed(
           vm$.state.gallery_file,
           (selected_file) => (selected_file === file ? "true" : "false"),
@@ -436,7 +487,7 @@ function PreviewGalleryFileView(props) {
           [
             vm$.methods.fileTypeLabel(file.file_type),
             vm$.methods.formatBytes(file.size),
-            file.exists ? file.status : "文件不存在",
+            playable ? file.status : "文件不存在",
           ]
             .filter(Boolean)
             .join(" · "),
@@ -511,7 +562,7 @@ function PreviewTaskBodyView(props) {
       PreviewFileGalleryView({ store: vm$, files: task.files }),
     ];
   }
-  const existing_files = task.files.filter((file) => file.exists);
+  const existing_files = task.files.filter(vm$.methods.filePlayable);
   const single_file = existing_files.length === 1 ? existing_files[0] : null;
   return [
     PreviewHeaderView({ task }),
@@ -623,12 +674,11 @@ function PreviewOverlayMediaView(props) {
     });
   }
   if (file.file_type === "video") {
-    return Timeless.Video({
-      class: "wx-preview-overlay-video",
-      src: url,
-      controls: true,
+    return PreviewVideoPlayerView({
+      store: vm$,
+      file,
+      videoClass: "wx-preview-overlay-video",
       autoplay: true,
-      playsInline: true,
     });
   }
   if (file.file_type === "audio") {
@@ -729,7 +779,7 @@ function PreviewPageView(props) {
           unsubscribe_task_id();
           unsubscribe_task_id = null;
         }
-        vm$.methods.closePreview();
+        vm$.methods.destroy();
       },
     },
     [

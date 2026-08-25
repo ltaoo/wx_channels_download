@@ -14,10 +14,12 @@ const mcp_transport = "streamable_http"
 
 // MCPServiceConfig contains the dependencies used by the MCP protocol server.
 type MCPServiceConfig struct {
-	APIBaseURL  string
-	Version     string
-	DataReader  mcpserver.DataReader
-	ScraperJobs mcpserver.ScraperJobBackend
+	APIBaseURL          string
+	Version             string
+	DataReader          mcpserver.DataReader
+	ScraperJobs         mcpserver.ScraperJobBackend
+	DownloadTaskCreator mcpserver.DownloadTaskCreator
+	DownloadTaskDeleter mcpserver.DownloadTaskDeleter
 }
 
 // MCPServiceStatus describes the process-local MCP service state.
@@ -57,10 +59,12 @@ func NewLazyMCPService(config MCPServiceConfig) *MCPService {
 
 func build_mcp_handler(config MCPServiceConfig) (http.Handler, error) {
 	server, err := mcpserver.NewServer(mcpserver.Config{
-		APIBaseURL:  config.APIBaseURL,
-		Version:     config.Version,
-		DataReader:  config.DataReader,
-		ScraperJobs: config.ScraperJobs,
+		APIBaseURL:          config.APIBaseURL,
+		Version:             config.Version,
+		DataReader:          config.DataReader,
+		ScraperJobs:         config.ScraperJobs,
+		DownloadTaskCreator: config.DownloadTaskCreator,
+		DownloadTaskDeleter: config.DownloadTaskDeleter,
 	})
 	if err != nil {
 		return nil, err

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/gin-gonic/gin"
@@ -16,6 +17,8 @@ import (
 
 	"wx_channel/frontend"
 	result "wx_channel/internal/apiresult"
+	"wx_channel/internal/config"
+	"wx_channel/internal/logtime"
 )
 
 type FrontendTip struct {
@@ -33,13 +36,14 @@ type FrontendErrorTip struct {
 
 // FrontendReport is a unified frontend report, level is "info" or "error"
 type FrontendReport struct {
-	Level        string  `json:"level"`
-	Message      string  `json:"message"`
-	Msg          string  `json:"msg"`
-	End          int     `json:"end,omitempty"`
-	Replace      int     `json:"replace,omitempty"`
-	IgnorePrefix int     `json:"ignore_prefix,omitempty"`
-	Prefix       *string `json:"prefix,omitempty"`
+	Level        string     `json:"level"`
+	Message      string     `json:"message"`
+	Msg          string     `json:"msg"`
+	Time         *time.Time `json:"time,omitempty"`
+	End          int        `json:"end,omitempty"`
+	Replace      int        `json:"replace,omitempty"`
+	IgnorePrefix int        `json:"ignore_prefix,omitempty"`
+	Prefix       *string    `json:"prefix,omitempty"`
 }
 
 func (c *APIClient) handle_index(ctx *gin.Context) {
@@ -63,9 +67,9 @@ func (c *APIClient) renderFrontendHTML(data []byte) []byte {
 	if max_running == 0 {
 		max_running = 3
 	}
-	frontendVariables := map[string]any{
-		"apiHost":                    fmt.Sprintf("%s:%d", c.cfg.Hostname, c.cfg.Port),
-		"apiOrigin":                  fmt.Sprintf("%s://%s:%d", c.cfg.Protocol, c.cfg.Hostname, c.cfg.Port),
+	frontend_variables := map[string]any{
+		"apiHost":                    config.APIClientHost(c.cfg.Hostname, c.cfg.Port),
+		"apiOrigin":                  config.APIClientOrigin(c.cfg.Protocol, c.cfg.Hostname, c.cfg.Port),
 		"apiProtocol":                c.cfg.Protocol,
 		"remoteServerEnabled":        c.cfg.Original.GetBool("download.remoteServer.enabled"),
 		"remoteServerOrigin":         fmt.Sprintf("%s://%s:%d", c.cfg.RemoteServerProtocol, c.cfg.RemoteServerHostname, c.cfg.RemoteServerPort),
@@ -76,9 +80,9 @@ func (c *APIClient) renderFrontendHTML(data []byte) []byte {
 		"downloadInFrontend":         c.cfg.Original.GetBool("channels.download.frontend"),
 		"downloadForceCheckAllFeeds": c.cfg.Original.GetBool("channels.download.forceCheckAllFeeds"),
 	}
-	cfgByte, _ := json.Marshal(frontendVariables)
+	cfg_byte, _ := json.Marshal(frontend_variables)
 	html := string(data)
-	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_CONFIG_JSON__", string(cfgByte))
+	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_CONFIG_JSON__", string(cfg_byte))
 	html = strings.ReplaceAll(html, "__WX_DOWNLOAD_VERSION__", c.cfg.Version)
 	return []byte(html)
 }
@@ -643,58 +647,81 @@ func (c *APIClient) handle_frontend_report(ctx *gin.Context) {
 		return
 	}
 
-	var data FrontendReport
-	if err := json.Unmarshal(body, &data); err != nil {
-		result.Err(ctx, 400, err.Error())
-		return
-	}
-	var extraFields map[string]interface{}
-	if err := json.Unmarshal(body, &extraFields); err != nil {
-		result.Err(ctx, 400, err.Error())
-		return
+	report_bodies := []json.RawMessage{body}
+	if trimmed_body := bytes.TrimSpace(body); len(trimmed_body) > 0 && trimmed_body[0] == '[' {
+		if err := json.Unmarshal(trimmed_body, &report_bodies); err != nil {
+			result.Err(ctx, 400, err.Error())
+			return
+		}
 	}
 
-	// Write to log file -- parse all fields to support arbitrary key=value passed by the frontend fluent logger
-	delete(extraFields, "level")
-	delete(extraFields, "msg")
-	delete(extraFields, "message")
-	delete(extraFields, "end")
-	delete(extraFields, "replace")
-	delete(extraFields, "ignore_prefix")
-	delete(extraFields, "prefix")
-	delete(extraFields, "component")
+	type frontend_report_payload struct {
+		data         FrontendReport
+		extra_fields map[string]interface{}
+	}
+	reports := make([]frontend_report_payload, 0, len(report_bodies))
+	for _, report_body := range report_bodies {
+		var report frontend_report_payload
+		if err := json.Unmarshal(report_body, &report.data); err != nil {
+			result.Err(ctx, 400, err.Error())
+			return
+		}
+		if err := json.Unmarshal(report_body, &report.extra_fields); err != nil {
+			result.Err(ctx, 400, err.Error())
+			return
+		}
+		reports = append(reports, report)
+	}
 
-	reportMessage := data.Message
-	if reportMessage == "" {
-		reportMessage = data.Msg
-	}
-	if reportMessage == "" {
-		reportMessage = "frontend report"
-	}
-	evt := c.logger.WithLevel(zerologLevel(data.Level)).
-		Str("component", "frontend")
-	for k, v := range extraFields {
-		evt = evt.Interface(k, normalizeFrontendReportValue(v))
-	}
-	evt.Msg(reportMessage)
+	for _, report := range reports {
+		data := report.data
+		extra_fields := report.extra_fields
+		// Write to log file -- parse all fields to support arbitrary key=value passed by the frontend fluent logger
+		delete(extra_fields, "level")
+		delete(extra_fields, "msg")
+		delete(extra_fields, "message")
+		delete(extra_fields, "end")
+		delete(extra_fields, "replace")
+		delete(extra_fields, "ignore_prefix")
+		delete(extra_fields, "prefix")
+		delete(extra_fields, "component")
+		delete(extra_fields, "time")
 
-	// Terminal display
-	if data.Level == "error" {
-		color.Red(fmt.Sprintf("[FRONTEND ERROR]%s\n", reportMessage))
-	} else {
-		prefixText := "[FRONTEND]"
+		report_message := data.Message
+		if report_message == "" {
+			report_message = data.Msg
+		}
+		if report_message == "" {
+			report_message = "frontend report"
+		}
+		evt := c.logger.WithLevel(zerologLevel(data.Level)).
+			Str("component", "frontend")
+		if data.Time != nil {
+			evt.Ctx(logtime.WithTimestamp(ctx.Request.Context(), data.Time.In(time.Local)))
+		}
+		for key, value := range extra_fields {
+			evt = evt.Interface(key, normalizeFrontendReportValue(value))
+		}
+		evt.Msg(report_message)
+
+		// Terminal display
+		if data.Level == "error" {
+			color.Red(fmt.Sprintf("[FRONTEND ERROR]%s\n", report_message))
+			continue
+		}
+		prefix_text := "[FRONTEND]"
 		prefix := data.Prefix
 		if prefix == nil {
-			prefix = &prefixText
+			prefix = &prefix_text
 		}
 		if data.End == 1 {
 			fmt.Println()
 		} else if data.Replace == 1 {
-			fmt.Printf("\r\033[K%v%s", *prefix, reportMessage)
+			fmt.Printf("\r\033[K%v%s", *prefix, report_message)
 		} else if data.IgnorePrefix == 1 {
-			fmt.Printf("%s\n", reportMessage)
+			fmt.Printf("%s\n", report_message)
 		} else {
-			fmt.Printf("%v%s\n", *prefix, reportMessage)
+			fmt.Printf("%v%s\n", *prefix, report_message)
 		}
 	}
 	result.Ok(ctx, nil)

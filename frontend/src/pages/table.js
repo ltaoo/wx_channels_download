@@ -15,6 +15,20 @@ function table_has_rows(rows) {
   return table_source(rows) ? computed(rows, has_rows) : has_rows(rows);
 }
 
+function table_keyed_rows(rows, row_key) {
+  if (typeof row_key !== "function") return rows;
+  const wrap_rows = (items) =>
+    (Array.isArray(items) ? items : []).map((item, index) => ({
+      __table_row_key: row_key(item, index),
+      item,
+    }));
+  return table_source(rows) ? computed(rows, wrap_rows) : wrap_rows(rows);
+}
+
+function table_keyed_item(entry, row_key) {
+  return typeof row_key === "function" ? entry.item : entry;
+}
+
 function table_item_value(item_) {
   return item_ && item_.value !== undefined ? item_.value : item_;
 }
@@ -515,6 +529,9 @@ function TableDataRow(props) {
 }
 
 function TableList(props) {
+  const keyed_rows = table_keyed_rows(props.rows, props.rowKey);
+  const row_key =
+    typeof props.rowKey === "function" ? "__table_row_key" : props.rowKey;
   return View(
     {
       class: table_class_names(["wx-table-list", props.listClass]),
@@ -529,10 +546,13 @@ function TableList(props) {
         when: table_has_rows(props.rows),
         ok() {
           return For({
-            key: props.rowKey,
-            each: props.rows,
-            render(item_) {
-              return TableDataRow({ ...props, itemSource: item_ });
+            key: row_key,
+            each: keyed_rows,
+            render(entry) {
+              return TableDataRow({
+                ...props,
+                itemSource: table_keyed_item(entry, props.rowKey),
+              });
             },
           });
         },

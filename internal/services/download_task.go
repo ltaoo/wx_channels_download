@@ -21,6 +21,7 @@ import (
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database"
 	"wx_channel/internal/database/model"
+	"wx_channel/internal/events"
 	"wx_channel/pkg/hermes"
 )
 
@@ -35,6 +36,7 @@ type DownloadTaskService struct {
 	hook_manager *hermes.HookManager
 	work_dir     string
 	download_dir string
+	event_bus    events.Publisher
 }
 
 const (
@@ -50,6 +52,7 @@ func NewDownloadTaskService(
 	hook_manager *hermes.HookManager,
 	work_dir string,
 	download_dir string,
+	event_bus events.Publisher,
 ) *DownloadTaskService {
 	if logger == nil {
 		l := zerolog.Nop()
@@ -62,6 +65,7 @@ func NewDownloadTaskService(
 		hook_manager: hook_manager,
 		work_dir:     work_dir,
 		download_dir: download_dir,
+		event_bus:    event_bus,
 	}
 }
 
@@ -320,6 +324,7 @@ type DownloadTaskFileRecord struct {
 	ID          int     `json:"id"`
 	DownloadDir string  `json:"download_dir"`
 	Name        string  `json:"name"`
+	FilePath    string  `json:"file_path"`
 	Kind        string  `json:"kind"`
 	Type        string  `json:"type"`
 	Status      string  `json:"status"`
@@ -520,6 +525,8 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 						Int("task_id", task.Id).
 						Err(update_err).
 						Msg("failed to mark download task as failed after panic")
+				} else {
+					s.publish_download_task_created(task.Id)
 				}
 			}
 			s.logger.Error().
@@ -549,6 +556,7 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 					Int("task_id", task.Id).
 					Err(ret_err).
 					Msg("subsequent steps after task creation failed, task marked as failed")
+				s.publish_download_task_created(task.Id)
 			}
 		}
 		if ret_err != nil {
@@ -849,6 +857,9 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 	}
 
 	stage = "complete"
+	if body.AutoStart != nil && !*body.AutoStart {
+		s.publish_download_task_created(task.Id)
+	}
 	return &CreateTaskResult{
 		Task:      task,
 		Resource:  first_resource,
@@ -1027,9 +1038,19 @@ func (s *DownloadTaskService) CreateTaskByURL(body CreateDownloadTaskByURLBody) 
 
 	if body.AutoStart == nil || *body.AutoStart {
 		if err := s.StartCreatedTask(task.Id); err != nil {
-			return nil, fmt.Errorf("启动下载任务失败: %w", err)
+			start_err := fmt.Errorf("启动下载任务失败: %w", err)
+			if update_err := s.db.Model(&task).Updates(map[string]any{
+				"status":        model.TaskStatusFailed,
+				"error_message": start_err.Error(),
+			}).Error; update_err != nil {
+				return nil, fmt.Errorf("%v；标记任务失败时出错: %w", start_err, update_err)
+			}
+			s.publish_download_task_created(task.Id)
+			return nil, start_err
 		}
 		task.Status = model.TaskStatusPreparing
+	} else {
+		s.publish_download_task_created(task.Id)
 	}
 
 	return &CreateTaskByURLResult{
@@ -1193,28 +1214,11 @@ func (s *DownloadTaskService) DeleteTask(task_id int) (*DownloadTaskRecord, erro
 		return nil, fmt.Errorf("下载任务不存在")
 	}
 
-	now := time.Now().UnixMilli()
-
 	s.downloader.DeleteTask(task.Id)
 	deleted_record, _ := s.BuildTaskRecord(task.Id)
-
-	s.db.Model(&task).Update("deleted_at", now)
-
-	s.db.Model(&model.DownloadResource{}).Where("task_id = ?", task.Id).Update("deleted_at", now)
-
-	var resource_ids []int
-	s.db.Model(&model.DownloadResource{}).Where("task_id = ?", task.Id).Pluck("id", &resource_ids)
-	if len(resource_ids) > 0 {
-		s.db.Model(&model.DownloadEndpoint{}).Where("resource_id IN ?", resource_ids).Update("deleted_at", now)
-		s.db.Model(&model.DownloadSegment{}).Where("resource_id IN ?", resource_ids).Update("deleted_at", now)
-
-		var endpoint_ids []int
-		s.db.Model(&model.DownloadEndpoint{}).Where("resource_id IN ?", resource_ids).Pluck("id", &endpoint_ids)
-		if len(endpoint_ids) > 0 {
-			s.db.Model(&model.DownloadConnection{}).Where("endpoint_id IN ?", endpoint_ids).Update("deleted_at", now)
-		}
+	if err := s.soft_delete_task_graph([]int{task.Id}, time.Now().UnixMilli()); err != nil {
+		return nil, fmt.Errorf("删除下载任务失败: %w", err)
 	}
-
 	return deleted_record, nil
 }
 
@@ -1314,16 +1318,11 @@ func (s *DownloadTaskService) StartAllTasks(status string) (int, int, error) {
 	}
 
 	var started int
-	available := s.downloader.MaxConcurrent() - s.downloader.RunningTaskCount()
 	for _, task := range tasks {
-		if available <= 0 {
-			break
-		}
 		if err := s.downloader.StartTask(task.Id); err != nil {
 			continue
 		}
 		started++
-		available--
 	}
 
 	return started, len(tasks), nil
@@ -1417,7 +1416,7 @@ func (s *DownloadTaskService) soft_delete_task_graph(task_ids []int, deleted_at 
 		return nil
 	}
 
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		for batch_start := 0; batch_start < len(task_ids); batch_start += clear_task_batch_size {
 			batch_end := batch_start + clear_task_batch_size
 			if batch_end > len(task_ids) {
@@ -1459,7 +1458,26 @@ func (s *DownloadTaskService) soft_delete_task_graph(task_ids []int, deleted_at 
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	s.publish_download_tasks_deleted(task_ids)
+	return nil
+}
+
+func (s *DownloadTaskService) publish_download_tasks_deleted(task_ids []int) {
+	if s.event_bus == nil {
+		return
+	}
+	for _, task_id := range task_ids {
+		s.event_bus.Publish(events.DownloadTaskDeleted{TaskID: task_id})
+	}
+}
+
+func (s *DownloadTaskService) publish_download_task_created(task_id int) {
+	if s.event_bus != nil {
+		s.event_bus.Publish(events.DownloadTaskCreated{TaskID: task_id})
+	}
 }
 
 // BuildTaskRecord builds the DownloadTaskRecord for a single task.
@@ -1680,6 +1698,7 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 				ID:          r.ID,
 				DownloadDir: r.DownloadDir,
 				Name:        r.Name,
+				FilePath:    filepath.Join(r.DownloadDir, r.Name),
 				Kind:        r.Kind,
 				Type:        r.ResourceType,
 				Status:      file_status,
@@ -3257,9 +3276,7 @@ func (s *DownloadTaskService) delete_task_with_files(task_id int) error {
 		return fmt.Errorf("下载任务仍在进行中，不能覆盖（任务 ID: %d）", task.Id)
 	}
 
-	return s.db.Model(&task).Updates(map[string]any{
-		"deleted_at": time.Now().UnixMilli(),
-	}).Error
+	return s.soft_delete_task_graph([]int{task.Id}, time.Now().UnixMilli())
 }
 
 func is_terminal_download_task_status(status int) bool {
@@ -3485,7 +3502,9 @@ func ComputeEffectiveTaskStatusFromSummary(db_status int, file_count int, finish
 		return db_status
 	}
 	if finished_count == file_count {
-		return model.TaskStatusFinished
+		// Files finish transferring before postprocessing and final renaming.
+		// Only the persisted task status may declare the task complete.
+		return db_status
 	}
 	if has_downloading {
 		return model.TaskStatusDownloading

@@ -54,6 +54,7 @@ var WXU = (() => {
     client: http_client,
     socket_client: socket_client$,
     auto_start: false,
+    logger: dl_utils.log,
   });
 
   var defaultRandomAlphabet =
@@ -674,4 +675,8 @@ var WXU = (() => {
 
 window.WXU = WXU;
 
-WXU.log.Info().Str("file", "/inject/utils.js").Str("href", location.href).Msg("loaded");
+WXU.log
+  .Info()
+  .Str("file", "/inject/utils.js")
+  .Str("href", location.href)
+  .Msg("loaded");

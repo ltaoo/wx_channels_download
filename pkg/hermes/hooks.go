@@ -11,17 +11,20 @@ import (
 )
 
 // HookManager manages the lifecycle of JS hook functions, compiling and executing user-defined
-// onTaskCreate / onTaskFinish / onFilename hooks via the goja VM.
+// onTaskCreate / onTaskSuccess / onTaskFailed / onTaskFinish / onFilename hooks via the goja VM.
 type HookManager struct {
 	mu                sync.Mutex
 	vm                *goja.Runtime
 	has_create_hook   bool
+	has_success_hook  bool
+	has_failed_hook   bool
 	has_finish_hook   bool
 	has_filename_hook bool
 }
 
 // TaskInfo is the task information exposed to hooks.
 type TaskInfo struct {
+	ID          int            `json:"id,omitempty"`
 	Name        string         `json:"name"`
 	DownloadDir string         `json:"download_dir,omitempty"`
 	Config      map[string]any `json:"config"`
@@ -52,7 +55,8 @@ type TaskInput struct {
 	Resources []ResourceInfo `json:"resources"`
 }
 
-// FinishContext is the context for the onTaskFinish hook.
+// FinishContext is the context for the terminal task hooks. Status is "success"
+// or "failed"; Error is populated only when Status is "failed".
 type FinishContext struct {
 	Task        TaskInfo       `json:"task"`
 	Config      map[string]any `json:"config"`
@@ -60,6 +64,8 @@ type FinishContext struct {
 	Resources   []ResourceInfo `json:"resources"`
 	FilePaths   []string       `json:"filePaths"`
 	DownloadDir string         `json:"downloadDir"`
+	Status      string         `json:"status"`
+	Error       string         `json:"error,omitempty"`
 }
 
 // ResourceMeta is the arbitrary resource metadata exposed to onFilename.
@@ -90,7 +96,17 @@ func (hm *HookManager) HasCreateHook() bool {
 	return hm.has_create_hook
 }
 
-// HasFinishHook returns whether an onTaskFinish hook is registered.
+// HasSuccessHook returns whether an onTaskSuccess hook is registered.
+func (hm *HookManager) HasSuccessHook() bool {
+	return hm.has_success_hook
+}
+
+// HasFailedHook returns whether an onTaskFailed hook is registered.
+func (hm *HookManager) HasFailedHook() bool {
+	return hm.has_failed_hook
+}
+
+// HasFinishHook returns whether an onTaskFinish terminal hook is registered.
 func (hm *HookManager) HasFinishHook() bool {
 	return hm.has_finish_hook
 }
@@ -114,6 +130,8 @@ func (hm *HookManager) Load(script string) error {
 
 	hm.vm = vm
 	hm.has_create_hook = is_defined_function(vm, "onTaskCreate")
+	hm.has_success_hook = is_defined_function(vm, "onTaskSuccess")
+	hm.has_failed_hook = is_defined_function(vm, "onTaskFailed")
 	hm.has_finish_hook = is_defined_function(vm, "onTaskFinish")
 	hm.has_filename_hook = is_defined_function(vm, "onFilename")
 
@@ -180,29 +198,58 @@ func (hm *HookManager) InvokeCreateHook(input *TaskInput) (*TaskInput, error) {
 	return &modified, nil
 }
 
-// InvokeFinishHook calls onTaskFinish to perform post-download processing (zip, cleanup, etc.).
+// InvokeSuccessHook calls onTaskSuccess after a task has completed successfully.
+func (hm *HookManager) InvokeSuccessHook(ctx *FinishContext) error {
+	return hm.invoke_terminal_hook("onTaskSuccess", ctx)
+}
+
+// InvokeFailedHook calls onTaskFailed after a task has failed.
+func (hm *HookManager) InvokeFailedHook(ctx *FinishContext) error {
+	return hm.invoke_terminal_hook("onTaskFailed", ctx)
+}
+
+// InvokeFinishHook calls onTaskFinish after a task reaches either terminal state.
 func (hm *HookManager) InvokeFinishHook(ctx *FinishContext) error {
+	return hm.invoke_terminal_hook("onTaskFinish", ctx)
+}
+
+func (hm *HookManager) invoke_terminal_hook(hook_name string, ctx *FinishContext) error {
 	hm.mu.Lock()
 	defer hm.mu.Unlock()
 
-	if !hm.has_finish_hook || hm.vm == nil {
+	if hm.vm == nil {
 		return nil
+	}
+	has_hook := false
+	switch hook_name {
+	case "onTaskSuccess":
+		has_hook = hm.has_success_hook
+	case "onTaskFailed":
+		has_hook = hm.has_failed_hook
+	case "onTaskFinish":
+		has_hook = hm.has_finish_hook
+	}
+	if !has_hook {
+		return nil
+	}
+	if ctx == nil {
+		return fmt.Errorf("%s context is nil", hook_name)
 	}
 
 	hm.vm.Set("__basePath", ctx.DownloadDir)
 
-	fn, ok := goja.AssertFunction(hm.vm.Get("onTaskFinish"))
+	fn, ok := goja.AssertFunction(hm.vm.Get(hook_name))
 	if !ok {
-		return fmt.Errorf("onTaskFinish is not a function")
+		return fmt.Errorf("%s is not a function", hook_name)
 	}
 
 	ctx_val, err := hm.to_hook_value(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to prepare onTaskFinish context value: %w", err)
+		return fmt.Errorf("failed to prepare %s context value: %w", hook_name, err)
 	}
 	_, err = fn(goja.Undefined(), ctx_val)
 	if err != nil {
-		return fmt.Errorf("onTaskFinish execution failed: %w", err)
+		return fmt.Errorf("%s execution failed: %w", hook_name, err)
 	}
 
 	return nil

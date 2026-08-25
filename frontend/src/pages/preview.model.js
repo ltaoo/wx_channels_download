@@ -1,87 +1,8 @@
-const TYPE_ICONS = {
-  image: "file-image",
-  video: "file-play",
-  audio: "file-volume",
-  html: "file-code",
-  zip: "file-box",
-  pdf: "file-text",
-  other: "file",
-};
-
-const TYPE_LABELS = {
-  image: "图片",
-  video: "视频",
-  audio: "音频",
-  html: "HTML",
-  zip: "压缩包",
-  pdf: "PDF",
-  other: "文件",
-};
-
-const PLATFORM_FAVICONS = {
-  wxchannels:
-    "https://res.wx.qq.com/t/wx_fed/finder/helper/finder-helper-web/res/favicon-v2.ico",
-  wxmp: "https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico",
-  officialaccount: "https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico",
-};
-
-const PLATFORM_NAMES = {
-  wxchannels: "视频号",
-  wxmp: "公众号",
-  officialaccount: "公众号",
-  douyin: "抖音",
-  bilibili: "Bilibili",
-  xiaohongshu: "小红书",
-  xhs: "小红书",
-  youtube: "YouTube",
-  zhihu: "知乎",
-  douban: "豆瓣",
-  qidian: "起点中文网",
-  fanqienovel: "番茄小说",
-  "69shuba": "69书吧",
-};
-
-function preview_api_origin() {
-  const config = window.__d_config || {};
-  if (config.remoteServerEnabled) {
-    return "https://weixin110.qq.com";
-  }
-  return config.apiOrigin || window.location.origin;
-}
-
-function preview_api_url(path) {
-  return new URL(path, preview_api_origin()).href;
-}
-
 function prop_value(value) {
   if (value && typeof value === "object" && "value" in value) {
     return value.value;
   }
   return value;
-}
-
-const preview_detail_request = create_request("获取下载任务详情失败");
-
-const preview_file_request = create_request("读取压缩包失败");
-
-function create_request(fallback_message) {
-  return Timeless.kit.request_factory({
-    headers: { "Content-Type": "application/json" },
-    process(response) {
-      if (response.error) {
-        return Timeless.Result.Err(response.error);
-      }
-      const payload = response.data || {};
-      if (payload.code !== 0) {
-        return Timeless.Result.Err(
-          payload.msg || fallback_message,
-          payload.code,
-          payload.data,
-        );
-      }
-      return Timeless.Result.Ok(payload.data || {});
-    },
-  });
 }
 
 function first_non_empty(...values) {
@@ -109,15 +30,14 @@ function platform_favicon(platform_id) {
   const key = String(platform_id || "")
     .trim()
     .toLowerCase();
-  const favicons = window.PLATFORM_FAVICONS || {};
-  return favicons[key] || PLATFORM_FAVICONS[key] || "";
+  return window.PLATFORM_FAVICONS[key] || "";
 }
 
 function platform_name(platform_id) {
   const key = String(platform_id || "")
     .trim()
     .toLowerCase();
-  return PLATFORM_NAMES[key] || platform_id || "";
+  return window.PLATFORM_NAMES[key] || platform_id || "";
 }
 
 function format_bytes(bytes) {
@@ -134,11 +54,11 @@ function format_bytes(bytes) {
 }
 
 function file_type_icon(file_type) {
-  return TYPE_ICONS[file_type] || TYPE_ICONS.other;
+  return window.TYPE_ICONS[file_type] || window.TYPE_ICONS.other;
 }
 
 function file_type_label(file_type) {
-  return TYPE_LABELS[file_type] || TYPE_LABELS.other;
+  return window.TYPE_LABELS[file_type] || window.TYPE_LABELS.other;
 }
 
 function file_url(file) {
@@ -146,11 +66,47 @@ function file_url(file) {
     return "";
   }
   if (file.file_url) {
-    return new URL(file.file_url, preview_api_origin()).href;
+    return new URL(file.file_url, window.API_ORIGIN).href;
   }
-  return preview_api_url(
-    `/api/file?path=${encodeURIComponent(file.local_path || "")}`,
+  return `/api/file?path=${encodeURIComponent(file.local_path || "")}`;
+}
+
+function playback_url(file) {
+  if (!file || !file.playback_url) {
+    return "";
+  }
+  return new URL(file.playback_url, window.API_ORIGIN).href;
+}
+
+function should_use_stream_playback(file) {
+  return Boolean(
+    file &&
+      playback_url(file) &&
+      (!file.exists || file.playback_available),
   );
+}
+
+function mounted_media_element(event) {
+  let target = event && event.target ? event.target : event;
+  for (let depth = 0; depth < 4; depth += 1) {
+    if (
+      target &&
+      target.nodeType === 1 &&
+      typeof target.addEventListener === "function"
+    ) {
+      return target;
+    }
+    if (target && typeof target.get$elm === "function") {
+      target = target.get$elm();
+      continue;
+    }
+    if (target && target.$elm) {
+      target = target.$elm;
+      continue;
+    }
+    break;
+  }
+  return null;
 }
 
 function normalize_account(raw) {
@@ -181,10 +137,16 @@ function normalize_file(raw) {
       source.localPath,
       source.LocalPath,
     ),
-    file_url: first_non_empty(
-      source.file_url,
-      source.fileUrl,
-      source.FileURL,
+    file_url: first_non_empty(source.file_url, source.fileUrl, source.FileURL),
+    playback_url: first_non_empty(
+      source.playback_url,
+      source.playbackUrl,
+      source.PlaybackURL,
+    ),
+    playback_available: Boolean(
+      typeof source.playback_available !== "undefined"
+        ? source.playback_available
+        : source.playbackAvailable || source.PlaybackAvailable,
     ),
     file_type: first_non_empty(
       source.file_type,
@@ -196,15 +158,10 @@ function normalize_file(raw) {
     size: Math.max(0, number_or_default(source.size || source.Size, 0)),
     progress: Math.min(
       100,
-      Math.max(
-        0,
-        number_or_default(source.progress || source.Progress, 0),
-      ),
+      Math.max(0, number_or_default(source.progress || source.Progress, 0)),
     ),
     exists: Boolean(
-      typeof source.exists !== "undefined"
-        ? source.exists
-        : source.Exists,
+      typeof source.exists !== "undefined" ? source.exists : source.Exists,
     ),
   };
 }
@@ -212,9 +169,7 @@ function normalize_file(raw) {
 function normalize_task(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
   const content =
-    source.content && typeof source.content === "object"
-      ? source.content
-      : {};
+    source.content && typeof source.content === "object" ? source.content : {};
   const accounts = Array.isArray(content.accounts)
     ? content.accounts.map(normalize_account)
     : [];
@@ -261,7 +216,7 @@ function normalize_zip_images(data) {
     .filter((image) => image && image.url)
     .map((image) => ({
       name: first_non_empty(image.name, "未命名图片"),
-      url: new URL(image.url, preview_api_origin()).href,
+      url: new URL(image.url, window.API_ORIGIN).href,
     }));
 }
 
@@ -274,20 +229,276 @@ function PreviewViewModel(props) {
   const zip_images_ = refarr([]);
   const zip_loading_ = ref(false);
   const zip_error_ = ref("");
+  const live_playback_status_ = ref("idle");
+  const live_playback_message_ = ref("");
   let detail_request_sequence = 0;
   let zip_request_sequence = 0;
   let detail_task_id = "";
+  let live_mount_sequence = 0;
+  let live_player = null;
+  let live_video = null;
+  let live_file_id = null;
+  let live_poll_timer = null;
+  let live_poll_controller = null;
+  let live_video_cleanup = null;
+
+  function is_live_playback(file) {
+    return Boolean(file && playback_url(file) && !file.exists);
+  }
+
+  function file_playable(file) {
+    return Boolean(file && (file.exists || playback_url(file)));
+  }
+
+  function clear_live_poll() {
+    if (live_poll_timer !== null) {
+      window.clearTimeout(live_poll_timer);
+      live_poll_timer = null;
+    }
+    if (live_poll_controller) {
+      live_poll_controller.abort();
+      live_poll_controller = null;
+    }
+  }
+
+  function destroy_live_player(reset_status = true) {
+    live_mount_sequence += 1;
+    clear_live_poll();
+    if (typeof live_video_cleanup === "function") {
+      live_video_cleanup();
+      live_video_cleanup = null;
+    }
+    if (live_player && typeof live_player.destroy === "function") {
+      live_player.destroy();
+    }
+    live_player = null;
+    if (live_video && live_video.dataset.livePlaybackUrl) {
+      live_video.removeAttribute("src");
+      live_video.load();
+    }
+    live_video = null;
+    live_file_id = null;
+    if (reset_status) {
+      live_playback_status_.as("idle");
+      live_playback_message_.as("");
+    }
+  }
+
+  function set_live_playback_state(status, message) {
+    live_playback_status_.as(status);
+    live_playback_message_.as(message || "");
+  }
+
+  function schedule_live_playlist_probe(sequence, file, options) {
+    if (sequence !== live_mount_sequence || !live_video) {
+      return;
+    }
+    live_poll_timer = window.setTimeout(() => {
+      live_poll_timer = null;
+      probe_live_playlist(sequence, file, options);
+    }, 1000);
+  }
+
+  async function probe_live_playlist(sequence, file, options) {
+    if (sequence !== live_mount_sequence || !live_video) {
+      return;
+    }
+    const url = playback_url(file);
+    const poll_controller = new AbortController();
+    live_poll_controller = poll_controller;
+    let response = null;
+    try {
+      response = await window.fetch(url, {
+        method: "HEAD",
+        cache: "no-store",
+        credentials: "same-origin",
+        signal: poll_controller.signal,
+      });
+    } catch (error) {
+      if (error && error.name === "AbortError") {
+        return;
+      }
+    } finally {
+      if (live_poll_controller === poll_controller) {
+        live_poll_controller = null;
+      }
+    }
+    if (sequence !== live_mount_sequence || !live_video) {
+      return;
+    }
+    if (response && response.ok) {
+      start_live_player(sequence, file, options);
+      return;
+    }
+    const terminal_status = ["error", "cancelled"].includes(file.status);
+    set_live_playback_state(
+      terminal_status ? "error" : "waiting",
+      terminal_status
+        ? "录制已结束，但没有生成可播放的直播分片。"
+        : file.status === "paused"
+          ? "尚无已完成分片；恢复录制后会自动开始播放。"
+          : "正在等待首个直播分片…",
+    );
+    if (!terminal_status) {
+      schedule_live_playlist_probe(sequence, file, options);
+    }
+  }
+
+  function start_live_player(sequence, file, options) {
+    if (sequence !== live_mount_sequence || !live_video) {
+      return;
+    }
+    const video = live_video;
+    const url = playback_url(file);
+    const autoplay = Boolean(options && options.autoplay);
+    video.dataset.livePlaybackUrl = url;
+    set_live_playback_state("loading", "正在载入已录制内容…");
+
+    const handle_playing = () => {
+      if (sequence === live_mount_sequence) {
+        set_live_playback_state(
+          "playing",
+          file.status === "paused" ? "正在播放已录制内容" : "边录边播",
+        );
+      }
+    };
+    const handle_waiting = () => {
+      if (sequence === live_mount_sequence) {
+        set_live_playback_state(
+          "loading",
+          file.status === "paused"
+            ? "录制已中断；已播放到现有内容末尾。"
+            : "正在缓冲直播分片…",
+        );
+      }
+    };
+    video.addEventListener("playing", handle_playing);
+    video.addEventListener("waiting", handle_waiting);
+    live_video_cleanup = () => {
+      video.removeEventListener("playing", handle_playing);
+      video.removeEventListener("waiting", handle_waiting);
+    };
+
+    const Hls = window.Hls;
+    const hls_supported = Boolean(
+      Hls && typeof Hls.isSupported === "function" && Hls.isSupported(),
+    );
+    if (
+      !hls_supported &&
+      video.canPlayType("application/vnd.apple.mpegurl")
+    ) {
+      const handle_native_loaded_metadata = () => {
+        if (sequence !== live_mount_sequence || video.seekable.length === 0) {
+          return;
+        }
+        try {
+          video.currentTime = video.seekable.start(0);
+        } catch {
+          // Safari may update its seekable window between the length and start
+          // calls. Playback can still proceed from its native default position.
+        }
+      };
+      const handle_native_error = () => {
+        if (sequence === live_mount_sequence) {
+          set_live_playback_state("error", "无法播放当前直播编码。");
+        }
+      };
+      const remove_common_listeners = live_video_cleanup;
+      video.addEventListener("loadedmetadata", handle_native_loaded_metadata);
+      video.addEventListener("error", handle_native_error);
+      live_video_cleanup = () => {
+        remove_common_listeners();
+        video.removeEventListener(
+          "loadedmetadata",
+          handle_native_loaded_metadata,
+        );
+        video.removeEventListener("error", handle_native_error);
+      };
+      video.src = url;
+      video.load();
+      if (autoplay) {
+        video.play().catch(() => {});
+      }
+      return;
+    }
+
+    if (!hls_supported) {
+      set_live_playback_state("error", "当前浏览器不支持 HLS/MSE 直播回看。");
+      return;
+    }
+
+    const player = new Hls({
+      startPosition: 0,
+      liveDurationInfinity: true,
+      maxBufferLength: 60,
+      backBufferLength: 600,
+    });
+    live_player = player;
+    player.on(Hls.Events.MANIFEST_PARSED, () => {
+      if (sequence !== live_mount_sequence) {
+        return;
+      }
+      set_live_playback_state(
+        "ready",
+        file.status === "paused" ? "已载入已有录制内容" : "已载入已录制内容",
+      );
+      if (autoplay) {
+        video.play().catch(() => {});
+      }
+    });
+    player.on(Hls.Events.ERROR, (_event, data) => {
+      if (sequence !== live_mount_sequence || !data || !data.fatal) {
+        return;
+      }
+      if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+        set_live_playback_state("loading", "播放连接中断，正在重试…");
+        player.startLoad();
+        return;
+      }
+      if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+        set_live_playback_state("loading", "媒体解码异常，正在恢复…");
+        player.recoverMediaError();
+        return;
+      }
+      set_live_playback_state("error", "无法播放当前直播编码。");
+      player.destroy();
+      if (live_player === player) {
+        live_player = null;
+      }
+    });
+    player.loadSource(url);
+    player.attachMedia(video);
+  }
+
+  function mount_video(event, file, options) {
+    const video = mounted_media_element(event);
+    if (!video) {
+      return;
+    }
+    destroy_live_player(false);
+    if (!should_use_stream_playback(file)) {
+      set_live_playback_state("idle", "");
+      return;
+    }
+    live_video = video;
+    live_file_id = file.id;
+    const sequence = live_mount_sequence;
+    set_live_playback_state("waiting", "正在等待首个直播分片…");
+    probe_live_playlist(sequence, file, options || {});
+  }
+
+  function unmount_video(file) {
+    if (!file || live_file_id === file.id) {
+      destroy_live_player();
+    }
+  }
 
   const detail_request = new Timeless.kit.RequestCore(
-    (params) =>
-      preview_detail_request.get(
-        preview_api_url("/api/v1/download_task/detail"),
-        params,
-      ),
+    (params) => window.request.get("/api/v1/download_task/detail", params),
     { client: props.client },
   );
   const zip_request = new Timeless.kit.RequestCore(
-    (params) => preview_file_request.get(preview_api_url("/api/file"), params),
+    (params) => window.request.get("/api/file", params),
     { client: props.client },
   );
 
@@ -311,6 +522,7 @@ function PreviewViewModel(props) {
     const task_changed = task_id !== detail_task_id;
     detail_task_id = task_id;
     if (task_changed) {
+      destroy_live_player();
       task_.as(null);
       gallery_file_.as(null);
     }
@@ -332,9 +544,7 @@ function PreviewViewModel(props) {
 
     const task = normalize_task(result.data);
     task_.as(task);
-    gallery_file_.as(
-      task.files.find((file) => file.exists) || task.files[0] || null,
-    );
+    gallery_file_.as(task.files.find(file_playable) || task.files[0] || null);
     if (!props.embedded && props.app) {
       props.app.setTitle(task.name || "Preview");
     }
@@ -374,13 +584,14 @@ function PreviewViewModel(props) {
       return load(task_id);
     },
     selectGalleryFile(file) {
-      if (!file || !file.exists) {
+      if (!file_playable(file)) {
         return;
       }
+      destroy_live_player();
       gallery_file_.as(file);
     },
     openPreview(file) {
-      if (!file || !file.exists) {
+      if (!file_playable(file)) {
         return;
       }
       active_file_.as(file);
@@ -399,7 +610,27 @@ function PreviewViewModel(props) {
       zip_images_.as([], { reset: true });
       window.document.body.style.overflow = "";
     },
+    destroy() {
+      methods.closePreview();
+      destroy_live_player();
+      detail_request_sequence += 1;
+      if (typeof detail_request.cancel === "function") detail_request.cancel();
+      if (typeof live_playback_status_.destroy === "function") {
+        live_playback_status_.destroy();
+      }
+      if (typeof live_playback_message_.destroy === "function") {
+        live_playback_message_.destroy();
+      }
+    },
     fileURL: file_url,
+    playbackURL: playback_url,
+    videoSource(file) {
+      return should_use_stream_playback(file) ? "" : file_url(file);
+    },
+    isLivePlayback: is_live_playback,
+    filePlayable: file_playable,
+    mountVideo: mount_video,
+    unmountVideo: unmount_video,
     fileTypeIcon: file_type_icon,
     fileTypeLabel: file_type_label,
     formatBytes: format_bytes,
@@ -414,10 +645,17 @@ function PreviewViewModel(props) {
     zip_images: zip_images_,
     zip_loading: zip_loading_,
     zip_error: zip_error_,
+    live_playback_status: live_playback_status_,
+    live_playback_message: live_playback_message_,
   };
   const ui = {};
 
   return { state, ui, methods };
 }
 
-export { PreviewViewModel };
+export {
+  PreviewViewModel,
+  normalize_file,
+  playback_url,
+  should_use_stream_playback,
+};

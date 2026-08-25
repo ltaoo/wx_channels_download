@@ -112,71 +112,13 @@ function normalize_account_item(raw) {
 }
 
 function account_platform_name(account) {
-  const names = {
-    wxchannels: "视频号",
-    wxmp: "公众号",
-    officialaccount: "公众号",
-    douyin: "抖音",
-    bilibili: "Bilibili",
-    xiaohongshu: "小红书",
-    xhs: "小红书",
-    youtube: "YouTube",
-    zhihu: "知乎",
-    douban: "豆瓣",
-    weibo: "微博",
-    qidian: "起点中文网",
-    fanqienovel: "番茄小说",
-    "69shuba": "69书吧",
-    ttk: "TT看书",
-  };
   const platform_id = String((account && account.platform_id) || "").trim();
-  return names[platform_id] || platform_id || "未知平台";
-}
-
-function normalize_epoch_ms(value) {
-  const timestamp = Number(value);
-  if (!Number.isFinite(timestamp) || timestamp <= 0) {
-    return 0;
-  }
-  return timestamp < 1000000000000 ? timestamp * 1000 : timestamp;
-}
-
-function format_account_time(value) {
-  const timestamp = normalize_epoch_ms(value);
-  if (!timestamp) {
-    return "时间未知";
-  }
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(timestamp));
+  return window.PLATFORM_NAMES[platform_id] || platform_id || "未知平台";
 }
 
 function format_content_count(value) {
   return `${Math.max(0, number_or_default(value, 0))} 条`;
 }
-
-const request = Timeless.kit.request_factory({
-  headers: { "Content-Type": "application/json" },
-  process(response) {
-    if (response.error) {
-      return Timeless.Result.Err(response.error);
-    }
-    const payload = response.data || {};
-    if (payload.code !== 0) {
-      return Timeless.Result.Err(
-        payload.msg,
-        payload.code,
-        payload.data,
-      );
-    }
-    return Timeless.Result.Ok(payload.data || {});
-  },
-});
 
 function AccountViewModel(props) {
   const PAGE_SIZE_DEFAULT = 24;
@@ -197,7 +139,7 @@ function AccountViewModel(props) {
   const reqs = {
     account: {
       list: new Timeless.kit.RequestCore(
-        (params) => request.get("/api/account/list", params),
+        (params) => window.request.get("/api/account/list", params),
         { client: props.client },
       ),
     },
@@ -385,7 +327,7 @@ function AccountViewModel(props) {
       return load(page_.value + 1);
     },
     platformName: account_platform_name,
-    formatTime: format_account_time,
+    formatTime: window.format_time,
     formatContentCount: format_content_count,
   };
 
