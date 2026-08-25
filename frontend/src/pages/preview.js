@@ -334,6 +334,7 @@ function PreviewGalleryMediaView(props) {
       store: vm$,
       file,
       videoClass: "wx-preview-gallery-video",
+      autoplay: vm$.methods.isLivePlayback(file),
     });
   }
   if (file.file_type === "audio") {

@@ -297,7 +297,7 @@ function DownloadV2TaskState(task$) {
       } else if (is_pending) {
         status_text = "等待中...";
       } else if (is_paused) {
-        status_text = "已暂停";
+        status_text = is_live_stream ? "录制已中断" : "已暂停";
         status_color = "var(--dm-color-warning)";
         progress_text = is_live_stream ? "" : format_progress_text(percent);
       }
@@ -402,7 +402,6 @@ function DownloadV2TaskActions(props) {
         (value) => {
           if (value.state.is_completed) return 1;
           if (value.state.is_running) return 2;
-          if (value.state.is_live_stream && value.state.is_paused) return 5;
           if (value.running_count >= MaxRunning) return 5;
           if (value.state.is_paused) return 3;
           if (value.state.is_failed) return 4;
@@ -464,7 +463,7 @@ function DownloadV2TaskActions(props) {
         3() {
           return DownloadV2TaskActionButton({
             icon: "play",
-            title: "继续",
+            title: state_.value.is_live_stream ? "恢复录制" : "继续",
             onClick() {
               vm$.methods.resumeTask(task$);
             },

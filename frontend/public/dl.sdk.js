@@ -1408,7 +1408,14 @@
         tasks_by_id.set(key, task$);
         append_task(task$, !options || options.prepend !== false);
       } else {
-        task$._update(record, options);
+        const previous_status = task$.state.status.value;
+        const next_status = normalize_status(record.status ?? previous_status);
+        if (
+          next_status !== previous_status ||
+          !success_statuses.has(previous_status)
+        ) {
+          task$._update(record, options);
+        }
       }
       return task$;
     }
@@ -1887,7 +1894,7 @@
         return null;
       }
       const previous_status = task.state.status.value;
-      task._update(record, options);
+      upsert(record, options);
       if (
         (!options || options.refresh_status !== false) &&
         previous_status !== task.state.status.value

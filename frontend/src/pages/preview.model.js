@@ -78,6 +78,14 @@ function playback_url(file) {
   return new URL(file.playback_url, window.API_ORIGIN).href;
 }
 
+function should_use_stream_playback(file) {
+  return Boolean(
+    file &&
+      playback_url(file) &&
+      (!file.exists || file.playback_available),
+  );
+}
+
 function mounted_media_element(event) {
   let target = event && event.target ? event.target : event;
   for (let depth = 0; depth < 4; depth += 1) {
@@ -264,13 +272,7 @@ function PreviewViewModel(props) {
       live_player.destroy();
     }
     live_player = null;
-    if (
-      live_video &&
-      is_live_playback({
-        playback_url: live_video.dataset.livePlaybackUrl,
-        exists: false,
-      })
-    ) {
+    if (live_video && live_video.dataset.livePlaybackUrl) {
       live_video.removeAttribute("src");
       live_video.load();
     }
@@ -354,7 +356,10 @@ function PreviewViewModel(props) {
 
     const handle_playing = () => {
       if (sequence === live_mount_sequence) {
-        set_live_playback_state("playing", "边录边播");
+        set_live_playback_state(
+          "playing",
+          file.status === "paused" ? "正在播放已录制内容" : "边录边播",
+        );
       }
     };
     const handle_waiting = () => {
@@ -362,7 +367,7 @@ function PreviewViewModel(props) {
         set_live_playback_state(
           "loading",
           file.status === "paused"
-            ? "录制已暂停；可以继续观看现有分片。"
+            ? "录制已中断；已播放到现有内容末尾。"
             : "正在缓冲直播分片…",
         );
       }
@@ -374,7 +379,14 @@ function PreviewViewModel(props) {
       video.removeEventListener("waiting", handle_waiting);
     };
 
-    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+    const Hls = window.Hls;
+    const hls_supported = Boolean(
+      Hls && typeof Hls.isSupported === "function" && Hls.isSupported(),
+    );
+    if (
+      !hls_supported &&
+      video.canPlayType("application/vnd.apple.mpegurl")
+    ) {
       const handle_native_loaded_metadata = () => {
         if (sequence !== live_mount_sequence || video.seekable.length === 0) {
           return;
@@ -410,8 +422,7 @@ function PreviewViewModel(props) {
       return;
     }
 
-    const Hls = window.Hls;
-    if (!Hls || typeof Hls.isSupported !== "function" || !Hls.isSupported()) {
+    if (!hls_supported) {
       set_live_playback_state("error", "当前浏览器不支持 HLS/MSE 直播回看。");
       return;
     }
@@ -427,7 +438,10 @@ function PreviewViewModel(props) {
       if (sequence !== live_mount_sequence) {
         return;
       }
-      set_live_playback_state("ready", "已载入已录制内容");
+      set_live_playback_state(
+        "ready",
+        file.status === "paused" ? "已载入已有录制内容" : "已载入已录制内容",
+      );
       if (autoplay) {
         video.play().catch(() => {});
       }
@@ -462,7 +476,7 @@ function PreviewViewModel(props) {
       return;
     }
     destroy_live_player(false);
-    if (!is_live_playback(file)) {
+    if (!should_use_stream_playback(file)) {
       set_live_playback_state("idle", "");
       return;
     }
@@ -611,7 +625,7 @@ function PreviewViewModel(props) {
     fileURL: file_url,
     playbackURL: playback_url,
     videoSource(file) {
-      return is_live_playback(file) ? "" : file_url(file);
+      return should_use_stream_playback(file) ? "" : file_url(file);
     },
     isLivePlayback: is_live_playback,
     filePlayable: file_playable,
@@ -639,4 +653,9 @@ function PreviewViewModel(props) {
   return { state, ui, methods };
 }
 
-export { PreviewViewModel, normalize_file, playback_url };
+export {
+  PreviewViewModel,
+  normalize_file,
+  playback_url,
+  should_use_stream_playback,
+};

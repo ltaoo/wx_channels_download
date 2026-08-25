@@ -107,7 +107,10 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
     mount.className = "wx-download-dropdown-menu-root";
     mount.style.display = "contents";
     document.body.appendChild(mount);
-    Timeless.DOM.render(Timeless.weui.DropdownMenu({ store: dropdown$ }), mount);
+    Timeless.DOM.render(
+      Timeless.weui.DropdownMenu({ store: dropdown$ }),
+      mount,
+    );
 
     function set_reference() {
       dropdown$.setReference(
@@ -140,7 +143,11 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
   }
 
   var error_tip_timer = setTimeout(() => {
-    WXU.error({ msg: "没有捕获到视频详情", alert: 0, source: "channels.live.js:92" });
+    WXU.error({
+      msg: "没有捕获到视频详情",
+      alert: 0,
+      source: "channels.live.js:92",
+    });
   }, 5000);
   var live_page_mounted = false;
   var profile = null;
@@ -164,7 +171,10 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
         !liveData.liveSdkInfo ||
         !liveData.liveSdkInfo.liveCdnUrl
       ) {
-        WXU.error({ msg: "检测不到直播流，请将本工具更新到最新版", source: "channels.live.js:115" });
+        WXU.error({
+          msg: "检测不到直播流，请将本工具更新到最新版",
+          source: "channels.live.js:115",
+        });
         return;
       }
       var content = Object.assign({}, liveData, p);
@@ -185,12 +195,18 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
         });
         ins.hide();
         if (err) {
-          WXU.error({ msg: err.message || "创建下载任务失败", source: "channels.live.js:137" });
+          WXU.error({
+            msg: err.message || "创建下载任务失败",
+            source: "channels.live.js:137",
+          });
           return;
         }
         WXU.toast("直播下载任务已创建");
       } catch (e) {
-        WXU.error({ msg: "创建下载任务失败: " + e.message, source: "channels.live.js:142" });
+        WXU.error({
+          msg: "创建下载任务失败: " + e.message,
+          source: "channels.live.js:142",
+        });
       }
     };
     var api = WXU.API || {};
@@ -218,19 +234,23 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
     }
   }
 
-  WXU.observe_node({ selector: ".host__info .extra", container: "#app", onOk: function ($elm) {
-    if (__wx_live_download_btn) {
-      return;
-    }
-    var relative_node = $elm.children[0];
-    if (!relative_node) {
-      return;
-    }
-    var $btn = Icons.download_btn8();
-    $elm.insertBefore($btn, relative_node);
-    __wx_live_download_btn = $btn;
-    __wx_setup_live_btn();
-  }});
+  WXU.observe_node({
+    selector: ".host__info .extra",
+    container: "#app",
+    onOk: function ($elm) {
+      if (__wx_live_download_btn) {
+        return;
+      }
+      var relative_node = $elm.children[0];
+      if (!relative_node) {
+        return;
+      }
+      var $btn = Icons.download_btn8();
+      $elm.insertBefore($btn, relative_node);
+      __wx_live_download_btn = $btn;
+      __wx_setup_live_btn();
+    },
+  });
 
   async function handleLoaded(profile, data) {
     if (!data) {
@@ -271,14 +291,24 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
     WXU.set_live_feed(feed);
     __wx_setup_live_btn();
   }
-  WXU.onFetchFeedProfile((data) => {
-    console.log("[live.js]onFetchFeedProfile", data);
-    profile = data;
-    __wx_channels_live_store__.profile = data;
+  WXU.onFetchFeedProfile((feed) => {
+    // console.log("[live.js]onFetchFeedProfile", data);
+    WXU.log
+      .Info()
+      .Str("file", "channels.live.js")
+      .JSON("feed", feed)
+      .Msg("onFetchFeedProfile");
+    profile = feed;
+    __wx_channels_live_store__.profile = feed;
     handleLoaded(profile, live);
   });
   WXU.onJoinLive(async (data) => {
-    console.log("[live.js]onJoinLive", JSON.stringify(data));
+    // console.log("[live.js]onJoinLive", JSON.stringify(data));
+    WXU.log
+      .Info()
+      .Str("file", "channels.live.js")
+      .JSON("live", data)
+      .Msg("onJoinLive");
     live = data;
     __wx_channels_live_store__.liveData = data;
     handleLoaded(profile, live);
