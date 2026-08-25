@@ -12,6 +12,7 @@ import (
 	"wx_channel/cmd"
 	"wx_channel/internal/application"
 	"wx_channel/internal/config"
+	"wx_channel/internal/logtime"
 )
 
 var AppVer = "260823"
@@ -61,8 +62,6 @@ func new_app_logger() (*zerolog.Logger, *os.File, string, error) {
 		return nil, nil, "", err
 	}
 
-	logger := zerolog.New(log_file).With().
-		Timestamp().
-		Logger()
+	logger := zerolog.New(log_file).Hook(logtime.Hook{})
 	return &logger, log_file, log_path, nil
 }

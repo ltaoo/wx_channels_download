@@ -184,6 +184,25 @@ type StreamRecordRequest struct {
 	RotateSize    int64
 }
 
+const (
+	stream_recording_dir_suffix = ".recording"
+	stream_playback_dir_suffix  = ".playback"
+)
+
+// StreamRecordingDir returns the durable workspace used while a live stream is
+// being recorded. Closed archive chunks and the in-progress HLS preview live
+// below this directory until recording finalization.
+func StreamRecordingDir(output_path string) string {
+	return output_path + stream_recording_dir_suffix
+}
+
+// StreamPlaybackDir returns the finalized HLS sidecar directory. The sidecar
+// remains available after the archive file is committed so existing playback
+// sessions can finish without racing final filename conversion.
+func StreamPlaybackDir(output_path string) string {
+	return output_path + stream_playback_dir_suffix
+}
+
 // StreamSegmentState is the durable progress state of one recorder chunk.
 // The local path is intentionally not persisted by the generic Store; recorder
 // implementations derive it deterministically from OutputPath and Index.
@@ -722,7 +741,7 @@ func (d *HermesEngine) schedule(task_job *TaskJob) {
 		return
 	}
 	if run_err != nil {
-		d.fail_task(task_id, run_err.Error())
+		d.fail_task(task_job, run_err.Error())
 	}
 }
 

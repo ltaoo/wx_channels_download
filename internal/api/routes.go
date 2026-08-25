@@ -45,6 +45,8 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/show_file", c.handle_show_file)
 	c.engine.GET("/api/file", c.handle_fetch_file)
 	c.engine.POST("/api/v1/fs/list", c.handle_list_files)
+	c.engine.GET("/api/v1/download_task/live/:task_id/:resource_id/:asset_name", c.handle_stream_playback_asset)
+	c.engine.HEAD("/api/v1/download_task/live/:task_id/:resource_id/:asset_name", c.handle_stream_playback_asset)
 	// Media proxies
 	c.engine.GET("/imgproxy", c.handle_img_proxy)
 

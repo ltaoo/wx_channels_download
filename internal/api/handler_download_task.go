@@ -19,6 +19,7 @@ import (
 	"wx_channel/internal/database"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/services"
+	"wx_channel/pkg/hermes"
 )
 
 const download_task_lookup_batch_size = 500
@@ -1134,7 +1135,7 @@ func (c *APIClient) deleteSingleDownloadTask(taskID int, deleteFiles bool) gin.H
 	}
 	if deleteFiles {
 		c.logger.Info().Int("task_id", task.Id).Bool("local_file_cleanup_attempted", true).Msg("Starting associated local file cleanup")
-		if err := c.deleteDownloadTaskLocalFiles(task, resources); err != nil {
+		if err := c.delete_download_task_local_files(task, resources); err != nil {
 			c.logger.Error().Int("task_id", task.Id).Bool("local_file_cleanup_attempted", true).Err(err).Msg("Associated local file cleanup failed; database soft deletion was skipped")
 			return gin.H{"task_id": taskID, "success": false, "error": "删除任务关联的本地文件失败: " + err.Error()}
 		}
@@ -1203,7 +1204,7 @@ func (c *APIClient) logDownloadTaskSoftDeleteResult(taskID int, entity string, e
 	c.logger.Info().Int("task_id", taskID).Str("entity", entity).Int64("rows_affected", rowsAffected).Msg("Download task cascade soft-delete completed")
 }
 
-type downloadTaskLocalFileCandidate struct {
+type download_task_local_file_candidate struct {
 	Path          string
 	PathSource    string
 	CandidateType string
@@ -1248,7 +1249,7 @@ func (c *APIClient) download_task_local_file_roots(task model.DownloadTask, reso
 	return roots
 }
 
-func pathWithinDownloadRoot(root, target string) bool {
+func path_within_download_root(root, target string) bool {
 	relative, err := filepath.Rel(root, target)
 	if err != nil || relative == "." || relative == ".." {
 		return false
@@ -1256,7 +1257,7 @@ func pathWithinDownloadRoot(root, target string) bool {
 	return !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
-func (c *APIClient) download_task_local_file_candidates(task model.DownloadTask, resource model.DownloadResource) []downloadTaskLocalFileCandidate {
+func (c *APIClient) download_task_local_file_candidates(task model.DownloadTask, resource model.DownloadResource) []download_task_local_file_candidate {
 	names := []struct {
 		value  string
 		source string
@@ -1269,7 +1270,7 @@ func (c *APIClient) download_task_local_file_candidates(task model.DownloadTask,
 	}
 	roots := c.download_task_local_file_roots(task, &resource)
 	seen := make(map[string]struct{})
-	candidates := make([]downloadTaskLocalFileCandidate, 0, len(roots)*6)
+	candidates := make([]download_task_local_file_candidate, 0, len(roots)*6)
 	for root, source := range roots {
 		for _, name := range names {
 			if name.value == "" {
@@ -1280,21 +1281,26 @@ func (c *APIClient) download_task_local_file_candidates(task model.DownloadTask,
 				path = filepath.Join(root, path)
 			}
 			path = filepath.Clean(path)
-			if !pathWithinDownloadRoot(root, path) {
+			if !path_within_download_root(root, path) {
 				c.logger.Error().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("resource_name", resource.Name).Str("download_root", root).Str("path", path).Msg("Rejected local file candidate outside download root")
 				continue
 			}
-			pathSource := source + ":" + name.source
-			resourceCandidates := []downloadTaskLocalFileCandidate{
-				{Path: path, PathSource: pathSource, CandidateType: "final"},
-				{Path: path + ".part", PathSource: pathSource, CandidateType: "partial"},
+			path_source := source + ":" + name.source
+			resource_candidates := []download_task_local_file_candidate{
+				{Path: path, PathSource: path_source, CandidateType: "final"},
+				{Path: path + ".part", PathSource: path_source, CandidateType: "partial"},
 			}
 			if strings.EqualFold(resource.Type, model.ResourceTypeStream) {
-				resourceCandidates = append(resourceCandidates, downloadTaskLocalFileCandidate{
-					Path: path + ".recording", PathSource: pathSource, CandidateType: "recording",
-				})
+				resource_candidates = append(resource_candidates,
+					download_task_local_file_candidate{
+						Path: hermes.StreamRecordingDir(path), PathSource: path_source, CandidateType: "recording",
+					},
+					download_task_local_file_candidate{
+						Path: hermes.StreamPlaybackDir(path), PathSource: path_source, CandidateType: "playback",
+					},
+				)
 			}
-			for _, candidate := range resourceCandidates {
+			for _, candidate := range resource_candidates {
 				if _, exists := seen[candidate.Path]; exists {
 					continue
 				}
@@ -1306,12 +1312,12 @@ func (c *APIClient) download_task_local_file_candidates(task model.DownloadTask,
 	return candidates
 }
 
-func (c *APIClient) deleteDownloadTaskLocalFiles(task model.DownloadTask, resources []model.DownloadResource) error {
-	var deletionErrors []string
+func (c *APIClient) delete_download_task_local_files(task model.DownloadTask, resources []model.DownloadResource) error {
+	var deletion_errors []string
 	for _, resource := range resources {
 		candidates := c.download_task_local_file_candidates(task, resource)
 		if len(candidates) == 0 {
-			deletionErrors = append(deletionErrors, fmt.Sprintf("资源 %d (%q) 没有可安全删除的本地文件路径", resource.Id, resource.Name))
+			deletion_errors = append(deletion_errors, fmt.Sprintf("资源 %d (%q) 没有可安全删除的本地文件路径", resource.Id, resource.Name))
 			c.logger.Warn().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("resource_name", resource.Name).Msg("No safe local file candidates were resolved for resource")
 			continue
 		}
@@ -1322,19 +1328,21 @@ func (c *APIClient) deleteDownloadTaskLocalFiles(task model.DownloadTask, resour
 				continue
 			}
 			if err != nil {
-				deletionErrors = append(deletionErrors, fmt.Sprintf("检查 %q 失败: %v", candidate.Path, err))
+				deletion_errors = append(deletion_errors, fmt.Sprintf("检查 %q 失败: %v", candidate.Path, err))
 				c.logger.Error().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("path", candidate.Path).Err(err).Msg("Failed to inspect associated local file before removal")
 				continue
 			}
-			isRecordingDir := candidate.CandidateType == "recording" && info.IsDir() && strings.HasSuffix(candidate.Path, ".recording")
-			if info.Mode()&os.ModeSymlink != 0 || (!info.Mode().IsRegular() && !isRecordingDir) {
+			is_stream_sidecar_dir := (candidate.CandidateType == "recording" && strings.HasSuffix(candidate.Path, ".recording")) ||
+				(candidate.CandidateType == "playback" && strings.HasSuffix(candidate.Path, ".playback"))
+			is_stream_sidecar_dir = is_stream_sidecar_dir && info.IsDir()
+			if info.Mode()&os.ModeSymlink != 0 || (!info.Mode().IsRegular() && !is_stream_sidecar_dir) {
 				err := fmt.Errorf("拒绝删除非普通文件 %q (mode=%s)", candidate.Path, info.Mode())
-				deletionErrors = append(deletionErrors, err.Error())
+				deletion_errors = append(deletion_errors, err.Error())
 				c.logger.Error().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("path", candidate.Path).Str("mode", info.Mode().String()).Msg("Rejected unsafe associated local file removal")
 				continue
 			}
 			remove := os.Remove
-			if isRecordingDir {
+			if is_stream_sidecar_dir {
 				remove = os.RemoveAll
 			}
 			if err := remove(candidate.Path); isMissingDownloadTaskLocalFileError(err) {
@@ -1343,15 +1351,15 @@ func (c *APIClient) deleteDownloadTaskLocalFiles(task model.DownloadTask, resour
 				c.logger.Info().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("path_source", candidate.PathSource).Str("candidate_type", candidate.CandidateType).Str("path", candidate.Path).Bool("exists", false).Msg("Associated local file no longer existed during removal; cleanup completed")
 				continue
 			} else if err != nil {
-				deletionErrors = append(deletionErrors, fmt.Sprintf("删除 %q 失败: %v", candidate.Path, err))
+				deletion_errors = append(deletion_errors, fmt.Sprintf("删除 %q 失败: %v", candidate.Path, err))
 				c.logger.Error().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("path_source", candidate.PathSource).Str("candidate_type", candidate.CandidateType).Str("path", candidate.Path).Int64("size", info.Size()).Err(err).Msg("Failed to remove associated local file")
 				continue
 			}
 			c.logger.Info().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("path_source", candidate.PathSource).Str("candidate_type", candidate.CandidateType).Str("path", candidate.Path).Int64("size", info.Size()).Msg("Associated local file removed")
 		}
 	}
-	if len(deletionErrors) > 0 {
-		return errors.New(strings.Join(deletionErrors, "; "))
+	if len(deletion_errors) > 0 {
+		return errors.New(strings.Join(deletion_errors, "; "))
 	}
 	return nil
 }
@@ -1897,12 +1905,15 @@ func (c *APIClient) handle_download_task_detail(ctx *gin.Context) {
 	// Enrich files with local file info.
 	type fileWithPath struct {
 		services.DownloadTaskFileRecord
-		LocalPath string `json:"local_path"`
-		FileType  string `json:"file_type"`
-		FileURL   string `json:"file_url"`
-		Exists    bool   `json:"exists"`
+		LocalPath         string `json:"local_path"`
+		FileType          string `json:"file_type"`
+		FileURL           string `json:"file_url"`
+		PlaybackURL       string `json:"playback_url,omitempty"`
+		PlaybackAvailable bool   `json:"playback_available"`
+		Exists            bool   `json:"exists"`
 	}
 
+	playback_availability := c.stream_playback_availability(taskID)
 	files := make([]fileWithPath, 0, len(record.Files))
 	for _, f := range record.Files {
 		local_path := filepath.Join(f.DownloadDir, f.Name)
@@ -1910,11 +1921,23 @@ func (c *APIClient) handle_download_task_detail(ctx *gin.Context) {
 		if _, stat_err := os.Stat(local_path); stat_err == nil {
 			exists = true
 		}
+		file_type := file_type_by_ext(f.Name)
+		playback_url := ""
+		if strings.EqualFold(f.Type, model.ResourceTypeStream) {
+			playback_url = download_task_stream_playback_url(taskID, f.ID)
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(f.Kind)), "audio/") {
+				file_type = "audio"
+			} else {
+				file_type = "video"
+			}
+		}
 		files = append(files, fileWithPath{
 			DownloadTaskFileRecord: f,
 			LocalPath:              local_path,
-			FileType:               file_type_by_ext(f.Name),
+			FileType:               file_type,
 			FileURL:                api_file_url(local_path),
+			PlaybackURL:            playback_url,
+			PlaybackAvailable:      playback_availability[f.ID],
 			Exists:                 exists,
 		})
 	}

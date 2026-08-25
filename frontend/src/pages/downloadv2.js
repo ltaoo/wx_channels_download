@@ -32,7 +32,9 @@ function DownloadV2TaskTable(props) {
     listClass: "wx-content-history-list wx-dl-page-list wx-dl-dark-scroll",
     columns: DownloadV2TaskColumns({ store: vm$ }),
     rows: vm$.state.tasks,
-    rowKey: "id",
+    rowKey(task$) {
+      return task$.state.id.value;
+    },
     status: vm$.state.status,
     loading: vm$.state.loading,
     error: vm$.state.error,

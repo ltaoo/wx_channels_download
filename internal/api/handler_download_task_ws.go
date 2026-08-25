@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -32,9 +33,10 @@ const (
 
 // progress_cache_entry caches the DB-derived task state needed to combine an
 // in-memory progress snapshot with its current lifecycle status. Progress WS
-// updates intentionally exclude stable task/resource metadata.
+// updates include only mutable fields plus the canonical file path.
 type progress_cache_entry struct {
-	task model.DownloadTask
+	task       model.DownloadTask
+	file_paths map[int]string
 }
 
 type task_broadcast_request struct {
@@ -55,9 +57,21 @@ func (b *DownloadTaskBroadcaster) cache_task_progress_meta(task_id int) {
 		b.logger.Info().Int("task_id", task_id).Err(err).Msg("progress_cache: DB load failed")
 		return
 	}
+	var resources []model.DownloadResource
+	file_paths := make(map[int]string)
+	if err := b.db.Select("id", "download_dir", "name").
+		Where("task_id = ? AND deleted_at IS NULL", task_id).
+		Find(&resources).Error; err != nil {
+		b.logger.Info().Int("task_id", task_id).Err(err).Msg("progress_cache: resource paths load failed")
+	} else {
+		file_paths = make(map[int]string, len(resources))
+		for _, resource := range resources {
+			file_paths[resource.Id] = filepath.Join(resource.DownloadDir, resource.Name)
+		}
+	}
 
 	b.progress_cache_mu.Lock()
-	b.progress_cache[task_id] = &progress_cache_entry{task: task}
+	b.progress_cache[task_id] = &progress_cache_entry{task: task, file_paths: file_paths}
 	b.progress_cache_mu.Unlock()
 
 	b.logger.Info().
@@ -280,6 +294,7 @@ type DownloadTaskWSUpdate struct {
 // DownloadTaskFileWSUpdate is the mutable subset of a task file record.
 type DownloadTaskFileWSUpdate struct {
 	ID         int     `json:"id"`
+	FilePath   string  `json:"file_path"`
 	Status     string  `json:"status"`
 	Size       int64   `json:"size"`
 	Downloaded int64   `json:"downloaded"`
@@ -498,6 +513,7 @@ func apply_finished_resource_snapshot(record *services.DownloadTaskRecord, resou
 		}
 		record.Files[index].DownloadDir = resource.DownloadDir
 		record.Files[index].Name = resource.Name
+		record.Files[index].FilePath = filepath.Join(resource.DownloadDir, resource.Name)
 		record.Files[index].Kind = resource.Kind
 		record.Files[index].Type = resource.Type
 		record.Files[index].Size = resource.Size
@@ -522,6 +538,7 @@ func download_task_ws_update_from_record(record services.DownloadTaskRecord) Dow
 	for _, file := range record.Files {
 		files = append(files, DownloadTaskFileWSUpdate{
 			ID:         file.ID,
+			FilePath:   file.FilePath,
 			Status:     file.Status,
 			Size:       file.Size,
 			Downloaded: file.Downloaded,
@@ -619,6 +636,7 @@ func (b *DownloadTaskBroadcaster) broadcast_download_task_progress(task_id int, 
 		file_progress := services.TaskProgressPercent(rp.Downloaded, rp.Size, file_resource_status)
 		files = append(files, DownloadTaskFileWSUpdate{
 			ID:         rp.ID,
+			FilePath:   entry.file_paths[rp.ID],
 			Status:     status,
 			Size:       rp.Size,
 			Downloaded: rp.Downloaded,

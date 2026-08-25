@@ -51,15 +51,20 @@ function task_value(task_) {
   return task_ && task_.value !== undefined ? task_.value : task_;
 }
 
+function task_files(raw) {
+  if (!raw || typeof raw !== "object") return [];
+  if (Array.isArray(raw.files)) return raw.files;
+  return Array.isArray(raw.resources) ? raw.resources : [];
+}
+
 function format_progress_text(percent) {
   const value = Number(percent);
   if (!Number.isFinite(value)) return "0";
   return String(Math.round(Math.max(0, Math.min(100, value))));
 }
 
-function is_live_stream_task(task) {
-  if (!task || !Array.isArray(task.files)) return false;
-  return task.files.some((file) => {
+function is_live_stream_task(raw) {
+  return task_files(raw).some((file) => {
     if (!file) return false;
     return [file.type, file.resource_type].some((type) => {
       return String(type || "").toUpperCase() === "STREAM";
@@ -67,9 +72,9 @@ function is_live_stream_task(task) {
   });
 }
 
-function task_has_content(task) {
-  if (!task || typeof task !== "object") return false;
-  const content_id = task.content_id ?? task.contentId ?? task.ContentID;
+function task_has_content(raw) {
+  if (!raw || typeof raw !== "object") return false;
+  const content_id = raw.content_id ?? raw.contentId ?? raw.ContentID;
   if (content_id === undefined || content_id === null) return false;
   return String(content_id).trim() !== "";
 }
@@ -213,106 +218,119 @@ function DownloadV2Skeleton(props = {}) {
   });
 }
 
-function DownloadV2TaskState(task_) {
-  return computed(task_, (source) => {
-    const task = source || {};
-    const percent = format_download_percent(task);
-    const is_live_stream = is_live_stream_task(task);
-    const status = normalize_download_status(task.status);
-    const is_paused = status === "pause";
-    const is_running = status === "running";
-    const is_failed = status === "error";
-    const is_pending = is_download_waiting_status(status);
-    const is_completed =
-      status === "done" ||
-      (percent === 100 &&
-        !is_running &&
-        !is_failed &&
-        !is_paused &&
-        !is_pending);
-    const files = Array.isArray(task.files) ? task.files : [];
-    const deleted_file_count = files.filter((file) => {
-      return String((file && file.status) || "").toLowerCase() === "deleted";
-    }).length;
-    const has_deleted_files = deleted_file_count > 0;
-    const all_files_deleted =
-      files.length > 0 && deleted_file_count === files.length;
-    const files_downloaded_size = files.reduce(
-      (sum, file) => sum + (Number(file && file.downloaded) || 0),
-      0,
-    );
-    const files_total_size = files.reduce(
-      (sum, file) => sum + (Number(file && file.size) || 0),
-      0,
-    );
-    const downloaded_size = Math.max(
-      files_downloaded_size,
-      Number(task.downloaded) || 0,
-    );
-    const total_size = Math.max(files_total_size, Number(task.size) || 0);
-    let status_text = task.status || "";
-    let status_color = "var(--dm-dl-page-muted)";
-    let error_text = "";
-    let progress_text = "";
-    let speed_text = "";
-
-    if (is_running) {
-      speed_text = format_download_speed(
-        task.speed ||
-          (task.progress && typeof task.progress === "object"
-            ? task.progress.speed
-            : 0),
+function DownloadV2TaskState(task$) {
+  return combine(
+    {
+      status: task$.state.status,
+      progress: task$.state.progress,
+      error: task$.state.error,
+      raw: task$.state.raw,
+    },
+    (source) => {
+      const raw = source.raw || {};
+      const progress = source.progress || {};
+      const percent = format_download_percent({ progress });
+      const is_live_stream = is_live_stream_task(raw);
+      const status = normalize_download_status(source.status);
+      const is_paused = status === "pause";
+      const is_running = status === "running";
+      const is_failed = status === "error";
+      const is_pending = is_download_waiting_status(status);
+      const is_completed =
+        status === "done" ||
+        (percent === 100 &&
+          !is_running &&
+          !is_failed &&
+          !is_paused &&
+          !is_pending);
+      const files = task_files(raw);
+      const deleted_file_count = files.filter((file) => {
+        return String((file && file.status) || "").toLowerCase() === "deleted";
+      }).length;
+      const has_deleted_files = deleted_file_count > 0;
+      const all_files_deleted =
+        files.length > 0 && deleted_file_count === files.length;
+      const files_downloaded_size = files.reduce(
+        (sum, file) => sum + (Number(file && file.downloaded) || 0),
+        0,
       );
-      status_text = "下载中";
-      progress_text = is_live_stream ? "" : format_progress_text(percent);
-      status_color = "var(--dm-dl-page-primary)";
-    } else if (is_completed) {
-      status_text = has_deleted_files
-        ? all_files_deleted
-          ? "文件已删除"
-          : "部分文件已删除"
-        : "已完成";
-      status_color = has_deleted_files
-        ? "var(--dm-color-danger)"
-        : "var(--dm-color-success)";
-    } else if (is_failed) {
-      status_text = "失败";
-      error_text = task.error || task._errMsg || "下载失败";
-      status_color = "var(--dm-color-danger)";
-    } else if (is_pending) {
-      status_text = "等待中...";
-    } else if (is_paused) {
-      status_text = "已暂停";
-      status_color = "var(--dm-color-warning)";
-      progress_text = is_live_stream ? "" : format_progress_text(percent);
-    }
+      const files_total_size = files.reduce(
+        (sum, file) => sum + (Number(file && file.size) || 0),
+        0,
+      );
+      const downloaded_size = Math.max(
+        files_downloaded_size,
+        Number(progress.downloaded) || 0,
+      );
+      const total_size = Math.max(
+        files_total_size,
+        Number(progress.total) || 0,
+      );
+      let status_text = source.status || "";
+      let status_color = "var(--dm-dl-page-muted)";
+      let error_text = "";
+      let progress_text = "";
+      let speed_text = "";
 
-    return {
-      percent,
-      is_live_stream,
-      is_completed,
-      is_paused,
-      is_running,
-      is_failed,
-      is_pending,
-      status_text,
-      status_color,
-      error_text,
-      progress_text,
-      speed_text,
-      downloaded_size_text: format_download_size(downloaded_size),
-      total_size_text: format_download_size(total_size),
-    };
-  });
+      if (is_running) {
+        speed_text = format_download_speed(progress.speed);
+        status_text = "下载中";
+        progress_text = is_live_stream ? "" : format_progress_text(percent);
+        status_color = "var(--dm-dl-page-primary)";
+      } else if (is_completed) {
+        status_text = has_deleted_files
+          ? all_files_deleted
+            ? "文件已删除"
+            : "部分文件已删除"
+          : "已完成";
+        status_color = has_deleted_files
+          ? "var(--dm-color-danger)"
+          : "var(--dm-color-success)";
+      } else if (is_failed) {
+        status_text = "失败";
+        error_text =
+          (source.error && (source.error.message || String(source.error))) ||
+          raw.error ||
+          raw.error_message ||
+          raw._errMsg ||
+          "下载失败";
+        status_color = "var(--dm-color-danger)";
+      } else if (is_pending) {
+        status_text = "等待中...";
+      } else if (is_paused) {
+        status_text = "已暂停";
+        status_color = "var(--dm-color-warning)";
+        progress_text = is_live_stream ? "" : format_progress_text(percent);
+      }
+
+      return {
+        percent,
+        is_live_stream,
+        is_completed,
+        is_paused,
+        is_running,
+        is_failed,
+        is_pending,
+        status_text,
+        status_color,
+        error_text,
+        progress_text,
+        speed_text,
+        downloaded_size_text: format_download_size(downloaded_size),
+        total_size_text: format_download_size(total_size),
+      };
+    },
+  );
 }
 
-function task_cover_url(task) {
-  if (!task || typeof task !== "object") return "";
-  return String(task.cover_url || task.coverUrl || task.CoverURL || "").trim();
+function task_cover_url(raw) {
+  if (!raw || typeof raw !== "object") return "";
+  return String(raw.cover_url || raw.coverUrl || raw.CoverURL || "").trim();
 }
 
 function DownloadV2TaskCover(props) {
-  const { state: state_, task: task_ } = props;
+  const { state: state_, task: task$ } = props;
+  const raw_ = task$.state.raw;
   const progress = Show({
     when: computed(
       state_,
@@ -330,14 +348,14 @@ function DownloadV2TaskCover(props) {
     View({ class: "wx-dl-page-task-cover wx-dl-page-task-cover-fallback" });
 
   return Show({
-    when: computed(task_, (task) => Boolean(task_cover_url(task))),
+    when: computed(raw_, (raw) => Boolean(task_cover_url(raw))),
     ok() {
       return View({ class: "wx-dl-page-task-cover-wrap" }, [
         fallback(),
         Img({
           class: "wx-dl-page-task-cover",
-          src: computed(task_, task_cover_url),
-          alt: computed(task_, (task) => (task && task.name) || ""),
+          src: computed(raw_, task_cover_url),
+          alt: task$.state.name,
           attributes: {
             loading: "lazy",
             referrerpolicy: "no-referrer",
@@ -375,7 +393,7 @@ function DownloadV2TaskActionButton(props) {
 }
 
 function DownloadV2TaskActions(props) {
-  const { state: state_, store: vm$, task: task_ } = props;
+  const { state: state_, store: vm$, task: task$ } = props;
   const is_open_external = is_download_open_external();
 
   return [
@@ -398,7 +416,7 @@ function DownloadV2TaskActions(props) {
             icon: "play",
             title: "开始",
             onClick() {
-              vm$.methods.startTask(task_value(task_));
+              vm$.methods.startTask(task$);
             },
           });
         },
@@ -407,7 +425,7 @@ function DownloadV2TaskActions(props) {
             icon: is_open_external ? "file-symlink" : "folder",
             title: is_open_external ? "打开链接" : "打开文件夹",
             onClick() {
-              vm$.methods.openTask(task_value(task_));
+              vm$.methods.openTask(task$);
             },
           });
         },
@@ -426,7 +444,7 @@ function DownloadV2TaskActions(props) {
                 ),
               },
               onClick() {
-                vm$.methods.pauseTask(task_value(task_), {
+                vm$.methods.pauseTask(task$, {
                   liveStream: state_.value.is_live_stream,
                 });
               },
@@ -449,7 +467,7 @@ function DownloadV2TaskActions(props) {
             icon: "play",
             title: "继续",
             onClick() {
-              vm$.methods.resumeTask(task_value(task_));
+              vm$.methods.resumeTask(task$);
             },
           });
         },
@@ -458,7 +476,7 @@ function DownloadV2TaskActions(props) {
             icon: "refresh-ccw",
             title: "重试",
             onClick() {
-              vm$.methods.retryTask(task_value(task_));
+              vm$.methods.retryTask(task$);
             },
           });
         },
@@ -472,18 +490,19 @@ function DownloadV2TaskActions(props) {
       title: "删除",
       danger: true,
       onClick() {
-        vm$.methods.requestDeleteTask(task_value(task_));
+        vm$.methods.requestDeleteTask(task$);
       },
     }),
   ];
 }
 
 function DownloadV2TaskMain(props) {
-  const { store: vm$, task: task_ } = props;
-  const state_ = DownloadV2TaskState(task_);
+  const { store: vm$ } = props;
+  const task$ = task_value(props.task);
+  const state_ = DownloadV2TaskState(task$);
 
   return [
-    DownloadV2TaskCover({ task: task_, state: state_ }),
+    DownloadV2TaskCover({ task: task$, state: state_ }),
     View(
       {
         class: "wx-dl-page-task-info",
@@ -503,13 +522,15 @@ function DownloadV2TaskMain(props) {
                 attributes: {
                   n: "download-task-preview-trigger",
                   type: "button",
-                  title: computed(task_, (task) => (task && task.name) || ""),
+                  title: task$.state.name,
                 },
                 onClick() {
-                  vm$.methods.requestTaskPreview(task_value(task_));
+                  vm$.methods.requestTaskPreview(task$);
                 },
               },
-              [computed(task_, (task) => (task && task.name) || "未命名任务")],
+              [
+                computed(task$.state.name, (name) => name || "未命名任务"),
+              ],
             ),
             Show({
               when: computed(state_, (state) => state.is_live_stream),
@@ -524,7 +545,7 @@ function DownloadV2TaskMain(props) {
               },
             }),
             Show({
-              when: computed(task_, (task) => !task_has_content(task)),
+              when: computed(task$.state.raw, (raw) => !task_has_content(raw)),
               ok() {
                 return View(
                   {
@@ -636,10 +657,10 @@ export function DownloadV2TaskColumns(props) {
       name: "task",
       title: "下载任务",
       cellClass: "wx-dl-page-task-main-cell",
-      render(_task, context) {
+      render(task$) {
         return DownloadV2TaskMain({
           store: vm$,
-          task: context.itemSource,
+          task: task$,
         });
       },
     },
@@ -647,16 +668,16 @@ export function DownloadV2TaskColumns(props) {
       name: "created-at",
       title: "下载时间",
       cellClass: "wx-dl-page-task-time-cell",
-      cellAttributes(_task, context) {
+      cellAttributes(task$) {
         return {
-          title: computed(context.itemSource, (task) =>
-            format_download_time(task && task.created_at),
+          title: computed(task$.state.raw, (raw) =>
+            format_download_time(raw && raw.created_at),
           ),
         };
       },
-      render(_task, context) {
-        return computed(context.itemSource, (task) =>
-          format_download_time(task && task.created_at),
+      render(task$) {
+        return computed(task$.state.raw, (raw) =>
+          format_download_time(raw && raw.created_at),
         );
       },
     },
@@ -665,11 +686,11 @@ export function DownloadV2TaskColumns(props) {
       title: "操作",
       headerClass: "wx-dl-page-table-head-action",
       cellClass: "wx-dl-page-task-actions-cell",
-      render(_task, context) {
-        const state_ = DownloadV2TaskState(context.itemSource);
+      render(task$) {
+        const state_ = DownloadV2TaskState(task$);
         return DownloadV2TaskActions({
           store: vm$,
-          task: context.itemSource,
+          task: task$,
           state: state_,
         });
       },

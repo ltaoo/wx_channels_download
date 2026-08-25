@@ -104,8 +104,8 @@ function format_download_size(bytes) {
   return `${(value / Math.pow(1024, exponent)).toFixed(1)}${units[exponent]}`;
 }
 
-function format_download_percent(task) {
-  const progress = task && task.progress;
+function format_download_percent(record) {
+  const progress = record && record.progress;
   const direct = Number(progress);
   if (Number.isFinite(direct)) {
     return Math.min(100, Math.max(0, Math.round(direct * 100) / 100));
@@ -115,8 +115,12 @@ function format_download_percent(task) {
   if (Number.isFinite(detail_percent)) {
     return Math.min(100, Math.max(0, Math.round(detail_percent * 100) / 100));
   }
-  const total = Number((task && task.size) || detail.total || detail.size || 0);
-  const downloaded = Number((task && task.downloaded) || detail.downloaded || 0);
+  const total = Number(
+    (record && record.size) || detail.total || detail.size || 0,
+  );
+  const downloaded = Number(
+    (record && record.downloaded) || detail.downloaded || 0,
+  );
   if (total <= 0) return 0;
   return Math.min(
     100,
@@ -175,7 +179,7 @@ function normalize_server_status_counts(source) {
 
 function task_identifier(value) {
   if (!value || typeof value !== "object") return value;
-  if (value.__domain && value.__domain.id) return value.__domain.id.value;
+  if (value.state && value.state.id) return value.state.id.value;
   if (value.id && typeof value.id === "object" && "value" in value.id) {
     return value.id.value;
   }
@@ -227,7 +231,6 @@ function DownloadV2Model(props = {}) {
   const overwrite_apply_all_ = ref(false);
   const overwrite_processing_ = ref(false);
   const overwrite_conflict_ = refobj({ index: 0, total: 0, name: "" });
-  const task_entries = new Map();
   const disposables = [];
   let list_view_element = null;
   let selection_anchor_task_id = null;
@@ -480,39 +483,6 @@ function DownloadV2Model(props = {}) {
     create_platform_filename_,
   );
 
-  function domain_task_record(task$) {
-    const raw = (task$ && task$.raw && task$.raw.value) || {};
-    const progress = (task$ && task$.progress && task$.progress.value) || {};
-    const error = task$ && task$.error ? task$.error.value : null;
-    const resources = raw.files || raw.resources || [];
-    return {
-      ...raw,
-      id: task$ && task$.id ? task$.id.value : raw.id,
-      name:
-        (task$ && task$.name && task$.name.value) ||
-        raw.name ||
-        raw.title ||
-        "未命名任务",
-      title:
-        (task$ && task$.title && task$.title.value) ||
-        raw.title ||
-        raw.name ||
-        "未命名任务",
-      status: (task$ && task$.status && task$.status.value) || raw.status,
-      filepath:
-        (task$ && task$.filepath && task$.filepath.value) || raw.filepath || "",
-      path: raw.path || raw.download_dir || "",
-      filename: raw.filename || raw.name || "",
-      progress: Number(progress.percent) || 0,
-      downloaded: Number(progress.downloaded) || 0,
-      size: Number(progress.total) || 0,
-      speed: Number(progress.speed) || 0,
-      files: Array.isArray(resources) ? resources : [],
-      error: error ? error.message || String(error) : raw.error || raw.error_message,
-      __domain: task$,
-    };
-  }
-
   function page_request_options(target_page) {
     const options = {
       all: false,
@@ -548,30 +518,21 @@ function DownloadV2Model(props = {}) {
 
   function rebuild_derived_state() {
     if (disposed) return;
-    const records = [];
-    task_entries.forEach((entry) => {
-      const record = entry.record;
-      const id = task_identifier(record);
-      if (id !== undefined && id !== null && id !== "") records.push(record);
-    });
-    const order = new Map();
-    (downloader.task_list.value || []).forEach((task$, index) => order.set(task$, index));
-    records.sort((left, right) => {
-      return (order.get(left.__domain) || 0) - (order.get(right.__domain) || 0);
+    const domain_tasks = (downloader.task_list.value || []).filter((task$) => {
+      const id = task_identifier(task$);
+      return id !== undefined && id !== null && id !== "";
     });
 
-    const valid_ids = records.map(task_identifier);
+    const valid_ids = domain_tasks.map(task_identifier);
     const selected_ids = (selected_task_ids_.value || []).filter((id) => {
       return valid_ids.some((valid_id) => valid_id === id);
     });
     if (selected_ids.length !== selected_task_ids_.value.length) {
       selected_task_ids_.as(selected_ids);
     }
-    // Keep the reactive row objects registered by the keyed `For` renderer.
-    // `refarr.as()` releases those registrations before it publishes the new
-    // array, so rows with the same task id are reused with stale values. This
-    // is especially visible for lightweight WebSocket progress updates.
-    tasks_.assign(records);
+    // Keep DownloadTaskModel instances intact. Their `state.*` refs drive row
+    // updates without rebuilding plain records for every progress event.
+    tasks_.assign(domain_tasks);
   }
 
   async function load_page(target_page = page_.value) {
@@ -631,48 +592,12 @@ function DownloadV2Model(props = {}) {
     }
   }
 
-  function sync_domain_task(task$) {
-    const entry = task_entries.get(task$);
-    if (!entry) return;
-    entry.record = domain_task_record(task$);
-    rebuild_derived_state();
-  }
-
-  function release_domain_task(task$) {
-    const entry = task_entries.get(task$);
-    if (!entry) return;
-    entry.unlistens.forEach((unlisten) => {
-      if (typeof unlisten === "function") unlisten();
-    });
-    task_entries.delete(task$);
-  }
-
   function sync_domain_tasks() {
-    if (disposed) return;
-    const domain_tasks = downloader.task_list.value || [];
-    const current = new Set(domain_tasks);
-    task_entries.forEach((_entry, task$) => {
-      if (!current.has(task$)) release_domain_task(task$);
-    });
-    domain_tasks.forEach((task$) => {
-      if (task_entries.has(task$)) {
-        task_entries.get(task$).record = domain_task_record(task$);
-        return;
-      }
-      const entry = {
-        record: domain_task_record(task$),
-        unlistens: [],
-      };
-      if (typeof task$.onChange === "function") {
-        entry.unlistens.push(task$.onChange(() => sync_domain_task(task$)));
-      }
-      task_entries.set(task$, entry);
-    });
     rebuild_derived_state();
   }
 
   function domain_task(value) {
-    if (value && value.__domain) return value.__domain;
+    if (value && value.state && value.state.id) return value;
     return downloader.get(task_identifier(value));
   }
 
@@ -684,12 +609,16 @@ function DownloadV2Model(props = {}) {
 
   async function run_task_action(value, action, fallback, refresh_page = true) {
     const task$ = domain_task(value);
-    if (!task$ || typeof task$[action] !== "function") {
+    if (
+      !task$ ||
+      !task$.methods ||
+      typeof task$.methods[action] !== "function"
+    ) {
       report_error(null, "下载任务不存在");
       return null;
     }
     try {
-      const result = await task$[action]();
+      const result = await task$.methods[action]();
       if (refresh_page) await load_page(page_.value);
       return result;
     } catch (error) {
@@ -823,7 +752,9 @@ function DownloadV2Model(props = {}) {
     try {
       for (const task$ of tasks) {
         try {
-          await task$.delete({ deleteFiles: delete_delete_files_.value });
+          await task$.methods.delete({
+            deleteFiles: delete_delete_files_.value,
+          });
         } catch (error) {
           errors.push(error);
         }
@@ -991,7 +922,8 @@ function DownloadV2Model(props = {}) {
   function normalize_platform_preview(preview, fallback) {
     if (!preview || typeof preview !== "object") return preview;
     if (Array.isArray(preview.resources)) return preview;
-    const task = preview.Task && typeof preview.Task === "object" ? preview.Task : {};
+    const task_record =
+      preview.Task && typeof preview.Task === "object" ? preview.Task : {};
     const source_resources = Array.isArray(preview.Resources) ? preview.Resources : [];
     const resources = source_resources.map((item, index) => {
       const resource = item && item.Resource ? item.Resource : item || {};
@@ -1008,8 +940,12 @@ function DownloadV2Model(props = {}) {
     });
     return {
       platform:
-        task.platform_id || task.PlatformID || fallback.platform || "",
-      task_name: task.name || task.Name || fallback.filename || "",
+        task_record.platform_id ||
+        task_record.PlatformID ||
+        fallback.platform ||
+        "",
+      task_name:
+        task_record.name || task_record.Name || fallback.filename || "",
       download_dir: fallback.download_dir || "",
       resource_type: resources[0]
         ? resources[0].kind || resources[0].type || ""
@@ -1330,12 +1266,9 @@ function DownloadV2Model(props = {}) {
     },
   };
   const handler = {
-    domainTaskRecord: domain_task_record,
     applyListMeta: apply_list_meta,
     rebuildDerivedState: rebuild_derived_state,
-    syncDomainTask: sync_domain_task,
     syncDomainTasks: sync_domain_tasks,
-    releaseDomainTask: release_domain_task,
   };
 
   async function ready() {
@@ -1386,7 +1319,6 @@ function DownloadV2Model(props = {}) {
     disposables.splice(0).forEach((unlisten) => {
       if (typeof unlisten === "function") unlisten();
     });
-    [...task_entries.keys()].forEach(release_domain_task);
     Object.values(ui).forEach((store) => store.destroy?.());
   }
 
@@ -1394,12 +1326,9 @@ function DownloadV2Model(props = {}) {
     ready,
     clean,
     loadPage: load_page,
-    domainTaskRecord: handler.domainTaskRecord,
     applyListMeta: handler.applyListMeta,
     rebuildDerivedState: handler.rebuildDerivedState,
-    syncDomainTask: handler.syncDomainTask,
     syncDomainTasks: handler.syncDomainTasks,
-    releaseDomainTask: handler.releaseDomainTask,
   });
 
   return { state, ui, methods };
