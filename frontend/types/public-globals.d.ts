@@ -115,10 +115,12 @@ interface DownloadTaskState {
   progress: DLRef<DownloadProgress>;
   error: DLRef<Error | null>;
   raw: DLRef<Record<string, unknown>>;
+  websocket_connected: DLRef<boolean>;
+  websocket_connecting: DLRef<boolean>;
 }
 
 interface DownloadTaskMethods {
-  onSuccess(listener: (task: DownloadTaskModelInstance) => void): () => void;
+  onSuccess(listener: (task: Record<string, unknown>) => void): () => void;
   onFail(
     listener: (event: {
       error: Error;
@@ -134,6 +136,8 @@ interface DownloadTaskMethods {
     }) => void,
   ): () => void;
   onChange(listener: (event: Record<string, unknown>) => void): () => void;
+  connectWebSocket(): Promise<boolean>;
+  disconnectWebSocket(): Promise<boolean>;
   start(): Promise<DownloadTaskModelInstance>;
   resume(): Promise<DownloadTaskModelInstance>;
   pause(): Promise<DownloadTaskModelInstance>;

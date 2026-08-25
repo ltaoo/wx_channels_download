@@ -18,7 +18,7 @@ import (
 // PrepareStartPrivileges requests elevation when a local proxy start requires it.
 // shouldExit is true after an elevation attempt because the current process must end.
 func PrepareStartPrivileges(isStartCommand bool) (shouldExit bool, err error) {
-	needAdminForProxy := viper.GetBool("proxy.enabled") && (viper.GetBool("proxy.tun") || buildtags.UsingSunnyNet)
+	needAdminForProxy := viper.GetBool("proxy.enabled") && ((viper.GetBool("proxy.tun") || buildtags.UsingSunnyNet))
 	if !isStartCommand || runtime.GOOS != "windows" || !needAdminForProxy || platform.IsAdmin() {
 		return false, nil
 	}

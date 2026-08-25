@@ -3342,6 +3342,7 @@ function DownloaderPanelViewModel(props = {}) {
             config: {
               spec: opt.spec,
               suffix: opt.suffix,
+              skip: !!opt.skip,
               overwrite: !!opt.overwrite,
               duplicate: !!opt.duplicate,
             },
