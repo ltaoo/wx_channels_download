@@ -418,14 +418,14 @@ func (s *Server) fetch_wxchannels_data(ctx context.Context, path string, query u
 		Data    json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(raw_response, &response); err != nil {
-		return nil, fmt.Errorf("解析微信视频号 API 响应失败: %w", err)
+		return nil, fmt.Errorf("解析微信视频号响应失败: %w", err)
 	}
 	if response.ErrCode != 0 {
-		message := value_or_default(response.ErrMsg, fmt.Sprintf("微信视频号 API 返回错误码 %d", response.ErrCode))
+		message := value_or_default(response.ErrMsg, fmt.Sprintf("微信视频号返回错误码 %d", response.ErrCode))
 		return nil, new_tool_execution_error(message, raw_json_value(raw_response))
 	}
 	if !has_json_value(response.Data) {
-		return nil, fmt.Errorf("微信视频号 API 响应缺少 data")
+		return nil, fmt.Errorf("微信视频号响应缺少 data")
 	}
 	return response.Data, nil
 }

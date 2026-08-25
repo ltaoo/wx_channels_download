@@ -55,9 +55,7 @@ type LogListQuery struct {
 	Levels   []string
 }
 
-// DataReader is the consumer-side interface used by MCP data tools. The
-// application adapts its transport-neutral DataQueryService to this interface;
-// servers may omit it and fall back to the downloader HTTP API.
+// DataReader supplies read-only data tools.
 type DataReader interface {
 	ListDownloadTasks(ctx context.Context, query DownloadTaskListQuery) (any, error)
 	GetDownloadTaskDetail(ctx context.Context, task_id int) (any, error)
@@ -65,6 +63,19 @@ type DataReader interface {
 	ListBrowseHistory(ctx context.Context, query BrowseHistoryListQuery) (any, error)
 	ListLogs(ctx context.Context, query LogListQuery) (any, error)
 	GetCertificateStatus(ctx context.Context) (any, error)
+}
+
+// DeleteDownloadTaskResult is one item in a batch deletion result.
+type DeleteDownloadTaskResult struct {
+	TaskID     int    `json:"task_id"`
+	Success    bool   `json:"success"`
+	StatusText string `json:"status_text,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
+
+// DownloadTaskDeleter supplies download task deletion tools.
+type DownloadTaskDeleter interface {
+	DeleteDownloadTasks(ctx context.Context, task_ids []int, delete_files bool) ([]DeleteDownloadTaskResult, error)
 }
 
 type download_task_list_arguments struct {
@@ -77,6 +88,11 @@ type download_task_list_arguments struct {
 
 type download_task_detail_arguments struct {
 	ID int `json:"id"`
+}
+
+type delete_download_tasks_arguments struct {
+	TaskIDs     []int `json:"task_ids"`
+	DeleteFiles bool  `json:"delete_files"`
 }
 
 type account_list_arguments struct {
@@ -143,6 +159,36 @@ func data_tool_definitions() []any {
 				"required": []string{"id"},
 			},
 		),
+		map[string]any{
+			"name":        "delete_download_tasks",
+			"title":       "删除下载任务",
+			"description": "用户明确确认后，停止并软删除指定下载任务。delete_files 默认为 false，仅删除任务记录；设为 true 时同时安全删除关联的最终文件、临时文件和直播录制目录。每个任务独立返回删除结果。",
+			"inputSchema": map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"properties": map[string]any{
+					"task_ids": map[string]any{
+						"type":        "array",
+						"description": "要删除的下载任务 ID。",
+						"minItems":    1,
+						"uniqueItems": true,
+						"items":       data_positive_id_schema("下载任务 ID。"),
+					},
+					"delete_files": map[string]any{
+						"type":        "boolean",
+						"default":     false,
+						"description": "是否同时删除任务关联的本地文件。",
+					},
+				},
+				"required": []string{"task_ids"},
+			},
+			"annotations": map[string]any{
+				"readOnlyHint":    false,
+				"destructiveHint": true,
+				"idempotentHint":  true,
+				"openWorldHint":   false,
+			},
+		},
 		data_tool_definition(
 			"get_accounts",
 			"获取账号列表",
@@ -331,6 +377,26 @@ func (s *Server) get_download_task_detail(ctx context.Context, raw_arguments jso
 	}
 	values := url.Values{"id": []string{strconv.Itoa(arguments.ID)}}
 	return s.call_read_api(ctx, http.MethodGet, "/api/v1/download_task/detail?"+values.Encode(), nil)
+}
+
+func (s *Server) delete_download_tasks(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+	var arguments delete_download_tasks_arguments
+	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
+		return nil, err
+	}
+	if len(arguments.TaskIDs) == 0 {
+		return nil, fmt.Errorf("task_ids 不能为空")
+	}
+	for _, task_id := range arguments.TaskIDs {
+		if task_id <= 0 {
+			return nil, fmt.Errorf("task_ids 中的任务 ID 必须是正整数")
+		}
+	}
+	results, err := s.download_task_deleter.DeleteDownloadTasks(ctx, arguments.TaskIDs, arguments.DeleteFiles)
+	if err != nil {
+		return nil, err
+	}
+	return successful_tool_result(map[string]any{"results": results})
 }
 
 func (s *Server) get_accounts(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {

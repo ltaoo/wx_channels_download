@@ -217,7 +217,7 @@ func Start(cfg *config.Config) error {
 		LogPath:              api_cfg.LogPath,
 		WorkDir:              api_cfg.WorkDir,
 	})
-	mcp_service, err := new_mcp_service(api_cfg, data_service, scraper_job_service, cfg.GetBool("mcp.enabled"))
+	mcp_service, err := new_mcp_service(api_cfg, data_service, download_task_service, scraper_job_service, cfg.GetBool("mcp.enabled"))
 	if err != nil {
 		task_store.Shutdown()
 		return fmt.Errorf("failed to initialize MCP service: %w", err)

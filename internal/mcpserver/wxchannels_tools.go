@@ -63,7 +63,7 @@ func wxchannels_tool_definitions() []any {
 		wxchannels_tool_definition(
 			"get_wxchannels_status",
 			"获取微信视频号连接状态",
-			"检查是否已有视频号页面通过 WebSocket 连接到下载器。其他微信视频号 API 工具依赖此连接。",
+			"检查是否已有视频号页面通过 WebSocket 连接到下载器。其他微信视频号工具依赖此连接。",
 			map[string]any{
 				"type":                 "object",
 				"additionalProperties": false,
@@ -102,7 +102,7 @@ func wxchannels_tool_definitions() []any {
 		wxchannels_tool_definition(
 			"get_wxchannels_live_profile",
 			"获取微信视频号直播详情",
-			"调用视频号页面的 joinLive API 获取直播详情和直播流信息。username、oid、nid 和 id 分别对应 finderUsername、objectId、objectNonceId 和 liveId。所有 ID 均以字符串传入，避免大整数精度损失。",
+			"通过视频号页面的 joinLive 能力获取直播详情和直播流信息。username、oid、nid 和 id 分别对应 finderUsername、objectId、objectNonceId 和 liveId。所有 ID 均以字符串传入，避免大整数精度损失。",
 			map[string]any{
 				"type":                 "object",
 				"additionalProperties": false,
@@ -475,10 +475,10 @@ func (s *Server) call_wxchannels_api(ctx context.Context, path string, query url
 	}
 	var response wxchannels_api_response
 	if err := json.Unmarshal(raw_response, &response); err != nil {
-		return nil, fmt.Errorf("解析微信视频号 API 响应失败: %w", err)
+		return nil, fmt.Errorf("解析微信视频号响应失败: %w", err)
 	}
 	if response.ErrCode != 0 {
-		message := value_or_default(response.ErrMsg, fmt.Sprintf("微信视频号 API 返回错误码 %d", response.ErrCode))
+		message := value_or_default(response.ErrMsg, fmt.Sprintf("微信视频号返回错误码 %d", response.ErrCode))
 		return nil, new_tool_execution_error(message, raw_json_value(raw_response))
 	}
 	return successful_tool_result(raw_json_value(raw_response))

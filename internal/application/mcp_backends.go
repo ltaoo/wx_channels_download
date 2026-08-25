@@ -85,6 +85,39 @@ func (r *mcp_data_reader) GetCertificateStatus(ctx context.Context) (any, error)
 	return r.data_service.GetCertificateStatus(ctx)
 }
 
+type mcp_download_task_deleter struct {
+	download_task_service *services.DownloadTaskService
+}
+
+func new_mcp_download_task_deleter(download_task_service *services.DownloadTaskService) *mcp_download_task_deleter {
+	return &mcp_download_task_deleter{download_task_service: download_task_service}
+}
+
+func (d *mcp_download_task_deleter) DeleteDownloadTasks(
+	ctx context.Context,
+	task_ids []int,
+	delete_files bool,
+) ([]mcpserver.DeleteDownloadTaskResult, error) {
+	if d == nil || d.download_task_service == nil {
+		return nil, fmt.Errorf("下载任务服务未初始化")
+	}
+	results := make([]mcpserver.DeleteDownloadTaskResult, 0, len(task_ids))
+	for _, task_id := range task_ids {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		item := mcpserver.DeleteDownloadTaskResult{TaskID: task_id}
+		if err := d.download_task_service.DeleteTaskWithFiles(task_id, delete_files); err != nil {
+			item.Error = err.Error()
+		} else {
+			item.Success = true
+			item.StatusText = "cancelled"
+		}
+		results = append(results, item)
+	}
+	return results, nil
+}
+
 type mcp_scraper_job_backend struct {
 	scraper_job_service *services.ScraperJobService
 }

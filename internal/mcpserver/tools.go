@@ -357,6 +357,8 @@ func (s *Server) supports_tool(name string) bool {
 		return s.scraper_jobs != nil || s.api_client != nil
 	case "get_download_tasks", "get_download_task_detail", "get_accounts", "get_browse_history", "get_logs", "get_certificate_status":
 		return s.data_reader != nil || s.api_client != nil
+	case "delete_download_tasks":
+		return s.download_task_deleter != nil
 	default:
 		return s.api_client != nil
 	}
@@ -415,6 +417,8 @@ func (s *Server) call_tool(ctx context.Context, params call_tool_params) (map[st
 		return s.get_download_tasks(ctx, params.Arguments)
 	case "get_download_task_detail":
 		return s.get_download_task_detail(ctx, params.Arguments)
+	case "delete_download_tasks":
+		return s.delete_download_tasks(ctx, params.Arguments)
 	case "get_accounts":
 		return s.get_accounts(ctx, params.Arguments)
 	case "get_browse_history":

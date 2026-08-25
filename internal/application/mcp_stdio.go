@@ -157,12 +157,13 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 	}
 
 	server, err := mcpserver.NewServer(mcpserver.Config{
-		Version:     api_config.Version,
-		Input:       stdio_config.Input,
-		Output:      stdio_config.Output,
-		ErrorOutput: stdio_config.ErrorOutput,
-		DataReader:  new_mcp_data_reader(data_service),
-		ScraperJobs: new_mcp_scraper_job_backend(scraper_job_service),
+		Version:             api_config.Version,
+		Input:               stdio_config.Input,
+		Output:              stdio_config.Output,
+		ErrorOutput:         stdio_config.ErrorOutput,
+		DataReader:          new_mcp_data_reader(data_service),
+		ScraperJobs:         new_mcp_scraper_job_backend(scraper_job_service),
+		DownloadTaskDeleter: new_mcp_download_task_deleter(download_task_service),
 	})
 	if err != nil {
 		stop_adapter_handles(adapter_handles)
