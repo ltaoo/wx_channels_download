@@ -1314,16 +1314,11 @@ func (s *DownloadTaskService) StartAllTasks(status string) (int, int, error) {
 	}
 
 	var started int
-	available := s.downloader.MaxConcurrent() - s.downloader.RunningTaskCount()
 	for _, task := range tasks {
-		if available <= 0 {
-			break
-		}
 		if err := s.downloader.StartTask(task.Id); err != nil {
 			continue
 		}
 		started++
-		available--
 	}
 
 	return started, len(tasks), nil
