@@ -1,87 +1,8 @@
-const TYPE_ICONS = {
-  image: "file-image",
-  video: "file-play",
-  audio: "file-volume",
-  html: "file-code",
-  zip: "file-box",
-  pdf: "file-text",
-  other: "file",
-};
-
-const TYPE_LABELS = {
-  image: "图片",
-  video: "视频",
-  audio: "音频",
-  html: "HTML",
-  zip: "压缩包",
-  pdf: "PDF",
-  other: "文件",
-};
-
-const PLATFORM_FAVICONS = {
-  wxchannels:
-    "https://res.wx.qq.com/t/wx_fed/finder/helper/finder-helper-web/res/favicon-v2.ico",
-  wxmp: "https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico",
-  officialaccount: "https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico",
-};
-
-const PLATFORM_NAMES = {
-  wxchannels: "视频号",
-  wxmp: "公众号",
-  officialaccount: "公众号",
-  douyin: "抖音",
-  bilibili: "Bilibili",
-  xiaohongshu: "小红书",
-  xhs: "小红书",
-  youtube: "YouTube",
-  zhihu: "知乎",
-  douban: "豆瓣",
-  qidian: "起点中文网",
-  fanqienovel: "番茄小说",
-  "69shuba": "69书吧",
-};
-
-function preview_api_origin() {
-  const config = window.__d_config || {};
-  if (config.remoteServerEnabled) {
-    return "https://weixin110.qq.com";
-  }
-  return config.apiOrigin || window.location.origin;
-}
-
-function preview_api_url(path) {
-  return new URL(path, preview_api_origin()).href;
-}
-
 function prop_value(value) {
   if (value && typeof value === "object" && "value" in value) {
     return value.value;
   }
   return value;
-}
-
-const preview_detail_request = create_request("获取下载任务详情失败");
-
-const preview_file_request = create_request("读取压缩包失败");
-
-function create_request(fallback_message) {
-  return Timeless.kit.request_factory({
-    headers: { "Content-Type": "application/json" },
-    process(response) {
-      if (response.error) {
-        return Timeless.Result.Err(response.error);
-      }
-      const payload = response.data || {};
-      if (payload.code !== 0) {
-        return Timeless.Result.Err(
-          payload.msg || fallback_message,
-          payload.code,
-          payload.data,
-        );
-      }
-      return Timeless.Result.Ok(payload.data || {});
-    },
-  });
 }
 
 function first_non_empty(...values) {
@@ -109,15 +30,14 @@ function platform_favicon(platform_id) {
   const key = String(platform_id || "")
     .trim()
     .toLowerCase();
-  const favicons = window.PLATFORM_FAVICONS || {};
-  return favicons[key] || PLATFORM_FAVICONS[key] || "";
+  return window.PLATFORM_FAVICONS[key] || "";
 }
 
 function platform_name(platform_id) {
   const key = String(platform_id || "")
     .trim()
     .toLowerCase();
-  return PLATFORM_NAMES[key] || platform_id || "";
+  return window.PLATFORM_NAMES[key] || platform_id || "";
 }
 
 function format_bytes(bytes) {
@@ -134,11 +54,11 @@ function format_bytes(bytes) {
 }
 
 function file_type_icon(file_type) {
-  return TYPE_ICONS[file_type] || TYPE_ICONS.other;
+  return window.TYPE_ICONS[file_type] || window.TYPE_ICONS.other;
 }
 
 function file_type_label(file_type) {
-  return TYPE_LABELS[file_type] || TYPE_LABELS.other;
+  return window.TYPE_LABELS[file_type] || window.TYPE_LABELS.other;
 }
 
 function file_url(file) {
@@ -146,18 +66,16 @@ function file_url(file) {
     return "";
   }
   if (file.file_url) {
-    return new URL(file.file_url, preview_api_origin()).href;
+    return new URL(file.file_url, window.API_ORIGIN).href;
   }
-  return preview_api_url(
-    `/api/file?path=${encodeURIComponent(file.local_path || "")}`,
-  );
+  return `/api/file?path=${encodeURIComponent(file.local_path || "")}`;
 }
 
 function playback_url(file) {
   if (!file || !file.playback_url) {
     return "";
   }
-  return new URL(file.playback_url, preview_api_origin()).href;
+  return new URL(file.playback_url, window.API_ORIGIN).href;
 }
 
 function mounted_media_element(event) {
@@ -211,11 +129,7 @@ function normalize_file(raw) {
       source.localPath,
       source.LocalPath,
     ),
-    file_url: first_non_empty(
-      source.file_url,
-      source.fileUrl,
-      source.FileURL,
-    ),
+    file_url: first_non_empty(source.file_url, source.fileUrl, source.FileURL),
     playback_url: first_non_empty(
       source.playback_url,
       source.playbackUrl,
@@ -236,15 +150,10 @@ function normalize_file(raw) {
     size: Math.max(0, number_or_default(source.size || source.Size, 0)),
     progress: Math.min(
       100,
-      Math.max(
-        0,
-        number_or_default(source.progress || source.Progress, 0),
-      ),
+      Math.max(0, number_or_default(source.progress || source.Progress, 0)),
     ),
     exists: Boolean(
-      typeof source.exists !== "undefined"
-        ? source.exists
-        : source.Exists,
+      typeof source.exists !== "undefined" ? source.exists : source.Exists,
     ),
   };
 }
@@ -252,9 +161,7 @@ function normalize_file(raw) {
 function normalize_task(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
   const content =
-    source.content && typeof source.content === "object"
-      ? source.content
-      : {};
+    source.content && typeof source.content === "object" ? source.content : {};
   const accounts = Array.isArray(content.accounts)
     ? content.accounts.map(normalize_account)
     : [];
@@ -301,7 +208,7 @@ function normalize_zip_images(data) {
     .filter((image) => image && image.url)
     .map((image) => ({
       name: first_non_empty(image.name, "未命名图片"),
-      url: new URL(image.url, preview_api_origin()).href,
+      url: new URL(image.url, window.API_ORIGIN).href,
     }));
 }
 
@@ -357,10 +264,13 @@ function PreviewViewModel(props) {
       live_player.destroy();
     }
     live_player = null;
-    if (live_video && is_live_playback({
-      playback_url: live_video.dataset.livePlaybackUrl,
-      exists: false,
-    })) {
+    if (
+      live_video &&
+      is_live_playback({
+        playback_url: live_video.dataset.livePlaybackUrl,
+        exists: false,
+      })
+    ) {
       live_video.removeAttribute("src");
       live_video.load();
     }
@@ -502,10 +412,7 @@ function PreviewViewModel(props) {
 
     const Hls = window.Hls;
     if (!Hls || typeof Hls.isSupported !== "function" || !Hls.isSupported()) {
-      set_live_playback_state(
-        "error",
-        "当前浏览器不支持 HLS/MSE 直播回看。",
-      );
+      set_live_playback_state("error", "当前浏览器不支持 HLS/MSE 直播回看。");
       return;
     }
 
@@ -573,15 +480,11 @@ function PreviewViewModel(props) {
   }
 
   const detail_request = new Timeless.kit.RequestCore(
-    (params) =>
-      preview_detail_request.get(
-        preview_api_url("/api/v1/download_task/detail"),
-        params,
-      ),
+    (params) => window.request.get("/api/v1/download_task/detail", params),
     { client: props.client },
   );
   const zip_request = new Timeless.kit.RequestCore(
-    (params) => preview_file_request.get(preview_api_url("/api/file"), params),
+    (params) => window.request.get("/api/file", params),
     { client: props.client },
   );
 
@@ -627,9 +530,7 @@ function PreviewViewModel(props) {
 
     const task = normalize_task(result.data);
     task_.as(task);
-    gallery_file_.as(
-      task.files.find(file_playable) || task.files[0] || null,
-    );
+    gallery_file_.as(task.files.find(file_playable) || task.files[0] || null);
     if (!props.embedded && props.app) {
       props.app.setTitle(task.name || "Preview");
     }
@@ -699,9 +600,13 @@ function PreviewViewModel(props) {
       methods.closePreview();
       destroy_live_player();
       detail_request_sequence += 1;
-      detail_request.cancel?.();
-      live_playback_status_.destroy?.();
-      live_playback_message_.destroy?.();
+      if (typeof detail_request.cancel === "function") detail_request.cancel();
+      if (typeof live_playback_status_.destroy === "function") {
+        live_playback_status_.destroy();
+      }
+      if (typeof live_playback_message_.destroy === "function") {
+        live_playback_message_.destroy();
+      }
     },
     fileURL: file_url,
     playbackURL: playback_url,

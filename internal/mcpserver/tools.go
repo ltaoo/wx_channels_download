@@ -355,6 +355,10 @@ func (s *Server) supports_tool(name string) bool {
 	switch name {
 	case "fetch_content", "create_scraper_job", "get_scraper_job":
 		return s.scraper_jobs != nil || s.api_client != nil
+	case "download_content":
+		return (s.scraper_jobs != nil || s.api_client != nil) && (s.download_task_creator != nil || s.api_client != nil)
+	case "download_wxchannels_live", "download_wxchannels_video":
+		return s.api_client != nil && (s.download_task_creator != nil || s.api_client != nil)
 	case "get_download_tasks", "get_download_task_detail", "get_accounts", "get_browse_history", "get_logs", "get_certificate_status":
 		return s.data_reader != nil || s.api_client != nil
 	case "delete_download_tasks":
@@ -679,50 +683,43 @@ func (s *Server) download_content(ctx context.Context, raw_arguments json.RawMes
 	if existing_action == "duplicate" {
 		config["duplicate"] = true
 	}
-	request_body := map[string]any{
-		"objects": []any{map[string]any{
-			"platform":         output.Platform,
-			"content":          output.Result,
-			"build_from_fetch": has_json_value(output.DownloadInfo),
-			"download_dir":     strings.TrimSpace(arguments.DownloadDir),
-			"filename":         strings.TrimSpace(arguments.Filename),
-			"config":           config,
-			"auto_start":       true,
-		}},
-	}
-	create_response, err := s.api_client.create_download_task(download_context, request_body)
+	auto_start := true
+	create_result, err := s.create_download_task(download_context, DownloadTaskCreateRequest{
+		Platform:       output.Platform,
+		Content:        output.Result,
+		BuildFromFetch: has_json_value(output.DownloadInfo),
+		DownloadDir:    strings.TrimSpace(arguments.DownloadDir),
+		Filename:       strings.TrimSpace(arguments.Filename),
+		Config:         config,
+		AutoStart:      &auto_start,
+	}, "创建下载任务失败")
 	if err != nil {
 		return nil, err
 	}
-	item := create_response.Tasks[0]
-	if item.Code != 0 {
-		return nil, new_tool_execution_error(value_or_default(item.Msg, "创建下载任务失败"), raw_json_value(item.Data))
-	}
-	if existing_action == "skip" && download_item_was_skipped(item.Data) {
+	if create_result.Skipped {
 		return successful_tool_result(map[string]any{
 			"created":       false,
 			"started":       false,
 			"skipped":       true,
-			"existing_task": raw_json_value(item.Data),
+			"existing_task": create_result.Task,
 			"source":        download_source(job, output),
 		})
 	}
 
-	task_value := raw_json_value(item.Data)
 	result := map[string]any{
 		"created": true,
 		"started": true,
 		"skipped": false,
-		"task":    task_value,
-		"ids":     create_response.IDs,
+		"task":    create_result.Task,
+		"ids":     create_result.IDs,
 		"source":  download_source(job, output),
 	}
 	if arguments.WaitForCompletion {
-		task_id := first_download_task_id(create_response, item.Data)
+		task_id := first_download_task_id(create_result)
 		if task_id <= 0 {
 			return nil, fmt.Errorf("下载任务响应缺少 id，无法等待完成")
 		}
-		completed_task, err := s.api_client.wait_download_task(download_context, task_id)
+		completed_task, err := s.wait_download_task(download_context, task_id)
 		if err != nil {
 			return nil, err
 		}
@@ -870,10 +867,84 @@ func download_source(job *ScraperJob, output scraper_output) map[string]any {
 	}
 }
 
-func first_download_task_id(response *download_create_response, raw_task json.RawMessage) int {
-	if response != nil && len(response.IDs) > 0 {
-		return response.IDs[0]
+func (s *Server) create_download_task(ctx context.Context, request DownloadTaskCreateRequest, fallback_message string) (*DownloadTaskCreateResult, error) {
+	if s.download_task_creator != nil {
+		return s.download_task_creator.CreateDownloadTask(ctx, request)
 	}
+	if s.api_client == nil {
+		return nil, fmt.Errorf("下载任务创建服务未初始化")
+	}
+	create_response, err := s.api_client.create_download_task(ctx, map[string]any{
+		"objects": []DownloadTaskCreateRequest{request},
+	})
+	if err != nil {
+		return nil, err
+	}
+	item := create_response.Tasks[0]
+	if item.Code != 0 {
+		return nil, new_tool_execution_error(value_or_default(item.Msg, fallback_message), raw_json_value(item.Data))
+	}
+	return &DownloadTaskCreateResult{
+		Task:    raw_json_value(item.Data),
+		IDs:     create_response.IDs,
+		Skipped: download_item_was_skipped(item.Data),
+	}, nil
+}
+
+func (s *Server) wait_download_task(ctx context.Context, task_id int) (any, error) {
+	if s.data_reader == nil {
+		if s.api_client == nil {
+			return nil, fmt.Errorf("下载任务查询服务未初始化")
+		}
+		return s.api_client.wait_download_task(ctx, task_id)
+	}
+	poll_interval := default_poll_interval
+	if s.api_client != nil && s.api_client.poll_interval > 0 {
+		poll_interval = s.api_client.poll_interval
+	}
+	poll_ticker := time.NewTicker(poll_interval)
+	defer poll_ticker.Stop()
+	for {
+		task, err := s.data_reader.GetDownloadTaskDetail(ctx, task_id)
+		if err != nil {
+			return nil, err
+		}
+		raw_task, err := json.Marshal(task)
+		if err != nil {
+			return nil, fmt.Errorf("解析下载进度响应失败: %w", err)
+		}
+		if !has_json_value(raw_task) {
+			return nil, fmt.Errorf("下载任务不存在: %d", task_id)
+		}
+		var status struct {
+			Status int    `json:"status"`
+			Error  string `json:"error"`
+		}
+		if err := json.Unmarshal(raw_task, &status); err != nil {
+			return nil, fmt.Errorf("解析下载进度响应失败: %w", err)
+		}
+		switch status.Status {
+		case 5:
+			return task, nil
+		case 6, 7:
+			return nil, new_tool_execution_error(value_or_default(status.Error, fmt.Sprintf("下载任务以状态 %d 结束", status.Status)), task)
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("等待下载任务超时或已取消: %w", ctx.Err())
+		case <-poll_ticker.C:
+		}
+	}
+}
+
+func first_download_task_id(result *DownloadTaskCreateResult) int {
+	if result == nil {
+		return 0
+	}
+	if len(result.IDs) > 0 {
+		return result.IDs[0]
+	}
+	raw_task, _ := json.Marshal(result.Task)
 	var task struct {
 		ID int `json:"id"`
 	}

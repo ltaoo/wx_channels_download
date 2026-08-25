@@ -1,6 +1,4 @@
-const runtime_config = window.__d_config || {};
-
-const MaxRunning = Math.max(1, Number(runtime_config.maxRunning) || 3);
+const MaxRunning = Math.max(1, Number(window.config.maxRunning) || 3);
 const DOWNLOAD_PAGE_SIZE_DEFAULT = 12;
 
 const DOWNLOAD_STATUS_COUNT_ITEMS = [
@@ -28,8 +26,8 @@ function runtime_flag(value) {
 
 function is_download_open_external() {
   return (
-    runtime_flag(runtime_config.remoteServerEnabled) ||
-    runtime_flag(runtime_config.inDocker)
+    runtime_flag(window.config.remoteServerEnabled) ||
+    runtime_flag(window.config.inDocker)
   );
 }
 
@@ -76,20 +74,6 @@ function format_download_speed(bytes_per_second) {
   if (value >= megabyte) return `${(value / megabyte).toFixed(1)} MB/s`;
   if (value >= kilobyte) return `${(value / kilobyte).toFixed(1)} KB/s`;
   return `${value.toFixed(1)} B/s`;
-}
-
-function format_download_time(value) {
-  const timestamp = Number(value);
-  if (!Number.isFinite(timestamp) || timestamp <= 0) return "时间未知";
-  const normalized = timestamp < 1000000000000 ? timestamp * 1000 : timestamp;
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(normalized));
 }
 
 function format_download_size(bytes) {
@@ -1319,7 +1303,9 @@ function DownloadV2Model(props = {}) {
     disposables.splice(0).forEach((unlisten) => {
       if (typeof unlisten === "function") unlisten();
     });
-    Object.values(ui).forEach((store) => store.destroy?.());
+    Object.values(ui).forEach((store) => {
+      if (typeof store.destroy === "function") store.destroy();
+    });
   }
 
   Object.assign(methods, {
@@ -1341,7 +1327,6 @@ export {
   format_download_percent,
   format_download_size,
   format_download_speed,
-  format_download_time,
   get_download_status_count,
   is_download_open_external,
   is_download_waiting_status,

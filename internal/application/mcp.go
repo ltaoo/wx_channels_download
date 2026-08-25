@@ -21,6 +21,7 @@ func new_mcp_service(
 		Version:             api_config.Version,
 		DataReader:          new_mcp_data_reader(data_service),
 		ScraperJobs:         new_mcp_scraper_job_backend(scraper_job_service),
+		DownloadTaskCreator: new_mcp_download_task_creator(download_task_service),
 		DownloadTaskDeleter: new_mcp_download_task_deleter(download_task_service),
 	}
 	if !enabled {

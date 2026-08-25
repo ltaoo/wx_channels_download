@@ -189,9 +189,22 @@ func Start(cfg *config.Config) error {
 		hook_manager,
 		cfg.WorkDir,
 		api_cfg.DownloadDir,
+		bus,
 	)
 	runtime_status_service := services.NewRuntimeStatusService()
 	download_task_broadcaster := api.NewDownloadTaskBroadcaster(b.DB, logger, download_task_service)
+	bus.Subscribe(events.TypeDownloadTaskCreated, func(event events.Event) {
+		created, ok := event.(events.DownloadTaskCreated)
+		if ok {
+			download_task_broadcaster.NotifyCreated(created.TaskID)
+		}
+	})
+	bus.Subscribe(events.TypeDownloadTaskDeleted, func(event events.Event) {
+		deleted, ok := event.(events.DownloadTaskDeleted)
+		if ok {
+			download_task_broadcaster.NotifyDeleted(deleted.TaskID)
+		}
+	})
 	downloader.OnEvent(func(event hermes.EventType, data hermes.EventData) {
 		task_id, progress, finished_resources, ok := download_task_event_data(event, data)
 		if !ok {
@@ -515,9 +528,6 @@ func download_task_event_data(event hermes.EventType, data hermes.EventData) (in
 		return event_data.TaskID, nil, event_data.Resources, ok
 	case hermes.EventFailed:
 		event_data, ok := data.(hermes.TaskFailedEventData)
-		return event_data.TaskID, nil, nil, ok
-	case hermes.EventDeleted:
-		event_data, ok := data.(hermes.TaskDeletedEventData)
 		return event_data.TaskID, nil, nil, ok
 	case hermes.EventStarted:
 		event_data, ok := data.(hermes.TaskStartedEventData)

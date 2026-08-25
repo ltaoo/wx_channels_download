@@ -15,14 +15,7 @@ function certificate_source_label(source) {
 }
 
 function certificate_date_label(value) {
-  if (!value) {
-    return "未提供";
-  }
-  var date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
-  }
-  return new Intl.DateTimeFormat("zh-CN", {
+  return window.format_time(value, value ? String(value) : "未提供", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -30,7 +23,7 @@ function certificate_date_label(value) {
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
-  }).format(date);
+  });
 }
 
 function certificate_list_label(value) {

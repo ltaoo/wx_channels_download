@@ -9,24 +9,6 @@ const LOG_LEVEL_OPTIONS = [
 const LOG_FILE_ACCEPT =
   ".log,.txt,.json,.jsonl,.ndjson,text/plain,application/json,application/x-ndjson";
 
-const logs_request = Timeless.kit.request_factory({
-  headers: { "Content-Type": "application/json" },
-  process(response) {
-    if (response.error) {
-      return Timeless.Result.Err(response.error);
-    }
-    const payload = response.data || {};
-    if (payload.code !== 0) {
-      return Timeless.Result.Err(
-        payload.msg || "获取日志失败",
-        payload.code,
-        payload.data,
-      );
-    }
-    return Timeless.Result.Ok(payload.data || {});
-  },
-});
-
 function number_or_default(value, fallback) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -639,7 +621,7 @@ function LogsPageViewModel(props) {
   let request_sequence = 0;
 
   const logs_request_core = new Timeless.kit.RequestCore(
-    (params) => logs_request.get("/api/logs", params),
+    (params) => window.request.get("/api/logs", params),
     {
       client: props.client,
       process(response) {
@@ -653,7 +635,7 @@ function LogsPageViewModel(props) {
     },
   );
   const clear_logs_request_core = new Timeless.kit.RequestCore(
-    () => logs_request.post("/api/logs/clear"),
+    () => window.request.post("/api/logs/clear"),
     { client: props.client },
   );
 

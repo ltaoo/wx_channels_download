@@ -46,6 +46,7 @@ func (s *DownloadTaskService) DeleteTaskWithFiles(task_id int, delete_files bool
 		}
 	}
 	if task.DeletedAt != nil {
+		s.publish_download_tasks_deleted([]int{task.Id})
 		return nil
 	}
 	if err := s.soft_delete_task_graph([]int{task.Id}, time.Now().UnixMilli()); err != nil {

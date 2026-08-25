@@ -64,12 +64,14 @@ func (h *http_handler) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 
 func (h *http_handler) request_server(request *http.Request) *Server {
 	request_server := &Server{
-		api_client:   h.server.api_client,
-		data_reader:  h.server.data_reader,
-		scraper_jobs: h.server.scraper_jobs,
-		error_output: h.server.error_output,
-		version:      h.server.version,
-		pending:      make(map[string]context.CancelFunc),
+		api_client:            h.server.api_client,
+		data_reader:           h.server.data_reader,
+		scraper_jobs:          h.server.scraper_jobs,
+		download_task_creator: h.server.download_task_creator,
+		download_task_deleter: h.server.download_task_deleter,
+		error_output:          h.server.error_output,
+		version:               h.server.version,
+		pending:               make(map[string]context.CancelFunc),
 	}
 	protocol_version := strings.TrimSpace(request.Header.Get("MCP-Protocol-Version"))
 	if protocol_version != "" {

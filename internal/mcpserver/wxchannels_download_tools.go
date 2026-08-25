@@ -455,29 +455,24 @@ func (s *Server) create_wxchannels_download_task(ctx context.Context, content js
 	if existing_action == "duplicate" {
 		config["duplicate"] = true
 	}
-	create_response, err := s.api_client.create_download_task(ctx, map[string]any{
-		"objects": []any{map[string]any{
-			"platform":     "wxchannels",
-			"content":      content,
-			"download_dir": strings.TrimSpace(options.DownloadDir),
-			"filename":     strings.TrimSpace(options.Filename),
-			"config":       config,
-			"auto_start":   true,
-		}},
-	})
+	auto_start := true
+	create_result, err := s.create_download_task(ctx, DownloadTaskCreateRequest{
+		Platform:    "wxchannels",
+		Content:     content,
+		DownloadDir: strings.TrimSpace(options.DownloadDir),
+		Filename:    strings.TrimSpace(options.Filename),
+		Config:      config,
+		AutoStart:   &auto_start,
+	}, "创建视频号下载任务失败")
 	if err != nil {
 		return nil, err
 	}
-	item := create_response.Tasks[0]
-	if item.Code != 0 {
-		return nil, new_tool_execution_error(value_or_default(item.Msg, "创建视频号下载任务失败"), raw_json_value(item.Data))
-	}
-	if existing_action == "skip" && download_item_was_skipped(item.Data) {
+	if create_result.Skipped {
 		return successful_tool_result(map[string]any{
 			"created":       false,
 			"started":       false,
 			"skipped":       true,
-			"existing_task": raw_json_value(item.Data),
+			"existing_task": create_result.Task,
 			"source":        source,
 		})
 	}
@@ -485,8 +480,8 @@ func (s *Server) create_wxchannels_download_task(ctx context.Context, content js
 		"created": true,
 		"started": true,
 		"skipped": false,
-		"task":    raw_json_value(item.Data),
-		"ids":     create_response.IDs,
+		"task":    create_result.Task,
+		"ids":     create_result.IDs,
 		"source":  source,
 	})
 }

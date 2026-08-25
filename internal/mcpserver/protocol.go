@@ -38,6 +38,7 @@ type Config struct {
 	PollInterval        time.Duration
 	DataReader          DataReader
 	ScraperJobs         ScraperJobBackend
+	DownloadTaskCreator DownloadTaskCreator
 	DownloadTaskDeleter DownloadTaskDeleter
 }
 
@@ -47,6 +48,7 @@ type Server struct {
 	api_client            *api_client
 	data_reader           DataReader
 	scraper_jobs          ScraperJobBackend
+	download_task_creator DownloadTaskCreator
 	download_task_deleter DownloadTaskDeleter
 	input                 io.Reader
 	output                io.Writer
@@ -118,13 +120,14 @@ func NewServer(config Config) (*Server, error) {
 			return nil, err
 		}
 	}
-	if client == nil && config.DataReader == nil && config.ScraperJobs == nil && config.DownloadTaskDeleter == nil {
+	if client == nil && config.DataReader == nil && config.ScraperJobs == nil && config.DownloadTaskCreator == nil && config.DownloadTaskDeleter == nil {
 		return nil, fmt.Errorf("至少需要配置一种工具后端")
 	}
 	return &Server{
 		api_client:            client,
 		data_reader:           config.DataReader,
 		scraper_jobs:          config.ScraperJobs,
+		download_task_creator: config.DownloadTaskCreator,
 		download_task_deleter: config.DownloadTaskDeleter,
 		input:                 config.Input,
 		output:                config.Output,

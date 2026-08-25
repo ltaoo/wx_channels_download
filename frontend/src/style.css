@@ -665,7 +665,7 @@ div[data-lazy-img-state="error"] {
   font-weight: var(--dm-font-weight-semibold);
   line-height: 1;
   white-space: nowrap;
-  background: var(--dm-color-bg-surface);
+  background-color: var(--dm-color-bg-interactive);
   border: var(--dm-border-width) solid var(--dm-color-border);
   border-radius: var(--dm-radius-sm);
   cursor: pointer;

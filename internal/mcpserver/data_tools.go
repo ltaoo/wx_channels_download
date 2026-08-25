@@ -78,6 +78,32 @@ type DownloadTaskDeleter interface {
 	DeleteDownloadTasks(ctx context.Context, task_ids []int, delete_files bool) ([]DeleteDownloadTaskResult, error)
 }
 
+// DownloadTaskCreateRequest is the transport-neutral input for one task.
+type DownloadTaskCreateRequest struct {
+	Platform        string          `json:"platform"`
+	Content         json.RawMessage `json:"content"`
+	BuildFromFetch  bool            `json:"build_from_fetch"`
+	ResourceIndexes []int           `json:"resource_indexes,omitempty"`
+	DownloadDir     string          `json:"download_dir"`
+	Filename        string          `json:"filename"`
+	Config          map[string]any  `json:"config"`
+	AutoStart       *bool           `json:"auto_start"`
+	ParentTaskID    *int            `json:"parent_task_id,omitempty"`
+	RelationType    string          `json:"relation_type,omitempty"`
+}
+
+// DownloadTaskCreateResult is the normalized result consumed by MCP tools.
+type DownloadTaskCreateResult struct {
+	Task    any
+	IDs     []int
+	Skipped bool
+}
+
+// DownloadTaskCreator supplies process-local download task creation.
+type DownloadTaskCreator interface {
+	CreateDownloadTask(ctx context.Context, request DownloadTaskCreateRequest) (*DownloadTaskCreateResult, error)
+}
+
 type download_task_list_arguments struct {
 	Page         int   `json:"page"`
 	PageSize     int   `json:"page_size"`

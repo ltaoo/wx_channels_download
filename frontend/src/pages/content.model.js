@@ -1,21 +1,3 @@
-const content_request = Timeless.kit.request_factory({
-  headers: { "Content-Type": "application/json" },
-  process(response) {
-    if (response.error) {
-      return Timeless.Result.Err(response.error);
-    }
-    const payload = response.data || {};
-    if (payload.code !== 0) {
-      return Timeless.Result.Err(
-        payload.msg || "获取内容列表失败",
-        payload.code,
-        payload.data,
-      );
-    }
-    return Timeless.Result.Ok(payload.data || {});
-  },
-});
-
 function number_or_default(value, fallback) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -153,23 +135,11 @@ function content_platform_name(content) {
   if (content.platform_name) {
     return content.platform_name;
   }
-  const names = {
-    wxchannels: "视频号",
-    wxmp: "公众号",
-    officialaccount: "公众号",
-    douyin: "抖音",
-    bilibili: "Bilibili",
-    xiaohongshu: "小红书",
-    xhs: "小红书",
-    youtube: "YouTube",
-    zhihu: "知乎",
-    douban: "豆瓣",
-    qidian: "起点中文网",
-    fanqienovel: "番茄小说",
-    "69shuba": "69书吧",
-    ttk: "TT看书",
-  };
-  return names[content.platform_id] || content.platform_id || "未知平台";
+  return (
+    window.PLATFORM_NAMES[content.platform_id] ||
+    content.platform_id ||
+    "未知平台"
+  );
 }
 
 function content_type_label(value, subtypeValue) {
@@ -179,26 +149,13 @@ function content_type_label(value, subtypeValue) {
   const subtype = String(subtypeValue || "")
     .trim()
     .toLowerCase();
-  const labels = {
-    video: "视频",
-    long_video: "长视频",
-    episode: "单集",
-    series: "系列",
-    collection: "合集",
-    short_video: "短视频",
-    image: "图片",
-    image_set: "图集",
-    album: "图集",
-    article: "文章",
-    blog: "文章",
-    novel: "小说",
-    audio: "音频",
-    podcast: "播客",
-    music: "音乐",
-    document: "文档",
-    live: "直播",
-  };
-  return labels[subtype] || labels[type] || subtype || type || "内容";
+  return (
+    window.CONTENT_TYPE_NAMES[subtype] ||
+    window.CONTENT_TYPE_NAMES[type] ||
+    subtype ||
+    type ||
+    "内容"
+  );
 }
 
 function content_statistics(content) {
@@ -221,29 +178,6 @@ function content_statistics(content) {
     }
   });
   return statistics;
-}
-
-function normalize_epoch_ms(value) {
-  const timestamp = Number(value);
-  if (!Number.isFinite(timestamp) || timestamp <= 0) {
-    return 0;
-  }
-  return timestamp < 1000000000000 ? timestamp * 1000 : timestamp;
-}
-
-function format_content_time(value) {
-  const timestamp = normalize_epoch_ms(value);
-  if (!timestamp) {
-    return "时间未知";
-  }
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(timestamp));
 }
 
 function ContentViewModel(props) {
@@ -351,7 +285,7 @@ function ContentViewModel(props) {
   });
 
   const list_request = new Timeless.kit.RequestCore(
-    (params) => content_request.get("/api/content/list", params),
+    (params) => window.request.get("/api/content/list", params),
     {
       client: props.client,
       process(response) {
@@ -493,7 +427,7 @@ function ContentViewModel(props) {
     platformName: content_platform_name,
     typeLabel: content_type_label,
     statistics: content_statistics,
-    formatTime: format_content_time,
+    formatTime: window.format_time,
   };
 
   const state = {

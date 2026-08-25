@@ -671,7 +671,7 @@ func (d *HermesEngine) request_pause_all_tasks() []*TaskJob {
 }
 
 // DeleteTask stops the execution instance and marks the task as cancelled.
-// Soft deletion of database entities is still handled by the API handler.
+// Soft deletion of database entities is still handled by the owning service.
 func (d *HermesEngine) DeleteTask(task_id int) {
 	d.logger.Info().Int("task_id", task_id).Msg("DeleteTask")
 	if task_job := d.find_job(task_id); task_job != nil {

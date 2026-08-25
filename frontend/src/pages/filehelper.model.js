@@ -1,31 +1,3 @@
-const file_helper_request = Timeless.kit.request_factory({
-  headers: { "Content-Type": "application/json" },
-  process(response) {
-    if (response.error) {
-      return Timeless.Result.Err(response.error);
-    }
-    const payload = response.data || {};
-    if (payload.code !== 0) {
-      return Timeless.Result.Err(
-        payload.msg || "请求失败",
-        payload.code,
-        payload.data,
-      );
-    }
-    return Timeless.Result.Ok(payload.data || {});
-  },
-});
-
-const file_helper_sync_request = Timeless.kit.request_factory({
-  headers: { "Content-Type": "application/json" },
-  process(response) {
-    if (response.error) {
-      return Timeless.Result.Err(response.error);
-    }
-    return Timeless.Result.Ok(response.data || {});
-  },
-});
-
 function error_message(error, fallback) {
   if (error && error.message) {
     return error.message;
@@ -253,7 +225,9 @@ function FileHelperViewModel(props) {
   sending_.subscribe({
     onChange(sending) {
       ui.input_message$.disabled = Boolean(sending);
-      ui.input_message$.emitStateChange?.();
+      if (typeof ui.input_message$.emitStateChange === "function") {
+        ui.input_message$.emitStateChange();
+      }
       ui.input_message$.setValue(ui.input_message$.value, { silence: true });
       ui.btn_send_message$.setLoading(Boolean(sending));
     },
@@ -271,35 +245,35 @@ function FileHelperViewModel(props) {
   });
 
   const status_request = new Timeless.kit.RequestCore(
-    () => file_helper_request.get("/api/filehelper/status"),
+    () => window.request.get("/api/filehelper/status"),
     { client: props.client },
   );
   const qrcode_request = new Timeless.kit.RequestCore(
-    () => file_helper_request.get("/api/filehelper/qrcode"),
+    () => window.request.get("/api/filehelper/qrcode"),
     { client: props.client },
   );
   const login_wait_request = new Timeless.kit.RequestCore(
-    () => file_helper_request.get("/api/filehelper/login/wait"),
+    () => window.request.get("/api/filehelper/login/wait"),
     { client: props.client },
   );
   const channels_status_request = new Timeless.kit.RequestCore(
-    () => file_helper_request.get("/api/status"),
+    () => window.request.get("/api/status"),
     { client: props.client },
   );
   const sync_check_request = new Timeless.kit.RequestCore(
-    () => file_helper_request.get("/api/filehelper/synccheck"),
+    () => window.request.get("/api/filehelper/synccheck"),
     { client: props.client },
   );
   const sync_request = new Timeless.kit.RequestCore(
-    () => file_helper_sync_request.get("/api/filehelper/sync"),
+    () => window.request.get("/api/filehelper/sync"),
     { client: props.client },
   );
   const send_request = new Timeless.kit.RequestCore(
-    (params) => file_helper_request.post("/api/filehelper/send", params),
+    (params) => window.request.post("/api/filehelper/send", params),
     { client: props.client },
   );
   const logout_request = new Timeless.kit.RequestCore(
-    () => file_helper_request.post("/api/filehelper/logout"),
+    () => window.request.post("/api/filehelper/logout"),
     { client: props.client },
   );
 

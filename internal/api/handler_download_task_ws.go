@@ -124,9 +124,9 @@ func is_terminal_task_event(event hermes.EventType) bool {
 }
 
 // should_broadcast_download_task_stats reports lifecycle events whose persisted
-// status changes the aggregate task counters. Deletion stats are broadcast by
-// the API handler after the soft delete is persisted, rather than on the
-// earlier Hermes cancellation event.
+// status changes the aggregate task counters. Deletion stats are broadcast from
+// the application deletion event after the soft delete commits, rather than on
+// the earlier Hermes cancellation event.
 func should_broadcast_download_task_stats(event hermes.EventType) bool {
 	switch event {
 	case hermes.EventCreated,
@@ -746,6 +746,26 @@ func (b *DownloadTaskBroadcaster) broadcast_download_task_stats() {
 		add_download_task_stats_count(stats, sc.Status, sc.Count)
 	}
 	v1_task_bridge.BroadcastStats(stats)
+}
+
+// NotifyCreated broadcasts a task that was persisted without starting Hermes.
+func (b *DownloadTaskBroadcaster) NotifyCreated(task_id int) {
+	if b == nil || task_id <= 0 {
+		return
+	}
+	b.broadcast_download_task_create(task_id)
+	b.cache_task_progress_meta(task_id)
+	b.broadcast_download_task_stats()
+}
+
+// NotifyDeleted broadcasts a deletion after the task graph soft deletion commits.
+func (b *DownloadTaskBroadcaster) NotifyDeleted(task_id int) {
+	if b == nil || task_id <= 0 {
+		return
+	}
+	b.remove_cached_task_progress_meta(task_id)
+	b.broadcast_download_task_delete([]int{task_id})
+	b.broadcast_download_task_stats()
 }
 
 func (b *DownloadTaskBroadcaster) broadcast_download_task_delete(task_ids []int) {

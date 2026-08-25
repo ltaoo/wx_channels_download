@@ -4,7 +4,6 @@ import {
   format_download_percent,
   format_download_size,
   format_download_speed,
-  format_download_time,
   get_download_status_count,
   is_download_open_external,
   is_download_waiting_status,
@@ -671,13 +670,13 @@ export function DownloadV2TaskColumns(props) {
       cellAttributes(task$) {
         return {
           title: computed(task$.state.raw, (raw) =>
-            format_download_time(raw && raw.created_at),
+            window.format_time(raw && raw.created_at),
           ),
         };
       },
       render(task$) {
         return computed(task$.state.raw, (raw) =>
-          format_download_time(raw && raw.created_at),
+          window.format_time(raw && raw.created_at),
         );
       },
     },

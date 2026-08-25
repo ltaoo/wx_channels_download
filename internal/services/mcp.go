@@ -18,6 +18,7 @@ type MCPServiceConfig struct {
 	Version             string
 	DataReader          mcpserver.DataReader
 	ScraperJobs         mcpserver.ScraperJobBackend
+	DownloadTaskCreator mcpserver.DownloadTaskCreator
 	DownloadTaskDeleter mcpserver.DownloadTaskDeleter
 }
 
@@ -62,6 +63,7 @@ func build_mcp_handler(config MCPServiceConfig) (http.Handler, error) {
 		Version:             config.Version,
 		DataReader:          config.DataReader,
 		ScraperJobs:         config.ScraperJobs,
+		DownloadTaskCreator: config.DownloadTaskCreator,
 		DownloadTaskDeleter: config.DownloadTaskDeleter,
 	})
 	if err != nil {

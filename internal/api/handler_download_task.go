@@ -502,7 +502,6 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 	success_count := 0
 	fail_count := 0
 	skip_count := 0
-	manual_start_count := 0
 	for _, body := range req.Objects {
 		data, err := c.create_download_task_single(body)
 		if err != nil {
@@ -515,9 +514,8 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 					tasks = append(tasks, item)
 					if id > 0 {
 						ids = append(ids, id)
-						if body.AutoStart != nil && !*body.AutoStart {
+						if existing_action == download_existing_action_skip && body.AutoStart != nil && !*body.AutoStart {
 							c.download_task_broadcaster.broadcast_download_task_create(id)
-							manual_start_count++
 						}
 					}
 					if item.Code == api_code_success {
@@ -546,14 +544,7 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 			tasks = append(tasks, download_task_create_success_item(data))
 			ids = append(ids, data.ID)
 			success_count++
-			if body.AutoStart != nil && !*body.AutoStart {
-				c.download_task_broadcaster.broadcast_download_task_create(data.ID)
-				manual_start_count++
-			}
 		}
-	}
-	if manual_start_count > 0 {
-		c.download_task_broadcaster.broadcast_download_task_stats()
 	}
 
 	c.logger.Info().
@@ -724,7 +715,6 @@ func (c *APIClient) handle_create_download_task_by_url(ctx *gin.Context) {
 	tasks := make([]gin.H, 0, len(req.Objects))
 	success_count := 0
 	fail_count := 0
-	manual_start_count := 0
 	for _, body := range req.Objects {
 		data, err := c.createDownloadTaskByURLSingle(body)
 		if err != nil {
@@ -734,16 +724,7 @@ func (c *APIClient) handle_create_download_task_by_url(ctx *gin.Context) {
 		} else {
 			tasks = append(tasks, gin.H{"success": true, "data": data})
 			success_count++
-			if body.AutoStart != nil && !*body.AutoStart {
-				if task, ok := data["task"].(model.DownloadTask); ok {
-					c.download_task_broadcaster.broadcast_download_task_create(task.Id)
-					manual_start_count++
-				}
-			}
 		}
-	}
-	if manual_start_count > 0 {
-		c.download_task_broadcaster.broadcast_download_task_stats()
 	}
 
 	c.logger.Info().
@@ -1057,16 +1038,9 @@ func (c *APIClient) handle_delete_download_task(ctx *gin.Context) {
 	c.logger.Info().Str("api", "POST /api/v1/download_task/delete").Int("task_count", len(body.TaskIDs)).Bool("delete_files", body.DeleteFiles).Msg("Received batch delete download task request")
 
 	results := make([]gin.H, 0, len(body.TaskIDs))
-	successful_deletions := 0
 	for _, taskID := range body.TaskIDs {
 		r := c.deleteSingleDownloadTask(taskID, body.DeleteFiles)
 		results = append(results, r)
-		if success, _ := r["success"].(bool); success {
-			successful_deletions++
-		}
-	}
-	if successful_deletions > 0 {
-		c.download_task_broadcaster.broadcast_download_task_stats()
 	}
 
 	result.Ok(ctx, gin.H{"results": results})
@@ -1083,7 +1057,6 @@ func (c *APIClient) deleteSingleDownloadTask(taskID int, deleteFiles bool) gin.H
 		c.logger.Error().Int("task_id", taskID).Bool("delete_files", deleteFiles).Err(err).Msg("Download task deletion failed")
 		return gin.H{"task_id": taskID, "success": false, "error": err.Error()}
 	}
-	c.download_task_broadcaster.broadcast_download_task_delete([]int{taskID})
 
 	return gin.H{"task_id": taskID, "success": true, "status_text": "cancelled"}
 }
@@ -1604,9 +1577,6 @@ func (c *APIClient) clear_download_task_records(task_ids []int, delete_files boo
 		if success, _ := clear_result["success"].(bool); success {
 			cleared++
 		}
-	}
-	if cleared > 0 {
-		c.download_task_broadcaster.broadcast_download_task_stats()
 	}
 	return cleared, results
 }
