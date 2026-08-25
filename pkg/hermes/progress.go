@@ -13,11 +13,24 @@ func (d *HermesEngine) pause_task(task_id int) {
 	d.delete_tracker(task_id)
 }
 
-func (d *HermesEngine) fail_task(task_id int, err_msg string) {
+func (d *HermesEngine) fail_task(job *TaskJob, err_msg string) {
+	if job == nil {
+		return
+	}
+	task_id := job.ID
 	_ = d.store.UpdateStatus(task_id, TaskStatusFailed)
 	_ = d.store.DeactivateConnections(task_id)
 	_ = d.store.RecordError(task_id, err_msg)
 	d.logger.Error().Int("task_id", task_id).Str("error", err_msg).Msg("task failed")
+	if d.hooks != nil && (d.hooks.HasFailedHook() || d.hooks.HasFinishHook()) {
+		file_paths := make([]string, 0, len(job.Resources))
+		for _, resource := range job.Resources {
+			if resource.FilePath != "" {
+				file_paths = append(file_paths, resource.FilePath)
+			}
+		}
+		go d.invoke_terminal_hooks(job, hook_task_status_failed, err_msg, file_paths)
+	}
 	d.emit(EventFailed, TaskFailedEventData{TaskID: task_id, Error: err_msg})
 	d.delete_tracker(task_id)
 }

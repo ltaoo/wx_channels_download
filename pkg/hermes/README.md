@@ -98,9 +98,19 @@ The executor supports finite `FILE` resources and live `STREAM` resources. `COLL
 - enables HTTP network reconnect options;
 - records without re-encoding (`-c copy`);
 - writes ten-minute MKV chunks by default, or uses `download_resource.rotate_minutes`;
+- remuxes the same input into four-second HLS EVENT segments for time-shifted
+  playback without opening a second connection to the live source;
 - retains closed chunks across pause and retry;
 - reports aggregate byte/time progress and persists chunk state in `download_segment`;
 - concatenates playable chunks into one MKV file and atomically commits it when the stream ends or reaches its configured stop time.
+
+The in-progress HLS workspace is stored below `<output>.recording/playback`.
+Only atomically closed MPEG-TS segments are published in `index.m3u8`. Recorder
+retries append to the existing EVENT playlist with a discontinuity marker. On
+successful finalization, Hermes appends `#EXT-X-ENDLIST` and atomically moves
+the sidecar to `<output>.playback`; applications may keep serving that sidecar
+while the final MKV is postprocessed or renamed. The download-task API exposes
+these files through task/resource-scoped routes instead of filesystem paths.
 
 `record_start`, `record_end`, and `duration` are honored by the recording scheduler. `rotate_size` is carried through the recorder contract but the bundled FFmpeg recorder does not yet implement size-based rotation. HTTP 401, 403, and 410 responses are treated as fatal for that endpoint and persisted as concrete task errors because they usually mean that the signed URL or its authorization is no longer valid. Hermes does not refresh signed live URLs; other transport failures still use bounded retries.
 

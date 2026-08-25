@@ -183,7 +183,7 @@ func (c *APIClient) resolve_unique_download_file_prefix(path string) (string, bo
 		return "", false
 	}
 	absolute_path = filepath.Clean(absolute_path)
-	if !pathWithinDownloadRoot(root, absolute_path) {
+	if !path_within_download_root(root, absolute_path) {
 		return "", false
 	}
 	dir := filepath.Dir(absolute_path)
@@ -207,7 +207,7 @@ func (c *APIClient) resolve_unique_download_file_prefix(path string) (string, bo
 			continue
 		}
 		candidate = filepath.Clean(candidate)
-		if !pathWithinDownloadRoot(root, candidate) {
+		if !path_within_download_root(root, candidate) {
 			continue
 		}
 		info, err := entry.Info()

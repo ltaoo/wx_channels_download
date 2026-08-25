@@ -173,7 +173,7 @@ func Start(cfg *config.Config) error {
 			ConnectionConcurrency: api_cfg.ConnectionConcurrency,
 			FilenameTemplate:      api_cfg.FilenameTemplate,
 			BasePath:              api_cfg.DownloadDir,
-			// SpeedLimit:       500 * 1024,
+			// SpeedLimit:            10 * 1024,
 		},
 	})
 	downloader.RegisterProtocol(protocol.NewHTTPDriver())
@@ -197,7 +197,7 @@ func Start(cfg *config.Config) error {
 		if !ok {
 			return
 		}
-		logger.Info().Int("task_id", task_id).Str("event", string(event)).Msg("Hermes task event")
+		logger.Info().Str("file", "/application/start.go").Int("task_id", task_id).Str("event", string(event)).Msg("Hermes task event")
 		download_task_broadcaster.Notify(task_id, event, progress, finished_resources)
 		if event == hermes.EventFinished {
 			go bus.Publish(events.DownloadTaskFinished{TaskID: task_id})

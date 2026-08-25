@@ -320,6 +320,7 @@ type DownloadTaskFileRecord struct {
 	ID          int     `json:"id"`
 	DownloadDir string  `json:"download_dir"`
 	Name        string  `json:"name"`
+	FilePath    string  `json:"file_path"`
 	Kind        string  `json:"kind"`
 	Type        string  `json:"type"`
 	Status      string  `json:"status"`
@@ -1675,6 +1676,7 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 				ID:          r.ID,
 				DownloadDir: r.DownloadDir,
 				Name:        r.Name,
+				FilePath:    filepath.Join(r.DownloadDir, r.Name),
 				Kind:        r.Kind,
 				Type:        r.ResourceType,
 				Status:      file_status,
@@ -3480,7 +3482,9 @@ func ComputeEffectiveTaskStatusFromSummary(db_status int, file_count int, finish
 		return db_status
 	}
 	if finished_count == file_count {
-		return model.TaskStatusFinished
+		// Files finish transferring before postprocessing and final renaming.
+		// Only the persisted task status may declare the task complete.
+		return db_status
 	}
 	if has_downloading {
 		return model.TaskStatusDownloading

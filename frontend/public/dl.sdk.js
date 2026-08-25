@@ -8,6 +8,8 @@
   const RequestCore = timeless.kit.RequestCore;
   const SocketClientCore = timeless.kit.SocketClientCore;
   const ChannelCore = timeless.kit.ChannelCore;
+  const Result = timeless.Result;
+  const base = timeless.base;
   const request = timeless.kit.request_factory({
     headers: { "Content-Type": "application/json" },
     process(response) {
@@ -24,12 +26,8 @@
     },
   });
 
-  function create_download_task(params) {
-    const path =
-      params.mode === "url"
-        ? "/api/v1/download_task/create_by_url"
-        : "/api/v1/download_task/create";
-    return request.post(path, params.body);
+  function create_download_task(body) {
+    return request.post("/api/v1/download_task/create", body);
   }
 
   function list_download_tasks(params) {
@@ -109,7 +107,7 @@
     return;
   }
 
-  const task_status = Object.freeze({
+  const DOWNLOAD_TASK_STATUS_MAP = Object.freeze({
     0: "waiting",
     1: "preparing",
     2: "downloading",
@@ -119,7 +117,12 @@
     6: "failed",
     7: "cancelled",
   });
-  const success_statuses = new Set(["done", "finished", "completed", "success"]);
+  const success_statuses = new Set([
+    "done",
+    "finished",
+    "completed",
+    "success",
+  ]);
   const failure_statuses = new Set([
     "error",
     "failed",
@@ -132,8 +135,8 @@
     const raw = String(value ?? "")
       .trim()
       .toLowerCase();
-    if (Object.prototype.hasOwnProperty.call(task_status, raw)) {
-      return task_status[raw];
+    if (DOWNLOAD_TASK_STATUS_MAP[raw]) {
+      return DOWNLOAD_TASK_STATUS_MAP[raw];
     }
     if (raw === "wait" || raw === "pending" || raw === "queued") {
       return "waiting";
@@ -273,16 +276,13 @@
       : Array.isArray(record && record.resources)
         ? record.resources
         : [];
-    return files.map((file) =>
-      Object.assign({}, file, {
-        output_path: output_path(file),
-      }),
-    );
+    return files.map((file) => Object.assign({}, file));
   }
 
   function file_path(record) {
     const direct = String(
-      (record && (record.filepath || record.file_path || record.local_path)) || "",
+      (record && (record.filepath || record.file_path || record.local_path)) ||
+        "",
     ).trim();
     if (direct) {
       return direct;
@@ -308,7 +308,10 @@
     return (Array.isArray(resources) ? resources : []).reduce(
       (total, resource) => {
         total.downloaded += number_value(resource && resource.downloaded, 0);
-        total.total += number_value(resource && (resource.size || resource.total), 0);
+        total.total += number_value(
+          resource && (resource.size || resource.total),
+          0,
+        );
         total.speed += number_value(resource && resource.speed, 0);
         return total;
       },
@@ -376,7 +379,8 @@
     });
     const merged = current.map((file) => {
       const id = file && (file.id ?? file.resource_id);
-      const update = id === undefined || id === null ? null : update_map.get(String(id));
+      const update =
+        id === undefined || id === null ? null : update_map.get(String(id));
       if (!update) {
         return file;
       }
@@ -391,53 +395,48 @@
     const next = Object.assign({}, current || {}, update || {});
     if (Object.prototype.hasOwnProperty.call(update || {}, "files")) {
       next.files = merge_files(current && current.files, update.files);
-      // Platform create responses use `resources`, while REST/WS task records
-      // use `files`. Keep the compatibility alias synchronized so a final
-      // Hermes filename (extension and duplicate suffix included) cannot be
-      // hidden by the stale create response.
-      if (Array.isArray(current && current.resources)) {
-        next.resources = merge_files(current.resources, update.files);
-      }
-    }
-    if (Object.prototype.hasOwnProperty.call(update || {}, "resources")) {
-      next.resources = merge_files(current && current.resources, update.resources);
+      delete next.resources;
+    } else if (
+      Object.prototype.hasOwnProperty.call(update || {}, "resources")
+    ) {
+      next.resources = merge_files(
+        current && current.resources,
+        update.resources,
+      );
     }
     return next;
   }
 
   /**
    * A stable domain object for one server-side download task.
-   * Reactive fields are exposed directly; use `.value` outside Timeless views.
+   * Reactive fields are exposed through `model.state`.
    * @param {Object} props
    * @param {DownloaderModel} props.owner
-   * @param {Object} props.record
+   * @param {Object} props.data
    * @param {Boolean} props.pending
    * @param {string} props.name
    */
   function DownloadTaskModel(props) {
     const {
       owner = null,
-      record: initial = {},
+      data: initial = {},
+      error,
       pending = false,
-      name: initial_name = "",
+      logger,
     } = props || {};
-    const id_ = ref(initial.id ?? initial.task_id ?? null);
+
+    const id_ = ref(initial.id ?? null);
+    const title_ = ref(initial.name);
     const status_ = ref(
       pending ? "creating" : normalize_status(initial.status),
     );
-    const title_ = ref(task_title(initial, initial_name));
     const filepath_ = ref(file_path(initial));
     const progress_ = refobj(task_progress(initial));
-    const error_ = ref(null);
+    const error_ = ref(error);
     const raw_ = refobj(Object.assign({}, initial));
     const websocket_connected_ = ref(false);
     const websocket_connecting_ = ref(false);
-    const events = {
-      change: event_channel(),
-      fail: event_channel(),
-      progress: event_channel(),
-      success: event_channel(),
-    };
+
     let ready_state = deferred();
     let finished_state = deferred();
     let terminal_state = null;
@@ -451,9 +450,9 @@
 
     const state = {
       id: id_,
-      status: status_,
-      title: title_,
       name: title_,
+      title: title_,
+      status: status_,
       filepath: filepath_,
       progress: progress_,
       error: error_,
@@ -464,11 +463,6 @@
     const ui = {};
     const reqs = owner && owner.reqs ? owner.reqs : {};
     const methods = {
-      onSuccess: on_success,
-      onFail: on_fail,
-      onFailed: on_failed,
-      onProgress: on_progress,
-      onChange: on_change,
       connectWebSocket: connect_task_websocket,
       disconnectWebSocket: disconnect_task_websocket,
       start,
@@ -487,13 +481,27 @@
       dispose,
       handle_websocket_message: handle_task_websocket_message,
     };
+
+    // const events = {
+    //   change: event_channel(),
+    //   fail: event_channel(),
+    //   progress: event_channel(),
+    //   success: event_channel(),
+    // };
+    const bus = base();
+
     const model = {
       state,
       ui,
       reqs,
       methods,
       handler,
-      ...state,
+      get id() {
+        return id_.value;
+      },
+      get error() {
+        return error_.value;
+      },
       get ready() {
         return ready_state.promise;
       },
@@ -511,40 +519,43 @@
       _dispose: handler.dispose,
       _connectWebSocket: methods.connectWebSocket,
       _disconnectWebSocket: methods.disconnectWebSocket,
+      onSuccess(handler) {
+        if (typeof handler !== "function") {
+          throw new TypeError("event listener must be a function");
+        }
+        logger
+          .Info()
+          .Str("file", "/public/dl.sdk.js")
+          .Msg("add success handler");
+        const unsubscribe = bus.on("task:success", handler);
+        if (terminal_state === "success") {
+          global.queueMicrotask(() => handler(raw_.value));
+        }
+        return unsubscribe;
+      },
+      onFail(handler) {
+        return subscribe_failure(handler);
+      },
+      onFailed(handler) {
+        return subscribe_failure(handler);
+      },
+      onProgress(handler) {
+        bus.on("task:progress", handler);
+      },
+      onChange(handler) {
+        bus.on("task:change", handler);
+      },
     };
 
-    function on_success(listener) {
-      if (typeof listener !== "function") {
+    function subscribe_failure(handler) {
+      if (typeof handler !== "function") {
         throw new TypeError("event listener must be a function");
       }
-      const unsubscribe = events.success.subscribe(listener);
-      if (terminal_state === "success") {
-        global.queueMicrotask(() => listener(raw_.value));
-      }
-      return unsubscribe;
-    }
-
-    function on_fail(listener) {
-      const unsubscribe = events.fail.subscribe(listener);
+      const unsubscribe = bus.on("task:failed", handler);
       if (terminal_state === "fail" && last_failure) {
-        global.queueMicrotask(() => listener({ error: last_failure, task: model }));
+        global.queueMicrotask(() => handler(last_failure));
       }
       return unsubscribe;
-    }
-
-    function on_failed(listener) {
-      if (typeof listener !== "function") {
-        throw new TypeError("event listener must be a function");
-      }
-      return on_fail((event) => listener(event.error));
-    }
-
-    function on_progress(listener) {
-      return events.progress.subscribe(listener);
-    }
-
-    function on_change(listener) {
-      return events.change.subscribe(listener);
     }
 
     function decode_task_websocket_message(value) {
@@ -567,10 +578,16 @@
     }
 
     function apply_task_websocket_record(record) {
+      logger
+        .Info()
+        .Str("file", "/public/dl.sdk.js")
+        .Str("task_id", record?.id)
+        .Str("raw.id", id_.value)
+        .Msg("apply_task_websocket_record");
       if (!record || typeof record !== "object") {
         return false;
       }
-      const record_id = record.id ?? record.task_id;
+      const record_id = record.id;
       if (!current_task_id_matches(record_id)) {
         return false;
       }
@@ -579,6 +596,12 @@
     }
 
     function handle_task_websocket_message(message) {
+      logger
+        .Info()
+        .Str("file", "/public/dl.sdk.js")
+        .Bool("disposed", !!disposed)
+        .Str("message.type", message?.type)
+        .Msg("handle_task_websocket_message");
       if (!message || typeof message !== "object" || disposed) {
         return;
       }
@@ -595,47 +618,49 @@
         return;
       }
       if (message.type === "task_delete") {
-        const deleted = (Array.isArray(message.task_ids) ? message.task_ids : []).some(
-          current_task_id_matches,
-        );
+        const deleted = (
+          Array.isArray(message.task_ids) ? message.task_ids : []
+        ).some(current_task_id_matches);
         if (deleted) {
           update({ id: id_.value, status: "deleted" });
         }
         return;
       }
-      if (
-        message.type === "task_snapshot" &&
-        current_task_id_matches(message.task_id)
-      ) {
-        const resources = Array.isArray(message.resources) ? message.resources : [];
-        const aggregate = aggregate_resources(resources);
-        update({
-          id: message.task_id,
-          status: message.status,
-          name: message.name || "",
-          resources,
-          downloaded: aggregate.downloaded,
-          size: aggregate.total,
-          speed: aggregate.speed,
-        });
-        return;
-      }
-      if (message.type === "batch_tasks") {
-        (Array.isArray(message.data) ? message.data : []).forEach(
-          apply_task_websocket_record,
-        );
-        return;
-      }
-      if (message.type === "event") {
-        const data = message.data || {};
-        const task = data.Task || data.task;
-        if (task) {
-          const error = data.Err || data.err;
-          apply_task_websocket_record(
-            error ? Object.assign({}, task, { error }) : task,
-          );
-        }
-      }
+      // if (
+      //   message.type === "task_snapshot" &&
+      //   current_task_id_matches(message.task_id)
+      // ) {
+      //   const resources = Array.isArray(message.resources)
+      //     ? message.resources
+      //     : [];
+      //   const aggregate = aggregate_resources(resources);
+      //   update({
+      //     id: message.task_id,
+      //     status: message.status,
+      //     name: message.name || "",
+      //     resources,
+      //     downloaded: aggregate.downloaded,
+      //     size: aggregate.total,
+      //     speed: aggregate.speed,
+      //   });
+      //   return;
+      // }
+      // if (message.type === "batch_tasks") {
+      //   (Array.isArray(message.data) ? message.data : []).forEach(
+      //     apply_task_websocket_record,
+      //   );
+      //   return;
+      // }
+      // if (message.type === "event") {
+      //   const data = message.data || {};
+      //   const task = data.Task || data.task;
+      //   if (task) {
+      //     const error = data.Err || data.err;
+      //     apply_task_websocket_record(
+      //       error ? Object.assign({}, task, { error }) : task,
+      //     );
+      //   }
+      // }
     }
 
     function task_websocket_url(id) {
@@ -650,11 +675,7 @@
       if (disposed) {
         return;
       }
-      events.change.emit({
-        task: model,
-        type: "websocket_error",
-        error: error_value(error, "Download task WebSocket failed"),
-      });
+      bus.emit("task:wserror", error);
     }
 
     function sync_task_websocket_state(channel, channel_state) {
@@ -687,7 +708,9 @@
       }
       const id = id_.value;
       if (id === undefined || id === null || id === "") {
-        throw new Error("Download task id is required before connecting WebSocket");
+        throw new Error(
+          "Download task id is required before connecting WebSocket",
+        );
       }
       if (!owner || !owner.socket_client) {
         throw new Error("Download task WebSocket requires a socket_client");
@@ -705,10 +728,9 @@
         destroy_task_websocket();
       }
 
-      const channel_options =
-        (owner && owner.task_websocket_options) || {
-          reconnect: { enabled: true, interval: 5000 },
-        };
+      const channel_options = (owner && owner.task_websocket_options) || {
+        reconnect: { enabled: true, interval: 5000 },
+      };
       const channel = new ChannelCore(task_websocket_url(id), {
         client: owner.socket_client,
         process: decode_task_websocket_message,
@@ -844,7 +866,9 @@
 
     function require_owner(method) {
       if (!owner || typeof owner[method] !== "function") {
-        throw new Error(`Download task is not attached to a DL instance: ${method}`);
+        throw new Error(
+          `Download task is not attached to a DL instance: ${method}`,
+        );
       }
       return owner[method];
     }
@@ -887,25 +911,30 @@
         ready_state.settled = true;
         ready_state.reject(error);
       }
-      events.fail.emit({ error, task: model });
-      events.change.emit({ task: model, type: "error", error });
+      bus.emit("task:failed", error);
       return error;
     }
 
-    function update(record, options) {
+    function update(record, opt) {
       if (disposed || !record || typeof record !== "object") {
         return model;
       }
+      logger
+        .Info()
+        .Str("file", "/public/dl.sdk.js:903")
+        .Int("task_id", id_.value)
+        .JSON("record", record)
+        .Msg("update task 4");
       const previous_raw = raw_.value || {};
       const next_raw =
-        options && options.replace
+        opt && opt.replace
           ? Object.assign({}, record)
           : merge_task_record(previous_raw, record);
       raw_.as(next_raw);
       const next_id = next_raw.id ?? next_raw.task_id;
       if (next_id !== undefined && next_id !== null && next_id !== "") {
         id_.as(next_id);
-        schedule_task_websocket_connection();
+        // schedule_task_websocket_connection();
       }
       const next_title = task_title(next_raw, title_.value);
       if (next_title !== title_.value) {
@@ -919,17 +948,18 @@
       const next_progress = task_progress(next_raw, previous_progress);
       if (progress_changed(previous_progress, next_progress)) {
         progress_.as(next_progress);
-        events.progress.emit({
-          task: model,
-          progress: next_progress,
-          previous: previous_progress,
-        });
+        bus.emit("task:progress", next_progress);
       }
       const previous_status = status_.value;
       const next_status = normalize_status(next_raw.status ?? previous_status);
       if (next_status !== previous_status) {
         status_.as(next_status);
       }
+      logger
+        .Info()
+        .Str("file", "/public/dl.sdk.js:938")
+        .Int("task_id", id_.value)
+        .Msg("task is deleted?");
       if (
         next_status !== "deleted" &&
         !success_statuses.has(next_status) &&
@@ -942,38 +972,45 @@
         error_.as(null);
         finished_state = deferred();
       }
-      const message = next_raw.error || next_raw.error_message || next_raw._errMsg;
+      const message =
+        next_raw.error || next_raw.error_message || next_raw._errMsg;
+      logger
+        .Info()
+        .Str("file", "/public/dl.sdk.js:952")
+        .Int("task_id", id_.value)
+        .Bool("success", success_statuses.has(next_status))
+        .Str("next_status", next_status)
+        .Str("terminal_state", terminal_state)
+        .Msg("check has success");
       if (success_statuses.has(next_status) && terminal_state !== "success") {
         terminal_state = "success";
         error_.as(null);
+        bus.emit("task:success", next_raw);
         if (!finished_state.settled) {
           finished_state.settled = true;
           finished_state.resolve(model);
         }
-        events.success.emit(next_raw);
-      } else if (failure_statuses.has(next_status) && terminal_state !== "fail") {
+        methods.disconnectWebSocket();
+      } else if (
+        failure_statuses.has(next_status) &&
+        terminal_state !== "fail"
+      ) {
         fail(message || `Download task ${next_status}`, {
           creation: false,
           preserve_status: true,
           terminal: true,
         });
       }
-      events.change.emit({
-        task: model,
-        type: "update",
-        record: next_raw,
-        previousStatus: previous_status,
-      });
+      bus.emit("task:change", next_raw);
       return model;
     }
 
     function dispose() {
       disposed = true;
       destroy_task_websocket();
-      Object.values(events).forEach((channel) => channel.clear());
+      bus.destroy();
     }
 
-    update(initial, { replace: true });
     if (!pending) {
       mark_ready();
     }
@@ -982,7 +1019,9 @@
 
   function build_download_task_object_payload(input, options) {
     const create_options =
-      options && typeof options === "object" ? Object.assign({}, options) : null;
+      options && typeof options === "object"
+        ? Object.assign({}, options)
+        : null;
     let object;
     if (create_options && create_options.platform) {
       object = {
@@ -991,7 +1030,9 @@
       };
     } else {
       object =
-        typeof input === "string" ? { url: input } : Object.assign({}, input || {});
+        typeof input === "string"
+          ? { url: input }
+          : Object.assign({}, input || {});
     }
     if (!create_options) {
       return object;
@@ -1051,55 +1092,25 @@
    */
   function build_download_task_create_body(input, options) {
     const object = build_download_task_object_payload(input, options);
-    const is_url_task =
-      !!object.url && !object.platform && !object.content && !object.platform_id;
-    return {
-      mode: is_url_task ? "url" : "platform",
-      body: { objects: [object] },
-      object,
-    };
+    return { objects: [object] };
+    // const is_url_task =
+    //   !!object.url && !object.platform && !object.content && !object.platform_id;
+    // return {
+    //   mode: is_url_task ? "url" : "platform",
+    //   body: { objects: [object] },
+    //   object,
+    // };
   }
 
-  function created_task_record(response_data) {
-    const items = response_data && response_data.tasks;
-    const item = Array.isArray(items) ? items[0] : null;
-    if (!item) {
-      throw new Error("Create download task returned no task");
+  function extra_created_task(response) {
+    const task_resp = Array.isArray(response.tasks) ? response.tasks[0] : null;
+    if (!task_resp) {
+      return Result.Err("Create download task returned no task");
     }
-    if (item.success === false) {
-      throw error_value(
-        {
-          message: item.error || item.msg || "Create download task failed",
-          code: item.code,
-          data: item.data,
-          item,
-        },
-        "Create download task failed",
-      );
+    if (Number(task_resp.code) !== 0) {
+      return Result.Err(new Error(task_resp.msg), task_resp.code);
     }
-    if (typeof item.code !== "undefined" && Number(item.code) !== 0) {
-      throw error_value(
-        {
-          message: item.msg || "Create download task failed",
-          code: Number(item.code),
-          data: item.data,
-          item,
-        },
-        "Create download task failed",
-      );
-    }
-    const data = item.data || item.task || item;
-    if (data && data.task) {
-      const resources = [];
-      if (data.resource) {
-        resources.push(data.resource);
-      }
-      if (Array.isArray(data.resources)) {
-        resources.push(...data.resources);
-      }
-      return Object.assign({}, data.task, resources.length ? { resources } : {});
-    }
-    return data;
+    return Result.Ok(task_resp.data);
   }
 
   function task_was_skipped(record) {
@@ -1127,9 +1138,7 @@
   function default_web_socket_url(configured_url) {
     const config = global.__d_config || {};
     const configured =
-      configured_url ||
-      config.downloaderWSURL ||
-      config.downloader_ws_url;
+      configured_url || config.downloaderWSURL || config.downloader_ws_url;
     if (configured) {
       return String(configured);
     }
@@ -1158,6 +1167,7 @@
       reconnect = true,
       reconnect_interval: reconnect_interval_value = 5000,
       auto_start = true,
+      logger,
     } = props || {};
     const reconnect_enabled = reconnect !== false;
     const auto_start_enabled = auto_start !== false;
@@ -1170,13 +1180,17 @@
       download: {
         create: new RequestCore(create_download_task, { client: http_client }),
         list: new RequestCore(list_download_tasks, { client: http_client }),
-        detail: new RequestCore(get_download_task_detail, { client: http_client }),
+        detail: new RequestCore(get_download_task_detail, {
+          client: http_client,
+        }),
         delete: new RequestCore(delete_download_task, { client: http_client }),
         start: new RequestCore(start_download_task, { client: http_client }),
         resume: new RequestCore(resume_download_task, { client: http_client }),
         pause: new RequestCore(pause_download_task, { client: http_client }),
         retry: new RequestCore(retry_download_task, { client: http_client }),
-        prepare: new RequestCore(prepare_download_task, { client: http_client }),
+        prepare: new RequestCore(prepare_download_task, {
+          client: http_client,
+        }),
         start_all: new RequestCore(start_all_download_tasks, {
           client: http_client,
         }),
@@ -1203,7 +1217,7 @@
     /** @type {Map<string, DownloadTaskModel>} */
     const tasks_by_id = new Map();
     const socket_status_by_id = new Map();
-    const websocket_url = "/ws/v1/download_task";
+    const websocket_url = default_web_socket_url();
     const reconnect_interval = Math.max(
       250,
       number_value(reconnect_interval_value, 5000),
@@ -1329,9 +1343,11 @@
     function task_id(target) {
       const value =
         target && typeof target === "object"
-          ? target.id && typeof target.id === "object" && "value" in target.id
-            ? target.id.value
-            : target.id ?? target.task_id
+          ? target.state && target.state.id
+            ? target.state.id.value
+            : target.id && typeof target.id === "object" && "value" in target.id
+              ? target.id.value
+              : (target.id ?? target.task_id)
           : target;
       if (value === undefined || value === null || value === "") {
         throw new Error("Download task id is required");
@@ -1349,16 +1365,23 @@
 
     function append_task(task, prepend) {
       const current = task_list_.value || [];
-      task_list_.as(prepend === false ? [...current, task] : [task, ...current]);
+      task_list_.as(
+        prepend === false ? [...current, task] : [task, ...current],
+      );
     }
 
     function remove_task(target, dispose) {
       const id = task_id(target);
       const key = String(id);
-      const task = tasks_by_id.get(key) || (target && target.id ? target : null);
+      const task =
+        tasks_by_id.get(key) ||
+        (target && target.state && target.state.id ? target : null);
       tasks_by_id.delete(key);
       task_list_.as(
-        (task_list_.value || []).filter((current) => current !== task && String(current.id.value) !== key),
+        (task_list_.value || []).filter(
+          (current) =>
+            current !== task && String(current.state.id.value) !== key,
+        ),
       );
       if (dispose && task) {
         task._dispose();
@@ -1377,7 +1400,11 @@
       const key = String(id);
       let task$ = tasks_by_id.get(key);
       if (!task$) {
-        task$ = DownloadTaskModel({ owner: downloader$, record });
+        task$ = DownloadTaskModel({
+          owner: downloader$,
+          data: record,
+          logger,
+        });
         tasks_by_id.set(key, task$);
         append_task(task$, !options || options.prepend !== false);
       } else {
@@ -1387,22 +1414,17 @@
     }
 
     function adopt_pending_task(created_task$, record) {
-      const id = record && (record.id ?? record.task_id);
-      if (id === undefined || id === null || id === "") {
-        throw new Error("Created download task has no id");
-      }
+      const id = record.id;
       const key = String(id);
       const existing_task$ = tasks_by_id.get(key);
       created_task$._update(
-        Object.prototype.hasOwnProperty.call(record, "status")
-          ? record
-          : Object.assign({ status: "waiting" }, record),
+        record.status ? record : Object.assign({ status: "waiting" }, record),
       );
       if (existing_task$ && existing_task$ !== created_task$) {
         // A WebSocket create/update can arrive before the REST create response.
         // Apply that newer server snapshot last while keeping the task object
         // returned by create() stable for its consumers.
-        created_task$._update(existing_task$.raw.value || {});
+        created_task$._update(existing_task$.state.raw.value || {});
         task_list_.as(
           (task_list_.value || []).filter(
             (current) => current !== existing_task$,
@@ -1424,49 +1446,68 @@
       };
     }
 
+    /**
+     *
+     * @param {object} object any
+     * @param {object} options
+     * @param {string} options.spec
+     * @returns
+     */
     async function create(object, options) {
-      const request_info = build_download_task_create_body(object, options);
-      const task = DownloadTaskModel({
+      const body = build_download_task_create_body(object, options);
+      const r1 = await reqs.download.create.run(body);
+      if (r1.error) {
+        // throw (
+        //   (result && result.error) || new Error("Create download task failed")
+        // );
+        // task$._fail(r1.error, { creation: true, terminal: true });
+        logger
+          .Info()
+          .Str("error", r1.error.message)
+          .Msg("reqs.download.create failed");
+        return Result.Err(r1.error);
+      }
+      const r2 = extra_created_task(r1.data);
+      const task$ = DownloadTaskModel({
         owner: downloader$,
         pending: true,
-        record: initial_create_record(request_info),
+        data: r2.data,
+        error: r2.error,
+        logger,
       });
-      append_task(task, true);
-      try {
-        const result = await reqs.download.create.run(request_info);
-        if (!result || result.error) {
-          throw (result && result.error) || new Error("Create download task failed");
+      append_task(task$, true);
+      if (r2.error) {
+        logger
+          .Error()
+          .Str("error", r2.error.message)
+          .Msg("can't find created task");
+        if (r2.code === 409) {
+          // emit the task is existing
         }
-        let record = created_task_record(result.data);
-        let success_detail = null;
-        if (task_was_skipped(record)) {
-          const detail_result = await reqs.download.detail.run({
-            id: record.id ?? record.task_id,
-          });
-          if (!detail_result || detail_result.error) {
-            throw (
-              (detail_result && detail_result.error) ||
-              new Error("Load skipped download task failed")
-            );
-          }
-          success_detail = detail_result.data || {};
-          record = Object.assign({}, record, success_detail);
-        }
-        return adopt_pending_task(task, record);
-      } catch (error) {
-        task._fail(error, { creation: true, terminal: true });
-        task_list_.as((task_list_.value || []).filter((current) => current !== task));
-        throw error;
+        // task$._fail(r2.error, { creation: true, terminal: true });
+      } else {
+        task$.onSuccess(() => {
+          task$.methods.disconnectWebSocket();
+        });
+        task$.onFailed(() => {
+          task$.methods.disconnectWebSocket();
+        });
+        logger
+          .Info()
+          .Str("file", "/public/dl.sdk.js")
+          .Msg("before subscribe task status change");
+        task$.methods.connectWebSocket();
       }
+      return Result.Ok(adopt_pending_task(task$, r2.data));
     }
 
     async function prepare(object) {
       const body = build_download_task_create_body(object);
-      const result = await reqs.download.prepare.run(body);
-      if (!result || result.error) {
-        throw (result && result.error) || new Error("Prepare download task failed");
+      const r = await reqs.download.prepare.run(body);
+      if (r.error) {
+        throw r.error || new Error("Prepare download task failed");
       }
-      const previews = result.data && result.data.previews;
+      const previews = r.data && r.data.previews;
       const preview = Array.isArray(previews) ? previews[0] : null;
       if (!preview) {
         throw new Error("Prepare download task returned no preview");
@@ -1482,7 +1523,8 @@
         Object.assign({ page: 1, page_size: 100 }, params || {}),
       );
       if (!result || result.error) {
-        const error = (result && result.error) || new Error("Load download tasks failed");
+        const error =
+          (result && result.error) || new Error("Load download tasks failed");
         last_error_.as(error);
         throw error;
       }
@@ -1497,13 +1539,15 @@
     }
 
     function replace_server_tasks(records) {
-      const pending = (task_list_.value || []).filter((task) => !task.id.value);
+      const pending = (task_list_.value || []).filter(
+        (task) => !task.state.id.value,
+      );
       const next = [];
       const seen = new Set();
       records.forEach((record) => {
         const task = upsert(record, { prepend: false });
-        if (task && !seen.has(String(task.id.value))) {
-          seen.add(String(task.id.value));
+        if (task && !seen.has(String(task.state.id.value))) {
+          seen.add(String(task.state.id.value));
           next.push(task);
         }
       });
@@ -1589,9 +1633,10 @@
       if (!result || result.error) {
         throw (result && result.error) || new Error(fallback);
       }
-      const item = result.data && Array.isArray(result.data.results)
-        ? result.data.results[0]
-        : null;
+      const item =
+        result.data && Array.isArray(result.data.results)
+          ? result.data.results[0]
+          : null;
       if (item && item.success === false) {
         throw error_value(item.error, fallback);
       }
@@ -1601,7 +1646,7 @@
     async function run_action(name, target, default_status) {
       const id = task_id(target);
       const task = get(id) || (target && target._update ? target : null);
-      const previous_status = task ? task.status.value : null;
+      const previous_status = task ? task.state.status.value : null;
       const optimistic_status = normalize_status(default_status);
       if (task) {
         task._begin(default_status);
@@ -1617,7 +1662,7 @@
         );
         if (
           task &&
-          task.status.value !== optimistic_status &&
+          task.state.status.value !== optimistic_status &&
           normalize_status(record.status) === optimistic_status
         ) {
           record = Object.assign({}, record);
@@ -1626,8 +1671,11 @@
         return task ? task._update(record) : upsert(record);
       } catch (error) {
         if (task) {
-          if (previous_status && task.status.value === optimistic_status) {
-            task.status.as(previous_status);
+          if (
+            previous_status &&
+            task.state.status.value === optimistic_status
+          ) {
+            task.state.status.as(previous_status);
           }
           task._fail(error, {
             creation: false,
@@ -1690,30 +1738,36 @@
     }
 
     async function open(target) {
-      const task = get(target) || (target && target.raw ? target : null);
+      const task =
+        get(target) ||
+        (target && target.state && target.state.raw ? target : null);
       if (!task) {
         throw new Error("Download task is not available");
       }
       const config = global.__d_config || {};
       if (config.remoteServerEnabled || config.inDocker) {
         const url = new URL("/preview", runtime_config_origin());
-        url.searchParams.set("id", String(task.id.value));
+        url.searchParams.set("id", String(task.state.id.value));
         return global.open(url.href, "_blank", "noopener");
       }
-      const raw = task.raw.value || {};
+      const raw = task.state.raw.value || {};
       // `files` is the canonical REST/WS record and contains Hermes' final
       // output name. `resources` is only a create-response compatibility alias.
       const resources = raw.files || raw.resources || [];
       const resource = Array.isArray(resources) ? resources[0] || {} : {};
       const r = await reqs.file.show.run({
-        id: task.id.value,
+        id: task.state.id.value,
         path:
           raw.path ||
           raw.download_dir ||
           resource.path ||
           resource.download_dir ||
-          task.filepath.value,
-        name: raw.filename || resource.filename || resource.name || task.name.value,
+          task.state.filepath.value,
+        name:
+          raw.filename ||
+          resource.filename ||
+          resource.name ||
+          task.state.name.value,
       });
       if (r.error) {
         throw (r && r.error) || new Error("Open download file failed");
@@ -1725,7 +1779,8 @@
       const id = task_id(target);
       const task = get(id) || (target && target._update ? target : null);
       const delete_files = !!(
-        options && (options.delete_files ?? options.deleteFiles)
+        options &&
+        (options.delete_files ?? options.deleteFiles)
       );
       try {
         action_result(
@@ -1831,11 +1886,11 @@
         }
         return null;
       }
-      const previous_status = task.status.value;
+      const previous_status = task.state.status.value;
       task._update(record, options);
       if (
         (!options || options.refresh_status !== false) &&
-        previous_status !== task.status.value
+        previous_status !== task.state.status.value
       ) {
         schedule_paged_refresh();
       }
@@ -1843,7 +1898,9 @@
     }
 
     function handle_snapshot(message) {
-      const resources = Array.isArray(message.resources) ? message.resources : [];
+      const resources = Array.isArray(message.resources)
+        ? message.resources
+        : [];
       const aggregate = aggregate_resources(resources);
       upsert_socket_task(
         {
@@ -1870,8 +1927,7 @@
       if (message.type === "task_create" || message.type === "task_upsert") {
         (Array.isArray(message.tasks) ? message.tasks : []).forEach((task) => {
           upsert_socket_task(task, {
-            refresh_missing:
-              message.type === "task_create" ? false : "status",
+            refresh_missing: message.type === "task_create" ? false : "status",
           });
         });
         if (message.type === "task_create") {
@@ -1880,20 +1936,24 @@
         return;
       }
       if (message.type === "task_update") {
-        (Array.isArray(message.updates) ? message.updates : []).forEach((task) => {
-          upsert_socket_task(task, { refresh_missing: "status" });
-        });
+        (Array.isArray(message.updates) ? message.updates : []).forEach(
+          (task) => {
+            upsert_socket_task(task, { refresh_missing: "status" });
+          },
+        );
         return;
       }
       if (message.type === "task_delete") {
-        (Array.isArray(message.task_ids) ? message.task_ids : []).forEach((id) => {
-          socket_status_by_id.delete(String(id));
-          const task = get(id);
-          if (task) {
-            task._update({ id, status: "deleted" });
-            remove_task(id, false);
-          }
-        });
+        (Array.isArray(message.task_ids) ? message.task_ids : []).forEach(
+          (id) => {
+            socket_status_by_id.delete(String(id));
+            const task = get(id);
+            if (task) {
+              task._update({ id, status: "deleted" });
+              remove_task(id, false);
+            }
+          },
+        );
         schedule_paged_refresh();
         return;
       }
@@ -1915,9 +1975,11 @@
       if (message.type === "event") {
         const data = message.data || {};
         const key = data.Key || data.key || "";
-        const task = data.Task || data.task;
+        const task_record = data.Task || data.task;
         if (key === "delete") {
-          const id = (task && (task.id ?? task.task_id)) || data.task_id;
+          const id =
+            (task_record && (task_record.id ?? task_record.task_id)) ||
+            data.task_id;
           if (id !== undefined && id !== null) {
             socket_status_by_id.delete(String(id));
           }
@@ -1927,9 +1989,11 @@
           schedule_paged_refresh();
           return;
         }
-        if (task) {
+        if (task_record) {
           const error = data.Err || data.err;
-          upsert_socket_task(error ? Object.assign({}, task, { error }) : task);
+          upsert_socket_task(
+            error ? Object.assign({}, task_record, { error }) : task_record,
+          );
         }
       }
     }
@@ -1941,7 +2005,8 @@
       const result = await channel$.connect();
       if (!result || result.error) {
         const error =
-          (result && result.error) || new Error("Download channel connect failed");
+          (result && result.error) ||
+          new Error("Download channel connect failed");
         last_error_.as(error);
         throw error;
       }
@@ -1955,7 +2020,8 @@
       const result = await channel$.reconnect();
       if (!result || result.error) {
         const error =
-          (result && result.error) || new Error("Download channel reconnect failed");
+          (result && result.error) ||
+          new Error("Download channel reconnect failed");
         last_error_.as(error);
         throw error;
       }
@@ -1966,7 +2032,8 @@
       const result = await channel$.disconnect(1000, "manual disconnect");
       if (!result || result.error) {
         const error =
-          (result && result.error) || new Error("Download channel disconnect failed");
+          (result && result.error) ||
+          new Error("Download channel disconnect failed");
         last_error_.as(error);
         throw error;
       }
@@ -1978,11 +2045,13 @@
         if (!options) {
           return ready_promise;
         }
-        return ready_promise.then(() => refresh(options)).then(() => ({
-          tasks: task_list_,
-          connected: websocket_connected_.value,
-          results: [],
-        }));
+        return ready_promise
+          .then(() => refresh(options))
+          .then(() => ({
+            tasks: task_list_,
+            connected: websocket_connected_.value,
+            results: [],
+          }));
       }
       ready_promise = Promise.allSettled([refresh(options), connect()]).then(
         (results) => ({
@@ -2103,7 +2172,9 @@
     updates.forEach((item) => {
       const key = scraper_item_key(item);
       const index = key
-        ? merged.findIndex((current_item) => scraper_item_key(current_item) === key)
+        ? merged.findIndex(
+            (current_item) => scraper_item_key(current_item) === key,
+          )
         : -1;
       if (index >= 0) {
         merged[index] = item;
@@ -2205,9 +2276,7 @@
     const owner = options.owner || null;
     const shared_channel = options.channel || null;
     const client = options.client;
-    const socket_client =
-      options.socket_client ||
-      new SocketClientCore();
+    const socket_client = options.socket_client || new SocketClientCore();
     const reqs = options.requests || scraper_requests(client);
     const poll_interval = Math.max(
       100,
@@ -2424,21 +2493,11 @@
       if (message_id && id_.value && message_id !== id_.value) {
         return;
       }
-      apply_record(
-        message.job,
-        message.event || null,
-        "websocket",
-        message,
-      );
+      apply_record(message.job, message.event || null, "websocket", message);
     }
 
     function apply_record(record, event, source, incoming_message) {
-      if (
-        disposed ||
-        terminal_state ||
-        !record ||
-        typeof record !== "object"
-      ) {
+      if (disposed || terminal_state || !record || typeof record !== "object") {
         return model;
       }
       const record_id = String(record.id || "").trim();
@@ -2487,7 +2546,8 @@
       }
 
       const message =
-        incoming_message || synthetic_message(record, event, source || "update");
+        incoming_message ||
+        synthetic_message(record, event, source || "update");
       message_.as(message);
       events.message.emit(message);
       events.change.emit({
@@ -2519,17 +2579,20 @@
       if (disposed || terminal_state || !id_.value) {
         return;
       }
-      poll_timer = global.setTimeout(async () => {
-        poll_timer = null;
-        try {
-          await refresh();
-        } catch {
-          // The WebSocket may still finish the job; polling will retry below.
-        }
-        if (!disposed && !terminal_state) {
-          schedule_poll(poll_interval);
-        }
-      }, delay === undefined ? poll_interval : delay);
+      poll_timer = global.setTimeout(
+        async () => {
+          poll_timer = null;
+          try {
+            await refresh();
+          } catch {
+            // The WebSocket may still finish the job; polling will retry below.
+          }
+          if (!disposed && !terminal_state) {
+            schedule_poll(poll_interval);
+          }
+        },
+        delay === undefined ? poll_interval : delay,
+      );
     }
 
     async function resolve_terminal() {
@@ -2810,7 +2873,8 @@
     if (
       Object.prototype.hasOwnProperty.call(model_options, "build_from_fetch")
     ) {
-      create_defaults.build_from_fetch = model_options.build_from_fetch === true;
+      create_defaults.build_from_fetch =
+        model_options.build_from_fetch === true;
     }
     if (!http_client) {
       throw new TypeError("ScraperModel requires a client");
@@ -3005,12 +3069,12 @@
 
       const existing = jobs_by_id.get(id);
       if (existing) {
-        existing._update(
-          record,
-          null,
-          "create",
-          { type: "scraper_job", job: record, event: null, source: "create" },
-        );
+        existing._update(record, null, "create", {
+          type: "scraper_job",
+          job: record,
+          event: null,
+          source: "create",
+        });
         existing._start().catch(() => {});
         return existing;
       }
@@ -3123,9 +3187,9 @@
   DL.DownloaderModel = DownloaderModel;
   DL.ScraperJobModel = ScraperJobModel;
   DL.ScraperModel = ScraperModel;
-  DL.TaskStatus = task_status;
+  DL.TaskStatus = DOWNLOAD_TASK_STATUS_MAP;
   DownloaderModel.DownloadTaskModel = DownloadTaskModel;
-  DownloaderModel.TaskStatus = task_status;
+  DownloaderModel.TaskStatus = DOWNLOAD_TASK_STATUS_MAP;
   ScraperModel.ScraperJobModel = ScraperJobModel;
   global.DownloadTaskModel = DownloadTaskModel;
   global.DownloaderModel = DownloaderModel;
