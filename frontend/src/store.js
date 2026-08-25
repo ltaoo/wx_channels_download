@@ -156,10 +156,7 @@ const routes_configure = {
       content: {
         title: "内容管理",
         pathname: "/content",
-        component: lazy(
-          "src/pages/content.js",
-          "src/pages/content_detail.css",
-        ),
+        component: lazy("src/pages/content.js", "src/pages/content_detail.css"),
       },
       content_detail: {
         title: "内容详情",
@@ -242,6 +239,7 @@ if (!window.dl$) {
     client: http_client$,
     socket_client: socket_client$,
     auto_start: false,
+    logger: window.DLUtils.log,
   });
   window.scraper$ = window.ScraperModel({
     client: http_client$,

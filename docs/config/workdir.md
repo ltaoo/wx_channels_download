@@ -37,7 +37,7 @@ workdir/
 - 全局用户脚本放在 `workdir/global.js`。
 - 下载 Hook 脚本放在 `workdir/hooks.js`。
 
-脚本文件不是必需的；只有需要自定义脚本功能时才需要创建。脚本的具体用法请参考[用户脚本](./script.md)和[指定下载的文件名](../feature/filename.md)。
+脚本文件不是必需的；只有需要自定义脚本功能时才需要创建。脚本的具体用法请参考[用户脚本](./script.md)、[下载任务 Hook](../feature/download-hooks.md)和[指定下载的文件名](../feature/filename.md)。
 
 ## 自定义文件名或路径
 
