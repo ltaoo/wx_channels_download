@@ -121,6 +121,10 @@ WXU.onDOMContentLoaded(function () {
       source: "channels.home.js:114",
     });
   }, 5000);
+  function clear_tip_timer() {
+    clearTimeout(error_tip_timer);
+    error_tip_timer = null;
+  }
   var home_page_mounted = false;
   WXU.onFetchFeedProfile((feed) => {
     WXU.log
@@ -135,11 +139,17 @@ WXU.onDOMContentLoaded(function () {
     WXU.set_cur_video();
     WXU.set_feed(feed);
     WXU.emit(WXE.Events.Feed, feed);
-    clearTimeout(error_tip_timer);
-    error_tip_timer = null;
+    clear_tip_timer();
   });
   WXU.onPCFlowLoaded((feeds) => {
-    console.log("[main.js]WXU.onPCFlowLoaded", feeds, home_page_mounted);
+    WXU.log
+      .Info()
+      .Str("file", "channels.home.js:147")
+      .Str("feed", feeds[0])
+      .Str("title", feeds[0] ? feeds[0].objectDesc.description : null)
+      .Str("nickname", feeds[0] ? feeds[0].nickname : null)
+      .Bool("mounted", home_page_mounted)
+      .Msg("onPCFlowLoaded callback");
     if (home_page_mounted) {
       return;
     }
@@ -147,23 +157,34 @@ WXU.onDOMContentLoaded(function () {
     WXU.set_cur_video();
     WXU.set_feed(feeds[0]);
     WXU.emit(WXE.Events.Feed, feeds[0]);
-    clearTimeout(error_tip_timer);
-    error_tip_timer = null;
+    clear_tip_timer();
   });
   WXU.onGotoNextFeed((feed) => {
-    console.log("[main.js]WXU.onGotoNextFeed", feed);
+    WXU.log
+      .Info()
+      .Str("file", "channels.home.js")
+      .JSON("feed", feed)
+      .Msg("onGotoNextFeed callback");
     WXU.set_cur_video();
     WXU.set_feed(feed);
     WXU.emit(WXE.Events.Feed, feed);
   });
   WXU.onGotoPrevFeed((feed) => {
-    console.log("[main.js]WXU.onGotoPrevFeed", feed);
+    WXU.log
+      .Info()
+      .Str("file", "channels.home.js")
+      .JSON("feed", feed)
+      .Msg("onGotoPrevFeed callback");
     WXU.set_cur_video();
     WXU.set_feed(feed);
     WXU.emit(WXE.Events.Feed, feed);
   });
   WXU.onHomeFeedChanged((feed) => {
-    console.log("[main.js]WXU.onHomeFeedChanged", feed);
+    WXU.log
+      .Info()
+      .Str("file", "channels.home.js")
+      .JSON("feed", feed)
+      .Msg("onHomeFeedChanged callback");
     WXU.set_cur_video();
     WXU.set_feed(feed);
     WXU.emit(WXE.Events.Feed, feed);

@@ -1,5 +1,8 @@
 package wxmp
 
+// WebsocketPath is the API route used by the official-account page client.
+const WebsocketPath = "/ws/mp"
+
 type OfficialAccountConfig struct {
 	RootDir                   string   `json:"rootDir"`
 	WorkDir                   string   `json:"workDir"`
