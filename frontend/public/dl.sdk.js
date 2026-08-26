@@ -919,12 +919,12 @@
       if (disposed || !record || typeof record !== "object") {
         return model;
       }
-      logger
-        .Info()
-        .Str("file", "/public/dl.sdk.js:903")
-        .Int("task_id", id_.value)
-        .JSON("record", record)
-        .Msg("update task 4");
+      // logger
+      //   .Info()
+      //   .Str("file", "/public/dl.sdk.js:903")
+      //   .Int("task_id", id_.value)
+      //   .JSON("record", record)
+      //   .Msg("update task 4");
       const previous_raw = raw_.value || {};
       const next_raw =
         opt && opt.replace
@@ -955,11 +955,11 @@
       if (next_status !== previous_status) {
         status_.as(next_status);
       }
-      logger
-        .Info()
-        .Str("file", "/public/dl.sdk.js:938")
-        .Int("task_id", id_.value)
-        .Msg("task is deleted?");
+      // logger
+      //   .Info()
+      //   .Str("file", "/public/dl.sdk.js:938")
+      //   .Int("task_id", id_.value)
+      //   .Msg("task is deleted?");
       if (
         next_status !== "deleted" &&
         !success_statuses.has(next_status) &&
@@ -974,14 +974,14 @@
       }
       const message =
         next_raw.error || next_raw.error_message || next_raw._errMsg;
-      logger
-        .Info()
-        .Str("file", "/public/dl.sdk.js:952")
-        .Int("task_id", id_.value)
-        .Bool("success", success_statuses.has(next_status))
-        .Str("next_status", next_status)
-        .Str("terminal_state", terminal_state)
-        .Msg("check has success");
+      // logger
+      //   .Info()
+      //   .Str("file", "/public/dl.sdk.js:952")
+      //   .Int("task_id", id_.value)
+      //   .Bool("success", success_statuses.has(next_status))
+      //   .Str("next_status", next_status)
+      //   .Str("terminal_state", terminal_state)
+      //   .Msg("check has success");
       if (success_statuses.has(next_status) && terminal_state !== "success") {
         terminal_state = "success";
         error_.as(null);

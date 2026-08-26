@@ -195,6 +195,7 @@ function BrowseHistoryViewModel(props) {
     select_platform$: new Timeless.vm.SelectCore({
       defaultValue: "",
       placeholder: "全部平台",
+      position: "item-aligned",
       options: [
         ["", "全部平台"],
         ...Object.entries(window.PLATFORM_NAMES),

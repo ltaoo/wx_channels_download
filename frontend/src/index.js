@@ -16,6 +16,8 @@ if (!Timeless) {
   throw new Error("应用无法启动：Timeless 运行时未加载");
 }
 
+Timeless.ui.ScrollViewPrimitive.setScrollViewProvider(Timeless.web);
+
 window.config = window.__d_config || {};
 
 window.format_time = function format_time(

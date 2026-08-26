@@ -6,7 +6,7 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_dir=$(CDPATH= cd -- "$script_dir/../../../.." && pwd)
 frontend_dir="$repository_dir/frontend"
 dist_dir="$script_dir/dist"
-timeless_path="/timeless/0.31.4"
+timeless_path="/timeless/0.31.5"
 timeless_source_dir="$frontend_dir/public$timeless_path"
 timeless_dist_dir="$dist_dir/assets$timeless_path"
 

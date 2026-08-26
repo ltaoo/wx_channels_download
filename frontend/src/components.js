@@ -651,7 +651,13 @@ function select_entry(select_store, entry) {
   if (is_instance(entry, vm.SelectGroupCore)) {
     return Fragment({}, [
       entry.label
-        ? View({ class: "dm-ui-select-group-label" }, [entry.label])
+        ? View(
+            {
+              class: "dm-ui-select-group-label",
+              attributes: { n: "select-group-label" },
+            },
+            [entry.label],
+          )
         : null,
       For({
         each: entry.options || [],
@@ -664,10 +670,15 @@ function select_entry(select_store, entry) {
 
   const item_ = refobj(entry.state);
   const unlisten = entry.onStateChange((state) => item_.as(state));
-  return ui.SelectPrimitive.Item(
+  const item = ui.SelectPrimitive.Item(
     {
       select$: select_store,
       item$: entry,
+      attributes: {
+        n: "select-option",
+        role: "option",
+        "aria-selected": computed(item_, (state) => String(state.selected)),
+      },
       class: computed(item_, (state) =>
         static_classes([
           "dm-ui-select-item",
@@ -676,59 +687,123 @@ function select_entry(select_store, entry) {
           state.disabled ? "is-disabled" : "",
         ]),
       ),
-      onUnmounted() {
-        if (typeof unlisten === "function") unlisten();
-      },
     },
     [
       ui.SelectPrimitive.ItemText(
-        { class: "dm-ui-select-item-text" },
+        {
+          class: "dm-ui-select-item-text",
+          attributes: { n: "select-option-label" },
+        },
         [entry.label],
       ),
       ui.SelectPrimitive.ItemIndicator(
-        { store: entry, class: "dm-ui-select-item-indicator" },
-        [Runtime.Icon({ name: "check", size: 12 })],
+        {
+          store: entry,
+          class: "dm-ui-select-item-indicator",
+          attributes: { n: "select-option-indicator" },
+        },
+        [
+          Runtime.Icon({
+            name: "check",
+            size: 12,
+            attributes: { n: "select-option-check-icon" },
+          }),
+        ],
       ),
     ],
   );
+
+  return View(
+    {
+      class: "dm-ui-select-item-root",
+      attributes: { n: "select-option-root" },
+      onMouseEnter() {
+        select_store.handleMouseEnterItem(entry);
+      },
+      onMouseLeave() {
+        select_store.handleMouseLeaveItem(entry);
+      },
+      onUnmounted() {
+        if (typeof unlisten === "function") unlisten();
+        item_.destroy?.();
+      },
+    },
+    [item],
+  );
 }
 
-export function Select(props) {
+export function Select(props = {}) {
   const {
+    contentClass: content_class,
+    rootClass: root_class,
     store: provided_store,
     class: extra_class,
     onUnmounted,
     ...rest
-  } = props || {};
+  } = props;
+  const {
+    onClick: provided_on_click,
+    onPointerDown: provided_on_pointer_down,
+    attributes: trigger_attributes,
+    ...trigger_props
+  } = rest;
   const store = require_store("Select", provided_store, vm.SelectCore);
   const state_ = refobj(store.state);
-  const hovering_ = ref(false);
   const unlisten = store.onStateChange((state) => state_.as(state));
-  const show_clear_ = combine(
-    { state: state_, hovering: hovering_ },
-    ({ state, hovering }) =>
-      Boolean(
-        hovering &&
-          state.allowClear &&
-          state.value !== null &&
-          !state.loading &&
-          !state.disabled,
-      ),
-  );
+  let suppress_next_click = false;
+  let click_suppression_timer = null;
 
-  return ui.SelectPrimitive.Root(
+  function suppress_click_once() {
+    suppress_next_click = true;
+    globalThis.clearTimeout(click_suppression_timer);
+    click_suppression_timer = globalThis.setTimeout(() => {
+      suppress_next_click = false;
+      click_suppression_timer = null;
+    }, 1000);
+  }
+
+  function consume_click_suppression() {
+    const suppressed = suppress_next_click;
+    suppress_next_click = false;
+    globalThis.clearTimeout(click_suppression_timer);
+    click_suppression_timer = null;
+    return suppressed;
+  }
+
+  function ensure_trigger_reference(event) {
+    const event_target = event.currentTarget || event.target;
+    const trigger_element =
+      event_target?.get$elm?.() ||
+      event_target?.closest?.(".dm-ui-select") ||
+      event_target;
+    if (!trigger_element?.getBoundingClientRect) {
+      return;
+    }
+    store.setTrigger?.(trigger_element);
+    store.popper$?.setReference(
+      {
+        $el: trigger_element,
+        getRect() {
+          return trigger_element.getBoundingClientRect();
+        },
+      },
+      { force: true },
+    );
+  }
+
+  const primitive_select = ui.SelectPrimitive.Root(
     {
       store,
-      onUnmounted() {
-        if (typeof unlisten === "function") unlisten();
-        if (typeof onUnmounted === "function") onUnmounted();
-      },
     },
     [
       ui.SelectPrimitive.Trigger(
         {
-          ...rest,
+          ...trigger_props,
           store,
+          attributes: {
+            n: "select-trigger",
+            ...trigger_attributes,
+          },
           class: class_names([
             "dm-field dm-ui-select",
             computed(state_, (state) =>
@@ -739,11 +814,32 @@ export function Select(props) {
             ),
             extra_class,
           ]),
-          onMouseEnter() {
-            hovering_.as(true);
+          onPointerDown(event) {
+            const target = event.target;
+            if (
+              target?.tagName === "INPUT" ||
+              target?.tagName === "TEXTAREA" ||
+              target?.isContentEditable
+            ) {
+              provided_on_pointer_down?.(event);
+              return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation?.();
+            ensure_trigger_reference(event);
+            suppress_click_once();
+            store.handleClickTrigger();
+            provided_on_pointer_down?.(event);
           },
-          onMouseLeave() {
-            hovering_.as(false);
+          onClick(event) {
+            if (!consume_click_suppression()) {
+              event.preventDefault();
+              event.stopPropagation();
+              ensure_trigger_reference(event);
+              store.handleClickTrigger();
+            }
+            provided_on_click?.(event);
           },
         },
         [
@@ -753,95 +849,165 @@ export function Select(props) {
               return ui.SelectPrimitive.Search({
                 store,
                 class: "dm-ui-select-search",
+                attributes: { n: "select-search-input" },
               });
             },
             else() {
-              return ui.SelectPrimitive.Value({
-                store,
-                class: "dm-ui-select-value",
-              });
-            },
-          }),
-          Show({
-            when: show_clear_,
-            ok() {
-              return ui.SelectPrimitive.Clear(
+              return View(
                 {
-                  store,
-                  class: "dm-ui-select-action dm-focus-ring",
-                  attributes: { "aria-label": "清除选择" },
+                  class: "dm-ui-select-value",
+                  attributes: { n: "select-value" },
                 },
-                [Runtime.Icon({ name: "circle-x", size: 14 })],
-              );
-            },
-            else() {
-              return ui.SelectPrimitive.Icon(
-                { store, class: "dm-ui-select-action" },
                 [
-                  Runtime.Icon({
-                    name: "chevron-down",
-                    size: 14,
-                    class: class_names([
-                      computed(state_, (state) =>
-                        state.open ? "is-open" : "",
-                      ),
-                    ]),
-                  }),
+                  computed(state_, (state) =>
+                    state.selectedOption?.label ??
+                    state.selectedOption?.value ??
+                    state.placeholder ??
+                    "请选择",
+                  ),
                 ],
               );
             },
           }),
-        ],
-      ),
-      ui.SelectPrimitive.Content(
-        {
-          store,
-          class: "dm-ui-select-content",
-          attributes: { role: "listbox" },
-          animation: {
-            in: "is-entering",
-            out: "is-exiting",
-          },
-        },
-        [
-          ui.SelectPrimitive.Viewport(
-            { store, class: "dm-ui-select-viewport" },
+          ui.SelectPrimitive.Clear(
+            {
+              store,
+              class: "dm-ui-select-action dm-ui-select-clear dm-focus-ring",
+              attributes: {
+                n: "select-clear-button",
+                "aria-label": "清除选择",
+              },
+            },
             [
-              Show({
-                when: computed(state_, (state) => state.loading),
-                ok() {
-                  return View({ class: "dm-ui-select-state" }, ["加载中…"]);
-                },
-                else() {
-                  return Show({
-                    when: computed(
-                      state_,
-                      () => (store.raw_options || store.options || []).length > 0,
-                    ),
-                    ok() {
-                      return For({
-                        each: computed(
-                          state_,
-                          () => store.raw_options || store.options || [],
-                        ),
-                        render(entry) {
-                          return select_entry(store, entry);
-                        },
-                      });
-                    },
-                    else() {
-                      return View({ class: "dm-ui-select-state" }, [
-                        "暂无选项",
-                      ]);
-                    },
-                  });
-                },
+              Runtime.Icon({
+                name: "circle-x",
+                size: 14,
+                attributes: { n: "select-clear-icon" },
+              }),
+            ],
+          ),
+          ui.SelectPrimitive.Icon(
+            {
+              store,
+              class: "dm-ui-select-action dm-ui-select-chevron",
+              attributes: { n: "select-chevron" },
+            },
+            [
+              Runtime.Icon({
+                name: "chevron-down",
+                size: 14,
+                attributes: { n: "select-chevron-icon" },
+                class: class_names([
+                  computed(state_, (state) =>
+                    state.open ? "is-open" : "",
+                  ),
+                ]),
               }),
             ],
           ),
         ],
       ),
+      Show({
+        when: computed(state_, (state) => state.open),
+        ok() {
+          return ui.SelectPrimitive.Content(
+            {
+              store,
+              class: class_names(["dm-ui-select-content", content_class]),
+              attributes: { n: "select-popup", role: "listbox" },
+              animation: {
+                in: "is-entering",
+                out: "is-exiting",
+              },
+            },
+            () => [
+              ui.SelectPrimitive.Viewport(
+                {
+                  store,
+                  class: "dm-ui-select-viewport",
+                  attributes: { n: "select-options" },
+                },
+                [
+                  Show({
+                    when: computed(state_, (state) => state.loading),
+                    ok() {
+                      return View(
+                        {
+                          class: "dm-ui-select-state",
+                          attributes: { n: "select-loading-state" },
+                        },
+                        ["加载中…"],
+                      );
+                    },
+                    else() {
+                      return Show({
+                        when: computed(
+                          state_,
+                          (state) =>
+                            (state.options || store.raw_options || []).length >
+                            0,
+                        ),
+                        ok() {
+                          return For({
+                            each: computed(
+                              state_,
+                              (state) =>
+                                state.options || store.raw_options || [],
+                            ),
+                            render(entry) {
+                              return select_entry(store, entry);
+                            },
+                          });
+                        },
+                        else() {
+                          return View(
+                            {
+                              class: "dm-ui-select-state",
+                              attributes: { n: "select-empty-state" },
+                            },
+                            ["暂无选项"],
+                          );
+                        },
+                      });
+                    },
+                  }),
+                ],
+              ),
+            ],
+          );
+        },
+      }),
     ],
+  );
+
+  return View(
+    {
+      as: "span",
+      class: class_names([
+        computed(state_, (state) =>
+          static_classes([
+            "dm-ui-select-root",
+            state.allowClear &&
+            state.value !== null &&
+            !state.loading &&
+            !state.disabled
+              ? "can-clear"
+              : "",
+            state.open ? "is-open" : "",
+            state.disabled ? "is-disabled" : "",
+          ]),
+        ),
+        root_class,
+      ]),
+      attributes: { n: "select-root" },
+      onUnmounted() {
+        consume_click_suppression();
+        if (typeof unlisten === "function") unlisten();
+        state_.destroy?.();
+        if (typeof onUnmounted === "function") onUnmounted();
+      },
+    },
+    [primitive_select],
   );
 }
 
@@ -1068,6 +1234,47 @@ export function DialogFooter(props = {}, children = []) {
   return View(
     { ...props, class: class_names(["dm-ui-dialog-footer", props.class]) },
     children,
+  );
+}
+
+export function Confirm(props = {}, children = []) {
+  const {
+    name = "confirm",
+    title = "确认操作",
+    description = "",
+    attributes,
+    ...dialog_props
+  } = props;
+  const content = Array.isArray(children) ? children : [children];
+
+  return Dialog(
+    {
+      ...dialog_props,
+      showClose: dialog_props.showClose ?? false,
+      attributes: {
+        ...attributes,
+        n: `${name}-dialog`,
+        role: "alertdialog",
+      },
+    },
+    [
+      DialogHeader(
+        { attributes: { n: `${name}-header` } },
+        [
+          DialogTitle(
+            { attributes: { n: `${name}-title` } },
+            [title],
+          ),
+          description
+            ? DialogDescription(
+                { attributes: { n: `${name}-description` } },
+                [description],
+              )
+            : null,
+        ].filter(Boolean),
+      ),
+      ...content,
+    ].filter(Boolean),
   );
 }
 

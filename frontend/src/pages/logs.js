@@ -47,10 +47,25 @@ function LogsPageView(props) {
           });
         },
       }),
+      LogsPageClearConfirm({ store: vm$ }),
       LogsPageImportDialog({ store: vm$ }),
       LogsPageJsonPreviewDialog({ store: vm$ }),
     ],
   );
+}
+
+function LogsPageClearConfirm(props) {
+  const vm$ = props.store;
+  return Confirm({
+    store: vm$.ui.clear_logs_confirm_dialog$,
+    name: "logs-clear-confirm",
+    title: "清空日志",
+    description:
+      "这会同时清空当前页面记录和日志文件内容，此操作不可恢复。",
+    cancelText: "取消",
+    okText: "清空",
+    style: { width: "min(440px, calc(100vw - 32px))" },
+  });
 }
 
 function LogsPageActionButton(props) {
@@ -146,10 +161,15 @@ function LogsPageToolbar(props) {
           //   class:
           //     "wx-content-type-select wx-logs-select wx-logs-source-select",
           // }),
-          // Select({
-          //   store: vm$.ui.select_level$,
-          //   class: "wx-content-type-select wx-logs-select",
-          // }),
+          Select({
+            store: vm$.ui.select_level$,
+            rootClass: "wx-logs-level-select",
+            class: "wx-content-type-select wx-logs-select",
+            attributes: {
+              n: "logs-level-select",
+              "aria-label": "筛选日志级别",
+            },
+          }),
           View(
             {
               class: "wx-content-search wx-logs-search",

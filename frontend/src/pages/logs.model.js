@@ -1,9 +1,7 @@
 const LOG_LEVEL_OPTIONS = [
-  { value: "all", label: "全部级别" },
-  { value: "debug", label: "Debug" },
   { value: "info", label: "Info" },
-  { value: "warn", label: "Warn" },
   { value: "error", label: "Error" },
+  { value: "all", label: "All" },
 ];
 
 const LOG_FILE_ACCEPT =
@@ -100,15 +98,12 @@ function log_field_rows(entry) {
   return rows;
 }
 
-function json_object_field(value) {
+function json_field(value) {
   const text = field_text(value);
   const normalized = text.trim();
-  if (!normalized.startsWith("{") || !normalized.endsWith("}")) {
-    return null;
-  }
   try {
     const parsed = JSON.parse(normalized);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    if (!parsed || typeof parsed !== "object") {
       return null;
     }
     return {
@@ -120,9 +115,9 @@ function json_object_field(value) {
   }
 }
 
-function json_object_field_text(value) {
-  const json_field = json_object_field(value);
-  return json_field ? json_field.text : "";
+function json_field_text(value) {
+  const parsed_field = json_field(value);
+  return parsed_field ? parsed_field.text : "";
 }
 
 function event_target_element(event) {
@@ -448,7 +443,7 @@ function LogsPageViewModel(props) {
   const error_ = ref("");
   const keyword_ = ref("");
   const source_ = ref("all");
-  const level_ = ref("all");
+  const level_ = ref("error");
   const auto_refresh_ = ref(false);
   const last_loaded_at_ = ref("");
   const log_file_path_ = ref("");
@@ -462,6 +457,12 @@ function LogsPageViewModel(props) {
   const json_preview_title_ = ref("JSON 预览");
   const json_preview_text_ = ref("");
   let imported_entries = null;
+  let destroyed = false;
+  const search_debounced = Timeless.debounce(300, () => {
+    if (!destroyed) {
+      reload_current(1);
+    }
+  });
   const ui = {
     input_keyword$: new Timeless.vm.InputCore({
       defaultValue: keyword_.value,
@@ -470,6 +471,7 @@ function LogsPageViewModel(props) {
       allowClear: true,
       onChange(value) {
         set_keyword(value);
+        search_debounced();
       },
     }),
     btn_search$: new Timeless.vm.ButtonCore({
@@ -529,9 +531,15 @@ function LogsPageViewModel(props) {
       closeable: true,
       footer: false,
     }),
+    clear_logs_confirm_dialog$: new Timeless.vm.DialogCore({
+      onOk() {
+        return methods.confirmClearLogs();
+      },
+    }),
     select_source$: new Timeless.vm.SelectCore({
       defaultValue: "all",
       placeholder: "全部组件",
+      position: "item-aligned",
       options: [option("全部组件", "all")],
       onChange(value) {
         source_.as(value || "all");
@@ -539,8 +547,10 @@ function LogsPageViewModel(props) {
       },
     }),
     select_level$: new Timeless.vm.SelectCore({
-      defaultValue: "all",
-      placeholder: "全部级别",
+      defaultValue: "error",
+      placeholder: "Level",
+      allowClear: true,
+      position: "item-aligned",
       options: LOG_LEVEL_OPTIONS.map((item) => option(item.label, item.value)),
       onChange(value) {
         level_.as(value || "all");
@@ -555,6 +565,7 @@ function LogsPageViewModel(props) {
   ui.log_file_picker$.onReject((data) => {
     reject_log_files(data.files);
   });
+  ui.clear_logs_confirm_dialog$.okBtn.setVariant("destructive");
 
   function reject_log_files(rejected_files) {
     const files = Array.from(rejected_files || []);
@@ -840,9 +851,9 @@ function LogsPageViewModel(props) {
       imported_entry_count_.as(parsed_entries.length);
       keyword_.as("");
       source_.as("all");
-      level_.as("all");
+      level_.as("error");
       ui.select_source$.setValue("all");
-      ui.select_level$.setValue("all");
+      ui.select_level$.setValue("error");
       apply_imported_entries(1);
       ui.import_dialog$.hide();
       show_toast(`已导入 ${parsed_entries.length} 条日志`);
@@ -887,16 +898,18 @@ function LogsPageViewModel(props) {
     return load(1);
   }
 
-  async function clear_logs() {
-    if (
-      clearing_.value ||
-      !window.confirm(
-        "确定要清空日志吗？这会同时清空当前页面记录和日志文件内容，此操作不可恢复。",
-      )
-    ) {
+  function request_clear_logs() {
+    if (clearing_.value) {
       return false;
     }
+    ui.clear_logs_confirm_dialog$.show();
+    return true;
+  }
 
+  async function clear_logs() {
+    if (clearing_.value) {
+      return false;
+    }
     const resume_auto_refresh = auto_refresh_.value;
     set_auto_refresh(false);
     const sequence = ++request_sequence;
@@ -979,8 +992,8 @@ function LogsPageViewModel(props) {
     keyword_.as("");
     source_.as("all");
     ui.select_source$.setValue("all");
-    level_.as("all");
-    ui.select_level$.setValue("all");
+    level_.as("error");
+    ui.select_level$.setValue("error");
     return reload_current(1);
   }
 
@@ -1022,7 +1035,8 @@ function LogsPageViewModel(props) {
       return true;
     },
     restoreServerLogs: restore_server_logs,
-    clearLogs: clear_logs,
+    clearLogs: request_clear_logs,
+    confirmClearLogs: clear_logs,
     copyLogFilePath() {
       const log_file_path = String(log_file_path_.value || "").trim();
       if (!log_file_path) {
@@ -1079,21 +1093,21 @@ function LogsPageViewModel(props) {
       return log_field_rows(entry);
     },
     isJsonFieldValue(value) {
-      return json_object_field_text(value) !== "";
+      return json_field_text(value) !== "";
     },
     showJsonFieldValue(field, value) {
-      const json_field = json_object_field(value);
-      if (!json_field) {
+      const parsed_field = json_field(value);
+      if (!parsed_field) {
         return false;
       }
       const field_name = String(field || "").trim();
       json_preview_title_.as(field_name ? `${field_name} · JSON` : "JSON 预览");
-      json_preview_text_.as(json_field.formatted_text);
+      json_preview_text_.as(parsed_field.formatted_text);
       ui.json_preview_dialog$.show();
       return true;
     },
     async copyJsonFieldValue(value) {
-      const text = json_object_field_text(value);
+      const text = json_field_text(value);
       if (!text) {
         return false;
       }
@@ -1111,6 +1125,7 @@ function LogsPageViewModel(props) {
       }
     },
     destroy() {
+      destroyed = true;
       if (timer) {
         clearInterval(timer);
       }
@@ -1119,6 +1134,7 @@ function LogsPageViewModel(props) {
       ui.log_file_picker$.destroy();
       ui.import_dialog$.destroy();
       ui.json_preview_dialog$.destroy();
+      ui.clear_logs_confirm_dialog$.destroy();
     },
   };
 
@@ -1153,4 +1169,4 @@ function LogsPageViewModel(props) {
   return { state, ui, methods };
 }
 
-export { LogsPageViewModel };
+export { LogsPageViewModel, json_field };

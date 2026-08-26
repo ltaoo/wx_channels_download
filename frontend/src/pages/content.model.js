@@ -214,6 +214,7 @@ function ContentViewModel(props) {
     select_content_type$: new Timeless.vm.SelectCore({
       defaultValue: "",
       placeholder: "全部类型",
+      position: "item-aligned",
       options: [
         new Timeless.vm.SelectItemCore({ label: "全部类型", value: "" }),
         new Timeless.vm.SelectItemCore({ label: "视频", value: "video" }),
