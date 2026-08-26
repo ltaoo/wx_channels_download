@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -22,7 +23,6 @@ type ChannelsAdapter struct {
 	runtime_registered bool
 	config             *config.Config
 	routes             *WebsocketRoutes
-	interceptor_config *InterceptorPluginConfig
 	hooks              *hermes.HookManager
 	logger             *zerolog.Logger
 	status_bus         *events.Bus
@@ -212,7 +212,6 @@ func (a *ChannelsAdapter) register(d *adapter.AdapterOptions) error {
 		}
 	}
 
-	var interceptor_config *InterceptorPluginConfig
 	if d.Interceptor != nil {
 		if d.Config == nil {
 			return errors.New("wxchannels config is required for interceptor registration")
@@ -224,9 +223,8 @@ func (a *ChannelsAdapter) register(d *adapter.AdapterOptions) error {
 				Str("global_script_path", d.Config.GlobalScriptPath).
 				Msg("wxchannels adapter register: creating interceptor config")
 		}
-		interceptor_config = NewConfig(d.Config, d.Logger)
-		for _, p := range interceptor_config.GetPlugins() {
-			d.Interceptor.AddPostPlugin(p)
+		for _, plugin := range wxchannels.NewInterceptorPlugins(new_interceptor_config(d.Config), d.Logger) {
+			d.Interceptor.AddPostPlugin(plugin)
 		}
 	}
 
@@ -244,7 +242,6 @@ func (a *ChannelsAdapter) register(d *adapter.AdapterOptions) error {
 
 	a.runtime_mu.Lock()
 	a.routes = r
-	a.interceptor_config = interceptor_config
 	a.hooks = d.Hooks
 	a.logger = d.Logger
 	a.config = d.Config
@@ -364,7 +361,6 @@ func (a *ChannelsAdapter) Stop() {
 	routes := a.routes
 	a.runtime_registered = false
 	a.routes = nil
-	a.interceptor_config = nil
 	a.hooks = nil
 	a.logger = nil
 	a.config = nil
@@ -372,6 +368,39 @@ func (a *ChannelsAdapter) Stop() {
 	a.runtime_mu.Unlock()
 	if routes != nil {
 		routes.Stop()
+	}
+}
+
+func new_interceptor_config(c *config.Config) wxchannels.InterceptorConfig {
+	api_protocol := c.GetString("api.protocol")
+	api_bind_hostname := c.GetString("api.hostname")
+	api_port := c.GetInt("api.port")
+	remote_server_protocol := c.GetString("download.remoteServer.protocol")
+	remote_server_hostname := c.GetString("download.remoteServer.hostname")
+	remote_server_port := c.GetInt("download.remoteServer.port")
+	max_running := c.GetInt("download.maxRunning")
+	if max_running == 0 {
+		max_running = 3
+	}
+	return wxchannels.InterceptorConfig{
+		Version:               c.Version,
+		DebugShowError:        c.GetBool("debug.error"),
+		DisableLocationToHome: c.GetBool("channels.disableLocationToHome"),
+		GlobalScriptPath:      c.GlobalScriptPath,
+		InjectContentScript:   c.ContentScriptContent,
+		FrontendVariables: map[string]any{
+			"apiHost":                    config.APIClientHost(api_bind_hostname, api_port),
+			"apiOrigin":                  config.APIClientOrigin(api_protocol, api_bind_hostname, api_port),
+			"apiProtocol":                api_protocol,
+			"remoteServerEnabled":        c.GetBool("download.remoteServer.enabled"),
+			"remoteServerOrigin":         remote_server_protocol + "://" + remote_server_hostname + ":" + strconv.Itoa(remote_server_port),
+			"maxRunning":                 max_running,
+			"downloadFilenameTemplate":   c.GetString("download.filenameTemplate"),
+			"defaultHighest":             c.GetBool("channels.download.defaultHighest") || c.GetBool("download.defaultHighest"),
+			"downloadPauseWhenDownload":  c.GetBool("channels.download.pauseWhenDownload"),
+			"downloadInFrontend":         c.GetBool("channels.download.frontend"),
+			"downloadForceCheckAllFeeds": c.GetBool("channels.download.forceCheckAllFeeds"),
+		},
 	}
 }
 

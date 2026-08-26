@@ -130,6 +130,13 @@ func new_official_account_config(cfg *config.Config) *wxmp.OfficialAccountConfig
 	return settings
 }
 
+func new_interceptor_config(cfg *config.Config) wxmp.InterceptorConfig {
+	return wxmp.InterceptorConfig{
+		Version:  cfg.Version,
+		Settings: *new_official_account_config(cfg),
+	}
+}
+
 func init() {
 	config.RegisterPlugin(&MPPluginConfig{})
 }

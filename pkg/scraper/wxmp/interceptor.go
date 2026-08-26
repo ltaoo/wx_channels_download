@@ -1,4 +1,4 @@
-package wxmpadapter
+package wxmp
 
 import (
 	"encoding/json"
@@ -9,66 +9,57 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ltaoo/echo"
+	"github.com/rs/zerolog"
+
 	"wx_channel/frontend"
-	"wx_channel/internal/config"
-	"wx_channel/internal/interceptor"
-	"wx_channel/internal/interceptor/proxy"
-	"wx_channel/pkg/scraper/wxmp"
 )
 
 var csp_nonce_reg = regexp.MustCompile(`'nonce-([^']+)'`)
 
-// InterceptorPluginConfig owns the official-account scraper configuration used
-// by the local interceptor.
-type InterceptorPluginConfig struct {
-	settings *wxmp.OfficialAccountConfig
-	version  string
+// InterceptorConfig contains the application values needed by the
+// official-account injection rule.
+type InterceptorConfig struct {
+	Version  string
+	Settings OfficialAccountConfig
 }
 
-func NewConfig(cfg *config.Config) *InterceptorPluginConfig {
-	if cfg == nil {
-		return &InterceptorPluginConfig{}
+// NewInterceptorPlugins builds the Echo injection rules owned by the
+// official-account scraper.
+func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*echo.Plugin {
+	if logger == nil {
+		nop_logger := zerolog.Nop()
+		logger = &nop_logger
+	} else {
+		component_logger := logger.With().Str("component", "wxmp_scraper").Logger()
+		logger = &component_logger
 	}
-	return &InterceptorPluginConfig{
-		settings: new_official_account_config(cfg),
-		version:  cfg.Version,
-	}
-}
-
-// GetPlugins returns the official-account injection plugin.
-func (c *InterceptorPluginConfig) GetPlugins() []interface{} {
-	if c == nil || c.settings == nil {
-		return nil
-	}
-
-	return []interface{}{
-		create_official_account_interceptor_plugin(c.settings, c.version),
-	}
-}
-
-func create_official_account_interceptor_plugin(cfg *wxmp.OfficialAccountConfig, version string) *proxy.Plugin {
+	settings := &cfg.Settings
 	asset_base_url := "/__assets"
 	url_build := frontend.NewURLBuild(asset_base_url, nil)
-	asset_version := version
+	asset_version := cfg.Version
 	if asset_version == "" {
 		asset_version = "static"
 	}
 	version_query := url.Values{"v": []string{asset_version}}
-	return &proxy.Plugin{
+	plugin := &echo.Plugin{
 		Match: "qq.com",
-		OnRequest: func(ctx proxy.Context) {
-			if ctx.Req().URL.Hostname() != "mp.weixin.qq.com" {
+		OnRequest: func(ctx *echo.Context) {
+			if ctx.Req.URL.Hostname() != "mp.weixin.qq.com" {
 				return
 			}
-			interceptor.MockFrontendStaticAsset(ctx, ctx.Req().URL.Path, interceptor.FrontendStaticAssetMockOptions{
-				PlatformPrefix: static_assets_path + "/",
-				PlatformFS:     wxmp.InjectAssets(),
-				UserScriptPath: cfg.GlobalScriptPath,
+			frontend.MockStaticAsset(ctx.Req.URL.Path, ctx.Req.Header, func(status int, headers map[string]string, body string) {
+				ctx.Mock(status, headers, body)
+			}, frontend.StaticAssetMockOptions{
+				PlatformPrefix: InjectAssetsPath + "/",
+				PlatformFS:     InjectAssets(),
+				UserScriptPath: settings.GlobalScriptPath,
+				Logger:         logger,
 			})
 		},
-		OnResponse: func(ctx proxy.Context) {
+		OnResponse: func(ctx *echo.Context) {
 			response_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
-			hostname := ctx.Req().URL.Hostname()
+			hostname := ctx.Req.URL.Hostname()
 			if hostname != "mp.weixin.qq.com" || !strings.Contains(response_content_type, "text/html") {
 				return
 			}
@@ -76,12 +67,11 @@ func create_official_account_interceptor_plugin(cfg *wxmp.OfficialAccountConfig,
 			if err != nil {
 				return
 			}
-			html_content := string(response_body)
+			html_content := response_body
 			csp := ctx.GetResponseHeader("Content-Security-Policy") + " " + ctx.GetResponseHeader("Content-Security-Policy-Report-Only")
-			mp_websocket_url := build_mp_websocket_url(cfg)
-			interceptor.RewriteResponseCSPForLocalAssets(ctx, asset_base_url)
-			interceptor.RewriteResponseCSPForWebSocket(ctx, mp_websocket_url)
-			variables := wxmp.BuildOfficialAccountVariables(html_content)
+			mp_websocket_url := build_mp_websocket_url(settings)
+			rewrite_response_csp(ctx, asset_base_url, mp_websocket_url)
+			variables := BuildOfficialAccountVariables(html_content)
 			script_attr := ""
 			style_attr := ""
 			if match := csp_nonce_reg.FindStringSubmatch(csp); len(match) > 1 {
@@ -89,26 +79,34 @@ func create_official_account_interceptor_plugin(cfg *wxmp.OfficialAccountConfig,
 				style_attr = fmt.Sprintf(` nonce="%s"`, match[1])
 			}
 			var injected strings.Builder
-			if cfg.DebugShowError {
+			if settings.DebugShowError {
 				frontend.AppendScripts(&injected, script_attr, url_build("/inject/error.js", version_query))
 			}
-			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.4/timeless.umd.min.js", version_query))
-			frontend.AppendStylesheets(&injected, style_attr, url_build("/public/timeless/0.31.4/timeless.weui.css", version_query))
-			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.4/timeless.weui.umd.min.js", version_query))
-			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.4/timeless.dom.umd.min.js", version_query))
-			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.4/timeless.web.umd.min.js", version_query))
+			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.5/timeless.umd.min.js", version_query))
+			frontend.AppendStylesheets(&injected, style_attr, url_build("/public/timeless/0.31.5/timeless.weui.css", version_query))
+			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.5/timeless.weui.umd.min.js", version_query))
+			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.5/timeless.dom.umd.min.js", version_query))
+			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.31.5/timeless.web.umd.min.js", version_query))
 			frontend.AppendStylesheets(&injected, style_attr, url_build("/inject/components.css"))
 			frontend_config := make(map[string]any, len(variables)+2)
-			cfg_byte, _ := json.Marshal(cfg)
+			cfg_byte, _ := json.Marshal(settings)
 			_ = json.Unmarshal(cfg_byte, &frontend_config)
 			for key, value := range variables {
 				frontend_config[key] = value
 			}
-			frontend_config["version"] = version
+			api_host := settings.Addr
+			if api_host == "" && settings.Hostname != "" {
+				api_host = net.JoinHostPort(strings.Trim(settings.Hostname, "[]"), strconv.Itoa(settings.Port))
+			}
+			api_protocol := strings.TrimSuffix(strings.TrimSpace(settings.Protocol), ":")
+			if api_protocol == "" {
+				api_protocol = "http"
+			}
+			frontend_config["version"] = cfg.Version
 			frontend_config["assets_base_url"] = asset_base_url
-			frontend_config["apiHost"] = config.APIClientHost(cfg.Hostname, cfg.Port)
-			frontend_config["apiOrigin"] = config.APIClientOrigin(cfg.Protocol, cfg.Hostname, cfg.Port)
-			frontend_config["apiProtocol"] = cfg.Protocol
+			frontend_config["apiHost"] = api_host
+			frontend_config["apiOrigin"] = api_protocol + "://" + api_host
+			frontend_config["apiProtocol"] = settings.Protocol
 			frontend_config["mpWSURL"] = mp_websocket_url
 			frontend_config_byte, _ := json.Marshal(frontend_config)
 			frontend.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`window.__d_config = %s;`, frontend_config_byte))
@@ -129,19 +127,31 @@ func create_official_account_interceptor_plugin(cfg *wxmp.OfficialAccountConfig,
 				asset_url(asset_base_url, "/inject/mp.components.js", version_query),
 				asset_url(asset_base_url, "/inject/mp.main.js", version_query),
 			)
-			if cfg.GlobalScriptURL != "" {
-				frontend.AppendScripts(&injected, script_attr, cfg.GlobalScriptURL)
+			if settings.GlobalScriptURL != "" {
+				frontend.AppendScripts(&injected, script_attr, settings.GlobalScriptURL)
 			}
-			if cfg.InjectContentScript != "" {
-				frontend.AppendInlineScript(&injected, script_attr, cfg.InjectContentScript)
+			if settings.InjectContentScript != "" {
+				frontend.AppendInlineScript(&injected, script_attr, settings.InjectContentScript)
 			}
 			html_content = strings.Replace(html_content, "</body>", injected.String()+"</body>", 1)
 			ctx.SetResponseBody(html_content)
 		},
 	}
+	return []*echo.Plugin{plugin}
 }
 
-func build_mp_websocket_url(cfg *wxmp.OfficialAccountConfig) string {
+func rewrite_response_csp(ctx *echo.Context, asset_base_url string, websocket_url string) {
+	for _, header := range []string{"Content-Security-Policy", "Content-Security-Policy-Report-Only"} {
+		policy := ctx.GetResponseHeader(header)
+		rewritten := frontend.RewriteCSPForLocalAssets(policy, asset_base_url)
+		rewritten = frontend.RewriteCSPForWebSocket(rewritten, websocket_url)
+		if rewritten != "" && rewritten != policy {
+			ctx.SetResponseHeader(header, rewritten)
+		}
+	}
+}
+
+func build_mp_websocket_url(cfg *OfficialAccountConfig) string {
 	if cfg == nil {
 		return ""
 	}
