@@ -45,7 +45,6 @@ function DownloadV2TaskTable(props) {
       headerState: vm$.state.loaded_task_selection,
       allAriaLabel: "全选下载任务",
       itemAriaLabel: "选择下载任务",
-      size: 18,
       itemState(task) {
         return vm$.methods.taskSelectionState(task);
       },

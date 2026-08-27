@@ -434,10 +434,12 @@ function unique_components(entries) {
 
 function LogsPageViewModel(props) {
   const PAGE_SIZE_DEFAULT = 300;
+  const LOAD_MORE_THRESHOLD = 280;
   const entries_ = refarr([]);
   const total_ = ref(0);
   const page_ = ref(1);
   const page_size_ = ref(PAGE_SIZE_DEFAULT);
+  const initial_ = ref(true);
   const loading_ = ref(false);
   const clearing_ = ref(false);
   const error_ = ref("");
@@ -460,7 +462,7 @@ function LogsPageViewModel(props) {
   let destroyed = false;
   const search_debounced = Timeless.debounce(300, () => {
     if (!destroyed) {
-      reload_current(1);
+      reload_current();
     }
   });
   const ui = {
@@ -472,6 +474,9 @@ function LogsPageViewModel(props) {
       onChange(value) {
         set_keyword(value);
         search_debounced();
+      },
+      onEnter() {
+        return methods.search();
       },
     }),
     btn_search$: new Timeless.vm.ButtonCore({
@@ -505,6 +510,9 @@ function LogsPageViewModel(props) {
     btn_refresh$: new Timeless.vm.ButtonCore({
       disabled: loading_.value,
       variant: "outline",
+      onClick() {
+        return reload_current();
+      },
     }),
     btn_copy_log_file_path$: new Timeless.vm.ButtonCore({
       disabled: true,
@@ -543,7 +551,7 @@ function LogsPageViewModel(props) {
       options: [option("全部组件", "all")],
       onChange(value) {
         source_.as(value || "all");
-        reload_current(1);
+        reload_current();
       },
     }),
     select_level$: new Timeless.vm.SelectCore({
@@ -554,7 +562,7 @@ function LogsPageViewModel(props) {
       options: LOG_LEVEL_OPTIONS.map((item) => option(item.label, item.value)),
       onChange(value) {
         level_.as(value || "all");
-        reload_current(1);
+        reload_current();
       },
     }),
   };
@@ -650,24 +658,12 @@ function LogsPageViewModel(props) {
     { client: props.client },
   );
 
-  const page_count_ = combine(
-    { total: total_, pageSize: page_size_ },
-    (state) =>
-      Math.max(1, Math.ceil(state.total / Math.max(1, state.pageSize))),
-  );
-  const range_text_ = combine(
-    {
-      entries: entries_,
-      total: total_,
-      page: page_,
-      pageSize: page_size_,
-    },
+  const list_status_ = combine(
+    { initial: initial_, error: error_, entries: entries_ },
     (state) => {
-      if (!state.total || !state.entries.length) {
-        return `共 ${state.total || 0} 条`;
-      }
-      const start = (state.page - 1) * state.pageSize + 1;
-      return `第 ${start}-${start + state.entries.length - 1} 条，共 ${state.total} 条`;
+      if (state.initial) return "initial";
+      if (state.error) return "error";
+      return state.entries.length === 0 ? "empty" : "normal";
     },
   );
   const imported_label_ = combine(
@@ -701,7 +697,10 @@ function LogsPageViewModel(props) {
     }
   }
 
-  async function load(targetPage = page_.value) {
+  async function load(targetPage = 1, append = false) {
+    if (loading_.value) {
+      return null;
+    }
     const sequence = ++request_sequence;
     const requestedPage = Math.max(1, Number(targetPage) || 1);
     loading_.as(true);
@@ -718,6 +717,7 @@ function LogsPageViewModel(props) {
     } catch (error) {
       if (sequence === request_sequence) {
         error_.as(error && error.message ? error.message : String(error));
+        initial_.as(false);
       }
       return Timeless.Result.Err(error);
     } finally {
@@ -732,10 +732,15 @@ function LogsPageViewModel(props) {
       error_.as(
         result.error.message || result.error.msg || String(result.error),
       );
+      initial_.as(false);
       return result;
     }
     const data = result.data || {};
-    entries_.as(data.entries || [], { reset: true });
+    const loaded_entries = data.entries || [];
+    entries_.as(
+      append ? [...(entries_.value || []), ...loaded_entries] : loaded_entries,
+      { reset: true },
+    );
     const log_file = (data.files || []).find((file) => file && file.path);
     log_file_path_.as(log_file ? String(log_file.path) : "");
     total_.as(data.total || 0);
@@ -743,6 +748,7 @@ function LogsPageViewModel(props) {
     page_size_.as(data.page_size || page_size_.value);
     last_loaded_at_.as(format_datetime(new Date()));
     sync_source_options();
+    initial_.as(false);
     return result;
   }
 
@@ -782,7 +788,7 @@ function LogsPageViewModel(props) {
     );
   }
 
-  function apply_imported_entries(target_page = page_.value) {
+  function apply_imported_entries(target_page = 1, append = false) {
     const all_entries = Array.isArray(imported_entries) ? imported_entries : [];
     const filtered_entries = all_entries.filter(matches_imported_entry);
     const page_size = PAGE_SIZE_DEFAULT;
@@ -795,23 +801,60 @@ function LogsPageViewModel(props) {
       Math.max(1, Number(target_page) || 1),
     );
     const offset = (requested_page - 1) * page_size;
-    entries_.as(filtered_entries.slice(offset, offset + page_size), {
-      reset: true,
-    });
+    const loaded_entries = filtered_entries.slice(offset, offset + page_size);
+    entries_.as(
+      append ? [...(entries_.value || []), ...loaded_entries] : loaded_entries,
+      { reset: true },
+    );
     total_.as(filtered_entries.length);
     page_.as(requested_page);
     page_size_.as(page_size);
     log_file_path_.as("");
     last_loaded_at_.as(format_datetime(new Date()));
     sync_source_options(all_entries);
+    initial_.as(false);
     return true;
   }
 
-  function reload_current(target_page = page_.value) {
+  function reload_current() {
     if (imported_.value) {
-      return apply_imported_entries(target_page);
+      return apply_imported_entries(1);
     }
-    return load(target_page);
+    return load(1);
+  }
+
+  function load_more() {
+    const page_count = Math.max(
+      1,
+      Math.ceil(total_.value / Math.max(1, page_size_.value)),
+    );
+    if (
+      loading_.value ||
+      page_.value >= page_count ||
+      entries_.value.length >= total_.value
+    ) {
+      return null;
+    }
+    const next_page = page_.value + 1;
+    return imported_.value
+      ? apply_imported_entries(next_page, true)
+      : load(next_page, true);
+  }
+
+  function handle_list_scroll(position) {
+    const target = position && position.target;
+    const scroll_top = Number(position?.scrollTop ?? target?.scrollTop) || 0;
+    const client_height =
+      Number(position?.clientHeight ?? target?.clientHeight) || 0;
+    const scroll_height =
+      Number(position?.scrollHeight ?? target?.scrollHeight) || 0;
+    if (
+      scroll_height > 0 &&
+      scroll_height - scroll_top - client_height <= LOAD_MORE_THRESHOLD
+    ) {
+      return load_more();
+    }
+    return null;
   }
 
   function clear_imported_entries() {
@@ -994,15 +1037,12 @@ function LogsPageViewModel(props) {
     ui.select_source$.setValue("all");
     level_.as("error");
     ui.select_level$.setValue("error");
-    return reload_current(1);
+    return reload_current();
   }
 
   const methods = {
     ready() {
       return load(1);
-    },
-    refresh() {
-      return reload_current(page_.value);
     },
     showImportDialog() {
       import_file_error_.as("");
@@ -1059,23 +1099,12 @@ function LogsPageViewModel(props) {
       }
     },
     search() {
-      return reload_current(1);
+      return reload_current();
     },
+    handleListScroll: handle_list_scroll,
     setKeyword: set_keyword,
     setAutoRefresh: set_auto_refresh,
     resetFilters: reset_filters,
-    previousPage() {
-      if (page_.value <= 1 || loading_.value) {
-        return null;
-      }
-      return reload_current(page_.value - 1);
-    },
-    nextPage() {
-      if (page_.value >= page_count_.value || loading_.value) {
-        return null;
-      }
-      return reload_current(page_.value + 1);
-    },
     exportLogs() {
       const list = Array.isArray(entries_.value) ? entries_.value : [];
       if (list.length === 0) {
@@ -1141,10 +1170,7 @@ function LogsPageViewModel(props) {
   const state = {
     entries: entries_,
     total: total_,
-    page: page_,
-    page_size: page_size_,
-    page_count: page_count_,
-    range_text: range_text_,
+    status: list_status_,
     loading: loading_,
     clearing: clearing_,
     error: error_,

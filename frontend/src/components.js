@@ -429,6 +429,34 @@ export function createInputStore(props = {}) {
   return own_store_bindings(store, unlistens);
 }
 
+export function createCheckboxStore(props = {}) {
+  const checked_source = props.checked;
+  const store = new vm.CheckboxCore({
+    checked: Boolean(source_value(checked_source, false)),
+    disabled: Boolean(source_value(props.disabled, false)),
+    onChange(value) {
+      if (typeof props.onChange === "function") {
+        props.onChange(value);
+      } else if (checked_source && typeof checked_source.as === "function") {
+        checked_source.as(value);
+      }
+      const controlled_value = Boolean(source_value(checked_source, value));
+      if (store.value !== controlled_value) {
+        store.setValue(controlled_value, { silence: true });
+      }
+    },
+  });
+  const unlistens = [];
+  const checked_unlisten = subscribe_source(checked_source, (value) => {
+    const checked = Boolean(value);
+    if (store.value !== checked) {
+      checked ? store.check() : store.uncheck();
+    }
+  });
+  if (checked_unlisten) unlistens.push(checked_unlisten);
+  return own_store_bindings(store, unlistens);
+}
+
 const BUTTON_VARIANTS = {
   default: "",
   primary: "dm-button--primary",
@@ -532,6 +560,10 @@ export function Input(props) {
     store: provided_store,
     class: extra_class,
     rootClass,
+    rootAttributes,
+    prefix,
+    suffix,
+    attributes,
     onUnmounted,
     onChange,
     onKeyDown,
@@ -552,11 +584,32 @@ export function Input(props) {
           !state.disabled,
       ),
   );
+  const show_suffix_ = combine(
+    { state: state_, clear: show_clear_ },
+    ({ state, clear }) => Boolean(suffix || clear || state.loading),
+  );
 
   return ui.InputPrimitive.Root(
     {
       store,
-      class: class_names(["dm-ui-input-root", rootClass]),
+      class: class_names([
+        "dm-input-affix-wrapper",
+        computed(state_, (state) =>
+          static_classes([
+            state.focus ? "dm-input-affix-wrapper-focused" : "",
+            state.hovering && !state.disabled
+              ? "dm-input-affix-wrapper-hovered"
+              : "",
+            state.disabled ? "dm-input-affix-wrapper-disabled" : "",
+            state.loading ? "dm-input-affix-wrapper-loading" : "",
+          ]),
+        ),
+        rootClass,
+      ]),
+      attributes: { n: "input-wrapper", ...(rootAttributes || {}) },
+      onClick() {
+        if (!state_.value.disabled) store.focus();
+      },
       onUnmounted() {
         if (typeof unlisten === "function") unlisten();
         dispose_owned_store(store);
@@ -564,10 +617,21 @@ export function Input(props) {
       },
     },
     [
+      prefix
+        ? View(
+            {
+              as: "span",
+              class: "dm-input-prefix",
+              attributes: { n: "input-prefix" },
+            },
+            Array.isArray(prefix) ? prefix : [prefix],
+          )
+        : null,
       ui.InputPrimitive.Input({
         ...rest,
         store,
-        class: class_names(["dm-field dm-ui-input", extra_class]),
+        class: class_names(["dm-input", extra_class]),
+        attributes: { n: "input", ...(attributes || {}) },
         onChange(event) {
           store.handleChange(event);
           if (typeof onChange === "function") onChange(event);
@@ -578,25 +642,55 @@ export function Input(props) {
         },
       }),
       Show({
-        when: show_clear_,
+        when: show_suffix_,
         ok() {
-          return ui.InputPrimitive.Clear(
+          return View(
             {
-              store,
-              class: "dm-ui-input-action dm-focus-ring",
-              attributes: { "aria-label": "清空输入" },
+              as: "span",
+              class: "dm-input-suffix",
+              attributes: { n: "input-suffix" },
             },
-            [Runtime.Icon({ name: "circle-x", size: 14 })],
+            [
+              ...(suffix ? (Array.isArray(suffix) ? suffix : [suffix]) : []),
+              Show({
+                when: show_clear_,
+                ok() {
+                  return ui.InputPrimitive.Clear(
+                    {
+                      as: "button",
+                      store,
+                      class: "dm-input-clear-icon dm-focus-ring",
+                      attributes: {
+                        n: "input-clear",
+                        type: "button",
+                        "aria-label": "清空输入",
+                      },
+                    },
+                    [
+                      Runtime.Icon({
+                        name: "circle-x",
+                        size: 14,
+                        attributes: { n: "input-clear-icon" },
+                      }),
+                    ],
+                  );
+                },
+              }),
+              Show({
+                when: computed(state_, (state) => state.loading),
+                ok() {
+                  return View({
+                    as: "span",
+                    class: "dm-input-loading dm-ui-spinner",
+                    attributes: {
+                      n: "input-loading",
+                      "aria-hidden": "true",
+                    },
+                  });
+                },
+              }),
+            ],
           );
-        },
-      }),
-      Show({
-        when: computed(state_, (state) => state.loading),
-        ok() {
-          return View({
-            class: "dm-ui-input-action dm-ui-input-loading dm-ui-spinner",
-            attributes: { "aria-hidden": "true" },
-          });
         },
       }),
     ],
@@ -732,6 +826,12 @@ function select_entry(select_store, entry) {
   );
 }
 
+function clear_select(store) {
+  store.selected_item$?.setSelected(false);
+  store.clear();
+  store.hide();
+}
+
 export function Select(props = {}) {
   const {
     contentClass: content_class,
@@ -855,7 +955,12 @@ export function Select(props = {}) {
             else() {
               return View(
                 {
-                  class: "dm-ui-select-value",
+                  class: class_names([
+                    "dm-ui-select-value",
+                    computed(state_, (state) =>
+                      state.selectedOption ? "has-value" : "is-placeholder",
+                    ),
+                  ]),
                   attributes: { n: "select-value" },
                 },
                 [
@@ -869,13 +974,23 @@ export function Select(props = {}) {
               );
             },
           }),
-          ui.SelectPrimitive.Clear(
+          View(
             {
-              store,
+              as: "button",
               class: "dm-ui-select-action dm-ui-select-clear dm-focus-ring",
               attributes: {
                 n: "select-clear-button",
+                type: "button",
                 "aria-label": "清除选择",
+              },
+              onPointerDown(event) {
+                event.preventDefault();
+                event.stopPropagation();
+              },
+              onClick(event) {
+                event.preventDefault();
+                event.stopPropagation();
+                clear_select(store);
               },
             },
             [
@@ -1012,33 +1127,92 @@ export function Select(props = {}) {
 }
 
 export function Checkbox(props) {
-  const { store: provided_store, class: extra_class, id, ...rest } = props || {};
+  const {
+    store: provided_store,
+    class: extra_class,
+    id,
+    indeterminate = false,
+    onUnmounted,
+    attributes,
+    ...rest
+  } = props || {};
   const store = require_store("Checkbox", provided_store, vm.CheckboxCore);
   const state_ = refobj(store.state);
   const unlisten = store.onStateChange((state) => state_.as(state));
+  const indeterminate_class = is_source(indeterminate)
+    ? computed(indeterminate, (value) => (value ? "is-indeterminate" : ""))
+    : indeterminate
+      ? "is-indeterminate"
+      : "";
+  const aria_checked_ = is_source(indeterminate)
+    ? combine(
+        { state: state_, indeterminate },
+        (state) =>
+          state.indeterminate ? "mixed" : String(Boolean(state.state.checked)),
+      )
+    : computed(state_, (state) =>
+        indeterminate ? "mixed" : String(Boolean(state.checked)),
+      );
 
   return ui.CheckboxPrimitive.Root({ store }, [
-    ui.CheckboxPrimitive.Input({ store, id }),
+    ui.CheckboxPrimitive.Input({
+      store,
+      id,
+      attributes: { n: "checkbox-input" },
+    }),
     ui.CheckboxPrimitive.Box(
       {
         ...rest,
         store,
-        class: computed(state_, (state) =>
-          static_classes([
-            "dm-ui-checkbox dm-focus-ring",
-            state.checked ? "is-checked" : "",
-            state.disabled ? "is-disabled" : "",
-            extra_class,
-          ]),
-        ),
+        attributes: {
+          n: "checkbox",
+          type: "button",
+          role: "checkbox",
+          "aria-checked": aria_checked_,
+          ...(attributes || {}),
+        },
+        class: class_names([
+          computed(state_, (state) =>
+            static_classes([
+              "dm-ui-checkbox",
+              state.checked ? "is-checked" : "",
+              state.disabled ? "is-disabled" : "",
+            ]),
+          ),
+          indeterminate_class,
+          extra_class,
+        ]),
         onUnmounted() {
           if (typeof unlisten === "function") unlisten();
+          dispose_owned_store(store);
+          if (typeof onUnmounted === "function") onUnmounted();
         },
       },
       [
-        View({ class: "dm-ui-checkbox-box" }, [
-          Runtime.Icon({ name: "check", size: 14 }),
-        ]),
+        View(
+          {
+            class: "dm-ui-checkbox-box",
+            attributes: { n: "checkbox-box" },
+          },
+          [
+            Show({
+              when: indeterminate,
+              ok() {
+                return View({
+                  class: "dm-ui-checkbox-indeterminate",
+                  attributes: { n: "checkbox-indeterminate-icon" },
+                });
+              },
+              else() {
+                return Runtime.Icon({
+                  name: "check",
+                  size: 14,
+                  attributes: { n: "checkbox-check-icon" },
+                });
+              },
+            }),
+          ],
+        ),
       ],
     ),
   ]);

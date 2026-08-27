@@ -1,3 +1,5 @@
+import { Checkbox, createCheckboxStore } from "../components.js";
+
 function table_class_names(values) {
   return values.filter(Boolean).join(" ");
 }
@@ -205,100 +207,40 @@ function TableError(props) {
 
 function TableSelectionCheckbox(props) {
   const state_ = props.state;
-
-  function toggle(event) {
-    if (event && typeof event.stopPropagation === "function") {
-      event.stopPropagation();
-    }
-    if (typeof props.onToggle === "function") {
-      props.onToggle(event);
-    }
-  }
-
-  return View(
-    {
-      role: "checkbox",
-      tabIndex: "0",
-      class: props.class || "",
-      style: {
-        width: `${props.size + 4}px`,
-        height: `${props.size + 4}px`,
-        display: "inline-flex",
-        "align-items": "center",
-        "justify-content": "center",
-        cursor: "pointer",
-        "user-select": "none",
-        flex: "0 0 auto",
-        ...(props.style || {}),
-      },
-      attributes: {
-        n: props.name,
-        "aria-label": props.ariaLabel,
-        "aria-checked": computed(state_, (state) => {
-          if (state.indeterminate) return "mixed";
-          return state.checked ? "true" : "false";
-        }),
-      },
-      onClick: toggle,
-      onKeyDown(event) {
-        if (event.key === " " || event.key === "Enter") {
-          event.preventDefault();
-          toggle(event);
-        }
-      },
+  const checked_ = table_source(state_)
+    ? computed(state_, (state) => Boolean(state.checked))
+    : Boolean(state_ && state_.checked);
+  const indeterminate_ = table_source(state_)
+    ? computed(state_, (state) => Boolean(state.indeterminate))
+    : Boolean(state_ && state_.indeterminate);
+  let toggle_event = null;
+  const checkbox_store = createCheckboxStore({
+    checked: checked_,
+    onChange() {
+      const event = toggle_event;
+      toggle_event = null;
+      if (typeof props.onToggle === "function") props.onToggle(event);
     },
-    [
-      View(
-        {
-          attributes: { n: `${props.name}-indicator` },
-          style: computed(state_, (state) => {
-            const active = state.checked || state.indeterminate;
-            return {
-              width: `${props.size}px`,
-              height: `${props.size}px`,
-              "box-sizing": "border-box",
-              "border-radius": "4px",
-              border: `1px solid ${active ? "var(--dm-color-primary-fill)" : "var(--dm-color-border)"}`,
-              background: active
-                ? "var(--dm-color-primary-fill)"
-                : "transparent",
-              color: "var(--dm-color-on-primary)",
-              display: "inline-flex",
-              "align-items": "center",
-              "justify-content": "center",
-            };
-          }),
-        },
-        [
-          Show({
-            when: computed(state_, (state) => state.indeterminate),
-            ok() {
-              return View({
-                attributes: { n: `${props.name}-mixed-icon` },
-                style: {
-                  width: `${Math.max(8, props.size - 8)}px`,
-                  height: "2px",
-                  "border-radius": "1px",
-                  background: "currentColor",
-                },
-              });
-            },
-            else() {
-              return Show({
-                when: computed(state_, (state) => state.checked),
-                ok() {
-                  return Timeless.Icon({
-                    name: "check",
-                    size: Math.max(12, props.size - 4),
-                  });
-                },
-              });
-            },
-          }),
-        ],
-      ),
-    ],
-  );
+  });
+
+  return Checkbox({
+    store: checkbox_store,
+    indeterminate: indeterminate_,
+    class: props.class,
+    style: props.style,
+    attributes: {
+      n: props.name,
+      "aria-label": props.ariaLabel,
+    },
+    onClick(event) {
+      event?.stopPropagation?.();
+      toggle_event = event;
+    },
+    onUnmounted() {
+      if (table_source(checked_)) checked_.destroy?.();
+      if (table_source(indeterminate_)) indeterminate_.destroy?.();
+    },
+  });
 }
 
 function TableSelectionHeaderCell(props) {
@@ -326,7 +268,6 @@ function TableSelectionHeaderCell(props) {
         state: row_selection.headerState,
         name: `${props.name}-select-all-checkbox`,
         ariaLabel: row_selection.allAriaLabel || "全选表格数据",
-        size: row_selection.size || 18,
         style: row_selection.checkboxStyle,
         onToggle: row_selection.onSelectAll,
       }),
@@ -428,7 +369,6 @@ function TableSelectionCell(props) {
               typeof row_selection.itemAriaLabel === "function"
                 ? row_selection.itemAriaLabel(props.item)
                 : row_selection.itemAriaLabel || "选择表格数据",
-            size: row_selection.size || 18,
             style: row_selection.checkboxStyle,
             onToggle(event) {
               row_selection.onSelect(props.item, event, props.itemSource);
@@ -681,7 +621,15 @@ function TablePanel(props, render_list) {
         ...(props.panelAttributes || {}),
       },
     },
-    [TableHeader(props), render_list(props)],
+    [
+      Show({
+        when: props.headerVisible,
+        ok() {
+          return TableHeader(props);
+        },
+      }),
+      render_list(props),
+    ],
   );
 }
 
@@ -689,6 +637,13 @@ function table_render(props, render_list) {
   const name = props.name || "table";
   const status = props.status || "normal";
   const show_header_when_empty = props.showHeaderWhenEmpty !== false;
+  const header_visible = table_source(status)
+    ? computed(
+        status,
+        (current_status) =>
+          current_status !== "empty" || show_header_when_empty,
+      )
+    : status !== "empty" || show_header_when_empty;
   const table_props = {
     ...props,
     name,
@@ -704,40 +659,16 @@ function table_render(props, render_list) {
     rowClass: props.rowClass || "wx-content-row",
   };
 
-  function render_panel() {
-    return TablePanel(
-      { ...table_props, renderEmpty: render_empty },
-      render_list,
-    );
-  }
-
   function render_empty() {
     return typeof props.renderEmpty === "function"
       ? props.renderEmpty()
       : TableEmpty(table_props);
   }
 
-  function render_initial() {
-    return TablePanel(table_props, () =>
-      TableLoading({
-        ...table_props,
-        loadingClass: props.loadingClass,
-        skeletonCount: props.skeletonCount || 8,
-      }),
-    );
-  }
-
   function render_error_state() {
     return typeof props.renderError === "function"
       ? props.renderError(props.error)
       : TableError(table_props);
-  }
-
-  function render_error() {
-    return TablePanel(
-      { ...table_props, rows: [], renderEmpty: render_error_state },
-      render_list,
-    );
   }
 
   return View(
@@ -752,17 +683,40 @@ function table_render(props, render_list) {
       },
     },
     [
-      Match({
-        when: status,
-        cases: {
-          initial: render_initial,
-          empty() {
-            return show_header_when_empty ? render_panel() : render_empty();
-          },
-          error: render_error,
-          normal: render_panel,
-        },
-      }),
+      TablePanel(
+        { ...table_props, headerVisible: header_visible },
+        () =>
+          Match({
+            when: status,
+            cases: {
+              initial() {
+                return TableLoading({
+                  ...table_props,
+                  loadingClass: props.loadingClass,
+                  skeletonCount: props.skeletonCount || 8,
+                });
+              },
+              empty() {
+                return show_header_when_empty
+                  ? render_list({ ...table_props, renderEmpty: render_empty })
+                  : render_empty();
+              },
+              error() {
+                return render_list({
+                  ...table_props,
+                  rows: [],
+                  renderEmpty: render_error_state,
+                });
+              },
+              normal() {
+                return render_list({
+                  ...table_props,
+                  renderEmpty: render_empty,
+                });
+              },
+            },
+          }),
+      ),
       Show({
         when: table_loading_visible(status, props.loading),
         ok() {

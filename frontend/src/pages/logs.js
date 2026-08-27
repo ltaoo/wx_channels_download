@@ -1,4 +1,5 @@
 import { LogsPageViewModel } from "./logs.model.js";
+import { TableWithVirtualList } from "./table.js";
 
 function LogsPageView(props) {
   const vm$ = LogsPageViewModel(props);
@@ -27,26 +28,8 @@ function LogsPageView(props) {
           class: "wx-content-main dm-container",
           attributes: { n: "logs-content" },
         },
-        [LogsPageError({ store: vm$ }), LogsPageList({ store: vm$ })],
+        [LogsPageList({ store: vm$ })],
       ),
-      Show({
-        when: computed(vm$.state.entries, (entries) => entries.length > 0),
-        ok() {
-          return Pagination({
-            summary: vm$.state.range_text,
-            page: vm$.state.page,
-            pageCount: vm$.state.page_count,
-            loading: vm$.state.loading,
-            attributes: { n: "logs-pagination" },
-            onPrevious() {
-              vm$.methods.previousPage();
-            },
-            onNext() {
-              vm$.methods.nextPage();
-            },
-          });
-        },
-      }),
       LogsPageClearConfirm({ store: vm$ }),
       LogsPageImportDialog({ store: vm$ }),
       LogsPageJsonPreviewDialog({ store: vm$ }),
@@ -109,10 +92,6 @@ function LogsPageActionButton(props) {
   );
 }
 
-function LogsPageEntryValue(entry_) {
-  return entry_ && entry_.value !== undefined ? entry_.value : entry_;
-}
-
 function LogsPageFormatTime(value) {
   if (!value) {
     return "-";
@@ -170,30 +149,24 @@ function LogsPageToolbar(props) {
               "aria-label": "筛选日志级别",
             },
           }),
-          View(
-            {
-              class: "wx-content-search wx-logs-search",
-              attributes: { n: "logs-search-field" },
+          Input({
+            store: vm$.ui.input_keyword$,
+            rootClass: "wx-content-search wx-logs-search",
+            rootAttributes: { n: "logs-search-field" },
+            prefix: Timeless.Icon({
+              name: "search",
+              size: 16,
+              attributes: { n: "logs-search-icon" },
+            }),
+            class: "wx-content-search-input",
+            attributes: {
+              n: "logs-search-input",
+              name: "keyword",
+              type: "text",
+              autocomplete: "off",
+              "aria-label": "搜索消息、字段或原始日志",
             },
-            [
-              Timeless.Icon({
-                name: "search",
-                size: 16,
-                attributes: { n: "logs-search-icon" },
-              }),
-              Input({
-                store: vm$.ui.input_keyword$,
-                class: "wx-content-search-input",
-                attributes: {
-                  n: "logs-search-input",
-                  name: "keyword",
-                  type: "text",
-                  autocomplete: "off",
-                  "aria-label": "搜索消息、字段或原始日志",
-                },
-              }),
-            ],
-          ),
+          }),
           View(
             {
               class: "wx-content-filter-actions",
@@ -326,9 +299,6 @@ function LogsPageToolbar(props) {
               loading ? "刷新中" : "刷新",
             ),
             compact: true,
-            onClick() {
-              vm$.methods.refresh();
-            },
           }),
           LogsPageActionButton({
             name: "logs-copy-file-path-action",
@@ -543,96 +513,70 @@ function LogsPageImportDialog(props) {
   );
 }
 
-function LogsPageError(props) {
+function LogsPageTableColumns(props) {
   const vm$ = props.store;
-  return Show({
-    when: computed(vm$.state.error, (message) => Boolean(message)),
-    ok() {
-      return View(
-        {
-          class: "wx-logs-error",
-          attributes: { n: "logs-error-banner" },
-        },
-        [
-          Timeless.Icon({
-            name: "circle-alert",
-            size: 18,
-            attributes: { n: "logs-error-icon" },
-          }),
-          View({ attributes: { n: "logs-error-message" } }, [vm$.state.error]),
-        ],
-      );
-    },
-  });
-}
-
-function LogsPageRow(props) {
-  const vm$ = props.store;
-  const entry = LogsPageEntryValue(props.entry) || {};
-  const file = entry.file || entry.File || "";
-  const component = entry.component || entry.Component || "";
-  return View(
+  return [
     {
-      class: "wx-logs-table-row",
-      attributes: { n: "logs-table-row", role: "row" },
-    },
-    [
-      View(
-        {
-          class: "wx-logs-level-cell",
-          attributes: { n: "logs-level-cell", role: "cell" },
-        },
-        [
-          View(
-            {
-              class: LogsPageLevelClass(entry.level),
-              attributes: { n: "logs-level-badge" },
-            },
-            [entry.level || "info"],
-          ),
-        ],
-      ),
-      View(
-        {
-          class: "wx-logs-time-cell",
-          attributes: { n: "logs-time-cell", role: "cell" },
-        },
-        [LogsPageFormatTime(entry.time)],
-      ),
-      View(
-        {
-          class: "wx-logs-file-cell",
-          attributes: { n: "logs-file-cell", role: "cell", title: file },
-        },
-        [file],
-      ),
-      View(
-        {
-          class: "wx-logs-component-cell",
-          attributes: {
-            n: "logs-component-cell",
-            role: "cell",
-            title: component,
+      name: "level",
+      title: "level",
+      cellClass: "wx-logs-level-cell",
+      render(entry) {
+        return View(
+          {
+            class: LogsPageLevelClass(entry.level),
+            attributes: { n: "logs-level-badge" },
           },
-        },
-        [component],
-      ),
-      View(
-        {
-          class: "wx-logs-msg-cell",
-          attributes: { n: "logs-message-cell", role: "cell" },
-        },
-        [entry.message || entry.raw || ""],
-      ),
-      View(
-        {
-          class: "wx-logs-fields-cell",
-          attributes: { n: "logs-fields-cell", role: "cell" },
-        },
-        [LogsPageFieldsCell({ entry, store: vm$ })],
-      ),
-    ],
-  );
+          [entry.level || "info"],
+        );
+      },
+    },
+    {
+      name: "time",
+      title: "time",
+      cellClass: "wx-logs-time-cell",
+      render(entry) {
+        return LogsPageFormatTime(entry.time);
+      },
+    },
+    {
+      name: "file",
+      title: "file",
+      cellClass: "wx-logs-file-cell",
+      cellAttributes(entry) {
+        return { title: entry.file || entry.File || "" };
+      },
+      render(entry) {
+        return entry.file || entry.File || "";
+      },
+    },
+    {
+      name: "component",
+      title: "component",
+      cellClass: "wx-logs-component-cell",
+      cellAttributes(entry) {
+        return { title: entry.component || entry.Component || "" };
+      },
+      render(entry) {
+        return entry.component || entry.Component || "";
+      },
+    },
+    {
+      name: "message",
+      title: "msg",
+      cellClass: "wx-logs-msg-cell",
+      render(entry) {
+        return entry.message || entry.raw || "";
+      },
+    },
+    {
+      name: "fields",
+      title: "fields",
+      cellClass: "wx-logs-fields-cell",
+      render(entry) {
+        return LogsPageFieldsCell({ entry, store: vm$ });
+      },
+    },
+  ];
 }
 
 function LogsPageFieldsCell(props) {
@@ -825,259 +769,138 @@ function LogsPageJsonPreviewDialog(props) {
   );
 }
 
-function LogsPageTableHead() {
+function LogsPageSkeletonRow() {
   return View(
     {
-      class: "wx-logs-table-head",
-      attributes: { n: "logs-table-header", role: "row" },
+      class: "wx-table-row wx-logs-table-row wx-content-skeleton-row",
+      attributes: { n: "logs-skeleton-row", role: "row" },
     },
     [
       View(
         {
-          class: "wx-logs-table-head-cell",
-          attributes: { n: "logs-level-header", role: "columnheader" },
+          class: "wx-logs-level-cell",
+          attributes: { n: "logs-skeleton-level-cell", role: "cell" },
         },
-        ["level"],
-      ),
-      View(
-        {
-          class: "wx-logs-table-head-cell",
-          attributes: { n: "logs-time-header", role: "columnheader" },
-        },
-        ["time"],
-      ),
-      View(
-        {
-          class: "wx-logs-table-head-cell",
-          attributes: { n: "logs-file-header", role: "columnheader" },
-        },
-        ["file"],
-      ),
-      View(
-        {
-          class: "wx-logs-table-head-cell",
-          attributes: { n: "logs-component-header", role: "columnheader" },
-        },
-        ["component"],
-      ),
-      View(
-        {
-          class: "wx-logs-table-head-cell",
-          attributes: { n: "logs-message-header", role: "columnheader" },
-        },
-        ["msg"],
-      ),
-      View(
-        {
-          class: "wx-logs-table-head-cell",
-          attributes: { n: "logs-fields-header", role: "columnheader" },
-        },
-        ["fields"],
-      ),
-    ],
-  );
-}
-
-function LogsPageTable(props) {
-  const vm$ = props.store;
-  return View(
-    {
-      class: "wx-logs-table",
-      attributes: { n: "logs-table", role: "table" },
-    },
-    [
-      LogsPageTableHead(),
-      VirtualListView({
-        class: "wx-logs-virtual-list",
-        attributes: { n: "logs-virtual-list" },
-        key(entry, index) {
-          return `${entry.index || index}-${entry.time || ""}-${entry.message || ""}`;
-        },
-        size: 18,
-        buffer: 8,
-        gutter: 0,
-        itemHeight: 48,
-        each: vm$.state.entries,
-        render(entry) {
-          return LogsPageRow({ entry, store: vm$ });
-        },
-      }),
-    ],
-  );
-}
-
-function LogsPageSkeletonTable() {
-  return View(
-    {
-      class: "wx-logs-table",
-      attributes: { n: "logs-skeleton-table", role: "table" },
-    },
-    [
-      LogsPageTableHead(),
-      View(
-        {
-          class: "wx-logs-virtual-list",
-          attributes: { n: "logs-skeleton-list" },
-        },
-        Array.from({ length: 6 }, function () {
-          return View(
+        [
+          View(
             {
-              class: "wx-logs-table-row",
-              attributes: { n: "logs-skeleton-row", role: "row" },
+              class: "wx-logs-level wx-logs-level-info",
+              attributes: { n: "logs-skeleton-level-badge" },
             },
-            [
-              View(
-                {
-                  class: "wx-logs-level-cell",
-                  attributes: { n: "logs-skeleton-level-cell" },
-                },
-                [
-                  View(
-                    {
-                      class: "wx-logs-level wx-logs-level-info",
-                      attributes: { n: "logs-skeleton-level-badge" },
-                    },
-                    ["info"],
-                  ),
-                ],
-              ),
-              View(
-                {
-                  class: "wx-logs-time-cell",
-                  attributes: { n: "logs-skeleton-time-cell" },
-                },
-                [
-                  View({
-                    class: "wx-logs-skeleton-cell",
-                    style: { width: "150px" },
-                    attributes: { n: "logs-skeleton-time-value" },
-                  }),
-                ],
-              ),
-              View(
-                {
-                  class: "wx-logs-file-cell",
-                  attributes: { n: "logs-skeleton-file-cell" },
-                },
-                [
-                  View({
-                    class: "wx-logs-skeleton-cell",
-                    style: { width: "80px" },
-                    attributes: { n: "logs-skeleton-file-value" },
-                  }),
-                ],
-              ),
-              View(
-                {
-                  class: "wx-logs-component-cell",
-                  attributes: { n: "logs-skeleton-component-cell" },
-                },
-                [
-                  View({
-                    class: "wx-logs-skeleton-cell",
-                    style: { width: "100px" },
-                    attributes: { n: "logs-skeleton-component-value" },
-                  }),
-                ],
-              ),
-              View(
-                {
-                  class: "wx-logs-msg-cell",
-                  attributes: { n: "logs-skeleton-message-cell" },
-                },
-                [
-                  View({
-                    class: "wx-logs-skeleton-cell",
-                    style: { width: "100%" },
-                    attributes: { n: "logs-skeleton-message-value" },
-                  }),
-                ],
-              ),
-              View(
-                {
-                  class: "wx-logs-fields-cell",
-                  attributes: { n: "logs-skeleton-fields-cell" },
-                },
-                [
-                  View({
-                    class: "wx-logs-skeleton-cell",
-                    style: { width: "80%" },
-                    attributes: { n: "logs-skeleton-fields-value" },
-                  }),
-                ],
-              ),
-            ],
-          );
-        }),
+            ["info"],
+          ),
+        ],
       ),
-    ],
-  );
-}
-
-function LogsPageLoadingState() {
-  return LogsPageSkeletonTable();
-}
-
-function LogsPageEmptyState() {
-  return View(
-    {
-      class: "wx-logs-state",
-      attributes: { n: "logs-empty-state" },
-    },
-    [
-      Timeless.Icon({
-        name: "file-search",
-        size: 32,
-        attributes: { n: "logs-empty-state-icon" },
-      }),
-      View({ attributes: { n: "logs-empty-state-message" } }, [
-        "没有匹配的日志",
-      ]),
+      View(
+        {
+          class: "wx-logs-time-cell",
+          attributes: { n: "logs-skeleton-time-cell", role: "cell" },
+        },
+        [
+          View({
+            class: "wx-logs-skeleton-cell",
+            style: { width: "150px" },
+            attributes: { n: "logs-skeleton-time-value" },
+          }),
+        ],
+      ),
+      View(
+        {
+          class: "wx-logs-file-cell",
+          attributes: { n: "logs-skeleton-file-cell", role: "cell" },
+        },
+        [
+          View({
+            class: "wx-logs-skeleton-cell",
+            style: { width: "80px" },
+            attributes: { n: "logs-skeleton-file-value" },
+          }),
+        ],
+      ),
+      View(
+        {
+          class: "wx-logs-component-cell",
+          attributes: { n: "logs-skeleton-component-cell", role: "cell" },
+        },
+        [
+          View({
+            class: "wx-logs-skeleton-cell",
+            style: { width: "100px" },
+            attributes: { n: "logs-skeleton-component-value" },
+          }),
+        ],
+      ),
+      View(
+        {
+          class: "wx-logs-msg-cell",
+          attributes: { n: "logs-skeleton-message-cell", role: "cell" },
+        },
+        [
+          View({
+            class: "wx-logs-skeleton-cell",
+            style: { width: "100%" },
+            attributes: { n: "logs-skeleton-message-value" },
+          }),
+        ],
+      ),
+      View(
+        {
+          class: "wx-logs-fields-cell",
+          attributes: { n: "logs-skeleton-fields-cell", role: "cell" },
+        },
+        [
+          View({
+            class: "wx-logs-skeleton-cell",
+            style: { width: "80%" },
+            attributes: { n: "logs-skeleton-fields-value" },
+          }),
+        ],
+      ),
     ],
   );
 }
 
 function LogsPageList(props) {
   const vm$ = props.store;
-  return View(
-    {
-      class: "wx-content-rows wx-content-history-rows wx-logs-list dm-panel",
-      attributes: { n: "logs-list-panel" },
+  return TableWithVirtualList({
+    name: "logs-table",
+    containerClass: "wx-logs-scroll",
+    containerAttributes: { n: "logs-table-container" },
+    panelClass:
+      "wx-content-rows wx-content-history-rows wx-logs-list wx-logs-table dm-panel",
+    panelAttributes: { n: "logs-list-panel" },
+    headerClass: "wx-logs-table-head",
+    headerCellClass: "wx-logs-table-head-cell",
+    listClass: "wx-logs-virtual-list",
+    columns: LogsPageTableColumns({ store: vm$ }),
+    rows: vm$.state.entries,
+    rowKey(entry, index) {
+      return `${entry.index || index}-${entry.time || ""}-${entry.message || ""}`;
     },
-    [
-      View(
-        {
-          class: "wx-logs-scroll",
-          attributes: { n: "logs-scroll-container" },
-        },
-        [
-          Show({
-            when: computed(
-              vm$.state.loading,
-              (loading) => loading && vm$.state.entries.value.length === 0,
-            ),
-            ok() {
-              return LogsPageLoadingState();
-            },
-            else() {
-              return Show({
-                when: computed(
-                  vm$.state.entries,
-                  (entries) => entries.length > 0,
-                ),
-                ok() {
-                  return LogsPageTable({ store: vm$ });
-                },
-                else() {
-                  return LogsPageEmptyState();
-                },
-              });
-            },
-          }),
-        ],
-      ),
-    ],
-  );
+    status: vm$.state.status,
+    loading: vm$.state.loading,
+    error: vm$.state.error,
+    rowClass: "wx-logs-table-row",
+    skeletonCount: 6,
+    renderSkeletonRow: LogsPageSkeletonRow,
+    size: 18,
+    buffer: 8,
+    gutter: 0,
+    itemHeight: 48,
+    onListScroll(position) {
+      vm$.methods.handleListScroll(position);
+    },
+    errorTitle: "日志加载失败",
+    retry: { store: vm$.ui.btn_refresh$ },
+    emptyIcon() {
+      return Timeless.Icon({
+        name: "file-search",
+        size: 32,
+        attributes: { n: "logs-empty-state-icon" },
+      });
+    },
+    emptyTitle: "没有匹配的日志",
+  });
 }
 
 export default LogsPageView;

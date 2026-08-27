@@ -187,6 +187,9 @@ function AccountViewModel(props) {
       onChange(value) {
         set_keyword(value);
       },
+      onEnter() {
+        return methods.search();
+      },
     }),
     btn_search$: new Timeless.vm.ButtonCore({
       disabled: loading_.value,
@@ -196,6 +199,8 @@ function AccountViewModel(props) {
       disabled: loading_.value,
       variant: "outline",
       onClick() {
+        set_keyword("");
+        sync_search_location();
         return load(1);
       },
     }),

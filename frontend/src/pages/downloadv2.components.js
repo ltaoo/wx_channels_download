@@ -1,3 +1,4 @@
+import { Checkbox, createCheckboxStore } from "../components.js";
 import {
   DOWNLOAD_STATUS_COUNT_ITEMS,
   MaxRunning,
@@ -971,16 +972,15 @@ function DownloadV2DialogHeading(props) {
 }
 
 function boolean_toggle(props) {
-  const { checked: checked_, label, onToggle: on_toggle } = props;
+  const { checked: checked_, label, name, onToggle: on_toggle } = props;
+  const checkbox_store = createCheckboxStore({
+    checked: checked_,
+    onChange: on_toggle,
+  });
   return View(
     {
-      role: "checkbox",
-      tabIndex: "0",
-      attributes: {
-        "aria-checked": computed(checked_, (checked) =>
-          checked ? "true" : "false",
-        ),
-      },
+      class: "wx-dl-checkbox-control",
+      attributes: { n: `${name}-control` },
       style: {
         display: "flex",
         "align-items": "center",
@@ -991,43 +991,28 @@ function boolean_toggle(props) {
         "font-size": "14px",
         "line-height": "20px",
       },
-      onClick: on_toggle,
-      onKeyDown(event) {
-        if (event.key === " " || event.key === "Enter") {
-          event.preventDefault();
-          on_toggle();
-        }
+      onClick() {
+        checkbox_store.toggle();
       },
     },
     [
+      Checkbox({
+        store: checkbox_store,
+        attributes: {
+          n: `${name}-checkbox`,
+          "aria-label": label,
+        },
+        onClick(event) {
+          event.stopPropagation();
+        },
+      }),
       View(
         {
-          style: computed(checked_, (checked) => ({
-            width: "18px",
-            height: "18px",
-            "box-sizing": "border-box",
-            "border-radius": "4px",
-            border: `1px solid ${checked ? "var(--dm-color-primary-fill)" : "var(--dm-color-border)"}`,
-            background: checked
-              ? "var(--dm-color-primary-fill)"
-              : "transparent",
-            color: "var(--dm-color-on-primary)",
-            display: "inline-flex",
-            "align-items": "center",
-            "justify-content": "center",
-            "flex-shrink": "0",
-          })),
+          as: "span",
+          attributes: { n: `${name}-label` },
         },
-        [
-          Show({
-            when: checked_,
-            ok() {
-              return Timeless.Icon({ name: "check", size: 14 });
-            },
-          }),
-        ],
+        [label],
       ),
-      View({}, [label]),
     ],
   );
 }
@@ -1145,10 +1130,9 @@ export function CreatePlatformTaskDialog(props) {
           boolean_toggle({
             checked: vm$.state.create_platform_download_cover,
             label: "同时下载封面",
-            onToggle() {
-              vm$.state.create_platform_download_cover.as(
-                !vm$.state.create_platform_download_cover.value,
-              );
+            name: "create-platform-download-cover",
+            onToggle(checked) {
+              vm$.state.create_platform_download_cover.as(checked);
             },
           }),
         ],
@@ -1495,6 +1479,7 @@ function DeleteFilesControl(props) {
   return boolean_toggle({
     checked: vm$.state.delete_delete_files,
     label: "同时删除已下载的文件",
+    name: "delete-downloaded-files",
     onToggle() {
       vm$.methods.handleClickCheckboxConfirmDeleteFiles();
     },
@@ -1763,6 +1748,7 @@ function OverwriteApplyAllControl(props) {
   return boolean_toggle({
     checked: vm$.state.overwrite_apply_all,
     label: "将此选择应用给本批次的所有冲突任务",
+    name: "overwrite-apply-all",
     onToggle() {
       if (!vm$.state.overwrite_processing.value) {
         vm$.methods.toggleOverwriteApplyAll();

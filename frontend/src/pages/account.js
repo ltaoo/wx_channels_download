@@ -67,19 +67,24 @@ function AccountPageToolbar(props) {
       },
     },
     [
-      View({ class: "wx-content-search wx-account-search" }, [
-        Timeless.Icon({ name: "search", size: 16 }),
-        Input({
-          store: vm$.ui.input_keyword$,
-          class: "wx-content-search-input",
-          attributes: {
-            name: "keyword",
-            type: "text",
-            autocomplete: "off",
-            "aria-label": "搜索账号昵称或 ID",
-          },
+      Input({
+        store: vm$.ui.input_keyword$,
+        rootClass: "wx-content-search wx-account-search",
+        rootAttributes: { n: "account-search-field" },
+        prefix: Timeless.Icon({
+          name: "search",
+          size: 16,
+          attributes: { n: "account-search-icon" },
         }),
-      ]),
+        class: "wx-content-search-input",
+        attributes: {
+          n: "account-search-input",
+          name: "keyword",
+          type: "text",
+          autocomplete: "off",
+          "aria-label": "搜索账号昵称或 ID",
+        },
+      }),
       View({ class: "wx-content-filter-actions" }, [
         AccountPageActionButton({
           store: vm$.ui.btn_search$,

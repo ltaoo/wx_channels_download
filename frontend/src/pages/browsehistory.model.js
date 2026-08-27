@@ -191,6 +191,9 @@ function BrowseHistoryViewModel(props) {
       onChange(value) {
         set_keyword(value);
       },
+      onEnter() {
+        return methods.search();
+      },
     }),
     select_platform$: new Timeless.vm.SelectCore({
       defaultValue: "",

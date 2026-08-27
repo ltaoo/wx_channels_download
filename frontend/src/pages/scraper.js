@@ -307,22 +307,27 @@ function ScraperPageForm(props) {
       },
     },
     [
-      View({ class: "wx-content-search wx-home-search" }, [
-        Timeless.Icon({ name: "search", size: 16 }),
-        Input({
-          store: vm$.ui.input_url$,
-          class: "wx-content-search-input",
-          attributes: {
-            type: "text",
-            name: "url",
-            autocomplete: "off",
-            autofocus: "autofocus",
-            inputmode: "url",
-            spellcheck: "false",
-            "aria-label": "内容 URL",
-          },
+      Input({
+        store: vm$.ui.input_url$,
+        rootClass: "wx-content-search wx-home-search",
+        rootAttributes: { n: "scraper-url-field" },
+        prefix: Timeless.Icon({
+          name: "search",
+          size: 16,
+          attributes: { n: "scraper-url-icon" },
         }),
-      ]),
+        class: "wx-content-search-input",
+        attributes: {
+          n: "scraper-url-input",
+          type: "text",
+          name: "url",
+          autocomplete: "off",
+          autofocus: "autofocus",
+          inputmode: "url",
+          spellcheck: "false",
+          "aria-label": "内容 URL",
+        },
+      }),
       View({ class: "wx-home-actions" }, [
         Show({
           when: vm$.state.loading,

@@ -81,19 +81,24 @@ function BrowseHistoryPageToolbar(props) {
     },
     [
       View({ class: "wx-content-filter-fields" }, [
-        View({ class: "wx-content-search wx-content-filter-search" }, [
-          Timeless.Icon({ name: "search", size: 16 }),
-          Input({
-            store: vm$.ui.input_keyword$,
-            class: "wx-content-search-input",
-            attributes: {
-              name: "keyword",
-              type: "text",
-              autocomplete: "off",
-              "aria-label": "搜索浏览记录标题、账号或链接",
-            },
+        Input({
+          store: vm$.ui.input_keyword$,
+          rootClass: "wx-content-search wx-content-filter-search",
+          rootAttributes: { n: "browse-history-search-field" },
+          prefix: Timeless.Icon({
+            name: "search",
+            size: 16,
+            attributes: { n: "browse-history-search-icon" },
           }),
-        ]),
+          class: "wx-content-search-input",
+          attributes: {
+            n: "browse-history-search-input",
+            name: "keyword",
+            type: "text",
+            autocomplete: "off",
+            "aria-label": "搜索浏览记录标题、账号或链接",
+          },
+        }),
       ]),
       View({ class: "wx-content-filter-actions" }, [
         BrowseHistoryPageActionButton({

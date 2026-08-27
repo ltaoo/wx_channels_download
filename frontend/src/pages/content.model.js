@@ -204,6 +204,9 @@ function ContentViewModel(props) {
       onChange(value) {
         set_keyword(value);
       },
+      onEnter() {
+        return methods.search();
+      },
     }),
     checkbox_all$: new Timeless.vm.CheckboxCore({
       checked: scope_.value === "all",
@@ -241,6 +244,7 @@ function ContentViewModel(props) {
       disabled: loading_.value,
       variant: "outline",
       onClick() {
+        set_keyword("");
         return load(1);
       },
     }),

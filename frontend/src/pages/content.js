@@ -108,19 +108,47 @@ function ContentPageToolbar(props) {
     },
     [
       View({ class: "wx-content-filter-fields" }, [
-        View({ class: "wx-content-search wx-content-filter-search" }, [
-          Timeless.Icon({ name: "search", size: 16 }),
-          Input({
-            store: vm$.ui.input_keyword$,
-            class: "wx-content-search-input",
-            attributes: {
-              name: "keyword",
-              type: "search",
-              autocomplete: "off",
-              "aria-label": "搜索内容标题或描述",
-            },
+        Input({
+          store: vm$.ui.input_keyword$,
+          rootClass: "wx-content-search wx-content-filter-search",
+          rootAttributes: { n: "content-search-field" },
+          prefix: Timeless.Icon({
+            name: "search",
+            size: 16,
+            attributes: { n: "content-search-icon" },
           }),
-        ]),
+          class: "wx-content-search-input",
+          attributes: {
+            n: "content-search-input",
+            name: "keyword",
+            type: "search",
+            autocomplete: "off",
+            "aria-label": "搜索内容标题或描述",
+          },
+        }),
+        // Select({
+        //   store: vm$.ui.select_content_type$,
+        //   class: "wx-content-type-select wx-content-filter-select",
+        //   attributes: { "aria-label": "筛选内容类型" },
+        // }),
+      ]),
+      View({ class: "wx-content-filter-actions" }, [
+        ContentPageActionButton({
+          store: vm$.ui.btn_search$,
+          icon: "search",
+          label: "搜索",
+          variant: "primary",
+          attributes: { type: "submit" },
+          onClick(event) {
+            event.preventDefault();
+            vm$.methods.search();
+          },
+        }),
+        ContentPageActionButton({
+          store: vm$.ui.btn_refresh$,
+          icon: "rotate-ccw",
+          label: "重置",
+        }),
         View(
           {
             class: "wx-content-scope-toggle",
@@ -153,29 +181,6 @@ function ContentPageToolbar(props) {
             ),
           ],
         ),
-        // Select({
-        //   store: vm$.ui.select_content_type$,
-        //   class: "wx-content-type-select wx-content-filter-select",
-        //   attributes: { "aria-label": "筛选内容类型" },
-        // }),
-      ]),
-      View({ class: "wx-content-filter-actions" }, [
-        ContentPageActionButton({
-          store: vm$.ui.btn_search$,
-          icon: "search",
-          label: "搜索",
-          variant: "primary",
-          attributes: { type: "submit" },
-          onClick(event) {
-            event.preventDefault();
-            vm$.methods.search();
-          },
-        }),
-        ContentPageActionButton({
-          store: vm$.ui.btn_refresh$,
-          icon: "rotate-ccw",
-          label: "重置",
-        }),
       ]),
     ],
   );
