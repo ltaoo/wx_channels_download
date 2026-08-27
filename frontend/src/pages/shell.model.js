@@ -576,6 +576,12 @@ export function ShellViewModel(props) {
     },
     { client: props.client },
   );
+  const certificate_uninstall_request = new Timeless.kit.RequestCore(
+    function () {
+      return window.request.post("/api/proxy/certificate/uninstall");
+    },
+    { client: props.client },
+  );
   let certificate_request_sequence = 0;
   const version = String(window.config.version || "").trim() || "开发版";
 
@@ -593,6 +599,22 @@ export function ShellViewModel(props) {
       return result;
     }
     certificate_.as(result.data || {});
+    return result;
+  }
+
+  async function delete_certificate() {
+    if (!(certificate_.value && certificate_.value.installed)) {
+      return null;
+    }
+    certificate_error_.as("");
+    ui.delete_certificate_button$.setLoading(true);
+    const result = await certificate_uninstall_request.run();
+    if (result.error) {
+      certificate_error_.as(result.error.message || String(result.error));
+    } else {
+      certificate_.as((result.data && result.data.certificate) || {});
+    }
+    ui.delete_certificate_button$.setLoading(false);
     return result;
   }
 
@@ -648,6 +670,12 @@ export function ShellViewModel(props) {
       loading: certificate_loading_.value,
       onClick: load_certificate,
     }),
+    delete_certificate_button$: new Timeless.vm.ButtonCore({
+      variant: "destructive",
+      size: "sm",
+      disabled: true,
+      onClick: delete_certificate,
+    }),
   };
   const menu_items = menu_configs.map(function (menu) {
     return {
@@ -660,12 +688,23 @@ export function ShellViewModel(props) {
       }),
     };
   });
-  const certificate_loading_unlisten = certificate_loading_.subscribe({
-    onChange(value) {
-      ui.refresh_certificate_button$.setLoading(Boolean(value));
-      ui.retry_certificate_button$.setLoading(Boolean(value));
-    },
-  });
+  const certificate_unlistens = [
+    certificate_loading_.subscribe({
+      onChange(value) {
+        ui.refresh_certificate_button$.setLoading(Boolean(value));
+        ui.retry_certificate_button$.setLoading(Boolean(value));
+      },
+    }),
+    certificate_.subscribe({
+      onChange(value) {
+        if (value && value.installed) {
+          ui.delete_certificate_button$.enable();
+        } else {
+          ui.delete_certificate_button$.disable();
+        }
+      },
+    }),
+  ];
 
   function ready() {
     return update$.methods.check();
@@ -676,9 +715,12 @@ export function ShellViewModel(props) {
     if (typeof certificate_request.destroy === "function") {
       certificate_request.destroy();
     }
-    if (typeof certificate_loading_unlisten === "function") {
-      certificate_loading_unlisten();
+    if (typeof certificate_uninstall_request.destroy === "function") {
+      certificate_uninstall_request.destroy();
     }
+    certificate_unlistens.forEach(function (unlisten) {
+      if (typeof unlisten === "function") unlisten();
+    });
     menu_items.forEach(function (item) {
       if (typeof item.button$.destroy === "function") item.button$.destroy();
     });

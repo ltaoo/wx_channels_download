@@ -171,6 +171,7 @@ export default function SiderLayoutView(props) {
         mcp_refresh_button: model.models.mcp.ui.refresh_button$,
         refresh_button: model.ui.refresh_certificate_button$,
         retry_button: model.ui.retry_certificate_button$,
+        delete_button: model.ui.delete_certificate_button$,
       }),
       UpdateDialog({ store: model.models.update }),
     ],

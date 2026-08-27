@@ -161,35 +161,29 @@ func format_fingerprint(data []byte) string {
 }
 
 func LoadCertFilesWithInfo() CertFilesInfo {
-	cert := LoadCertFiles()
-	info := CertFilesInfo{Cert: cert}
-
-	if cert.Name == certificate.DefaultCertFiles.Name {
-		info.Source = CertSourceSunnyNet
-		info.IsLegacy = true
-		info.RiskWarnings = []string{"该证书为旧版SunnyNet证书，使用硬编码密钥对，存在安全风险，建议删除后安装本机专有证书"}
-		return info
-	}
-
-	if cert.Name == "mitmproxy" {
-		info.Source = CertSourceMitmproxy
-		info.IsLegacy = true
-		info.RiskWarnings = []string{"当前使用第三方mitmproxy证书，非本机生成，存在潜在安全风险"}
-		return info
-	}
-
-	// cert.file and cert.key are configured; determine if user-configured or app-generated.
-	// App-generated certs are written to the certs/ subdirectory of the work dir.
-	cert_file := viper.GetString("cert.file")
-	if cert_file != "" {
-		if abs_path, err := filepath.Abs(cert_file); err == nil && is_under_certs_dir(abs_path) {
+	if cert, ok := load_configured_cert_files(); ok {
+		info := CertFilesInfo{Cert: cert, Source: CertSourceConfigured}
+		if abs_path, err := filepath.Abs(viper.GetString("cert.file")); err == nil && is_under_certs_dir(abs_path) {
 			info.Source = CertSourceGenerated
-			return info
+		}
+		return info
+	}
+
+	if cert := try_load_mitmproxy_cert(); cert != nil {
+		return CertFilesInfo{
+			Cert:         cert,
+			Source:       CertSourceMitmproxy,
+			IsLegacy:     true,
+			RiskWarnings: []string{"当前使用第三方mitmproxy证书，非本机生成，存在潜在安全风险"},
 		}
 	}
 
-	info.Source = CertSourceConfigured
-	return info
+	return CertFilesInfo{
+		Cert:         certificate.DefaultCertFiles,
+		Source:       CertSourceSunnyNet,
+		IsLegacy:     true,
+		RiskWarnings: []string{"该证书为旧版SunnyNet证书，使用硬编码密钥对，存在安全风险，建议删除后安装本机专有证书"},
+	}
 }
 
 // AvailableCert represents a certificate available to the proxy.
@@ -205,7 +199,7 @@ type AvailableCert struct {
 // including the built-in SunnyNet cert, mitmproxy cert (if present),
 // and the user-configured or generated cert. Exactly one cert is marked active.
 func ScanAvailableCerts() []AvailableCert {
-	active_cert := LoadCertFiles()
+	active_cert_info := LoadCertFilesWithInfo()
 	var certs []AvailableCert
 
 	// 1. SunnyNet (always available as fallback)
@@ -213,7 +207,7 @@ func ScanAvailableCerts() []AvailableCert {
 		Cert:     certificate.DefaultCertFiles,
 		Source:   CertSourceSunnyNet,
 		IsLegacy: true,
-		IsActive: active_cert.Name == certificate.DefaultCertFiles.Name,
+		IsActive: active_cert_info.Source == CertSourceSunnyNet,
 		RiskWarnings: []string{
 			"该证书为旧版SunnyNet证书，使用硬编码密钥对，存在安全风险，建议替换为本机生成的证书",
 		},
@@ -226,7 +220,7 @@ func ScanAvailableCerts() []AvailableCert {
 			Cert:     mitm_cert,
 			Source:   CertSourceMitmproxy,
 			IsLegacy: true,
-			IsActive: active_cert.Name == "mitmproxy",
+			IsActive: active_cert_info.Source == CertSourceMitmproxy,
 			RiskWarnings: []string{
 				"当前使用第三方mitmproxy证书，非本机生成，存在潜在安全风险，建议替换为本机生成的证书",
 			},
@@ -240,17 +234,11 @@ func ScanAvailableCerts() []AvailableCert {
 		if abs_path, err := filepath.Abs(viper.GetString("cert.file")); err == nil && is_under_certs_dir(abs_path) {
 			source = CertSourceGenerated
 		}
-		is_active := active_cert.Name == conf_cert.Name // compare name since object identities differ
-		// Also compare by source: only the configured/generated cert can be active
-		// when active_cert is neither SunnyNet nor mitmproxy.
-		if !is_active && active_cert.Name != certificate.DefaultCertFiles.Name && active_cert.Name != "mitmproxy" {
-			is_active = true
-		}
 		conf_entry := AvailableCert{
 			Cert:     conf_cert,
 			Source:   source,
 			IsLegacy: false,
-			IsActive: is_active,
+			IsActive: active_cert_info.Source == source,
 		}
 		certs = append(certs, conf_entry)
 	}
@@ -317,13 +305,7 @@ func try_load_mitmproxy_cert() *certificate.CertFileAndKeyFile {
 }
 
 func LoadCertFiles() *certificate.CertFileAndKeyFile {
-	if cert, ok := load_configured_cert_files(); ok {
-		return cert
-	}
-	if mitm_cert := try_load_mitmproxy_cert(); mitm_cert != nil {
-		return mitm_cert
-	}
-	return certificate.DefaultCertFiles
+	return LoadCertFilesWithInfo().Cert
 }
 
 func load_configured_cert_files() (*certificate.CertFileAndKeyFile, bool) {
