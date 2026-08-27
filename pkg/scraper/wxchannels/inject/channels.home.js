@@ -141,10 +141,25 @@ WXU.onDOMContentLoaded(function () {
     WXU.emit(WXE.Events.Feed, feed);
     clear_tip_timer();
   });
-  WXU.onPCFlowLoaded((feeds) => {
+  WXU.on("channels:PreloadFeeds", (feeds) => {
     WXU.log
       .Info()
       .Str("file", "channels.home.js:147")
+      .JSON("feeds", feeds)
+      .Msg("PreloadFeeds callback");
+    if (home_page_mounted) {
+      return;
+    }
+    home_page_mounted = true;
+    WXU.set_cur_video();
+    WXU.set_feed(feeds[0]);
+    WXU.emit(WXE.Events.Feed, feeds[0]);
+    clear_tip_timer();
+  });
+  WXU.onPCFlowLoaded((feeds) => {
+    WXU.log
+      .Info()
+      .Str("file", "channels.home.js:157")
       .Str("feed", feeds[0])
       .Str("title", feeds[0] ? feeds[0].objectDesc.description : null)
       .Str("nickname", feeds[0] ? feeds[0].nickname : null)
