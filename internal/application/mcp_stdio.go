@@ -62,7 +62,7 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 	app := velo.NewApp(&velo.VeloAppOpt{Mode: velo.ModeHttp})
 	if err := app.Migrate(&velo.VeloDatabaseOpt{
 		DBType:                    velo.DBTypeSQLite,
-		DBPath:                    cfg.DBPath,
+		DBPath:                    database.SQLiteDSN(cfg.DBPath),
 		Migrations:                &database.Migrations,
 		DisableTimestampCallbacks: true,
 	}); err != nil {
