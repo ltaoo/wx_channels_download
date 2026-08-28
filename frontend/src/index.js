@@ -1,3 +1,4 @@
+import * as dmui from "./dmui.js";
 import * as components from "./components.js";
 import * as store from "./store.js";
 
@@ -72,7 +73,7 @@ window.request = Timeless.kit.request_factory({
 
 window.__store = store;
 
-Object.assign(window, components);
+Object.assign(window, dmui, components);
 
 window.h = Timeless.h;
 window.View = Timeless.View;
@@ -232,15 +233,15 @@ window.DOWNLOAD_RESOURCE_SUFFIXES = Object.freeze({
 });
 
 function ApplicationRootView() {
-  return View({ class: "application-root dm-page" }, [
-    Timeless.ui.StandardSubViews({
+  return View({ class: "application-root page" }, [
+    Timeless.ui.KeepAliveSubViews({
       app: app$,
       client: http_client$,
       history: history$,
       storage: storage$,
       view: history$.$view,
       views: router.views,
-      placeholder: [LoadingView()],
+      placeholder: LoadingView,
       ErrorFallback: ErrorFallbackView,
     }),
   ]);

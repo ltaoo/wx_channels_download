@@ -44,6 +44,7 @@ export default [
         CardContent: "readonly",
         CardFooter: "readonly",
         Table: "readonly",
+        TableWithVirtualList: "readonly",
         TableHeader: "readonly",
         TableBody: "readonly",
         TableRow: "readonly",

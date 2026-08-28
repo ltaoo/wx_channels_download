@@ -182,14 +182,14 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 					frontend.AppendScripts(&injected, crossorigin_attr, url_build("/inject/error.js", version_query))
 				}
 				frontend.AppendStylesheets(&injected, "", url_build("/inject/components.css", version_query))
-				frontend.AppendStylesheets(&injected, "", url_build("/public/timeless/0.31.5/timeless.weui.css"))
+				frontend.AppendStylesheets(&injected, "", url_build("/public/timeless/0.32.0/timeless.weui.css"))
 				frontend.AppendScripts(
 					&injected,
 					crossorigin_attr,
-					url_build("/public/timeless/0.31.5/timeless.umd.min.js"),
-					url_build("/public/timeless/0.31.5/timeless.weui.umd.min.js"),
-					url_build("/public/timeless/0.31.5/timeless.dom.umd.min.js"),
-					url_build("/public/timeless/0.31.5/timeless.web.umd.min.js"),
+					url_build("/public/timeless/0.32.0/timeless.umd.min.js"),
+					url_build("/public/timeless/0.32.0/timeless.weui.umd.min.js"),
+					url_build("/public/timeless/0.32.0/timeless.dom.umd.min.js"),
+					url_build("/public/timeless/0.32.0/timeless.web.umd.min.js"),
 				)
 				frontend_config := make(map[string]any, len(variables)+2)
 				for key, value := range variables {

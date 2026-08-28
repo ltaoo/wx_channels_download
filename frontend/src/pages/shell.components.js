@@ -716,8 +716,9 @@ export function SettingsDialog(props) {
   return Dialog(
     {
       store: props.dialog,
-      class: "settings-dialog",
+      class: "dm-dialog--settings",
       closeLabel: "关闭设置",
+      attributes: { n: "settings-dialog" },
     },
     [
       DialogTitle({ class: "settings-dialog__heading" }, [
@@ -746,14 +747,15 @@ export function SettingsDialog(props) {
               {
                 store: props.certificate_menu_button,
                 class: Timeless.classNames([
-                  "settings-dialog__menu dm-justify-start",
+                  "dm-button--sidebar-nav",
                   Timeless.computed(props.section, function (section) {
                     return section === "certificate"
-                      ? "settings-dialog__menu--active"
+                      ? "is-active"
                       : null;
                   }),
                 ]),
                 attributes: {
+                  n: "settings-certificate-menu-action",
                   "aria-current": Timeless.computed(
                     props.section,
                     function (section) {
@@ -771,14 +773,15 @@ export function SettingsDialog(props) {
               {
                 store: props.mcp_menu_button,
                 class: Timeless.classNames([
-                  "settings-dialog__menu dm-justify-start",
+                  "dm-button--sidebar-nav",
                   Timeless.computed(props.section, function (section) {
                     return section === "mcp"
-                      ? "settings-dialog__menu--active"
+                      ? "is-active"
                       : null;
                   }),
                 ]),
                 attributes: {
+                  n: "settings-mcp-menu-action",
                   "aria-current": Timeless.computed(
                     props.section,
                     function (section) {
@@ -796,14 +799,15 @@ export function SettingsDialog(props) {
               {
                 store: props.about_menu_button,
                 class: Timeless.classNames([
-                  "settings-dialog__menu dm-justify-start",
+                  "dm-button--sidebar-nav",
                   Timeless.computed(props.section, function (section) {
                     return section === "about"
-                      ? "settings-dialog__menu--active"
+                      ? "is-active"
                       : null;
                   }),
                 ]),
                 attributes: {
+                  n: "settings-about-menu-action",
                   "aria-current": Timeless.computed(
                     props.section,
                     function (section) {
@@ -836,7 +840,6 @@ export function SettingsDialog(props) {
                   Button(
                     {
                       store: props.refresh_button,
-                      class: "settings-dialog__refresh",
                       prefix: Timeless.Icon({ name: "refresh-cw", size: 14 }),
                       attributes: { "aria-label": "刷新证书信息" },
                     },
@@ -928,7 +931,6 @@ export function SettingsDialog(props) {
                   Button(
                     {
                       store: props.mcp_refresh_button,
-                      class: "settings-dialog__refresh",
                       prefix: Timeless.Icon({ name: "refresh-cw", size: 14 }),
                       attributes: { "aria-label": "刷新 MCP 状态" },
                     },
@@ -970,7 +972,7 @@ export function UpdateDialog(props) {
   return Dialog(
     {
       store: model.ui.dialog$,
-      class: "update-dialog",
+      class: "dm-dialog--md",
       zIndex: 12000,
       showClose: false,
       attributes: { "aria-labelledby": "update-dialog-title" },

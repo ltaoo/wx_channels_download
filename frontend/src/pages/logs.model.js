@@ -163,7 +163,7 @@ function csv_escape(value) {
 
 function export_filename() {
   const stamp = format_datetime(new Date()).replace(/[^\d]/g, "");
-  return `wx-logs-${stamp || Date.now()}.csv`;
+  return `logs-${stamp || Date.now()}.csv`;
 }
 
 function download_text(filename, text) {
@@ -501,6 +501,7 @@ function LogsPageViewModel(props) {
     btn_restore_server_logs$: new Timeless.vm.ButtonCore({
       disabled: loading_.value,
       variant: "outline",
+      size: "sm",
     }),
     btn_clear_logs$: new Timeless.vm.ButtonCore({
       disabled: loading_.value,
@@ -510,6 +511,7 @@ function LogsPageViewModel(props) {
     btn_refresh$: new Timeless.vm.ButtonCore({
       disabled: loading_.value,
       variant: "outline",
+      size: "sm",
       onClick() {
         return reload_current();
       },
@@ -517,6 +519,7 @@ function LogsPageViewModel(props) {
     btn_copy_log_file_path$: new Timeless.vm.ButtonCore({
       disabled: true,
       variant: "outline",
+      size: "sm",
     }),
     checkbox_auto_refresh$: new Timeless.vm.CheckboxCore({
       checked: auto_refresh_.value,

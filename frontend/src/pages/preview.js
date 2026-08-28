@@ -3,13 +3,13 @@ import { PreviewViewModel } from "./preview.model.js";
 function PreviewStateView(props) {
   return View(
     {
-      class: "wx-preview-state dm-empty-state",
+      class: "preview-state dm-empty-state",
       role: props.role || "status",
     },
     [
-      props.loading ? View({ class: "wx-preview-spinner" }) : null,
+      props.loading ? View({ class: "preview-spinner" }) : null,
       !props.loading
-        ? View({ class: "wx-preview-state-icon" }, [
+        ? View({ class: "preview-state-icon" }, [
             Timeless.Icon({
               name: props.role === "alert" ? "circle-alert" : "file-search",
               size: 22,
@@ -17,10 +17,10 @@ function PreviewStateView(props) {
           ])
         : null,
       props.title
-        ? View({ as: "h3", class: "wx-preview-state-title" }, [props.title])
+        ? View({ as: "h3", class: "preview-state-title" }, [props.title])
         : null,
       props.message
-        ? View({ as: "p", class: "wx-preview-state-message" }, [
+        ? View({ as: "p", class: "preview-state-message" }, [
             props.message,
           ])
         : null,
@@ -32,12 +32,12 @@ function PreviewStateView(props) {
 function PreviewHeaderView(props) {
   const task = props.task;
   const account = task.account;
-  return View({ class: "wx-preview-header dm-page-header dm-container" }, [
+  return View({ class: "preview-header page-header container" }, [
     account
-      ? View({ class: "wx-preview-account" }, [
+      ? View({ class: "preview-account" }, [
           account.avatar_url
             ? Timeless.Img({
-                class: "wx-preview-account-avatar",
+                class: "preview-account-avatar",
                 src: account.avatar_url,
                 alt: "",
                 attributes: { referrerpolicy: "no-referrer" },
@@ -46,21 +46,21 @@ function PreviewHeaderView(props) {
                 },
               })
             : null,
-          View({ class: "wx-preview-account-name" }, [
+          View({ class: "preview-account-name" }, [
             account.nickname || account.external_id || "",
           ]),
         ])
       : null,
     View(
-      { class: "wx-preview-title dm-font-display dm-font-bold" },
+      { class: "preview-title dm-font-display dm-font-bold" },
       [task.title],
     ),
-    View({ class: "wx-preview-subtitle" }, [
+    View({ class: "preview-subtitle" }, [
       task.platform_id
-        ? View({ class: "wx-preview-platform" }, [
+        ? View({ class: "preview-platform" }, [
             task.platform_favicon
               ? Timeless.Img({
-                  class: "wx-preview-platform-icon",
+                  class: "preview-platform-icon",
                   src: task.platform_favicon,
                   alt: "",
                   attributes: { referrerpolicy: "no-referrer" },
@@ -74,13 +74,13 @@ function PreviewHeaderView(props) {
         : null,
       task.content_type
         ? View(
-            { class: "wx-preview-badge dm-badge dm-badge--info" },
+            { class: "preview-badge dm-badge dm-badge--info" },
             [task.content_type],
           )
         : null,
       Number.isFinite(props.fileCount)
         ? View(
-            { class: "wx-preview-badge dm-badge dm-badge--info" },
+            { class: "preview-badge dm-badge dm-badge--info" },
             [`文件 (${props.fileCount})`],
           )
         : null,
@@ -93,23 +93,23 @@ function PreviewSingleFileView(props) {
   const file = props.file;
   const url = vm$.methods.fileURL(file);
   if (file.file_type === "video") {
-    return View({ class: "wx-preview-video-container" }, [
+    return View({ class: "preview-video-container" }, [
       PreviewVideoPlayerView({
         store: vm$,
         file,
-        videoClass: "wx-preview-video",
+        videoClass: "preview-video",
         autoplay: true,
       }),
-      View({ class: "wx-preview-filename" }, [file.name]),
+      View({ class: "preview-filename" }, [file.name]),
     ]);
   }
-  return View({ class: "wx-preview-image-container" }, [
+  return View({ class: "preview-image-container" }, [
     Timeless.Img({
-      class: "wx-preview-image",
+      class: "preview-image",
       src: url,
       alt: file.name,
     }),
-    View({ class: "wx-preview-filename" }, [file.name]),
+    View({ class: "preview-filename" }, [file.name]),
   ]);
 }
 
@@ -120,7 +120,7 @@ function PreviewVideoPlayerView(props) {
   return View(
     {
       class: [
-        "wx-preview-video-player",
+        "preview-video-player",
         is_live_playback ? "is-live-playback" : "",
       ]
         .filter(Boolean)
@@ -151,7 +151,7 @@ function PreviewVideoPlayerView(props) {
               class: computed(
                 vm$.state.live_playback_status,
                 (status) =>
-                  `wx-preview-live-status is-${status || "waiting"}`,
+                  `preview-live-status is-${status || "waiting"}`,
               ),
               attributes: {
                 n: "live-playback-status",
@@ -171,7 +171,7 @@ function PreviewFileThumbnail(props) {
   if (file.file_type !== "image" || !file.exists) {
     return View(
       {
-        class: "wx-preview-file-icon",
+        class: "preview-file-icon",
         attributes: { n: "file-type-icon" },
       },
       [
@@ -182,10 +182,10 @@ function PreviewFileThumbnail(props) {
       ],
     );
   }
-  return View({ class: "wx-preview-file-thumbnail-wrap" }, [
+  return View({ class: "preview-file-thumbnail-wrap" }, [
     View(
       {
-        class: "wx-preview-file-icon",
+        class: "preview-file-icon",
         attributes: { n: "file-thumbnail-fallback-icon" },
       },
       [
@@ -196,7 +196,7 @@ function PreviewFileThumbnail(props) {
       ],
     ),
     Timeless.Img({
-      class: "wx-preview-file-thumbnail",
+      class: "preview-file-thumbnail",
       src: vm$.methods.fileURL(file),
       alt: file.name,
       attributes: { loading: "lazy" },
@@ -215,7 +215,7 @@ function PreviewFileCardView(props) {
     {
       as: "button",
       class: [
-        "wx-preview-file-card dm-panel--soft dm-focus-ring",
+        "preview-file-card dm-panel--soft dm-focus-ring",
         playable ? "" : "is-missing",
       ]
         .filter(Boolean)
@@ -230,28 +230,28 @@ function PreviewFileCardView(props) {
       },
     },
     [
-      View({ class: "wx-preview-file-thumb" }, [
+      View({ class: "preview-file-thumb" }, [
         PreviewFileThumbnail({ store: vm$, file }),
         file.status
-          ? View({ class: "wx-preview-file-status" }, [file.status])
+          ? View({ class: "preview-file-status" }, [file.status])
           : null,
       ].filter(Boolean)),
-      View({ class: "wx-preview-file-info" }, [
+      View({ class: "preview-file-info" }, [
         View(
           {
-            class: "wx-preview-file-name",
+            class: "preview-file-name",
             attributes: { title: file.name },
           },
           [file.name],
         ),
-        View({ class: "wx-preview-file-meta" }, [
+        View({ class: "preview-file-meta" }, [
           View({}, [vm$.methods.formatBytes(file.size)]),
           View({}, [playable ? "" : "missing"]),
         ]),
         file.status === "downloading" && file.progress > 0
-          ? View({ class: "wx-preview-progress" }, [
+          ? View({ class: "preview-progress" }, [
               View({
-                class: "wx-preview-progress-value",
+                class: "preview-progress-value",
                 style: { width: `${file.progress}%` },
               }),
             ])
@@ -264,12 +264,12 @@ function PreviewFileCardView(props) {
 function PreviewFileGridView(props) {
   const vm$ = props.store;
   const files = props.files;
-  return View({ class: "wx-preview-main dm-container" }, [
-    View({ as: "h2", class: "wx-preview-files-title" }, [
+  return View({ class: "preview-main container" }, [
+    View({ as: "h2", class: "preview-files-title" }, [
       `文件 (${files.length})`,
     ]),
     files.length > 0
-      ? View({ class: "wx-preview-file-grid" }, [
+      ? View({ class: "preview-file-grid" }, [
           For({
             each: files,
             render(file_) {
@@ -286,10 +286,10 @@ function PreviewFileGridView(props) {
 function PreviewGalleryPlaceholderView(props) {
   const vm$ = props.store;
   const file = props.file;
-  return View({ class: "wx-preview-gallery-placeholder" }, [
+  return View({ class: "preview-gallery-placeholder" }, [
     View(
       {
-        class: "wx-preview-gallery-placeholder-icon",
+        class: "preview-gallery-placeholder-icon",
         attributes: { n: "gallery-placeholder-file-type-icon" },
       },
       [
@@ -301,12 +301,12 @@ function PreviewGalleryPlaceholderView(props) {
     ),
     View(
       {
-        class: "wx-preview-gallery-placeholder-name",
+        class: "preview-gallery-placeholder-name",
         attributes: { title: file.name },
       },
       [file.name],
     ),
-    View({ class: "wx-preview-gallery-placeholder-message" }, [
+    View({ class: "preview-gallery-placeholder-message" }, [
       vm$.methods.filePlayable(file)
         ? "此文件类型无法在画廊中直接预览，请打开文件查看。"
         : "文件尚未下载、下载未完成，或本地文件已被删除。",
@@ -323,7 +323,7 @@ function PreviewGalleryMediaView(props) {
   }
   if (file.file_type === "image") {
     return Timeless.Img({
-      class: "wx-preview-gallery-image",
+      class: "preview-gallery-image",
       src: url,
       alt: file.name,
       attributes: { loading: "eager" },
@@ -333,15 +333,15 @@ function PreviewGalleryMediaView(props) {
     return PreviewVideoPlayerView({
       store: vm$,
       file,
-      videoClass: "wx-preview-gallery-video",
+      videoClass: "preview-gallery-video",
       autoplay: vm$.methods.isLivePlayback(file),
     });
   }
   if (file.file_type === "audio") {
-    return View({ class: "wx-preview-gallery-audio-stage" }, [
+    return View({ class: "preview-gallery-audio-stage" }, [
       View(
         {
-          class: "wx-preview-gallery-audio-icon",
+          class: "preview-gallery-audio-icon",
           attributes: { n: "gallery-audio-file-type-icon" },
         },
         [
@@ -352,7 +352,7 @@ function PreviewGalleryMediaView(props) {
         ],
       ),
       Timeless.Audio({
-        class: "wx-preview-gallery-audio",
+        class: "preview-gallery-audio",
         src: url,
         controls: true,
         preload: "metadata",
@@ -361,7 +361,7 @@ function PreviewGalleryMediaView(props) {
   }
   if (["html", "pdf"].includes(file.file_type)) {
     return Timeless.Webview({
-      class: "wx-preview-gallery-document",
+      class: "preview-gallery-document",
       href: url,
       attributes: {
         title: file.name,
@@ -387,16 +387,16 @@ function PreviewGalleryStageView(props) {
     .join(" · ");
   return View(
     {
-      class: `wx-preview-gallery-stage is-${file.file_type}`,
+      class: `preview-gallery-stage is-${file.file_type}`,
     },
     [
-      View({ class: "wx-preview-gallery-viewport" }, [
+      View({ class: "preview-gallery-viewport" }, [
         PreviewGalleryMediaView({ store: vm$, file }),
       ]),
-      View({ class: "wx-preview-gallery-caption" }, [
+      View({ class: "preview-gallery-caption" }, [
         View(
           {
-            class: "wx-preview-gallery-caption-icon",
+            class: "preview-gallery-caption-icon",
             attributes: { n: "gallery-caption-file-type-icon" },
           },
           [
@@ -406,34 +406,42 @@ function PreviewGalleryStageView(props) {
             }),
           ],
         ),
-        View({ class: "wx-preview-gallery-caption-main" }, [
+        View({ class: "preview-gallery-caption-main" }, [
           View(
             {
-              class: "wx-preview-gallery-name",
+              class: "preview-gallery-name",
               attributes: { title: file.name },
             },
             [file.name],
           ),
-          View({ class: "wx-preview-gallery-meta" }, [meta]),
+          View({ class: "preview-gallery-meta" }, [meta]),
         ]),
         file.exists
           ? View(
               {
                 as: "button",
                 class:
-                  "wx-preview-gallery-open dm-button dm-focus-ring",
+                  "preview-gallery-open dm-button dm-focus-ring",
                 attributes: {
+                  n: "gallery-show-file-action",
                   type: "button",
-                  title: `打开 ${file.name}`,
-                  "aria-label": `打开 ${file.name}`,
+                  title: `在文件夹中显示 ${file.name}`,
+                  "aria-label": `在文件夹中显示 ${file.name}`,
                 },
                 onClick() {
-                  vm$.methods.openPreview(file);
+                  vm$.methods.showFile(file);
                 },
               },
               [
-                Timeless.Icon({ name: "external-link", size: 15 }),
-                View({}, ["打开"]),
+                Timeless.Icon({
+                  name: "folder",
+                  size: 15,
+                  attributes: { n: "gallery-show-file-icon" },
+                }),
+                View(
+                  { attributes: { n: "gallery-show-file-label" } },
+                  ["文件"],
+                ),
               ],
             )
           : null,
@@ -451,7 +459,7 @@ function PreviewGalleryFileView(props) {
       as: "button",
       class: computed(vm$.state.gallery_file, (selected_file) =>
         [
-          "wx-preview-gallery-file dm-focus-ring",
+          "preview-gallery-file dm-focus-ring",
           selected_file === file ? "is-selected" : "",
           playable ? "" : "is-missing",
         ]
@@ -472,18 +480,18 @@ function PreviewGalleryFileView(props) {
       },
     },
     [
-      View({ class: "wx-preview-gallery-file-thumb" }, [
+      View({ class: "preview-gallery-file-thumb" }, [
         PreviewFileThumbnail({ store: vm$, file }),
       ]),
-      View({ class: "wx-preview-gallery-file-main" }, [
+      View({ class: "preview-gallery-file-main" }, [
         View(
           {
-            class: "wx-preview-gallery-file-name",
+            class: "preview-gallery-file-name",
             attributes: { title: file.name },
           },
           [file.name],
         ),
-        View({ class: "wx-preview-gallery-file-meta" }, [
+        View({ class: "preview-gallery-file-meta" }, [
           [
             vm$.methods.fileTypeLabel(file.file_type),
             vm$.methods.formatBytes(file.size),
@@ -501,14 +509,14 @@ function PreviewFileGalleryView(props) {
   const vm$ = props.store;
   const files = props.files;
   if (files.length === 0) {
-    return View({ class: "wx-preview-gallery dm-container" }, [
+    return View({ class: "preview-gallery container" }, [
       PreviewStateView({ message: "暂无文件" }),
     ]);
   }
   return View(
     {
       class: [
-        "wx-preview-gallery dm-container",
+        "preview-gallery container",
         files.length === 1 ? "is-single" : "",
       ]
         .filter(Boolean)
@@ -517,7 +525,7 @@ function PreviewFileGalleryView(props) {
       attributes: { "aria-label": "文件画廊" },
     },
     [
-      View({ class: "wx-preview-gallery-stage-list" }, [
+      View({ class: "preview-gallery-stage-list" }, [
         For({
           each: files,
           render(file_) {
@@ -536,8 +544,8 @@ function PreviewFileGalleryView(props) {
         }),
       ]),
       files.length > 1
-        ? View({ class: "wx-preview-gallery-file-list-wrap" }, [
-            View({ class: "wx-preview-gallery-file-list" }, [
+        ? View({ class: "preview-gallery-file-list-wrap" }, [
+            View({ class: "preview-gallery-file-list" }, [
               For({
                 each: files,
                 render(file_) {
@@ -577,7 +585,7 @@ function PreviewDownloadLinkView(props) {
   return View(
     {
       as: "a",
-      class: "wx-preview-download-link dm-button dm-focus-ring",
+      class: "preview-download-link dm-button dm-focus-ring",
       attributes: {
         href: vm$.methods.fileURL(props.file),
         target: "_blank",
@@ -591,7 +599,7 @@ function PreviewDownloadLinkView(props) {
 function PreviewZipView(props) {
   const vm$ = props.store;
   const file = props.file;
-  return View({ class: "wx-preview-overlay-body is-zip" }, [
+  return View({ class: "preview-overlay-body is-zip" }, [
     Show({
       when: vm$.state.zip_loading,
       ok() {
@@ -614,7 +622,7 @@ function PreviewZipView(props) {
                 (images) => images.length > 0,
               ),
               ok() {
-                return View({ class: "wx-preview-zip-gallery" }, [
+                return View({ class: "preview-zip-gallery" }, [
                   For({
                     each: vm$.state.zip_images,
                     render(image_) {
@@ -625,12 +633,12 @@ function PreviewZipView(props) {
                       return View(
                         {
                           as: "figure",
-                          class: "wx-preview-zip-item",
+                          class: "preview-zip-item",
                           attributes: { title: image.name },
                         },
                         [
                           Timeless.Img({
-                            class: "wx-preview-zip-image",
+                            class: "preview-zip-image",
                             src: image.url,
                             alt: image.name,
                             attributes: { loading: "lazy" },
@@ -638,7 +646,7 @@ function PreviewZipView(props) {
                           View(
                             {
                               as: "figcaption",
-                              class: "wx-preview-zip-caption",
+                              class: "preview-zip-caption",
                             },
                             [image.name],
                           ),
@@ -668,7 +676,7 @@ function PreviewOverlayMediaView(props) {
   const url = vm$.methods.fileURL(file);
   if (file.file_type === "image") {
     return Timeless.Img({
-      class: "wx-preview-overlay-image",
+      class: "preview-overlay-image",
       src: url,
       alt: file.name,
     });
@@ -677,13 +685,13 @@ function PreviewOverlayMediaView(props) {
     return PreviewVideoPlayerView({
       store: vm$,
       file,
-      videoClass: "wx-preview-overlay-video",
+      videoClass: "preview-overlay-video",
       autoplay: true,
     });
   }
   if (file.file_type === "audio") {
     return Timeless.Audio({
-      class: "wx-preview-overlay-audio",
+      class: "preview-overlay-audio",
       src: url,
       controls: true,
       autoplay: true,
@@ -691,7 +699,7 @@ function PreviewOverlayMediaView(props) {
   }
   if (["html", "pdf"].includes(file.file_type)) {
     return Timeless.Webview({
-      class: "wx-preview-overlay-frame",
+      class: "preview-overlay-frame",
       href: url,
       attributes: {
         title: file.name,
@@ -712,7 +720,7 @@ function PreviewOverlayView(props) {
   const file = props.file;
   return View(
     {
-      class: "wx-preview-overlay",
+      class: "preview-overlay",
       onClick(event) {
         if (event.target === event.currentTarget) {
           vm$.methods.closePreview();
@@ -720,10 +728,10 @@ function PreviewOverlayView(props) {
       },
     },
     [
-      View({ class: "wx-preview-overlay-header" }, [
+      View({ class: "preview-overlay-header" }, [
         View(
           {
-            class: "wx-preview-overlay-name",
+            class: "preview-overlay-name",
             attributes: { title: file.name },
           },
           [file.name],
@@ -731,7 +739,7 @@ function PreviewOverlayView(props) {
         View(
           {
             as: "button",
-            class: "wx-preview-close dm-button dm-focus-ring",
+            class: "preview-close dm-button dm-focus-ring",
             attributes: { type: "button" },
             onClick() {
               vm$.methods.closePreview();
@@ -742,7 +750,7 @@ function PreviewOverlayView(props) {
       ]),
       file.file_type === "zip"
         ? PreviewZipView({ store: vm$, file })
-        : View({ class: "wx-preview-overlay-body" }, [
+        : View({ class: "preview-overlay-body" }, [
             PreviewOverlayMediaView({ store: vm$, file }),
           ]),
     ],
@@ -761,7 +769,9 @@ function PreviewPageView(props) {
 
   return View(
     {
-      class: "wx-preview-page dm-page",
+      class: ["preview-page page", props.embedded ? "is-embedded" : ""]
+        .filter(Boolean)
+        .join(" "),
       onMounted() {
         window.document.addEventListener("keydown", handle_keydown);
         if (props.taskId && typeof props.taskId.subscribe === "function") {
@@ -800,7 +810,7 @@ function PreviewPageView(props) {
                   {
                     as: "button",
                     class:
-                      "wx-preview-retry dm-button dm-button--primary dm-focus-ring",
+                      "preview-retry dm-button dm-button--primary dm-focus-ring",
                     attributes: { type: "button" },
                     onClick() {
                       vm$.methods.retry();

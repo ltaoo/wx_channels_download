@@ -7,7 +7,8 @@ import {
   CreateTaskPreviewDialog,
   DownloadV2SelectionBar,
   DownloadV2StatusBar,
-  DownloadV2TaskColumns,
+  DownloadV2TaskActions,
+  DownloadV2TaskMain,
   DownloadV2TaskSkeletonRow,
   OverwriteConfirmDialog,
   SingleOverwriteConfirmDialog,
@@ -15,33 +16,43 @@ import {
 } from "./downloadv2.components.js";
 import { DownloadV2Model } from "./downloadv2.model.js";
 import PreviewPageView from "./preview.js";
-import { Table } from "./table.js";
 
 function DownloadV2TaskTable(props) {
   const vm$ = props.store;
 
   return Table({
     name: "download-task-table",
-    containerClass: "wx-content-main dm-container",
+    containerClass: "content-main container",
     containerAttributes: { n: "download-page-main" },
-    panelClass:
-      "wx-content-rows wx-content-history-rows wx-dl-page-task-table dm-panel",
+    panelClass: "dl-page-task-table",
     panelAttributes: { n: "download-task-list-panel" },
-    headerClass: "wx-dl-page-table-head",
-    headerCellClass: "wx-dl-page-table-head-cell",
-    listClass: "wx-content-history-list wx-dl-page-list wx-dl-dark-scroll",
-    columns: DownloadV2TaskColumns({ store: vm$ }),
+    headerClass: "dl-page-table-head",
+    headerCellClass: "dl-page-table-head-cell",
+    listClass: "dl-page-list",
+    columns: props.columns,
     rows: vm$.state.tasks,
+    pagination: {
+      class: "container dm-px-4",
+      summary: vm$.state.range_text,
+      page: vm$.state.page,
+      pageCount: vm$.state.page_count,
+      pageSize: vm$.state.page_size,
+      loading: vm$.state.loading,
+      onChange(page) {
+        return vm$.methods.changePage(page);
+      },
+    },
     rowKey(task$) {
       return task$.state.id.value;
     },
     status: vm$.state.status,
     loading: vm$.state.loading,
     error: vm$.state.error,
-    rowClass: "wx-dl-page-task-row",
+    rowClass: "dl-page-task-row",
     skeletonCount: 8,
     renderSkeletonRow: DownloadV2TaskSkeletonRow,
     rowSelection: {
+      width: 48,
       headerState: vm$.state.loaded_task_selection,
       allAriaLabel: "全选下载任务",
       itemAriaLabel: "选择下载任务",
@@ -70,8 +81,7 @@ function DownloadV2TaskPreviewDrawer(props) {
   return Drawer(
     {
       store: vm$.ui.taskPreviewDrawer$,
-      class: "wx-dl-preview-drawer",
-      style: { width: "min(max(560px, 80vw), 100vw)" },
+      class: "dm-drawer--wide",
       attributes: { n: "download-task-preview-drawer" },
     },
     () => [
@@ -92,11 +102,54 @@ function DownloadV2Page(props) {
     ...page_props,
     downloader: window.dl$,
   });
+  const task_columns = [
+    {
+      name: "task",
+      title: "下载任务",
+      cellClass: "dl-page-task-main-cell",
+      render(task$) {
+        return DownloadV2TaskMain({
+          store: vm$,
+          task: task$,
+        });
+      },
+    },
+    {
+      name: "created-at",
+      title: "下载时间",
+      width: 160,
+      cellClass: "dl-page-task-time-cell",
+      cellAttributes(task$) {
+        return {
+          title: computed(task$.state.raw, (raw) =>
+            window.format_time(raw && raw.created_at),
+          ),
+        };
+      },
+      render(task$) {
+        return computed(task$.state.raw, (raw) =>
+          window.format_time(raw && raw.created_at),
+        );
+      },
+    },
+    {
+      name: "actions",
+      title: "操作",
+      width: 132,
+      cellClass: "dl-page-task-actions-cell",
+      render(task$) {
+        return DownloadV2TaskActions({
+          store: vm$,
+          task: task$,
+        });
+      },
+    },
+  ];
 
   return View(
     {
       class:
-        "wx-content-page wx-content-library-page wx-dl-page-root dm-page",
+        "content-page content-library-page dl-page-root page",
       attributes: { n: "download-page" },
       onMounted() {
         vm$.methods.ready();
@@ -107,24 +160,7 @@ function DownloadV2Page(props) {
     },
     [
       DownloadV2StatusBar({ store: vm$ }),
-      DownloadV2TaskTable({ store: vm$ }),
-      Show({
-        when: computed(vm$.state.tasks, (tasks) => tasks.length > 0),
-        ok() {
-          return Pagination({
-            summary: vm$.state.range_text,
-            page: vm$.state.page,
-            pageCount: vm$.state.page_count,
-            loading: vm$.state.loading,
-            onPrevious() {
-              vm$.methods.previousPage();
-            },
-            onNext() {
-              vm$.methods.nextPage();
-            },
-          });
-        },
-      }),
+      DownloadV2TaskTable({ store: vm$, columns: task_columns }),
       DownloadV2SelectionBar({ store: vm$ }),
       DownloadV2TaskPreviewDrawer({
         store: vm$,

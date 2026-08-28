@@ -371,12 +371,6 @@ func (s *BrowseService) attachAccounts(histories []model.BrowseHistory) []Browse
 		Where("browse_history_account.browse_history_id IN ?", historyIds).
 		Scan(&rows)
 
-	s.logger.Info().
-		Str("method", "BrowseService.attachAccounts").
-		Int("history_count", len(histories)).
-		Int("account_rows", len(rows)).
-		Msg("attachAccounts join result")
-
 	accountMap := make(map[string][]AccountBrief, len(rows))
 	for _, r := range rows {
 		accountMap[r.BrowseHistoryId] = append(accountMap[r.BrowseHistoryId], AccountBrief{

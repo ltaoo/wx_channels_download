@@ -1,17 +1,18 @@
 import { ContentDetailViewModel } from "./content_detail.model.js";
 
 function ContentDetailAction(props) {
+  const semantic_name = props.name || "content-detail-action";
   return View(
     {
       type: "button",
       class: [
-        "wx-content-action dm-button dm-focus-ring",
-        props.compact ? "wx-content-action-compact" : "",
-        props.class,
+        "dm-button dm-button--surface dm-focus-ring",
+        props.compact ? "dm-button--sm" : "dm-button--md",
       ]
         .filter(Boolean)
         .join(" "),
       attributes: {
+        n: semantic_name,
         type: "button",
         title: props.title || "",
         ...(props.attributes || {}),
@@ -20,11 +21,13 @@ function ContentDetailAction(props) {
     },
     [
       props.icon
-        ? Timeless.Icon({ name: props.icon, size: props.iconSize || 16 })
+        ? Timeless.Icon({
+            name: props.icon,
+            size: props.iconSize || 16,
+            attributes: { n: `${semantic_name}-icon` },
+          })
         : null,
-      props.label
-        ? View({ class: "wx-content-action-label" }, [props.label])
-        : null,
+      props.label || null,
     ].filter(Boolean),
   );
 }
@@ -33,9 +36,9 @@ function ContentDetailCover(props) {
   const content = props.content;
   const cover_url = props.coverURL || props.store.methods.coverURL(content);
   if (!cover_url) return null;
-  return View({ class: "wx-content-cover-wrap" }, [
+  return View({ class: "content-cover-wrap" }, [
     LazyImg({
-      class: "wx-content-cover",
+      class: "content-cover",
       src: cover_url,
       alt: content.title,
       loading: "eager",
@@ -56,8 +59,8 @@ function ContentDetailAccount(props) {
     {
       type: clickable ? "button" : "div",
       class: [
-        "wx-content-account-item dm-focus-ring",
-        clickable ? "wx-content-account-item-clickable" : "",
+        "content-account-item dm-focus-ring",
+        clickable ? "content-account-item-clickable" : "",
       ]
         .filter(Boolean)
         .join(" "),
@@ -75,7 +78,7 @@ function ContentDetailAccount(props) {
         when: account.avatar_url,
         ok() {
           return Img({
-            class: "wx-content-avatar",
+            class: "content-avatar",
             src: account.avatar_url,
             alt: name,
             attributes: { loading: "lazy", referrerpolicy: "no-referrer" },
@@ -86,12 +89,12 @@ function ContentDetailAccount(props) {
         },
         else() {
           return View(
-            { class: "wx-content-avatar wx-content-avatar-fallback" },
+            { class: "content-avatar content-avatar-fallback" },
             [String(name).slice(0, 1)],
           );
         },
       }),
-      View({ class: "wx-content-account-name", attributes: { title: name } }, [
+      View({ class: "content-account-name", attributes: { title: name } }, [
         name,
       ]),
     ].filter(Boolean),
@@ -103,7 +106,7 @@ function ContentDetailAccounts(props) {
   if (accounts.length === 0) {
     return null;
   }
-  return View({ class: "wx-content-account-list" }, [
+  return View({ class: "content-account-list" }, [
     For({
       each: accounts,
       render(account) {
@@ -116,79 +119,17 @@ function ContentDetailAccounts(props) {
   ]);
 }
 
-function ContentDetailHeader(props) {
-  const vm$ = props.store;
-  return View({ class: "wx-content-header" }, [
-    View({ class: "wx-content-header-inner" }, [
-      View({ class: "wx-content-brand" }, [
-        ContentDetailAction({
-          icon: "arrow-left",
-          title: "返回内容列表",
-          compact: true,
-          onClick() {
-            vm$.methods.backToList();
-          },
-        }),
-        View({ class: "wx-content-brand-icon" }, [
-          Timeless.Icon({ name: "file-text", size: 24 }),
-        ]),
-        View({ class: "wx-content-detail-heading" }, [
-          View({ class: "wx-content-title" }, [
-            computed(vm$.state.detail, (content) =>
-              content && content.title ? content.title : "内容详情",
-            ),
-          ]),
-          View({ class: "wx-content-subtitle" }, [
-            computed(vm$.state.detail, (content) => {
-              if (!content) return vm$.state.detail_id.value || "";
-              return [
-                vm$.methods.platformName(content),
-                vm$.methods.typeLabel(content.content_type),
-              ]
-                .filter(Boolean)
-                .join(" · ");
-            }),
-          ]),
-        ]),
-      ]),
-      View({ class: "wx-content-detail-header-actions" }, [
-        Show({
-          when: computed(vm$.state.detail, (content) =>
-            Boolean(vm$.methods.sourceURL(content)),
-          ),
-          ok() {
-            return ContentDetailAction({
-              icon: "external-link",
-              label: "源页面",
-              onClick() {
-                vm$.methods.openSource(vm$.state.detail.value);
-              },
-            });
-          },
-        }),
-        ContentDetailAction({
-          icon: "refresh-cw",
-          label: "刷新",
-          onClick() {
-            vm$.methods.refresh();
-          },
-        }),
-      ]),
-    ]),
-  ]);
-}
-
 function ContentDetailPlatform(props) {
   const vm$ = props.store;
   const content = props.content;
   const platform_id = String(content.platform_id || "").trim();
   const favicon = (window.PLATFORM_FAVICONS || {})[platform_id] || "";
-  return View({ class: "wx-content-platform" }, [
+  return View({ class: "content-platform" }, [
     Show({
       when: favicon,
       ok() {
         return Img({
-          class: "wx-content-platform-icon",
+          class: "content-platform-icon",
           src: favicon,
           alt: "",
           attributes: {
@@ -209,16 +150,16 @@ function ContentDetailPlatform(props) {
 }
 
 function ContentDetailSection(props) {
-  return View({ class: "wx-content-detail-section" }, [
-    View({ class: "wx-content-detail-section-head" }, [
-      View({ class: "wx-content-detail-section-title" }, [props.title]),
+  return View({ class: "content-detail-section" }, [
+    View({ class: "content-detail-section-head" }, [
+      View({ class: "content-detail-section-title" }, [props.title]),
       props.count !== undefined
-        ? View({ class: "wx-content-detail-section-count" }, [
+        ? View({ class: "content-detail-section-count" }, [
             String(props.count),
           ])
         : null,
     ].filter(Boolean)),
-    View({ class: "wx-content-detail-section-body" }, props.children || []),
+    View({ class: "content-detail-section-body" }, props.children || []),
   ]);
 }
 
@@ -613,7 +554,7 @@ function apply_html_document_theme(frame) {
 function ContentDetailHTMLDocument(props) {
   const initial_theme = resolved_content_theme();
   return Timeless.Webview({
-    class: "wx-content-detail-media-document wx-content-detail-media-document-html",
+    class: "content-detail-media-document content-detail-media-document-html",
     href: props.media.url,
     style: { "color-scheme": initial_theme },
     attributes: {
@@ -669,18 +610,18 @@ function ContentDetailMediaStage(props) {
   const cover_url = vm$.methods.coverURL(props.content);
   let player = null;
   if (!media.available) {
-    player = View({ class: "wx-content-detail-media-file-stage" }, [
-      View({ class: "wx-content-detail-media-file-icon" }, [
+    player = View({ class: "content-detail-media-file-stage" }, [
+      View({ class: "content-detail-media-file-icon" }, [
         Timeless.Icon({ name: content_media_type_icon(media.type), size: 48 }),
       ]),
-      View({ class: "wx-content-detail-media-file-title" }, [media.name]),
-      View({ class: "wx-content-detail-media-file-text" }, [
+      View({ class: "content-detail-media-file-title" }, [media.name]),
+      View({ class: "content-detail-media-file-text" }, [
         "文件尚未下载、下载未完成，或本地文件已被删除。",
       ]),
     ]);
   } else if (media.type === "video") {
     player = Timeless.Video({
-      class: "wx-content-detail-media-video",
+      class: "content-detail-media-video",
       src: media.url,
       poster: cover_url,
       controls: true,
@@ -690,16 +631,16 @@ function ContentDetailMediaStage(props) {
   } else if (media.type === "audio") {
     player = View({
       class: [
-        "wx-content-detail-media-audio-stage",
-        cover_url ? "" : "wx-content-detail-media-audio-stage-no-artwork",
+        "content-detail-media-audio-stage",
+        cover_url ? "" : "content-detail-media-audio-stage-no-artwork",
       ]
         .filter(Boolean)
         .join(" "),
     }, [
       cover_url
-        ? View({ class: "wx-content-detail-media-artwork" }, [
+        ? View({ class: "content-detail-media-artwork" }, [
             Img({
-              class: "wx-content-detail-media-artwork-image",
+              class: "content-detail-media-artwork-image",
               src: cover_url,
               alt: "",
               attributes: { referrerpolicy: "no-referrer" },
@@ -707,13 +648,13 @@ function ContentDetailMediaStage(props) {
                 event.target.style.display = "none";
               },
             }),
-            View({ class: "wx-content-detail-media-artwork-fallback" }, [
+            View({ class: "content-detail-media-artwork-fallback" }, [
               Timeless.Icon({ name: "file-volume", size: 42 }),
             ]),
           ])
         : null,
       Timeless.Audio({
-        class: "wx-content-detail-media-audio",
+        class: "content-detail-media-audio",
         src: media.url,
         controls: true,
         preload: "metadata",
@@ -721,7 +662,7 @@ function ContentDetailMediaStage(props) {
     ].filter(Boolean));
   } else if (media.type === "image") {
     player = Img({
-      class: "wx-content-detail-media-image",
+      class: "content-detail-media-image",
       src: media.url,
       alt: media.name,
       attributes: { loading: "eager" },
@@ -730,7 +671,7 @@ function ContentDetailMediaStage(props) {
     player = ContentDetailHTMLDocument({ media });
   } else if (["pdf", "text"].includes(media.type)) {
     player = Timeless.Webview({
-      class: `wx-content-detail-media-document wx-content-detail-media-document-${media.type}`,
+      class: `content-detail-media-document content-detail-media-document-${media.type}`,
       href: media.url,
       attributes: {
         title: media.name,
@@ -738,12 +679,12 @@ function ContentDetailMediaStage(props) {
       },
     });
   } else {
-    player = View({ class: "wx-content-detail-media-file-stage" }, [
-      View({ class: "wx-content-detail-media-file-icon" }, [
+    player = View({ class: "content-detail-media-file-stage" }, [
+      View({ class: "content-detail-media-file-icon" }, [
         Timeless.Icon({ name: content_media_type_icon(media.type), size: 48 }),
       ]),
-      View({ class: "wx-content-detail-media-file-title" }, [media.name]),
-      View({ class: "wx-content-detail-media-file-text" }, [
+      View({ class: "content-detail-media-file-title" }, [media.name]),
+      View({ class: "content-detail-media-file-text" }, [
         "此文件类型无法在浏览器中直接预览，请打开原文件查看。",
       ]),
     ]);
@@ -762,26 +703,27 @@ function ContentDetailMediaStage(props) {
     .join(" · ");
   return View(
     {
-      class: `wx-content-detail-media-stage wx-content-detail-media-stage-${media.type}`,
+      class: `content-detail-media-stage content-detail-media-stage-${media.type}`,
     },
     [
-      View({ class: "wx-content-detail-media-viewport" }, [player]),
-      View({ class: "wx-content-detail-media-caption" }, [
-        View({ class: "wx-content-detail-media-caption-icon" }, [
+      View({ class: "content-detail-media-viewport" }, [player]),
+      View({ class: "content-detail-media-caption" }, [
+        View({ class: "content-detail-media-caption-icon" }, [
           Timeless.Icon({ name: content_media_type_icon(media.type), size: 16 }),
         ]),
-        View({ class: "wx-content-detail-media-caption-main" }, [
+        View({ class: "content-detail-media-caption-main" }, [
           View(
             {
-              class: "wx-content-detail-media-name",
+              class: "content-detail-media-name",
               attributes: { title: media.name },
             },
             [media.name],
           ),
-          View({ class: "wx-content-detail-media-meta" }, [meta]),
+          View({ class: "content-detail-media-meta" }, [meta]),
         ]),
         media.available
           ? ContentDetailAction({
+              name: "content-detail-open-media-action",
               icon: "external-link",
               label: "打开原文件",
               onClick() {
@@ -803,8 +745,8 @@ function ContentDetailMediaPicker(props) {
       type: "button",
       class: computed(selected_, (selected) =>
         selected && selected.key === media.key
-          ? "wx-content-detail-media-choice dm-focus-ring is-selected"
-          : "wx-content-detail-media-choice dm-focus-ring",
+          ? "content-detail-media-choice dm-focus-ring is-selected"
+          : "content-detail-media-choice dm-focus-ring",
       ),
       attributes: {
         type: "button",
@@ -818,12 +760,12 @@ function ContentDetailMediaPicker(props) {
       },
     },
     [
-      View({ class: "wx-content-detail-media-choice-icon" }, [
+      View({ class: "content-detail-media-choice-icon" }, [
         Timeless.Icon({ name: content_media_type_icon(media.type), size: 16 }),
       ]),
-      View({ class: "wx-content-detail-media-choice-main" }, [
-        View({ class: "wx-content-detail-media-choice-name" }, [media.name]),
-        View({ class: "wx-content-detail-media-choice-meta" }, [
+      View({ class: "content-detail-media-choice-main" }, [
+        View({ class: "content-detail-media-choice-name" }, [media.name]),
+        View({ class: "content-detail-media-choice-meta" }, [
           [
             content_media_type_label(media.type),
             media.asset_label,
@@ -850,21 +792,21 @@ function ContentDetailExtension(props) {
   const content = props.content;
   const media = content_asset_previews(content, vm$);
   if (!media.length) {
-    return View({ class: "wx-content-detail-media-empty" }, [
-      View({ class: "wx-content-detail-media-empty-icon" }, [
+    return View({ class: "content-detail-media-empty" }, [
+      View({ class: "content-detail-media-empty-icon" }, [
         Timeless.Icon({ name: "play", size: 24 }),
       ]),
-      View({ class: "wx-content-detail-media-empty-title" }, [
+      View({ class: "content-detail-media-empty-title" }, [
         "还没有内容资产",
       ]),
-      View({ class: "wx-content-detail-media-empty-text" }, [
+      View({ class: "content-detail-media-empty-text" }, [
         "视频、音频、图片、HTML、PDF 及其他下载文件会显示在这里。",
       ]),
     ]);
   }
   const selected_ = ref(media.find((item) => item.available) || media[0]);
-  return View({ class: "wx-content-detail-extension" }, [
-    View({ class: "wx-content-detail-media-stage-list" }, [
+  return View({ class: "content-detail-extension" }, [
+    View({ class: "content-detail-media-stage-list" }, [
       For({
         each: media,
         render(item) {
@@ -884,7 +826,7 @@ function ContentDetailExtension(props) {
       }),
     ]),
     media.length > 1
-      ? View({ class: "wx-content-detail-media-choices" }, [
+      ? View({ class: "content-detail-media-choices" }, [
           For({
             each: media,
             render(item) {
@@ -918,28 +860,28 @@ function ContentDetailResource(props) {
     .filter(Boolean)
     .join(" · ");
   return View(
-    { class: "wx-content-detail-resource" },
+    { class: "content-detail-resource" },
     [
-      View({ class: "wx-content-detail-resource-icon" }, [
+      View({ class: "content-detail-resource-icon" }, [
         Timeless.Icon({ name: vm$.methods.fileTypeIcon(resource), size: 18 }),
       ]),
-      View({ class: "wx-content-detail-resource-main" }, [
+      View({ class: "content-detail-resource-main" }, [
         View(
           {
             class: deleted
-              ? "wx-content-detail-resource-name is-deleted"
-              : "wx-content-detail-resource-name",
+              ? "content-detail-resource-name is-deleted"
+              : "content-detail-resource-name",
             attributes: { title: name },
           },
           [name],
         ),
         meta
-          ? View({ class: "wx-content-detail-resource-meta" }, [meta])
+          ? View({ class: "content-detail-resource-meta" }, [meta])
           : null,
         resource.local_path
           ? View(
               {
-                class: "wx-content-detail-resource-path",
+                class: "content-detail-resource-path",
                 attributes: { title: resource.local_path },
               },
               [resource.local_path],
@@ -950,19 +892,20 @@ function ContentDetailResource(props) {
         ? View(
             {
               class:
-                "wx-content-detail-status wx-content-detail-status-deleted",
+                "content-detail-status content-detail-status-deleted",
             },
             ["已删除"],
           )
         : null,
       !deleted && vm$.methods.resourceFileAvailable(resource)
         ? ContentDetailAction({
+            name: "content-detail-show-resource-action",
             icon: "folder-open",
-            title: "打开文件",
+            title: "在文件夹中显示文件",
             compact: true,
             onClick(event) {
               event.stopPropagation();
-              vm$.methods.openResource(resource);
+              vm$.methods.showResource(resource);
             },
           })
         : null,
@@ -972,9 +915,9 @@ function ContentDetailResource(props) {
 
 function ContentDetailResources(props) {
   if (!props.resources.length) {
-    return View({ class: "wx-content-detail-empty" }, ["暂无资源文件"]);
+    return View({ class: "content-detail-empty" }, ["暂无资源文件"]);
   }
-  return View({ class: "wx-content-detail-resource-list" }, [
+  return View({ class: "content-detail-resource-list" }, [
     For({
       each: props.resources,
       render(resource) {
@@ -989,25 +932,25 @@ function ContentDetailTask(props) {
   const task = props.task || {};
   const status = vm$.methods.taskStatus(task.status);
   const name = task.name || task.source_url || `任务 ${task.id || ""}`;
-  return View({ class: "wx-content-detail-task" }, [
-    View({ class: "wx-content-detail-task-id" }, [
+  return View({ class: "content-detail-task" }, [
+    View({ class: "content-detail-task-id" }, [
       task.id ? `#${task.id}` : "-",
     ]),
-    View({ class: "wx-content-detail-task-main" }, [
+    View({ class: "content-detail-task-main" }, [
       View(
         {
-          class: "wx-content-detail-task-name",
+          class: "content-detail-task-name",
           attributes: { title: name },
         },
         [name],
       ),
-      View({ class: "wx-content-detail-task-meta" }, [
+      View({ class: "content-detail-task-meta" }, [
         vm$.methods.formatTime(task.updated_at || task.created_at),
       ]),
     ]),
     View(
       {
-        class: `wx-content-detail-status wx-content-detail-status-${status.tone}`,
+        class: `content-detail-status content-detail-status-${status.tone}`,
       },
       [status.label],
     ),
@@ -1016,9 +959,9 @@ function ContentDetailTask(props) {
 
 function ContentDetailTasks(props) {
   if (!props.tasks.length) {
-    return View({ class: "wx-content-detail-empty" }, ["暂无下载任务"]);
+    return View({ class: "content-detail-empty" }, ["暂无下载任务"]);
   }
-  return View({ class: "wx-content-detail-task-list" }, [
+  return View({ class: "content-detail-task-list" }, [
     For({
       each: props.tasks,
       render(task) {
@@ -1079,7 +1022,7 @@ function ContentDetailRelation(props) {
     {
       type: clickable ? "button" : "div",
       class: [
-        "wx-content-detail-relation dm-focus-ring",
+        "content-detail-relation dm-focus-ring",
         clickable ? "is-clickable" : "",
       ]
         .filter(Boolean)
@@ -1095,18 +1038,18 @@ function ContentDetailRelation(props) {
       },
     },
     [
-      View({ class: "wx-content-detail-relation-icon" }, [
+      View({ class: "content-detail-relation-icon" }, [
         Timeless.Icon({ name: "git-branch", size: 17 }),
       ]),
-      View({ class: "wx-content-detail-relation-main" }, [
+      View({ class: "content-detail-relation-main" }, [
         View(
           {
-            class: "wx-content-detail-relation-name",
+            class: "content-detail-relation-name",
             attributes: { title },
           },
           [title],
         ),
-        View({ class: "wx-content-detail-relation-meta" }, [
+        View({ class: "content-detail-relation-meta" }, [
           [...props.item.labels, subtype].filter(Boolean).join(" · "),
         ]),
       ]),
@@ -1118,9 +1061,9 @@ function ContentDetailRelation(props) {
 function ContentDetailRelations(props) {
   const items = content_related_items(props.content);
   if (!items.length) {
-    return View({ class: "wx-content-detail-empty" }, ["暂无关联内容"]);
+    return View({ class: "content-detail-empty" }, ["暂无关联内容"]);
   }
-  return View({ class: "wx-content-detail-relation-list" }, [
+  return View({ class: "content-detail-relation-list" }, [
     For({
       each: items,
       render(item) {
@@ -1139,39 +1082,39 @@ function ContentDetailMain(props) {
   const content = props.content;
   const description = String(content.description || "").trim();
   const cover_url = vm$.methods.coverURL(content);
-  return View({ class: "wx-content-detail-layout" }, [
+  return View({ class: "content-detail-layout" }, [
     View({
       class: [
-        "wx-content-detail-summary dm-panel",
-        cover_url ? "" : "wx-content-detail-summary-no-cover",
+        "content-detail-summary dm-panel",
+        cover_url ? "" : "content-detail-summary-no-cover",
       ]
         .filter(Boolean)
         .join(" "),
     }, [
       cover_url
-        ? View({ class: "wx-content-detail-cover" }, [
+        ? View({ class: "content-detail-cover" }, [
             ContentDetailCover({ store: vm$, content, coverURL: cover_url }),
           ])
         : null,
-      View({ class: "wx-content-detail-info" }, [
-        View({ class: "wx-content-card-tags" }, [
+      View({ class: "content-detail-info" }, [
+        View({ class: "content-card-tags" }, [
           ContentDetailPlatform({ store: vm$, content }),
-          View({ class: "wx-content-type-badge" }, [
+          View({ class: "content-type-badge" }, [
             vm$.methods.typeLabel(content.content_type),
           ]),
         ]),
         View(
           {
-            class: "wx-content-detail-title",
+            class: "content-detail-title",
             attributes: { title: content.title },
           },
           [content.title],
         ),
         ContentDetailAccounts({ content, history: props.history }),
         description
-          ? View({ class: "wx-content-detail-description" }, [description])
+          ? View({ class: "content-detail-description" }, [description])
           : null,
-        View({ class: "wx-content-detail-publish-time" }, [
+        View({ class: "content-detail-publish-time" }, [
           Timeless.Icon({ name: "clock3", size: 14 }),
           `发布于 ${vm$.methods.formatTime(content.publish_time)}`,
         ]),
@@ -1214,14 +1157,14 @@ function ContentDetailMain(props) {
 }
 
 function ContentDetailSkeleton() {
-  return View({ class: "wx-content-detail-layout" }, [
-    View({ class: "wx-content-detail-summary dm-panel" }, [
-      View({ class: "wx-content-detail-cover wx-content-skeleton" }),
-      View({ class: "wx-content-detail-info" }, [
-        View({ class: "wx-content-skeleton wx-content-skeleton-tag" }),
-        View({ class: "wx-content-skeleton wx-content-skeleton-title" }),
-        View({ class: "wx-content-skeleton wx-content-skeleton-line" }),
-        View({ class: "wx-content-skeleton wx-content-skeleton-line-short" }),
+  return View({ class: "content-detail-layout" }, [
+    View({ class: "content-detail-summary dm-panel" }, [
+      View({ class: "content-detail-cover content-skeleton" }),
+      View({ class: "content-detail-info" }, [
+        View({ class: "content-skeleton content-skeleton-tag" }),
+        View({ class: "content-skeleton content-skeleton-title" }),
+        View({ class: "content-skeleton content-skeleton-line" }),
+        View({ class: "content-skeleton content-skeleton-line-short" }),
       ]),
     ]),
   ]);
@@ -1229,7 +1172,7 @@ function ContentDetailSkeleton() {
 
 function ContentDetailBody(props) {
   const vm$ = props.store;
-  return View({ class: "wx-content-main wx-content-detail-main dm-container" }, [
+  return View({ class: "content-main content-detail-main container" }, [
     Show({
       when: vm$.state.loading,
       ok() {
@@ -1239,11 +1182,12 @@ function ContentDetailBody(props) {
         return Show({
           when: computed(vm$.state.error, (error) => Boolean(error)),
           ok() {
-            return View({ class: "wx-content-state" }, [
+            return View({ class: "content-state" }, [
               Timeless.Icon({ name: "circle-alert", size: 32 }),
-              View({ class: "wx-content-state-title" }, ["内容加载失败"]),
-              View({ class: "wx-content-state-text" }, [vm$.state.error]),
+              View({ class: "content-state-title" }, ["内容加载失败"]),
+              View({ class: "content-state-text" }, [vm$.state.error]),
               ContentDetailAction({
+                name: "content-detail-retry-action",
                 icon: "refresh-cw",
                 label: "重试",
                 onClick() {
@@ -1264,9 +1208,9 @@ function ContentDetailBody(props) {
                 });
               },
               else() {
-                return View({ class: "wx-content-state" }, [
+                return View({ class: "content-state" }, [
                   Timeless.Icon({ name: "inbox", size: 36 }),
-                  View({ class: "wx-content-state-title" }, ["暂无内容详情"]),
+                  View({ class: "content-state-title" }, ["暂无内容详情"]),
                 ]);
               },
             });
@@ -1281,13 +1225,17 @@ function ContentDetailPageView(props) {
   const vm$ = ContentDetailViewModel(props);
   return View(
     {
-      class: "wx-content-page wx-content-detail-page dm-page",
+      class: [
+        "content-page content-detail-page page",
+        props.embedded ? "is-embedded" : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
       onMounted() {
         vm$.methods.ready();
       },
     },
     [
-      ContentDetailHeader({ store: vm$ }),
       ContentDetailBody({
         store: vm$,
         history: props.history,

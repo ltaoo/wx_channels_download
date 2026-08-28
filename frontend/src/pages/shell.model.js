@@ -548,13 +548,13 @@ export function ShellViewModel(props) {
   const menu_configs = [
     { title: "下载", name: "root.shell.download", icon: "download" },
     { title: "Get", name: "root.shell.scraper", icon: "search" },
-    { title: "内容管理", name: "root.shell.content", icon: "library" },
+    { title: "内容", name: "root.shell.content", icon: "library" },
     {
-      title: "浏览记录",
+      title: "浏览",
       name: "root.shell.browsehistory",
       icon: "history",
     },
-    { title: "帐号管理", name: "root.shell.account", icon: "user" },
+    { title: "账号", name: "root.shell.account", icon: "user" },
     // { title: "日志", name: "root.shell.logs", icon: "user" },
   ];
   const menu$ = Timeless.kit.RouteMenusModel({

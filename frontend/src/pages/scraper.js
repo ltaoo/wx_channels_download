@@ -17,17 +17,6 @@ const task_overwrite_actions = [
   },
 ];
 
-const scraper_compact_radius_style = Object.freeze({
-  "--dm-radius-xs": "4px",
-  "--dm-radius-sm": "4px",
-  "--dm-radius-md": "4px",
-  "--dm-radius-lg": "4px",
-  "--dm-radius-xl": "4px",
-  "--dm-radius-full": "4px",
-  "--dm-brand-radius-control": "4px",
-  "--dm-brand-radius-panel": "4px",
-});
-
 function ScraperPageView(props) {
   const page_props = props || {};
   const vm$ = ScraperPageViewModel({
@@ -37,8 +26,7 @@ function ScraperPageView(props) {
 
   return View(
     {
-      class: "wx-content-page wx-home-page dm-page",
-      style: scraper_compact_radius_style,
+      class: "content-page home-page page",
       onMounted() {
         vm$.methods.connectProgress();
       },
@@ -47,28 +35,28 @@ function ScraperPageView(props) {
       },
     },
     [
-      View({ class: "wx-content-main wx-home-main dm-container" }, [
-        View({ class: "wx-home-content" }, [
+      View({ class: "content-main home-main container" }, [
+        View({ class: "home-content" }, [
           View(
             {
-              class: "wx-home-workbench dm-panel",
+              class: "home-workbench dm-panel",
               attributes: { "aria-busy": vm$.state.busy },
             },
             [
-              View({ class: "wx-home-workbench-heading" }, [
-                View({ class: "wx-home-workbench-heading-icon" }, [
+              View({ class: "home-workbench-heading" }, [
+                View({ class: "home-workbench-heading-icon" }, [
                   Timeless.Icon({ name: "inbox", size: 20 }),
                 ]),
-                View({ class: "wx-home-workbench-heading-copy" }, [
-                  View({ class: "wx-home-workbench-kicker" }, ["新建归档任务"]),
-                  View({ class: "wx-home-workbench-title" }, [
+                View({ class: "home-workbench-heading-copy" }, [
+                  View({ class: "home-workbench-kicker" }, ["新建归档任务"]),
+                  View({ class: "home-workbench-title" }, [
                     "粘贴内容链接，开始解析",
                   ]),
-                  View({ class: "wx-home-workbench-description" }, [
+                  View({ class: "home-workbench-description" }, [
                     "识别内容、作者与媒体资源，并生成可追踪的下载任务。",
                   ]),
                 ]),
-                View({ class: "wx-home-header-actions" }, [
+                View({ class: "home-header-actions" }, [
                   ScraperPlatformStatus({ store: vm$ }),
                 ]),
               ]),
@@ -80,8 +68,8 @@ function ScraperPageView(props) {
                     {
                       class: computed(vm$.state.has_error, (has_error) =>
                         has_error
-                          ? "wx-home-status error dm-badge dm-badge--danger"
-                          : "wx-home-status dm-badge dm-badge--info",
+                          ? "home-status error dm-badge dm-badge--danger"
+                          : "home-status dm-badge dm-badge--info",
                       ),
                       attributes: {
                         role: "status",
@@ -92,7 +80,10 @@ function ScraperPageView(props) {
                       Show({
                         when: vm$.state.busy,
                         ok() {
-                          return View({ class: "weui-loading" });
+                          return View({
+                            class: "dm-spinner",
+                            attributes: { n: "scraper-status-loading" },
+                          });
                         },
                       }),
                       vm$.state.status_text,
@@ -117,7 +108,6 @@ function ScraperPageView(props) {
       TaskOverwriteConfirmDialog({ store: vm$ }),
       ThirdPartyDownloaderPanel({
         store: vm$.models.third_party_downloader,
-        style: scraper_compact_radius_style,
       }),
     ],
   );
@@ -133,11 +123,7 @@ function TaskOverwriteConfirmDialog(props) {
     {
       store: vm$.ui.task_overwrite_confirm_dialog$,
       zIndex: 10000,
-      style: {
-        ...scraper_compact_radius_style,
-        width: "min(520px, calc(100vw - 32px))",
-        "border-radius": "var(--dm-radius-xs)",
-      },
+      class: "dm-dialog--form",
       okText: "确定",
     },
     [
@@ -147,32 +133,23 @@ function TaskOverwriteConfirmDialog(props) {
           "请选择覆盖已有任务，或者保留已有任务并重复下载。",
         ]),
       ]),
-      DialogBody({ style: { display: "grid", gap: "14px" } }, [
+      DialogBody({ class: "dm-grid dm-gap-3" }, [
         View(
           {
-            style: {
-              display: "flex",
-              "align-items": "center",
-              gap: "10px",
-              padding: "10px 12px",
-              "border-radius": "var(--dm-radius-xs)",
-              background: "var(--dm-color-bg-subtle)",
-              border: "1px solid var(--dm-color-border-translucent)",
-            },
+            class: "dm-notice-row",
+            attributes: { n: "download-overwrite-conflict" },
           },
           [
-            Timeless.Icon({ name: "circle-alert", size: 18 }),
+            Timeless.Icon({
+              name: "circle-alert",
+              size: 18,
+              attributes: { n: "download-overwrite-conflict-icon" },
+            }),
             View(
               {
-                style: {
-                  "min-width": "0",
-                  overflow: "hidden",
-                  "text-overflow": "ellipsis",
-                  "white-space": "nowrap",
-                  "font-size": "13px",
-                  "font-weight": "600",
-                },
+                class: "dm-truncate dm-flex-1 dm-text-sm dm-font-semibold",
                 attributes: {
+                  n: "download-overwrite-conflict-name",
                   title: computed(conflict_, (conflict) => conflict.name || ""),
                 },
               },
@@ -183,7 +160,8 @@ function TaskOverwriteConfirmDialog(props) {
         View(
           {
             role: "radiogroup",
-            style: { display: "grid", gap: "8px" },
+            class: "dm-choice-list",
+            attributes: { n: "download-overwrite-actions" },
           },
           [
             For({
@@ -201,6 +179,7 @@ function TaskOverwriteConfirmDialog(props) {
                     role: "radio",
                     tabIndex: "0",
                     attributes: {
+                      n: `download-overwrite-${item.value}`,
                       "aria-checked": computed(row_state_, (state) =>
                         state.selected ? "true" : "false",
                       ),
@@ -208,18 +187,15 @@ function TaskOverwriteConfirmDialog(props) {
                         state.processing ? "true" : undefined,
                       ),
                     },
-                    style: computed(row_state_, (state) => ({
-                      display: "flex",
-                      "align-items": "center",
-                      gap: "12px",
-                      padding: "11px 12px",
-                      "border-radius": "var(--dm-radius-xs)",
-                      border: `1px solid ${state.selected ? "var(--dm-color-primary-fill)" : "var(--dm-color-border)"}`,
-                      background: state.selected
-                        ? "color-mix(in srgb, var(--dm-color-primary-fill) 10%, transparent)"
-                        : "transparent",
-                      cursor: state.processing ? "wait" : "pointer",
-                    })),
+                    class: computed(row_state_, (state) =>
+                      [
+                        "dm-choice-row",
+                        state.selected ? "is-selected" : "",
+                        state.processing ? "is-processing" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" "),
+                    ),
                     onClick() {
                       vm$.methods.setTaskOverwriteAction(item.value);
                     },
@@ -231,23 +207,43 @@ function TaskOverwriteConfirmDialog(props) {
                     },
                   },
                   [
-                    Timeless.Icon({ name: item.icon, size: 18 }),
-                    View({ style: { flex: "1 1 auto" } }, [
+                    View(
+                      {
+                        class: "dm-choice-row__icon",
+                        attributes: {
+                          n: `download-overwrite-${item.value}-icon`,
+                        },
+                      },
+                      [Timeless.Icon({ name: item.icon, size: 16 })],
+                    ),
+                    View(
+                      {
+                        class: "dm-min-w-0 dm-flex-1",
+                        attributes: {
+                          n: `download-overwrite-${item.value}-content`,
+                        },
+                      },
+                      [
                       View(
-                        { style: { "font-size": "14px", "font-weight": "600" } },
+                        {
+                          class: "dm-choice-row__title",
+                          attributes: {
+                            n: `download-overwrite-${item.value}-title`,
+                          },
+                        },
                         [item.label],
                       ),
                       View(
                         {
-                          style: {
-                            "font-size": "12px",
-                            color: "var(--dm-color-text-secondary)",
-                            "margin-top": "2px",
+                          class: "dm-choice-row__description",
+                          attributes: {
+                            n: `download-overwrite-${item.value}-description`,
                           },
                         },
                         [item.description],
                       ),
-                    ]),
+                      ],
+                    ),
                     Show({
                       when: computed(row_state_, (state) => state.selected),
                       ok() {
@@ -266,17 +262,12 @@ function TaskOverwriteConfirmDialog(props) {
             return View(
               {
                 role: "status",
-                style: {
-                  display: "flex",
-                  "align-items": "center",
-                  gap: "8px",
-                  "font-size": "12px",
-                  color: "var(--dm-color-text-secondary)",
-                },
+                class: "dm-status-inline",
+                attributes: { n: "download-overwrite-processing" },
               },
               [
                 View({
-                  class: "dm-ui-spinner",
+                  class: "dm-spinner",
                   attributes: { "aria-hidden": "true" },
                 }),
                 "正在重新创建下载任务...",
@@ -300,44 +291,52 @@ function ScraperPageForm(props) {
   return View(
     {
       type: "form",
-      class: "wx-home-form",
+      class: "home-form",
       onSubmit(event) {
         event.preventDefault();
         vm$.methods.submit();
       },
     },
     [
-      Input({
-        store: vm$.ui.input_url$,
-        rootClass: "wx-content-search wx-home-search",
-        rootAttributes: { n: "scraper-url-field" },
-        prefix: Timeless.Icon({
-          name: "search",
-          size: 16,
-          attributes: { n: "scraper-url-icon" },
-        }),
-        class: "wx-content-search-input",
-        attributes: {
-          n: "scraper-url-input",
-          type: "text",
-          name: "url",
-          autocomplete: "off",
-          autofocus: "autofocus",
-          inputmode: "url",
-          spellcheck: "false",
-          "aria-label": "内容 URL",
+      View(
+        {
+          class: "home-search-field",
+          attributes: { n: "scraper-url-field" },
         },
-      }),
-      View({ class: "wx-home-actions" }, [
+        [
+          Input({
+            store: vm$.ui.input_url$,
+            rootClass: "dm-input--lg",
+            rootAttributes: { n: "scraper-url-control" },
+            prefix: Timeless.Icon({
+              name: "search",
+              size: 16,
+              attributes: { n: "scraper-url-icon" },
+            }),
+            attributes: {
+              n: "scraper-url-input",
+              type: "text",
+              name: "url",
+              autocomplete: "off",
+              autofocus: "autofocus",
+              inputmode: "url",
+              spellcheck: "false",
+              "aria-label": "内容 URL",
+            },
+          }),
+        ],
+      ),
+      View({ class: "home-actions" }, [
         Show({
           when: vm$.state.loading,
           ok() {
             return Button(
               {
                 store: vm$.ui.btn_interrupt_fetch$,
-                class:
-                  "wx-content-action wx-home-interrupt dm-button dm-button--danger dm-focus-ring",
-                attributes: { type: "button" },
+                attributes: {
+                  n: "scraper-interrupt-action",
+                  type: "button",
+                },
               },
               [
                 Timeless.Icon({ name: "square", size: 14 }),
@@ -348,18 +347,17 @@ function ScraperPageForm(props) {
             );
           },
           else() {
-            return View({ class: "wx-home-idle-actions" }, [
+            return View({ class: "home-idle-actions" }, [
               Button(
                 {
                   store: vm$.ui.btn_submit$,
-                  class:
-                    "wx-content-action wx-home-submit dm-button dm-button--primary dm-focus-ring",
-                  attributes: { type: "button" },
+                  attributes: {
+                    n: "scraper-submit-action",
+                    type: "button",
+                  },
                 },
                 [
-                  View({ class: "wx-content-action-label" }, [
-                    vm$.state.submit_button_text,
-                  ]),
+                  vm$.state.submit_button_text,
                   Timeless.Icon({ name: "arrow-right", size: 15 }),
                 ],
               ),
@@ -376,13 +374,13 @@ function ScraperContentCover(props) {
   return Show({
     when: content.cover_url,
     ok() {
-      return View({ class: "wx-home-content-cover" }, [
-        View({ class: "wx-home-content-cover-fallback" }, [
+      return View({ class: "home-content-cover" }, [
+        View({ class: "home-content-cover-fallback" }, [
           Timeless.Icon({ name: "file", size: 34 }),
           content.content_type_name,
         ]),
         Img({
-          class: "wx-home-content-cover-image",
+          class: "home-content-cover-image",
           src: content.cover_url,
           alt: content.title,
           attributes: {
@@ -439,39 +437,39 @@ function ScraperContentCard(props) {
   const content = vm$.state.content;
   const account = vm$.state.account;
   const description = computed(content.description, ScraperDecodeHTMLText);
-  return View({ class: "wx-home-card wx-home-content-card dm-panel" }, [
-    View({ class: "wx-home-card-heading" }, [
-      View({ class: "wx-home-card-title-group" }, [
-        View({ class: "wx-home-card-icon" }, [
+  return View({ class: "home-card home-content-card dm-panel" }, [
+    View({ class: "home-card-heading" }, [
+      View({ class: "home-card-title-group" }, [
+        View({ class: "home-card-icon" }, [
           Timeless.Icon({ name: "file", size: 17 }),
         ]),
         View({}, [
-          View({ class: "wx-home-card-kicker" }, ["CONTENT"]),
-          View({ class: "wx-home-card-title" }, ["内容"]),
+          View({ class: "home-card-kicker" }, ["CONTENT"]),
+          View({ class: "home-card-title" }, ["内容"]),
         ]),
       ]),
     ]),
     View({
       class: computed(content.cover_url, (cover_url) =>
         cover_url
-          ? "wx-home-content-card-body"
-          : "wx-home-content-card-body is-coverless",
+          ? "home-content-card-body"
+          : "home-content-card-body is-coverless",
       ),
     }, [
       ScraperContentCover({ content }),
-      View({ class: "wx-home-content-info" }, [
-        View({ class: "wx-home-badges" }, [
+      View({ class: "home-content-info" }, [
+        View({ class: "home-badges" }, [
           View(
             {
               class:
-                "wx-home-badge wx-home-badge-primary wx-home-platform-badge",
+                "home-badge home-badge-primary home-platform-badge",
             },
             [
               Show({
                 when: content.platform_favicon,
                 ok() {
                   return Img({
-                    class: "wx-home-platform-favicon",
+                    class: "home-platform-favicon",
                     src: content.platform_favicon,
                     alt: "",
                     attributes: {
@@ -487,23 +485,23 @@ function ScraperContentCard(props) {
               content.platform_name,
             ],
           ),
-          View({ class: "wx-home-badge" }, [content.content_type_name]),
+          View({ class: "home-badge" }, [content.content_type_name]),
         ]),
         View(
           {
-            class: "wx-home-content-title",
+            class: "home-content-title",
             attributes: { title: content.title },
           },
           [content.title],
         ),
-        View({ class: "wx-home-content-meta" }, [
+        View({ class: "home-content-meta" }, [
           Timeless.Icon({ name: "clock3", size: 14 }),
           content.publish_time_text,
         ]),
         Show({
           when: content.show_description,
           ok() {
-            return View({ class: "wx-home-content-description" }, [
+            return View({ class: "home-content-description" }, [
               description,
             ]);
           },
@@ -518,15 +516,15 @@ function ScraperContentRelationNode(props) {
   const node = props.node || {};
   return View(
     {
-      class: "wx-home-content-relation-node",
+      class: "home-content-relation-node",
       attributes: {
         title: node.has_url ? node.url : node.id || node.title,
       },
     },
     [
-      View({ class: "wx-home-content-relation-node-type" }, [node.type_name]),
-      View({ class: "wx-home-content-relation-node-title" }, [node.title]),
-      View({ class: "wx-home-content-relation-node-meta" }, [node.meta_text]),
+      View({ class: "home-content-relation-node-type" }, [node.type_name]),
+      View({ class: "home-content-relation-node-title" }, [node.title]),
+      View({ class: "home-content-relation-node-meta" }, [node.meta_text]),
     ],
   );
 }
@@ -536,15 +534,15 @@ function HomeContentInfluencerEntity(props) {
   return View(
     {
       class: [
-        "wx-home-content-influencer-entity",
+        "home-content-influencer-entity",
         props.content ? "is-content" : "is-influencer",
       ].join(" "),
     },
     [
-      View({ class: "wx-home-content-influencer-entity-type" }, [
+      View({ class: "home-content-influencer-entity-type" }, [
         node.type_name,
       ]),
-      View({ class: "wx-home-content-influencer-entity-title" }, [
+      View({ class: "home-content-influencer-entity-title" }, [
         node.title,
       ]),
     ],
@@ -557,20 +555,20 @@ function ScraperContentInfluencers(props) {
   return Show({
     when: influencers.present,
     ok() {
-      return View({ class: "wx-home-content-influencers" }, [
-        View({ class: "wx-home-content-influencer-heading" }, [
-          View({ class: "wx-home-content-influencer-title" }, [
+      return View({ class: "home-content-influencers" }, [
+        View({ class: "home-content-influencer-heading" }, [
+          View({ class: "home-content-influencer-title" }, [
             Timeless.Icon({ name: "user", size: 12 }),
             "相关人物",
           ]),
-          View({ class: "wx-home-content-influencer-count" }, [
+          View({ class: "home-content-influencer-count" }, [
             influencers.count_text,
           ]),
         ]),
         View(
           {
             class:
-              "wx-home-content-relation-list wx-home-content-influencer-list",
+              "home-content-relation-list home-content-influencer-list",
           },
           [
             For({
@@ -581,21 +579,21 @@ function ScraperContentInfluencers(props) {
                 return View(
                   {
                     class:
-                      "wx-home-content-relation wx-home-content-influencer-relation",
+                      "home-content-relation home-content-influencer-relation",
                   },
                   [
-                    View({ class: "wx-home-content-relation-flow" }, [
+                    View({ class: "home-content-relation-flow" }, [
                       HomeContentInfluencerEntity({
                         node: relation.source,
                       }),
-                      View({ class: "wx-home-content-relation-edge" }, [
+                      View({ class: "home-content-relation-edge" }, [
                         Timeless.Icon({ name: "arrow-right", size: 11 }),
                         View(
-                          { class: "wx-home-content-relation-edge-name" },
+                          { class: "home-content-relation-edge-name" },
                           [relation.role_text],
                         ),
                         View(
-                          { class: "wx-home-content-relation-edge-type" },
+                          { class: "home-content-relation-edge-type" },
                           [relation.type],
                         ),
                       ]),
@@ -622,26 +620,26 @@ function ScraperContentRelations(props) {
     when: relations.present,
     ok() {
       return View(
-        { class: "wx-home-card wx-home-content-relations dm-panel" },
+        { class: "home-card home-content-relations dm-panel" },
         [
-        View({ class: "wx-home-card-heading" }, [
-          View({ class: "wx-home-card-title-group" }, [
-            View({ class: "wx-home-card-icon" }, [
+        View({ class: "home-card-heading" }, [
+          View({ class: "home-card-title-group" }, [
+            View({ class: "home-card-icon" }, [
               Timeless.Icon({ name: "git-branch", size: 17 }),
             ]),
             View({}, [
-              View({ class: "wx-home-card-kicker" }, ["RELATIONS"]),
-              View({ class: "wx-home-card-title" }, ["内容关联"]),
+              View({ class: "home-card-kicker" }, ["RELATIONS"]),
+              View({ class: "home-card-title" }, ["内容关联"]),
             ]),
           ]),
-          View({ class: "wx-home-detail-badge" }, [relations.count_text]),
+          View({ class: "home-detail-badge" }, [relations.count_text]),
         ]),
         Show({
           when: relations.content_present,
           ok() {
             return View(
               {
-                class: "wx-home-content-relation-list",
+                class: "home-content-relation-list",
               },
               [
                 For({
@@ -649,11 +647,11 @@ function ScraperContentRelations(props) {
                   each: relations.items,
                   render(chain_) {
                     const chain = ScraperDetailValue(chain_);
-                    return View({ class: "wx-home-content-relation" }, [
-                      View({ class: "wx-home-content-relation-path" }, [
+                    return View({ class: "home-content-relation" }, [
+                      View({ class: "home-content-relation-path" }, [
                         chain.type_path_text,
                       ]),
-                      View({ class: "wx-home-content-relation-flow" }, [
+                      View({ class: "home-content-relation-flow" }, [
                         For({
                           key: "key",
                           each: chain.segments,
@@ -666,7 +664,7 @@ function ScraperContentRelations(props) {
                             }
                             const edge = segment.edge || {};
                             return View(
-                              { class: "wx-home-content-relation-edge" },
+                              { class: "home-content-relation-edge" },
                               [
                                 Timeless.Icon({
                                   name: "arrow-right",
@@ -675,14 +673,14 @@ function ScraperContentRelations(props) {
                                 View(
                                   {
                                     class:
-                                      "wx-home-content-relation-edge-name",
+                                      "home-content-relation-edge-name",
                                   },
                                   [edge.type_name],
                                 ),
                                 View(
                                   {
                                     class:
-                                      "wx-home-content-relation-edge-type",
+                                      "home-content-relation-edge-type",
                                   },
                                   [edge.type],
                                 ),
@@ -710,10 +708,10 @@ function ScraperContentAccount(props) {
   return Show({
     when: account.present,
     ok() {
-      return View({ class: "wx-home-content-account" }, [
+      return View({ class: "home-content-account" }, [
         HomeAccountAvatar({ account }),
-        View({ class: "wx-home-content-account-main" }, [
-          View({ class: "wx-home-account-name" }, [account.nickname]),
+        View({ class: "home-content-account-main" }, [
+          View({ class: "home-account-name" }, [account.nickname]),
         ]),
       ]);
     },
@@ -722,15 +720,15 @@ function ScraperContentAccount(props) {
 
 function HomeAccountAvatar(props) {
   const account = props.account;
-  return View({ class: "wx-home-account-avatar" }, [
-    View({ class: "wx-home-account-avatar-fallback" }, [
+  return View({ class: "home-account-avatar" }, [
+    View({ class: "home-account-avatar-fallback" }, [
       account.avatar_fallback,
     ]),
     Show({
       when: account.avatar_url,
       ok() {
         return Img({
-          class: "wx-home-account-avatar-image",
+          class: "home-account-avatar-image",
           src: account.avatar_url,
           alt: account.nickname,
           attributes: {
@@ -760,7 +758,7 @@ function ScraperVideoDetailMedia(props) {
       return View(
         {
           class: [
-            "wx-home-detail-video-frame",
+            "home-detail-video-frame",
             media.has_video ? "has-video" : "",
             media.has_cover ? "has-cover" : "",
           ]
@@ -773,7 +771,7 @@ function ScraperVideoDetailMedia(props) {
             ok() {
               return Timeless.Video(
                 {
-                  class: "wx-home-detail-video",
+                  class: "home-detail-video",
                   attributes: {
                     src: media.video_url,
                     poster: media.cover_url,
@@ -785,7 +783,7 @@ function ScraperVideoDetailMedia(props) {
                   },
                   onPlay(event) {
                     const root = event.currentTarget.closest(
-                      ".wx-home-detail-video-frame",
+                      ".home-detail-video-frame",
                     );
                     if (root) {
                       root.classList.add("is-playing");
@@ -793,7 +791,7 @@ function ScraperVideoDetailMedia(props) {
                   },
                   onPause(event) {
                     const root = event.currentTarget.closest(
-                      ".wx-home-detail-video-frame",
+                      ".home-detail-video-frame",
                     );
                     if (root) {
                       root.classList.remove("is-playing");
@@ -801,7 +799,7 @@ function ScraperVideoDetailMedia(props) {
                   },
                   onEnded(event) {
                     const root = event.currentTarget.closest(
-                      ".wx-home-detail-video-frame",
+                      ".home-detail-video-frame",
                     );
                     if (root) {
                       root.classList.remove("is-playing");
@@ -813,7 +811,7 @@ function ScraperVideoDetailMedia(props) {
             },
             else() {
               return Img({
-                class: "wx-home-detail-video-cover",
+                class: "home-detail-video-cover",
                 src: media.cover_url,
                 alt: detail.title,
                 attributes: {
@@ -829,42 +827,51 @@ function ScraperVideoDetailMedia(props) {
           Show({
             when: Boolean(media.has_video || detail.link_url),
             ok() {
-              return Button(
+              return View(
                 {
-                  store: vm$.ui.btn_video_play$.bind(detail),
-                  class: "wx-home-detail-video-play",
-                  attributes: {
-                    type: "button",
-                    title: media.has_video ? "播放视频" : "打开视频地址",
-                    "aria-label": media.has_video
-                      ? "播放视频"
-                      : "打开视频地址",
-                  },
-                  onClick(event) {
-                    event.stopPropagation();
-                    const trigger = event.currentTarget || event.target;
-                    const root =
-                      trigger && typeof trigger.closest === "function"
-                        ? trigger.closest(".wx-home-detail-video-frame")
-                        : null;
-                    const video = root ? root.querySelector("video") : null;
-                    if (video && typeof video.play === "function") {
-                      video.controls = true;
-                      const play_result = video.play();
-                      if (
-                        play_result &&
-                        typeof play_result.catch === "function"
-                      ) {
-                        play_result.catch(() => {});
-                      }
-                      return;
-                    }
-                    if (detail.link_url) {
-                      vm$.methods.openDetailURL(detail.link_url);
-                    }
-                  },
+                  class: "home-detail-video-play-position",
+                  attributes: { n: "scraper-video-play-position" },
                 },
-                [Timeless.Icon({ name: "play", size: 22 })],
+                [
+                  Button(
+                    {
+                      store: vm$.ui.btn_video_play$.bind(detail),
+                      class: "dm-button--media",
+                      attributes: {
+                        n: "scraper-video-play-action",
+                        type: "button",
+                        title: media.has_video ? "播放视频" : "打开视频地址",
+                        "aria-label": media.has_video
+                          ? "播放视频"
+                          : "打开视频地址",
+                      },
+                      onClick(event) {
+                        event.stopPropagation();
+                        const trigger = event.currentTarget || event.target;
+                        const root =
+                          trigger && typeof trigger.closest === "function"
+                            ? trigger.closest(".home-detail-video-frame")
+                            : null;
+                        const video = root ? root.querySelector("video") : null;
+                        if (video && typeof video.play === "function") {
+                          video.controls = true;
+                          const play_result = video.play();
+                          if (
+                            play_result &&
+                            typeof play_result.catch === "function"
+                          ) {
+                            play_result.catch(() => {});
+                          }
+                          return;
+                        }
+                        if (detail.link_url) {
+                          vm$.methods.openDetailURL(detail.link_url);
+                        }
+                      },
+                    },
+                    [Timeless.Icon({ name: "play", size: 22 })],
+                  ),
+                ],
               );
             },
           }),
@@ -878,11 +885,11 @@ function ScraperNovelChapterItem(props) {
   const vm$ = props.store;
   const chapter = props.chapter || {};
   const children = [
-    View({ class: "wx-home-novel-chapter-index" }, [chapter.index_text]),
-    View({ class: "wx-home-novel-chapter-main" }, [
+    View({ class: "home-novel-chapter-index" }, [chapter.index_text]),
+    View({ class: "home-novel-chapter-main" }, [
       View(
         {
-          class: "wx-home-novel-chapter-title",
+          class: "home-novel-chapter-title",
           attributes: { title: chapter.title },
         },
         [chapter.title],
@@ -890,7 +897,7 @@ function ScraperNovelChapterItem(props) {
       Show({
         when: Boolean(chapter.meta_text),
         ok() {
-          return View({ class: "wx-home-novel-chapter-meta" }, [
+          return View({ class: "home-novel-chapter-meta" }, [
             chapter.meta_text,
           ]);
         },
@@ -899,19 +906,19 @@ function ScraperNovelChapterItem(props) {
     Show({
       when: Boolean(chapter.url),
       ok() {
-        return View({ class: "wx-home-novel-chapter-link" }, [
+        return View({ class: "home-novel-chapter-link" }, [
           Timeless.Icon({ name: "external-link", size: 13 }),
         ]);
       },
     }),
   ];
   if (!chapter.url) {
-    return View({ class: "wx-home-novel-chapter" }, children);
+    return View({ class: "dm-list-card" }, children);
   }
   return Button(
     {
       store: vm$.ui.btn_novel_chapter$.bind(chapter),
-      class: "wx-home-novel-chapter is-link",
+      class: "dm-list-card is-link",
       attributes: { type: "button", title: "打开章节" },
     },
     children,
@@ -925,33 +932,33 @@ function ScraperNovelDetails(props) {
     when: novel.present,
     ok() {
       return View(
-        { class: "wx-home-detail-card wx-home-novel-detail dm-panel" },
+        { class: "home-detail-card home-novel-detail dm-panel" },
         [
-        View({ class: "wx-home-detail-card-heading" }, [
-          View({ class: "wx-home-detail-card-title-group" }, [
-            View({ class: "wx-home-detail-card-icon" }, [
+        View({ class: "home-detail-card-heading" }, [
+          View({ class: "home-detail-card-title-group" }, [
+            View({ class: "home-detail-card-icon" }, [
               Timeless.Icon({ name: "file-stack", size: 18 }),
             ]),
             View({}, [
-              View({ class: "wx-home-detail-card-title" }, [novel.title]),
-              View({ class: "wx-home-detail-card-subtitle" }, [
+              View({ class: "home-detail-card-title" }, [novel.title]),
+              View({ class: "home-detail-card-subtitle" }, [
                 novel.subtitle,
               ]),
             ]),
           ]),
-          View({ class: "wx-home-detail-badge" }, [novel.progress_text]),
+          View({ class: "home-detail-badge" }, [novel.progress_text]),
         ]),
-        View({ class: "wx-home-novel-body" }, [
-          View({ class: "wx-home-detail-metrics" }, [
+        View({ class: "home-novel-body" }, [
+          View({ class: "home-detail-metrics" }, [
             For({
               each: novel.metrics,
               render(metric_) {
                 const metric = ScraperDetailValue(metric_);
-                return View({ class: "wx-home-detail-metric" }, [
-                  View({ class: "wx-home-detail-metric-label" }, [
+                return View({ class: "home-detail-metric" }, [
+                  View({ class: "home-detail-metric-label" }, [
                     metric.label,
                   ]),
-                  View({ class: "wx-home-detail-metric-value" }, [
+                  View({ class: "home-detail-metric-value" }, [
                     metric.value,
                   ]),
                 ]);
@@ -961,23 +968,23 @@ function ScraperNovelDetails(props) {
           Show({
             when: novel.has_volumes,
             ok() {
-              return View({ class: "wx-home-novel-section" }, [
-                View({ class: "wx-home-novel-section-heading" }, [
-                  View({ class: "wx-home-novel-section-title" }, ["分卷"]),
+              return View({ class: "home-novel-section" }, [
+                View({ class: "home-novel-section-heading" }, [
+                  View({ class: "home-novel-section-title" }, ["分卷"]),
                 ]),
-                View({ class: "wx-home-novel-volume-list" }, [
+                View({ class: "home-novel-volume-list" }, [
                   For({
                     key: "key",
                     each: novel.volumes,
                     render(volume_) {
                       const volume = ScraperDetailValue(volume_);
-                      return View({ class: "wx-home-novel-volume" }, [
-                        View({ class: "wx-home-novel-volume-index" }, [
+                      return View({ class: "home-novel-volume" }, [
+                        View({ class: "home-novel-volume-index" }, [
                           volume.index_text,
                         ]),
                         View(
                           {
-                            class: "wx-home-novel-volume-title",
+                            class: "home-novel-volume-title",
                             attributes: { title: volume.title },
                           },
                           [volume.title],
@@ -989,17 +996,17 @@ function ScraperNovelDetails(props) {
               ]);
             },
           }),
-          View({ class: "wx-home-novel-section wx-home-novel-chapters" }, [
-            View({ class: "wx-home-novel-section-heading" }, [
-              View({ class: "wx-home-novel-section-title" }, ["章节列表"]),
-              View({ class: "wx-home-novel-section-meta" }, [
+          View({ class: "home-novel-section home-novel-chapters" }, [
+            View({ class: "home-novel-section-heading" }, [
+              View({ class: "home-novel-section-title" }, ["章节列表"]),
+              View({ class: "home-novel-section-meta" }, [
                 novel.progress_text,
               ]),
             ]),
             Show({
               when: novel.has_chapters,
               ok() {
-                return View({ class: "wx-home-novel-chapter-list" }, [
+                return View({ class: "home-novel-chapter-list" }, [
                   For({
                     key: "key",
                     each: novel.chapters,
@@ -1013,7 +1020,7 @@ function ScraperNovelDetails(props) {
                 ]);
               },
               else() {
-                return View({ class: "wx-home-detail-empty" }, [
+                return View({ class: "home-detail-empty" }, [
                   novel.empty_chapter_text,
                 ]);
               },
@@ -1021,13 +1028,24 @@ function ScraperNovelDetails(props) {
             Show({
               when: novel.has_more_chapters,
               ok() {
-                return Button(
+                return View(
                   {
-                    store: vm$.ui.btn_show_more_chapters$,
-                    class: "wx-home-novel-more",
-                    attributes: { type: "button" },
+                    class: "home-novel-more-control",
+                    attributes: { n: "scraper-novel-more-control" },
                   },
-                  [novel.more_chapters_text],
+                  [
+                    Button(
+                      {
+                        store: vm$.ui.btn_show_more_chapters$,
+                        class: "dm-button--dashed",
+                        attributes: {
+                          n: "scraper-novel-more-action",
+                          type: "button",
+                        },
+                      },
+                      [novel.more_chapters_text],
+                    ),
+                  ],
                 );
               },
             }),
@@ -1072,8 +1090,8 @@ function ScraperVideoVariantItem(props) {
       }),
       class: computed(selected_, (selected) =>
         selected
-          ? "wx-home-video-supplement-item wx-home-video-variant is-selected"
-          : "wx-home-video-supplement-item wx-home-video-variant",
+          ? "dm-button--choice-card is-selected"
+          : "dm-button--choice-card",
       ),
       attributes: {
         type: "button",
@@ -1086,7 +1104,7 @@ function ScraperVideoVariantItem(props) {
       },
     },
     [
-      View({ class: "wx-home-video-variant-indicator" }, [
+      View({ class: "home-video-variant-indicator" }, [
         Show({
           when: selected_,
           ok() {
@@ -1094,15 +1112,15 @@ function ScraperVideoVariantItem(props) {
           },
         }),
       ]),
-      View({ class: "wx-home-video-supplement-main" }, [
+      View({ class: "home-video-supplement-main" }, [
         View(
           {
-            class: "wx-home-video-supplement-title",
+            class: "home-video-supplement-title",
             attributes: { title: variant.variant_key },
           },
           [variant.title],
         ),
-        View({ class: "wx-home-video-supplement-meta" }, [
+        View({ class: "home-video-supplement-meta" }, [
           variant.meta_text || variant.variant_key,
         ]),
         Show({
@@ -1110,7 +1128,7 @@ function ScraperVideoVariantItem(props) {
           ok() {
             return View(
               {
-                class: "wx-home-video-supplement-url",
+                class: "home-video-supplement-url",
                 attributes: { title: variant.url },
               },
               [variant.url],
@@ -1121,7 +1139,7 @@ function ScraperVideoVariantItem(props) {
       Show({
         when: Boolean(variant.is_default),
         ok() {
-          return View({ class: "wx-home-video-supplement-badge" }, ["默认"]);
+          return View({ class: "home-video-supplement-badge" }, ["默认"]);
         },
       }),
     ],
@@ -1130,40 +1148,40 @@ function ScraperVideoVariantItem(props) {
 
 function ScraperContentTextTrackItem(props) {
   const track = props.track || {};
-  return View({ class: "wx-home-video-subtitle-track" }, [
-    View({ class: "wx-home-video-supplement-item" }, [
-      View({ class: "wx-home-video-supplement-main" }, [
+  return View({ class: "home-video-subtitle-track" }, [
+    View({ class: "home-video-supplement-item" }, [
+      View({ class: "home-video-supplement-main" }, [
         View(
           {
-            class: "wx-home-video-supplement-title",
+            class: "home-video-supplement-title",
             attributes: { title: track.track_key },
           },
           [track.title],
         ),
-        View({ class: "wx-home-video-supplement-meta" }, [
+        View({ class: "home-video-supplement-meta" }, [
           track.meta_text || track.track_key,
         ]),
       ]),
-      View({ class: "wx-home-video-supplement-badge" }, [
+      View({ class: "home-video-supplement-badge" }, [
         `${track.sources.length} 个源`,
       ]),
     ]),
     Show({
       when: track.has_sources,
       ok() {
-        return View({ class: "wx-home-video-subtitle-sources" }, [
+        return View({ class: "home-video-subtitle-sources" }, [
           For({
             key: "key",
             each: track.sources,
             render(source_) {
               const source = ScraperDetailValue(source_);
-              return View({ class: "wx-home-video-subtitle-source" }, [
-                View({ class: "wx-home-video-subtitle-source-type" }, [
+              return View({ class: "home-video-subtitle-source" }, [
+                View({ class: "home-video-subtitle-source-type" }, [
                   source.title,
                 ]),
                 View(
                   {
-                    class: "wx-home-video-subtitle-source-url",
+                    class: "home-video-subtitle-source-url",
                     attributes: { title: source.url },
                   },
                   [source.url || source.meta_text || "未提供地址"],
@@ -1183,19 +1201,19 @@ function ScraperVideoSupplements(props) {
     Show({
       when: detail.has_variants,
       ok() {
-        return View({ class: "wx-home-video-supplement" }, [
-          View({ class: "wx-home-video-supplement-heading" }, [
-            View({ class: "wx-home-video-supplement-label" }, [
+        return View({ class: "home-video-supplement" }, [
+          View({ class: "home-video-supplement-heading" }, [
+            View({ class: "home-video-supplement-label" }, [
               "ContentVideoVariant",
             ]),
-            View({ class: "wx-home-video-supplement-count" }, [
+            View({ class: "home-video-supplement-count" }, [
               String(detail.variants.length),
             ]),
           ]),
           View(
             {
               class:
-                "wx-home-video-supplement-list wx-home-video-variant-list",
+                "home-video-supplement-list home-video-variant-list",
               attributes: {
                 role: "radiogroup",
                 "aria-label": "选择下载视频规格",
@@ -1221,16 +1239,16 @@ function ScraperVideoSupplements(props) {
     Show({
       when: detail.has_text_tracks,
       ok() {
-        return View({ class: "wx-home-video-supplement" }, [
-          View({ class: "wx-home-video-supplement-heading" }, [
-            View({ class: "wx-home-video-supplement-label" }, [
+        return View({ class: "home-video-supplement" }, [
+          View({ class: "home-video-supplement-heading" }, [
+            View({ class: "home-video-supplement-label" }, [
               "ContentTextTrack",
             ]),
-            View({ class: "wx-home-video-supplement-count" }, [
+            View({ class: "home-video-supplement-count" }, [
               String(detail.text_tracks.length),
             ]),
           ]),
-          View({ class: "wx-home-video-supplement-list" }, [
+          View({ class: "home-video-supplement-list" }, [
             For({
               key: "key",
               each: detail.text_tracks,
@@ -1254,7 +1272,7 @@ function ScraperArticleBody(props) {
     ok() {
       if (article_body.is_html) {
         return Timeless.RichText({
-          class: "wx-home-article-content is-html",
+          class: "home-article-content is-html",
           content: article_body.content,
           attributes: {
             "data-content-format": "html",
@@ -1263,7 +1281,7 @@ function ScraperArticleBody(props) {
       }
       return View(
         {
-          class: `wx-home-article-content is-${article_body.format || "text"}`,
+          class: `home-article-content is-${article_body.format || "text"}`,
         },
         [article_body.content],
       );
@@ -1276,33 +1294,33 @@ function ScraperTypedContentDetail(props) {
   const detail = props.detail || {};
   return View(
     {
-      class: `wx-home-detail-card wx-home-typed-detail wx-home-typed-detail-${detail.kind} dm-panel`,
+      class: `home-detail-card home-typed-detail home-typed-detail-${detail.kind} dm-panel`,
     },
     [
-      View({ class: "wx-home-detail-card-heading" }, [
-        View({ class: "wx-home-detail-card-title-group" }, [
-          View({ class: "wx-home-detail-card-icon" }, [
+      View({ class: "home-detail-card-heading" }, [
+        View({ class: "home-detail-card-title-group" }, [
+          View({ class: "home-detail-card-icon" }, [
             Timeless.Icon({ name: detail.icon, size: 18 }),
           ]),
           View({}, [
-            View({ class: "wx-home-detail-card-title" }, [detail.title]),
-            View({ class: "wx-home-detail-card-subtitle" }, [
+            View({ class: "home-detail-card-title" }, [detail.title]),
+            View({ class: "home-detail-card-subtitle" }, [
               detail.model_name,
             ]),
           ]),
         ]),
-        View({ class: "wx-home-detail-badge" }, [detail.type_name]),
+        View({ class: "home-detail-badge" }, [detail.type_name]),
       ]),
-      View({ class: "wx-home-typed-detail-body" }, [
+      View({ class: "home-typed-detail-body" }, [
         Show({
           when: detail.subject.present,
           ok() {
-            return View({ class: "wx-home-detail-subject" }, [
-              View({ class: "wx-home-detail-subject-main" }, [
-                View({ class: "wx-home-detail-subject-title" }, [
+            return View({ class: "home-detail-subject" }, [
+              View({ class: "home-detail-subject-main" }, [
+                View({ class: "home-detail-subject-title" }, [
                   detail.subject.title,
                 ]),
-                View({ class: "wx-home-detail-subject-meta" }, [
+                View({ class: "home-detail-subject-meta" }, [
                   detail.subject.meta_text,
                 ]),
               ]),
@@ -1315,15 +1333,15 @@ function ScraperTypedContentDetail(props) {
         Show({
           when: detail.images.length > 0,
           ok() {
-            return View({ class: "wx-home-detail-image-grid" }, [
+            return View({ class: "home-detail-image-grid" }, [
               For({
                 key: "key",
                 each: detail.images,
                 render(image_) {
                   const image = ScraperDetailValue(image_);
-                  return View({ class: "wx-home-detail-image-item" }, [
+                  return View({ class: "home-detail-image-item" }, [
                     Img({
-                      class: "wx-home-detail-image",
+                      class: "home-detail-image",
                       src: image.url,
                       alt: "",
                       attributes: {
@@ -1339,7 +1357,7 @@ function ScraperTypedContentDetail(props) {
                       ok() {
                         return View(
                           {
-                            class: "wx-home-detail-image-live-badge",
+                            class: "home-detail-image-live-badge",
                             attributes: { title: "实况图" },
                           },
                           [
@@ -1349,7 +1367,7 @@ function ScraperTypedContentDetail(props) {
                         );
                       },
                     }),
-                    View({ class: "wx-home-detail-image-meta" }, [
+                    View({ class: "home-detail-image-meta" }, [
                       image.meta,
                     ]),
                   ]);
@@ -1388,31 +1406,31 @@ function ScraperContentDetails(props) {
 
 function ScraperRawJSON(props) {
   const vm$ = props.store;
-  return View({ class: "wx-home-json" }, [
+  return View({ class: "home-json" }, [
     Button(
       {
         store: vm$.ui.btn_toggle_json$,
         class: computed(vm$.state.json_expanded, (expanded) =>
           expanded
-            ? "wx-home-json-toggle is-expanded"
-            : "wx-home-json-toggle",
+            ? "dm-button--disclosure is-expanded"
+            : "dm-button--disclosure",
         ),
         attributes: {
           type: "button",
-          "aria-controls": "wx-home-json-body",
+          "aria-controls": "home-json-body",
           "aria-expanded": vm$.state.json_expanded,
         },
       },
       [
-        View({ class: "wx-home-json-toggle-main" }, [
-          View({ class: "wx-home-json-icon" }, [
+        View({ class: "home-json-toggle-main" }, [
+          View({ class: "home-json-icon" }, [
             Timeless.Icon({ name: "braces", size: 17 }),
           ]),
           View({}, [
-            View({ class: "wx-home-json-title" }, [
+            View({ class: "home-json-title" }, [
               vm$.state.json_toggle_text,
             ]),
-            View({ class: "wx-home-json-subtitle" }, [
+            View({ class: "home-json-subtitle" }, [
               "完整接口响应，仅供调试与核对",
             ]),
           ]),
@@ -1434,8 +1452,8 @@ function ScraperRawJSON(props) {
         return View(
           {
             type: "pre",
-            class: "wx-home-json-body",
-            attributes: { id: "wx-home-json-body" },
+            class: "home-json-body",
+            attributes: { id: "home-json-body" },
           },
           [vm$.state.result_text],
         );
@@ -1450,29 +1468,29 @@ function ScraperFetchedRawContent(props) {
   return Show({
     when: raw_result.visible,
     ok() {
-      return View({ class: "wx-home-json wx-home-raw-fetch" }, [
+      return View({ class: "home-json home-raw-fetch" }, [
         Button(
           {
             store: vm$.ui.btn_toggle_raw_result$,
             class: computed(raw_result.expanded, (expanded) =>
               expanded
-                ? "wx-home-json-toggle is-expanded"
-                : "wx-home-json-toggle",
+                ? "dm-button--disclosure is-expanded"
+                : "dm-button--disclosure",
             ),
             attributes: {
               type: "button",
-              "aria-controls": "wx-home-raw-fetch-body",
+              "aria-controls": "home-raw-fetch-body",
               "aria-expanded": raw_result.expanded,
             },
           },
           [
-            View({ class: "wx-home-json-toggle-main" }, [
-              View({ class: "wx-home-json-icon" }, [
+            View({ class: "home-json-toggle-main" }, [
+              View({ class: "home-json-icon" }, [
                 Timeless.Icon({ name: "braces", size: 17 }),
               ]),
               View({}, [
-                View({ class: "wx-home-json-title" }, ["抓取原始内容"]),
-                View({ class: "wx-home-json-subtitle" }, [
+                View({ class: "home-json-title" }, ["抓取原始内容"]),
+                View({ class: "home-json-subtitle" }, [
                   raw_result.meta_text,
                 ]),
               ]),
@@ -1494,8 +1512,8 @@ function ScraperFetchedRawContent(props) {
             return View(
               {
                 type: "pre",
-                class: "wx-home-json-body",
-                attributes: { id: "wx-home-raw-fetch-body" },
+                class: "home-json-body",
+                attributes: { id: "home-raw-fetch-body" },
               },
               [raw_result.text],
             );
@@ -1509,25 +1527,25 @@ function ScraperFetchedRawContent(props) {
 function ScraperDownloadAssetRelation(props) {
   const resource = props.resource || {};
   const asset = props.asset || {};
-  return View({ class: "wx-home-download-relation" }, [
+  return View({ class: "home-download-relation" }, [
     View(
       {
-        class: "wx-home-download-relation-node",
+        class: "home-download-relation-node",
         attributes: { title: resource.content_id },
       },
       [
-        View({ class: "wx-home-download-relation-node-type" }, ["Content"]),
-        View({ class: "wx-home-download-relation-node-value" }, [
+        View({ class: "home-download-relation-node-type" }, ["Content"]),
+        View({ class: "home-download-relation-node-value" }, [
           resource.content_id || "当前内容",
         ]),
       ],
     ),
-    View({ class: "wx-home-download-relation-arrow" }, [
+    View({ class: "home-download-relation-arrow" }, [
       Timeless.Icon({ name: "arrow-right", size: 14 }),
     ]),
     View(
       {
-        class: "wx-home-download-relation-node is-asset",
+        class: "home-download-relation-node is-asset",
         attributes: {
           title: [asset.kind, asset.role, asset.asset_key]
             .filter(Boolean)
@@ -1535,10 +1553,10 @@ function ScraperDownloadAssetRelation(props) {
         },
       },
       [
-        View({ class: "wx-home-download-relation-node-type" }, [
+        View({ class: "home-download-relation-node-type" }, [
           "ContentAsset",
         ]),
-        View({ class: "wx-home-download-relation-node-value" }, [
+        View({ class: "home-download-relation-node-value" }, [
           [asset.kind, asset.role, asset.asset_key]
             .filter(Boolean)
             .join(" · "),
@@ -1546,61 +1564,60 @@ function ScraperDownloadAssetRelation(props) {
         Show({
           when: Boolean(asset.subject_text),
           ok() {
-            return View({ class: "wx-home-download-relation-subject" }, [
+            return View({ class: "home-download-relation-subject" }, [
               asset.subject_text,
             ]);
           },
         }),
       ],
     ),
-    View({ class: "wx-home-download-relation-arrow" }, [
+    View({ class: "home-download-relation-arrow" }, [
       Timeless.Icon({ name: "arrow-right", size: 14 }),
     ]),
     View(
       {
-        class: "wx-home-download-relation-node",
+        class: "home-download-relation-node",
         attributes: { title: resource.display_name },
       },
       [
-        View({ class: "wx-home-download-relation-node-type" }, [
+        View({ class: "home-download-relation-node-type" }, [
           "DownloadResource",
         ]),
-        View({ class: "wx-home-download-relation-node-value" }, [
+        View({ class: "home-download-relation-node-value" }, [
           resource.display_name,
         ]),
       ],
     ),
-    View({ class: "wx-home-download-relation-kind" }, [asset.relation]),
+    View({ class: "home-download-relation-kind" }, [asset.relation]),
   ]);
 }
 
 function ScraperDownloadResourceItem(props) {
   const vm$ = props.store;
   const resource = props.resource || {};
-  return View({ class: "wx-home-download-resource" }, [
-    View({ class: "wx-home-download-resource-row" }, [
-      View({ class: "wx-home-download-resource-index" }, [
+  return View({ class: "home-download-resource" }, [
+    View({ class: "home-download-resource-row" }, [
+      View({ class: "home-download-resource-index" }, [
         resource.index_text,
       ]),
-      View({ class: "wx-home-download-resource-icon" }, [
+      View({ class: "home-download-resource-icon" }, [
         Timeless.Icon({ name: resource.icon, size: 18 }),
       ]),
-      View({ class: "wx-home-download-resource-main" }, [
+      View({ class: "home-download-resource-main" }, [
         View(
           {
-            class: "wx-home-download-resource-name",
+            class: "home-download-resource-name",
             attributes: { title: resource.display_name },
           },
           [resource.display_name],
         ),
-        View({ class: "wx-home-download-resource-meta" }, [
+        View({ class: "home-download-resource-meta" }, [
           resource.meta_text,
         ]),
       ]),
       Button(
         {
           store: vm$.ui.btn_download_resource$.bind(resource),
-          class: "wx-home-download-resource-action",
           attributes: {
             type: "button",
             title: `仅下载 ${resource.display_name}`,
@@ -1609,7 +1626,7 @@ function ScraperDownloadResourceItem(props) {
         },
         [
           Timeless.Icon({ name: "download", size: 14 }),
-          View({ class: "wx-home-download-resource-action-label" }, [
+          View({ class: "home-download-resource-action-label" }, [
             "下载",
           ]),
         ],
@@ -1618,7 +1635,7 @@ function ScraperDownloadResourceItem(props) {
     Show({
       when: resource.has_content_assets,
       ok() {
-        return View({ class: "wx-home-download-relations" }, [
+        return View({ class: "home-download-relations" }, [
           For({
             key: "key",
             each: resource.content_assets,
@@ -1636,12 +1653,12 @@ function ScraperDownloadResourceItem(props) {
 }
 
 function HomeDownloadSection(props) {
-  return View({ class: "wx-home-download-section" }, [
-    View({ class: "wx-home-download-section-head" }, [
-      View({ class: "wx-home-download-section-title" }, [props.title]),
-      View({ class: "wx-home-download-section-count" }, [props.count]),
+  return View({ class: "home-download-section" }, [
+    View({ class: "home-download-section-head" }, [
+      View({ class: "home-download-section-title" }, [props.title]),
+      View({ class: "home-download-section-count" }, [props.count]),
     ]),
-    View({ class: "wx-home-download-section-body" }, props.children || []),
+    View({ class: "home-download-section-body" }, props.children || []),
   ]);
 }
 
@@ -1653,19 +1670,19 @@ function ScraperDownloadInfo(props) {
     when: download_info.present,
     ok() {
       return View(
-        { class: "wx-home-card wx-home-download-info dm-panel" },
+        { class: "home-card home-download-info dm-panel" },
         [
-        View({ class: "wx-home-card-heading" }, [
-          View({ class: "wx-home-card-title-group" }, [
-            View({ class: "wx-home-card-icon" }, [
+        View({ class: "home-card-heading" }, [
+          View({ class: "home-card-title-group" }, [
+            View({ class: "home-card-icon" }, [
               Timeless.Icon({ name: "download", size: 17 }),
             ]),
             View({}, [
-              View({ class: "wx-home-card-kicker" }, ["DOWNLOAD INFO"]),
-              View({ class: "wx-home-card-title" }, ["下载任务预览"]),
+              View({ class: "home-card-kicker" }, ["DOWNLOAD INFO"]),
+              View({ class: "home-card-title" }, ["下载任务预览"]),
             ]),
           ]),
-          View({ class: "wx-home-card-actions" }, [
+          View({ class: "home-card-actions" }, [
             Show({
               when: computed(download_info.badge_text, (text) => Boolean(text)),
               ok() {
@@ -1676,13 +1693,13 @@ function ScraperDownloadInfo(props) {
             }),
           ]),
         ]),
-        View({ class: "wx-home-download-body" }, [
+        View({ class: "home-download-body" }, [
           Show({
             when: computed(download_info.error, (error) => Boolean(error)),
             ok() {
               return View(
                 {
-                  class: "wx-home-download-preview-error",
+                  class: "home-download-preview-error",
                   attributes: { role: "alert" },
                 },
                 [
@@ -1696,7 +1713,7 @@ function ScraperDownloadInfo(props) {
             title: "资源文件",
             count: download_info.resource_count_text,
             children: [
-              View({ class: "wx-home-download-resource-list" }, [
+              View({ class: "home-download-resource-list" }, [
                 For({
                   key: "key",
                   each: download_info.resources,
@@ -1714,25 +1731,25 @@ function ScraperDownloadInfo(props) {
             title: "下载任务",
             count: 1,
             children: [
-              View({ class: "wx-home-download-task-list" }, [
-                View({ class: "wx-home-download-task" }, [
-                  View({ class: "wx-home-download-task-id" }, [task.id_text]),
-                  View({ class: "wx-home-download-task-main" }, [
+              View({ class: "home-download-task-list" }, [
+                View({ class: "home-download-task" }, [
+                  View({ class: "home-download-task-id" }, [task.id_text]),
+                  View({ class: "home-download-task-main" }, [
                     View(
                       {
-                        class: "wx-home-download-task-name",
+                        class: "home-download-task-name",
                         attributes: { title: task.name },
                       },
                       [task.name],
                     ),
-                    View({ class: "wx-home-download-task-meta" }, [
+                    View({ class: "home-download-task-meta" }, [
                       task.meta_text || "任务将在确认后创建",
                     ]),
                   ]),
                   Show({
                     when: computed(task.status_text, (text) => Boolean(text)),
                     ok() {
-                      return View({ class: "wx-home-download-status" }, [
+                      return View({ class: "home-download-status" }, [
                         task.status_text,
                       ]);
                     },
@@ -1752,7 +1769,7 @@ function ScraperResultActionBar(props) {
   const vm$ = props.store;
   return View(
     {
-      class: "wx-home-result-actions",
+      class: "home-result-actions",
       attributes: {
         n: "result-actions",
         role: "toolbar",
@@ -1762,33 +1779,33 @@ function ScraperResultActionBar(props) {
     [
       View(
         {
-          class: "wx-home-result-actions-summary",
+          class: "home-result-actions-summary",
           attributes: { n: "result-actions-summary" },
         },
         [
           View(
             {
-              class: "wx-home-result-actions-icon",
+              class: "home-result-actions-icon",
               attributes: { n: "result-actions-status-icon" },
             },
             [Timeless.Icon({ name: "check", size: 17 })],
           ),
           View(
             {
-              class: "wx-home-result-actions-copy",
+              class: "home-result-actions-copy",
               attributes: { n: "result-actions-copy" },
             },
             [
               View(
                 {
-                  class: "wx-home-result-actions-title",
+                  class: "home-result-actions-title",
                   attributes: { n: "result-actions-title" },
                 },
                 ["抓取完成"],
               ),
               View(
                 {
-                  class: "wx-home-result-actions-description",
+                  class: "home-result-actions-description",
                   attributes: { n: "result-actions-description" },
                 },
                 ["请选择下载方式"],
@@ -1799,14 +1816,13 @@ function ScraperResultActionBar(props) {
       ),
       View(
         {
-          class: "wx-home-result-actions-controls",
+          class: "home-result-actions-controls",
           attributes: { n: "result-actions-controls" },
         },
         [
           Button(
             {
               store: vm$.ui.btn_third_party_download$,
-              class: "wx-home-third-party-download",
               attributes: {
                 n: "third-party-download-action",
                 type: "button",
@@ -1815,19 +1831,12 @@ function ScraperResultActionBar(props) {
             },
             [
               Timeless.Icon({ name: "hard-drive", size: 16 }),
-              View(
-                {
-                  class: "wx-content-action-label",
-                  attributes: { n: "third-party-download-action-label" },
-                },
-                ["三方下载"],
-              ),
+              "三方下载",
             ],
           ),
           Button(
             {
               store: vm$.ui.btn_create_download_task$,
-              class: "wx-home-download",
               attributes: {
                 n: "create-download-task-action",
                 type: "button",
@@ -1836,13 +1845,7 @@ function ScraperResultActionBar(props) {
             },
             [
               Timeless.Icon({ name: "download", size: 16 }),
-              View(
-                {
-                  class: "wx-content-action-label",
-                  attributes: { n: "create-download-task-action-label" },
-                },
-                [vm$.state.download_all_button_text],
-              ),
+              vm$.state.download_all_button_text,
             ],
           ),
         ],
@@ -1857,23 +1860,22 @@ function ScraperCacheCard(props) {
   return Show({
     when: cache.present,
     ok() {
-      return View({ class: "wx-home-card wx-home-cache-card dm-panel" }, [
-        View({ class: "wx-home-card-heading" }, [
-          View({ class: "wx-home-card-title-group" }, [
-            View({ class: "wx-home-card-icon" }, [
+      return View({ class: "home-card home-cache-card dm-panel" }, [
+        View({ class: "home-card-heading" }, [
+          View({ class: "home-card-title-group" }, [
+            View({ class: "home-card-icon" }, [
               Timeless.Icon({ name: "file-stack", size: 17 }),
             ]),
             View({}, [
-              View({ class: "wx-home-card-kicker" }, ["CACHE"]),
-              View({ class: "wx-home-card-title" }, ["抓取缓存"]),
+              View({ class: "home-card-kicker" }, ["CACHE"]),
+              View({ class: "home-card-title" }, ["抓取缓存"]),
             ]),
           ]),
-          View({ class: "wx-home-cache-heading-actions" }, [
-            View({ class: "wx-home-cache-summary" }, [cache.summary_text]),
+          View({ class: "home-cache-heading-actions" }, [
+            View({ class: "home-cache-summary" }, [cache.summary_text]),
             Button(
               {
                 store: vm$.ui.btn_clear_fetch_cache$,
-                class: "wx-content-action wx-home-cache-action",
                 attributes: {
                   type: "button",
                   title: "清除该 URL 的抓取缓存",
@@ -1886,7 +1888,7 @@ function ScraperCacheCard(props) {
             ),
           ]),
         ]),
-        View({ class: "wx-home-cache-list" }, [
+        View({ class: "home-cache-list" }, [
           For({
             key: "key",
             each: cache.entries,
@@ -1895,7 +1897,7 @@ function ScraperCacheCard(props) {
               return Button(
                 {
                   store: vm$.ui.btn_cache_entry$.bind(entry),
-                  class: "wx-home-cache-entry",
+                  class: "dm-button--list-row",
                   attributes: {
                     type: "button",
                     title: `查看缓存内容：${entry.name}`,
@@ -1903,27 +1905,27 @@ function ScraperCacheCard(props) {
                   },
                 },
                 [
-                  View({ class: "wx-home-cache-entry-icon" }, [
+                  View({ class: "home-cache-entry-icon" }, [
                     Timeless.Icon({ name: "file", size: 16 }),
                   ]),
-                  View({ class: "wx-home-cache-entry-main" }, [
+                  View({ class: "home-cache-entry-main" }, [
                     View(
                       {
-                        class: "wx-home-cache-entry-name",
+                        class: "home-cache-entry-name",
                         attributes: { title: entry.name },
                       },
                       [entry.name],
                     ),
                     View(
                       {
-                        class: "wx-home-cache-entry-path",
+                        class: "home-cache-entry-path",
                         attributes: { title: entry.path },
                       },
                       [entry.path],
                     ),
                   ]),
-                  View({ class: "wx-home-cache-entry-trailing" }, [
-                    View({ class: "wx-home-cache-entry-size" }, [
+                  View({ class: "home-cache-entry-trailing" }, [
+                    View({ class: "home-cache-entry-size" }, [
                       entry.size_text,
                     ]),
                     Timeless.Icon({ name: "chevron-right", size: 15 }),
@@ -1945,24 +1947,22 @@ function ScraperCacheContentDialog(props) {
   return Dialog(
     {
       store: vm$.ui.cache_content_dialog$,
-      class: "wx-home-cache-dialog",
-      style: scraper_compact_radius_style,
+      class: "dm-dialog--lg",
       showClose: false,
     },
     [
-      View({ class: "wx-home-cache-dialog-header" }, [
-        View({ class: "wx-home-cache-dialog-heading" }, [
-          View({ class: "wx-home-cache-dialog-title" }, [
+      View({ class: "home-cache-dialog-header" }, [
+        View({ class: "home-cache-dialog-heading" }, [
+          View({ class: "home-cache-dialog-title" }, [
             cache_content.title,
           ]),
-          View({ class: "wx-home-cache-dialog-meta" }, [
+          View({ class: "home-cache-dialog-meta" }, [
             cache_content.meta_text,
           ]),
         ]),
         Button(
           {
             store: vm$.ui.btn_close_cache_content$,
-            class: "wx-home-cache-dialog-close",
             attributes: { type: "button", "aria-label": "关闭缓存内容" },
           },
           ["×"],
@@ -1970,17 +1970,20 @@ function ScraperCacheContentDialog(props) {
       ]),
       View(
         {
-          class: "wx-home-cache-dialog-path",
+          class: "home-cache-dialog-path",
           attributes: { title: cache_content.path },
         },
         [cache_content.path],
       ),
-      View({ class: "wx-home-cache-dialog-body" }, [
+      View({ class: "home-cache-dialog-body" }, [
         Show({
           when: cache_content.loading,
           ok() {
-            return View({ class: "wx-home-cache-dialog-state" }, [
-              View({ class: "weui-loading" }),
+            return View({ class: "home-cache-dialog-state" }, [
+              View({
+                class: "dm-spinner",
+                attributes: { n: "scraper-cache-loading" },
+              }),
               "正在读取缓存内容...",
             ]);
           },
@@ -1991,7 +1994,7 @@ function ScraperCacheContentDialog(props) {
                 return View(
                   {
                     class:
-                      "wx-home-cache-dialog-state wx-home-cache-dialog-error",
+                      "home-cache-dialog-state home-cache-dialog-error",
                   },
                   [cache_content.error],
                 );
@@ -2000,7 +2003,7 @@ function ScraperCacheContentDialog(props) {
                 return View(
                   {
                     type: "pre",
-                    class: "wx-home-cache-dialog-content",
+                    class: "home-cache-dialog-content",
                   },
                   [cache_content.text],
                 );
@@ -2020,7 +2023,7 @@ function ScraperPageResult(props) {
     ok() {
       return View(
         {
-          class: "wx-home-result",
+          class: "home-result",
           attributes: { n: "scraper-result" },
         },
         [
@@ -2042,11 +2045,7 @@ function ScraperPlatformStatus(props) {
   return Popover(
     {
       store: vm$.ui.platform_status_popover$,
-      class: "wx-home-platform-status-popover",
-      style: {
-        ...scraper_compact_radius_style,
-        "border-radius": "var(--dm-radius-xs)",
-      },
+      class: "dm-popover--platform-status",
       side: "bottom",
       align: "end",
       onTriggerMouseEnter() {
@@ -2066,7 +2065,7 @@ function ScraperPlatformStatus(props) {
           when: status.has_items,
           ok() {
             return View(
-              { class: "wx-home-platform-status-list" },
+              { class: "home-platform-status-list" },
               [
                 For({
                   key: "render_key",
@@ -2074,13 +2073,13 @@ function ScraperPlatformStatus(props) {
                   render(item_) {
                     const item = ScraperDetailValue(item_);
                     return View({ class: item.status_class }, [
-                      View({ class: "wx-home-platform-status-dot" }),
-                      View({ class: "wx-home-platform-status-main" }, [
-                        View({ class: "wx-home-platform-status-head" }, [
-                          View({ class: "wx-home-platform-status-name" }, [
+                      View({ class: "home-platform-status-dot" }),
+                      View({ class: "home-platform-status-main" }, [
+                        View({ class: "home-platform-status-head" }, [
+                          View({ class: "home-platform-status-name" }, [
                             item.platform_name,
                           ]),
-                          View({ class: "wx-home-platform-status-value" }, [
+                          View({ class: "home-platform-status-value" }, [
                             item.status_text,
                           ]),
                         ]),
@@ -2089,7 +2088,7 @@ function ScraperPlatformStatus(props) {
                           ok() {
                             return View(
                               {
-                                class: "wx-home-platform-status-reason",
+                                class: "home-platform-status-reason",
                                 attributes: { title: item.reason },
                               },
                               [item.reason],
@@ -2105,7 +2104,7 @@ function ScraperPlatformStatus(props) {
           },
           else() {
             return View(
-              { class: "wx-home-platform-status-empty" },
+              { class: "home-platform-status-empty" },
               ["正在连接 /ws/scraper"],
             );
           },
@@ -2118,17 +2117,18 @@ function ScraperPlatformStatus(props) {
           store: vm$.ui.btn_platform_status$,
           class: status.trigger_class,
           attributes: {
+            n: "platform-status-trigger",
             type: "button",
             title: "查看平台状态",
             "aria-label": "查看平台状态",
           },
         },
         [
-          View({ class: "wx-home-platform-status-dot" }),
-          View({ class: "wx-home-platform-status-trigger-label" }, [
+          View({ class: "home-platform-status-dot" }),
+          View({ class: "home-platform-status-trigger-label" }, [
             "平台状态",
           ]),
-          View({ class: "wx-home-platform-status-trigger-summary" }, [
+          View({ class: "home-platform-status-trigger-summary" }, [
             status.summary,
           ]),
         ],
@@ -2143,7 +2143,7 @@ function ScraperFetchProgress(props) {
     when: vm$.state.progress_visible,
     ok() {
       return View({
-        class: "wx-home-fetch-progress",
+        class: "home-fetch-progress",
         attributes: {
           role: "progressbar",
           "aria-label": "抓取进度",
@@ -2152,15 +2152,15 @@ function ScraperFetchProgress(props) {
           "aria-valuenow": vm$.state.progress_percent,
         },
       }, [
-        View({ class: "wx-home-fetch-progress-head" }, [
-          View({ class: "wx-home-fetch-progress-stage" }, [
+        View({ class: "home-fetch-progress-head" }, [
+          View({ class: "home-fetch-progress-stage" }, [
             vm$.state.progress_stage_text,
           ]),
-          View({ class: "wx-home-fetch-progress-right" }, [
+          View({ class: "home-fetch-progress-right" }, [
             Show({
               when: vm$.state.progress_updated_text,
               ok() {
-                return View({ class: "wx-home-fetch-progress-updated" }, [
+                return View({ class: "home-fetch-progress-updated" }, [
                   vm$.state.progress_updated_text,
                 ]);
               },
@@ -2168,17 +2168,17 @@ function ScraperFetchProgress(props) {
             Show({
               when: vm$.state.progress_has_percent,
               ok() {
-                return View({ class: "wx-home-fetch-progress-percent" }, [
+                return View({ class: "home-fetch-progress-percent" }, [
                   vm$.state.progress_percent_text,
                 ]);
               },
             }),
           ]),
         ]),
-        View({ class: "wx-home-fetch-progress-message" }, [
+        View({ class: "home-fetch-progress-message" }, [
           vm$.state.progress_message,
         ]),
-        View({ class: "wx-home-fetch-progress-track" }, [
+        View({ class: "home-fetch-progress-track" }, [
           View({
             class: vm$.state.progress_bar_class,
             style: computed(vm$.state.progress_percent, (percent) => ({
@@ -2189,7 +2189,7 @@ function ScraperFetchProgress(props) {
         Show({
           when: vm$.state.progress_has_total,
           ok() {
-            return View({ class: "wx-home-fetch-progress-count" }, [
+            return View({ class: "home-fetch-progress-count" }, [
               vm$.state.progress_count_text,
             ]);
           },

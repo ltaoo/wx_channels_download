@@ -287,60 +287,6 @@ body[data-weui-theme=dark] {
 .wx-file-picker-dialog .wx-file-picker { height: 380px; margin: 0 16px; }
 .wx-file-picker-dialog__footer { display: flex; padding: 12px 16px 14px; }
 .wx-file-picker-dialog__button-group { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-.custom-menu {
-  z-index: 99999;
-  background: var(--popup-menu-bg-color);
-  box-shadow: 0 0 6px rgb(0 0 0 / 20%);
-  border-radius: 4px;
-  color: var(--weui-FG-0);
-  padding: 8px;
-}
-.custom-menu-item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  min-width: 6em;
-  transition: background .15s ease-in-out
-}
-.custom-menu-item:hover {
-  background: var(--popup-menu-hover-color);
-}
-.custom-menu-item-arrow {
-  position: absolute;
-  right: 4px;
-  top: 5px;
-  font-size: 18px;
-  line-height: 12px;
-}
-.custom-menu .weui-cells {
-  margin: 0;
-  background: transparent;
-}
-.custom-menu .weui-cell {
-  align-items: center;
-  padding: 8px;
-  border-radius: 4px;
-}
-.custom-menu .weui-cell:hover {
-  background: var(--weui-FG-6);
-}
-.custom-menu .weui-cell__bd p {
-  color: var(--weui-FG-0);
-  font-size: 14px;
-  line-height: 1.4;
-}
-.custom-menu .wx-download-item-open {
-  display: none;
-  margin-left: 8px;
-}
-.custom-menu .weui-cell:hover .wx-download-item-open {
-  display: inline-flex;
-}
 .wx-footer {
   position: fixed;
   right: 0;

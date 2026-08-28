@@ -222,8 +222,8 @@ function content_source_url(content) {
   ).trim();
 }
 
-function resource_file_url(resource) {
-  const local_path = String(
+function resource_file_path(resource) {
+  return String(
     first_non_empty(
       resource && resource.local_path,
       resource && resource.LocalPath,
@@ -231,6 +231,10 @@ function resource_file_url(resource) {
       resource && resource.FilePath,
     ),
   ).trim();
+}
+
+function resource_file_url(resource) {
+  const local_path = resource_file_path(resource);
   return local_path ? `/api/file?path=${encodeURIComponent(local_path)}` : "";
 }
 
@@ -626,6 +630,16 @@ function ContentDetailViewModel(props) {
       if (url) {
         window.open(url, "_blank", "noopener,noreferrer");
       }
+    },
+    showResource(resource) {
+      if (!resource_file_available(resource)) return;
+      return window.dl$.requests.file.show.run({
+        path: resource_file_path(resource),
+        name: first_non_empty(
+          resource && resource.name,
+          resource && resource.Name,
+        ),
+      });
     },
     sourceURL: content_source_url,
     coverURL: content_cover_url,

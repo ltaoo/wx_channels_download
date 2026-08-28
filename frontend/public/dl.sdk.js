@@ -974,14 +974,14 @@
       }
       const message =
         next_raw.error || next_raw.error_message || next_raw._errMsg;
-      // logger
-      //   .Info()
-      //   .Str("file", "/public/dl.sdk.js:952")
-      //   .Int("task_id", id_.value)
-      //   .Bool("success", success_statuses.has(next_status))
-      //   .Str("next_status", next_status)
-      //   .Str("terminal_state", terminal_state)
-      //   .Msg("check has success");
+      logger
+        .Info()
+        .Str("file", "/public/dl.sdk.js:952")
+        .Int("task_id", id_.value)
+        .Bool("success", success_statuses.has(next_status))
+        .Str("next_status", next_status)
+        .Str("terminal_state", terminal_state)
+        .Msg("update - check whether the task is completed");
       if (success_statuses.has(next_status) && terminal_state !== "success") {
         terminal_state = "success";
         error_.as(null);
