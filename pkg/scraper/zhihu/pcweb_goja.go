@@ -18,7 +18,6 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/dop251/goja"
@@ -176,7 +175,10 @@ type pcweb_goja_host struct {
 	wasm wazero.Runtime
 }
 
-func run_pcweb_goja(script []byte, script_url, meta, target_url string) (string, error) {
+func run_pcweb_goja(vm *goja.Runtime, script []byte, script_url, meta, target_url string) (string, error) {
+	if vm == nil {
+		return "", errors.New("zhihu minibrowser JavaScript runtime is nil")
+	}
 	parsed_script_url, err := url.Parse(script_url)
 	if err != nil {
 		return "", fmt.Errorf("parse zhihu zse-ck script URL: %w", err)
@@ -185,7 +187,8 @@ func run_pcweb_goja(script []byte, script_url, meta, target_url string) (string,
 	if !pcweb_script_name_re.MatchString(script_name) {
 		return "", fmt.Errorf("unexpected zhihu zse-ck script name %q", script_name)
 	}
-	if _, err := url.ParseRequestURI(target_url); err != nil {
+	target, err := url.ParseRequestURI(target_url)
+	if err != nil {
 		return "", fmt.Errorf("parse zhihu pcweb target URL: %w", err)
 	}
 
@@ -196,13 +199,16 @@ func run_pcweb_goja(script []byte, script_url, meta, target_url string) (string,
 
 	ctx, cancel := context.WithTimeout(context.Background(), pcweb_vm_timeout)
 	defer cancel()
-	vm := goja.New()
 	interrupt_timer := time.AfterFunc(pcweb_vm_timeout, func() {
 		vm.Interrupt(context.DeadlineExceeded)
 	})
 	defer interrupt_timer.Stop()
+	defer vm.ClearInterrupt()
 
-	runtime_config := wazero.NewRuntimeConfig().WithCloseOnContextDone(true)
+	runtime_config := wazero.NewRuntimeConfig().
+		WithCloseOnContextDone(true).
+		WithMemoryLimitPages(1024).
+		WithMemoryCapacityFromMax(true)
 	host := &pcweb_goja_host{
 		ctx:  ctx,
 		vm:   vm,
@@ -219,17 +225,8 @@ func run_pcweb_goja(script []byte, script_url, meta, target_url string) (string,
 		}
 	})
 
-	for name, value := range map[string]any{
-		"__goja_profile":               profile,
-		"__goja_meta":                  meta,
-		"__goja_target_url":            target_url,
-		"__goja_script_url":            script_url,
-		"__goja_blank_canvas_data_url": pcweb_blank_canvas_data_url(),
-		"__goja_time_origin":           time.Now().UnixMilli(),
-	} {
-		if err := vm.Set(name, value); err != nil {
-			return "", fmt.Errorf("initialize zhihu goja VM global %s: %w", name, err)
-		}
+	if err := vm.Set("__goja_time_origin", time.Now().UnixMilli()); err != nil {
+		return "", fmt.Errorf("initialize zhihu goja time origin: %w", err)
 	}
 	if err := host.install_primitives(); err != nil {
 		return "", err
@@ -239,6 +236,43 @@ func run_pcweb_goja(script []byte, script_url, meta, target_url string) (string,
 	}
 	if _, err := vm.RunScript("pcweb_runtime.js", string(pcweb_vm_runtime)); err != nil {
 		return "", format_pcweb_goja_error("initialize zhihu pcweb browser runtime", err)
+	}
+	random_values := make([]uint32, 64)
+	random_data := make([]byte, len(random_values)*4)
+	if _, err := rand.Read(random_data); err != nil {
+		return "", fmt.Errorf("generate zhihu goja random values: %w", err)
+	}
+	for index := range random_values {
+		random_values[index] = binary.LittleEndian.Uint32(random_data[index*4:])
+	}
+	location := map[string]string{
+		"href":     target.String(),
+		"protocol": target.Scheme + ":",
+		"host":     target.Host,
+		"hostname": target.Hostname(),
+		"pathname": target.EscapedPath(),
+	}
+	if target.RawQuery != "" {
+		location["search"] = "?" + target.RawQuery
+	}
+	setup_config, err := json.Marshal(map[string]any{
+		"targetUrl":  target_url,
+		"scriptUrl":  script_url,
+		"meta":       meta,
+		"errorStack": fmt.Sprintf("Error\n    at %s://%s/:1:1", target.Scheme, target.Host),
+		"canvasDataUrls": map[string]string{
+			"300x150": pcweb_blank_canvas_data_url(300, 150),
+			"1000x50": pcweb_blank_canvas_data_url(1000, 50),
+		},
+		"randomValues": random_values,
+		"profile":      profile,
+		"location":     location,
+	})
+	if err != nil {
+		return "", fmt.Errorf("encode zhihu goja browser config: %w", err)
+	}
+	if _, err := vm.RunString("__setupBrowser(" + string(setup_config) + ")"); err != nil {
+		return "", format_pcweb_goja_error("configure zhihu goja browser runtime", err)
 	}
 	program, err := goja.Compile(script_name, string(script), false)
 	if err != nil {
@@ -250,10 +284,8 @@ func run_pcweb_goja(script []byte, script_url, meta, target_url string) (string,
 		}
 		return "", format_pcweb_goja_error("run zhihu zse-ck script with goja", err)
 	}
-
-	read_result, ok := goja.AssertFunction(vm.Get("__pcwebReadResult"))
-	if !ok {
-		return "", errors.New("zhihu goja browser runtime did not install its result reader")
+	if _, err := vm.RunString(`document.currentScript=null;document.readyState="complete"`); err != nil {
+		return "", format_pcweb_goja_error("complete zhihu goja document", err)
 	}
 	run_timers, ok := goja.AssertFunction(vm.Get("__goja_run_timers"))
 	if !ok {
@@ -261,20 +293,20 @@ func run_pcweb_goja(script []byte, script_url, meta, target_url string) (string,
 	}
 
 	for {
-		result_value, call_err := read_result(goja.Undefined())
-		if call_err != nil {
-			return "", format_pcweb_goja_error("read zhihu zse-ck result", call_err)
+		written_cookie := vm.Get("__writtenCookie").String()
+		if cookie_text, found := strings.CutPrefix(written_cookie, "__zse_ck="); found {
+			cookie, _, _ := strings.Cut(cookie_text, ";")
+			if cookie != "" {
+				suffix := "-" + meta
+				ck, complete := strings.CutSuffix(cookie, suffix)
+				if !complete || !strings.HasPrefix(ck, "005_") {
+					return "", errors.New("zhihu zse-ck goja VM returned an incomplete cookie")
+				}
+				return cookie, nil
+			}
 		}
-		if result_value != nil && !goja.IsNull(result_value) && !goja.IsUndefined(result_value) {
-			result_object := result_value.ToObject(vm)
-			result := pcweb_vm_result{
-				CK:     result_object.Get("ck").String(),
-				Cookie: result_object.Get("cookie").String(),
-			}
-			if result.CK == "" || result.Cookie != result.CK+"-"+meta {
-				return "", errors.New("zhihu zse-ck goja VM returned an incomplete cookie")
-			}
-			return result.Cookie, nil
+		if runtime_error := vm.Get("__zseError"); runtime_error != nil && !goja.IsNull(runtime_error) && !goja.IsUndefined(runtime_error) {
+			return "", fmt.Errorf("zhihu zse-ck fingerprint failed: %s", runtime_error.String())
 		}
 
 		if err := ctx.Err(); err != nil {
@@ -293,6 +325,11 @@ func run_pcweb_goja(script []byte, script_url, meta, target_url string) (string,
 		if pending == 0 {
 			for _, rejection := range unhandled_rejections {
 				return "", fmt.Errorf("zhihu zse-ck promise rejected: %s", rejection.String())
+			}
+			if bridge := vm.Get("__g"); bridge != nil && !goja.IsUndefined(bridge) && !goja.IsNull(bridge) {
+				if ck := bridge.ToObject(vm).Get("ck").String(); strings.HasPrefix(ck, "005_") {
+					return ck + "-" + meta, nil
+				}
 			}
 			return "", errors.New("zhihu zse-ck challenge did not set __zse_ck")
 		}
@@ -545,12 +582,24 @@ func (host *pcweb_goja_host) instantiate_wasm(call goja.FunctionCall) goja.Value
 	for export_name := range instance.ExportedMemoryDefinitions() {
 		memory := instance.ExportedMemory(export_name)
 		memory_object := vm.NewObject()
+		var memory_buffer goja.ArrayBuffer
+		var memory_size uint32
+		has_memory_buffer := false
 		getter := vm.ToValue(func(goja.FunctionCall) goja.Value {
-			data, ok := memory.Read(0, memory.Size())
-			if !ok {
-				panic(vm.NewTypeError("WebAssembly memory is unavailable"))
+			current_size := memory.Size()
+			if !has_memory_buffer || current_size != memory_size {
+				if has_memory_buffer {
+					memory_buffer.Detach()
+				}
+				data, ok := memory.Read(0, current_size)
+				if !ok {
+					panic(vm.NewTypeError("WebAssembly memory is unavailable"))
+				}
+				memory_buffer = vm.NewArrayBuffer(data)
+				memory_size = current_size
+				has_memory_buffer = true
 			}
-			return vm.ToValue(vm.NewArrayBuffer(data))
+			return vm.ToValue(memory_buffer)
 		})
 		if err := memory_object.DefineAccessorProperty("buffer", getter, nil, goja.FLAG_FALSE, goja.FLAG_TRUE); err != nil {
 			panic(vm.NewGoError(err))
@@ -559,6 +608,10 @@ func (host *pcweb_goja_host) instantiate_wasm(call goja.FunctionCall) goja.Value
 			previous, ok := memory.Grow(uint32(call.Argument(0).ToInteger()))
 			if !ok {
 				panic(vm.NewTypeError("WebAssembly memory growth failed"))
+			}
+			if has_memory_buffer {
+				memory_buffer.Detach()
+				has_memory_buffer = false
 			}
 			return vm.ToValue(previous)
 		}); err != nil {
@@ -712,33 +765,24 @@ func parse_pcweb_goja_url(raw_url, base_url string) (map[string]string, error) {
 	}, nil
 }
 
-var (
-	pcweb_blank_canvas_once sync.Once
-	pcweb_blank_canvas_url  string
-)
+func pcweb_blank_canvas_data_url(width, height int) string {
+	header := make([]byte, 13)
+	binary.BigEndian.PutUint32(header[0:4], uint32(width))
+	binary.BigEndian.PutUint32(header[4:8], uint32(height))
+	header[8] = 8
+	header[9] = 6
+	raw := make([]byte, height*(1+width*4))
+	var compressed bytes.Buffer
+	writer := zlib.NewWriter(&compressed)
+	_, _ = writer.Write(raw)
+	_ = writer.Close()
 
-func pcweb_blank_canvas_data_url() string {
-	pcweb_blank_canvas_once.Do(func() {
-		const width = 300
-		const height = 150
-		header := make([]byte, 13)
-		binary.BigEndian.PutUint32(header[0:4], width)
-		binary.BigEndian.PutUint32(header[4:8], height)
-		header[8] = 8
-		header[9] = 6
-		raw := make([]byte, height*(1+width*4))
-		var compressed bytes.Buffer
-		writer := zlib.NewWriter(&compressed)
-		_, _ = writer.Write(raw)
-		_ = writer.Close()
-
-		png := append([]byte(nil), 137, 80, 78, 71, 13, 10, 26, 10)
-		png = append_pcweb_png_chunk(png, "IHDR", header)
-		png = append_pcweb_png_chunk(png, "IDAT", compressed.Bytes())
-		png = append_pcweb_png_chunk(png, "IEND", nil)
-		pcweb_blank_canvas_url = "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
-	})
-	return pcweb_blank_canvas_url
+	png := append([]byte(nil), 137, 80, 78, 71, 13, 10, 26, 10)
+	png = append_pcweb_png_chunk(png, "IHDR", header)
+	png = append_pcweb_png_chunk(png, "sBIT", []byte{8, 8, 8, 8})
+	png = append_pcweb_png_chunk(png, "IDAT", compressed.Bytes())
+	png = append_pcweb_png_chunk(png, "IEND", nil)
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
 }
 
 func append_pcweb_png_chunk(destination []byte, chunk_type string, data []byte) []byte {

@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Danny-Dasilva/CycleTLS/cycletls"
 	"golang.org/x/net/html/charset"
@@ -339,8 +340,11 @@ func WithReferer(referer string) RequestOption {
 // DecodeText decodes an HTML/text response using the response Content-Type and
 // in-document charset hints. It handles pages like 69shuba that declare GBK in
 // a <meta charset> tag.
-func DecodeText(body []byte, contentType string) (string, error) {
-	encoding, _, _ := charset.DetermineEncoding(body, contentType)
+func DecodeText(body []byte, content_type string) (string, error) {
+	if utf8.Valid(body) {
+		return string(body), nil
+	}
+	encoding, _, _ := charset.DetermineEncoding(body, content_type)
 	reader := transform.NewReader(bytes.NewReader(body), encoding.NewDecoder())
 	decoded, err := io.ReadAll(reader)
 	if err != nil {
