@@ -642,9 +642,21 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 	if err != nil {
 		return nil, fmt.Errorf("转换知乎内容详情失败: %w", err)
 	}
-	video_infos, err := fetch_zhihu_embedded_video_infos(h.scraper_client(), page_data, content)
-	if err != nil {
-		return nil, err
+	video_infos, video_err := fetch_zhihu_embedded_video_infos(h.scraper_client(), page_data, content)
+	if video_err != nil {
+		// Embedded media is an optional download enhancement. A stale or
+		// login-bound video ticket must not discard an otherwise complete SSR
+		// article/answer, so keep the HTML task and omit unavailable videos.
+		h.runtime_mu.RLock()
+		logger := h.logger
+		h.runtime_mu.RUnlock()
+		if logger != nil {
+			logger.Warn().
+				Err(video_err).
+				Str("content_id", content.ExternalId).
+				Msg("zhihu: skip unavailable embedded video")
+		}
+		video_infos = nil
 	}
 	video_resources, video_details := build_zhihu_embedded_videos(
 		content,

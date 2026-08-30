@@ -120,7 +120,7 @@ GET /api/bridge/status
 - 用户名：`admin`
 - 密码：`bridge.deploy.adminToken`
 
-管理页每 5 秒刷新，展示操作系统设备，并通过右侧抽屉添加和管理调用 Token。管理员可以创建独立 Token、选择 1/7/30/90 天或永久有效、让 Token 立即过期以及移除 Token。Token 可留空由 Bridge 自动生成，也可手动指定；用途或使用人可选填。Token 明文只在创建成功时显示一次，Bridge 仅保存 SHA-256 摘要。
+管理页每 5 秒刷新，展示操作系统设备，并通过右侧抽屉添加和管理调用 Token。管理员可以创建独立 Token、设置初始积分、充值积分、选择 1/7/30/90 天或永久有效、让 Token 立即过期以及移除 Token。Token 可留空由 Bridge 自动生成，也可手动指定；用途或使用人可选填。Token 明文只在创建成功时显示一次，Bridge 仅保存 SHA-256 摘要。
 
 每个调用 Token 都是独立发布方：它只能列出和查询自己创建的调用，不能读取其他 Token 或设备发布的任务。Token 过期或移除后，新请求立即返回 `401`；已经分配给设备的调用仍会继续执行。
 
@@ -150,6 +150,8 @@ GET /admin/api/access-tokens
 POST /admin/api/access-tokens
 DELETE /admin/api/access-tokens/:id
 POST /admin/api/access-tokens/:id/expire
+POST /admin/api/access-tokens/:id/credits
+GET /admin/api/credit-transactions?access_token_id=&limit=
 Authorization: Bearer <BRIDGE_ADMIN_TOKEN>
 ```
 
@@ -159,11 +161,23 @@ Authorization: Bearer <BRIDGE_ADMIN_TOKEN>
 {
   "name": "合作方 A",
   "token": "custom-token-at-least-16-characters",
-  "expires_in_seconds": 604800
+  "expires_in_seconds": 604800,
+  "credits": 1000
 }
 ```
 
-`token` 留空或省略时由 Bridge 自动生成；自定义值必须为 16–256 位，只能包含字母、数字和 `._~+/=-`。`name` 可留空，`expires_in_seconds` 为 `null` 时永不过期。创建响应中的 `token` 是唯一一次返回的明文。
+`token` 留空或省略时由 Bridge 自动生成；自定义值必须为 16–256 位，只能包含字母、数字和 `._~+/=-`。`name` 可留空，`expires_in_seconds` 为 `null` 时永不过期，`credits` 是非负整数且默认为 `0`。创建响应中的 `token` 是唯一一次返回的明文。
+
+充值请求中的 `amount` 是积分增量。管理 API 允许负数调整以修正账目，但调整后余额不能小于 `0`；管理页只提供正数充值：
+
+```json
+{
+  "amount": 500,
+  "reason": "购买 500 积分"
+}
+```
+
+每次变动都会写入永久积分流水，包含 Token、关联任务、变动值、变动后余额、method、原因和时间。移除 Token 使用软撤销，因此不会破坏历史流水。
 
 每张设备卡片在设备注册 `wxchannels.fetch` 时提供定向方法调用测试。获取成功后，可以把结果作为 `args` 提交给任意在线且注册 `download.create` 的设备。两个操作都调用同一个 `/admin/api/call` 接口。
 
@@ -258,6 +272,15 @@ GET /v1
 Authorization: Bearer <CALL_TOKEN>
 ```
 
+查询当前 Token 的积分：
+
+```http
+GET /v1/credits
+Authorization: Bearer <CALL_TOKEN>
+```
+
+外部 Token 每创建一个同步或异步调用消耗 `1` 积分。扣费与任务创建位于同一个 SQLite 事务；余额不足返回 `402 Payment Required`，无效请求不扣费，相同 `idempotency_key` 的异步重放不重复扣费。任务一旦创建，设备执行失败、内部重试或 `/v1/invoke` 超时均不退分。设备 Secret 与管理员控制台调用不计费。
+
 同步调用并直接获得方法结果：
 
 ```http
@@ -336,6 +359,8 @@ Authorization: Bearer <CALL_TOKEN>
 
 升级后，旧外部调用方不应继续使用共享 `BRIDGE_TOKEN`。请先用 `BRIDGE_ADMIN_TOKEN` 登录管理页，为每个调用方创建独立调用 Token，再替换其 `Authorization`。设备配置中的 `bridge.token` 保持不变。
 
+从不含积分字段的版本升级时，已有动态调用 Token 会保留，但初始积分余额为 `0`。升级部署后应先在管理页为这些 Token 充值，再恢复外部调用；任务和 Token 的既有身份不会改变。
+
 旧版只有一个 `bridge.instances` 项时仍可临时连接，新版会使用其中的 `url`、`clientId` 和 token，并保留旧路径与旧协议字段兼容。旧 `capabilities` 布尔值会在迁移期映射为对应 methods；新配置请使用通用的 `bridge.methods`。请迁移为新的 `bridge.url`、`bridge.deviceId`、`bridge.deviceName` 和 `bridge.token`。
 
 旧配置包含多个实例时会直接报错，因为单个操作系统设备现在只属于一个个人 Bridge；多 Bridge 管理由更高层应用负责。
@@ -345,9 +370,10 @@ Authorization: Bearer <CALL_TOKEN>
 ## 可靠性和限制
 
 - 相同发布方和 `idempotency_key` 只创建一个任务。
+- 每个外部调用任务固定消耗 1 积分；余额不足返回 `402`，查询和轮询不消耗积分。
 - 每台设备当前一次领取一个任务；同一操作系统内的视频号解析串行执行。
 - 单次调用的 args 或 result 上限为 1 MiB。
 - 完成和失败任务保留 7 天。
 - 任务可能因租约过期再次执行，执行端必须允许重复调用。
 - `BRIDGE_TOKEN` 是所有设备共享的高权限 Secret，只应写入设备配置；面向人员和外部系统必须分发独立调用 Token。
-- 动态调用 Token 当前拥有全部在线 `methods` 的调用权限；更细粒度的方法授权、限流和计费仍属于后续的 Bridge 市场或上层网关。
+- 动态调用 Token 当前拥有全部在线 `methods` 的调用权限；更细粒度的方法授权和限流仍属于后续的 Bridge 市场或上层网关。

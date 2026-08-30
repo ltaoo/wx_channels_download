@@ -52,7 +52,7 @@ bridge:
 
 - Token 留空时由 Bridge 自动生成，也可以手动指定 16–256 位 Token。
 - 用途或使用人可选填。
-- 可以设置 1、7、30、90 天或永不过期。
+- 可以设置初始积分以及 1、7、30、90 天或永不过期；之后可由管理员继续充值。
 - Token 明文只显示一次，请立即保存。
 
 本文示例通过环境变量读取地址和 Token：
@@ -82,12 +82,54 @@ Authorization: Bearer <CALL_TOKEN>
 | --- | --- | --- |
 | `GET` | `/health` | 健康检查，不需要认证 |
 | `GET` | `/v1` | 查询设备、在线方法和任务状态统计 |
+| `GET` | `/v1/credits` | 查询当前 Token 的积分余额与累计使用量 |
 | `POST` | `/v1/invoke` | 同步调用，最长等待 10 秒并直接返回结果 |
 | `POST` | `/v1/call` | 创建异步方法调用 |
 | `GET` | `/v1/tasks/:id` | 查询一个任务 |
 | `GET` | `/v1/tasks?status=&limit=` | 查询当前 Token 创建的任务 |
 
 每个调用 Token 都对应独立的发布方身份。一个 Token 不能读取另一个 Token 或设备创建的任务；尝试查询其他发布方的任务时返回 `404`。
+
+## 积分与计费
+
+Bridge 按请求计费：调用 Token 每成功创建一个 `/v1/invoke` 或 `/v1/call` 任务消耗 `1` 积分，状态查询、任务轮询和 Bridge 状态查询免费。余额不足时调用接口返回 `402 Payment Required`：
+
+```json
+{
+  "error": "insufficient credits",
+  "required": 1,
+  "balance": 0
+}
+```
+
+扣费与任务创建在同一个事务内完成，不会因并发请求产生负余额。参数校验失败不扣费；异步调用用同一个非空 `idempotency_key` 重放时返回原任务且不再次扣费。任务创建后，即使设备执行失败、租约重试或同步调用等待超时也不会退分，因为 Bridge 已经受理并调度了请求。
+
+查询当前 Token 的余额：
+
+```sh
+curl -sS \
+  -H "Authorization: Bearer $BRIDGE_CALL_TOKEN" \
+  "$BRIDGE_URL/v1/credits"
+```
+
+```json
+{
+  "credits": {
+    "balance": 998,
+    "total_granted": 1000,
+    "total_used": 2,
+    "default_call_cost": 1
+  }
+}
+```
+
+调用响应同时包含 `X-Bridge-Credit-Balance` header；异步创建响应的 `credits.charged` 和 `credits.balance` 会给出本次扣费及剩余积分。
+
+::: warning 旧 Token 升级
+
+从没有积分体系的 Bridge 版本升级时，已有调用 Token 会保留但余额初始化为 `0`。请先在管理页充值，否则新的调用请求会返回 `402`。
+
+:::
 
 ## 查询 Bridge 状态
 
