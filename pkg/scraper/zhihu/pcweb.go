@@ -210,11 +210,11 @@ func (c *Client) pcweb_desktop_document(raw_url, content_id, content_kind string
 		return nil, fmt.Errorf("create zhihu minibrowser: %w", err)
 	}
 	defer browser.Close()
-	if cookie_header := c.cookie(raw_url); cookie_header != "" {
-		if err := browser.SetCookieHeader(raw_url, cookie_header); err != nil {
-			return nil, fmt.Errorf("seed zhihu minibrowser cookies: %w", err)
-		}
-	}
+	// Public desktop documents must solve the challenge in a clean anonymous
+	// session. Persisted account cookies can contain an expired login state;
+	// Zhihu then accepts a newly generated __zse_ck but redirects the otherwise
+	// public document to /signin. The authenticated API fallback still uses the
+	// configured cookie reader when it is needed.
 	cached_zse_cookie, err := c.read_pcweb_zse_cookie()
 	if err != nil {
 		return nil, err
@@ -223,40 +223,69 @@ func (c *Client) pcweb_desktop_document(raw_url, content_id, content_kind string
 		if err := set_pcweb_zse_cookie(browser, raw_url, cached_zse_cookie); err != nil {
 			return nil, err
 		}
-	}
-
-	first_req, err := http.NewRequest(http.MethodGet, raw_url, nil)
-	if err != nil {
-		return nil, err
-	}
-	set_pcweb_desktop_document_headers(first_req, "none", "")
-	c.log_request(http.MethodGet, raw_url, "")
-	first_resp, err := browser.Get(context.Background(), raw_url, first_req.Header)
-	if err != nil {
-		return nil, fmt.Errorf("request zhihu pcweb challenge: %w", err)
-	}
-	c.log_response(http.MethodGet, raw_url, first_resp.StatusCode)
-	first := &pcweb_response{status: first_resp.StatusCode, body: first_resp.Body, location: first_resp.Header.Get("Location")}
-	if first.status >= 200 && first.status < 300 && document_validator(first.body, content_id) {
-		return first.body, nil
-	}
-	if cached_zse_cookie != "" {
+		cached_req, request_err := http.NewRequest(http.MethodGet, raw_url, nil)
+		if request_err != nil {
+			return nil, request_err
+		}
+		set_pcweb_desktop_document_headers(cached_req, "none", "")
+		c.log_request(http.MethodGet, raw_url, "__zse_ck=<cached>")
+		cached_resp, request_err := browser.Get(context.Background(), raw_url, cached_req.Header)
+		if request_err != nil {
+			return nil, fmt.Errorf("validate cached zhihu zse-ck: %w", request_err)
+		}
+		c.log_response(http.MethodGet, raw_url, cached_resp.StatusCode)
+		if cached_resp.StatusCode >= 200 && cached_resp.StatusCode < 300 && document_validator(cached_resp.Body, content_id) {
+			return cached_resp.Body, nil
+		}
+		// A cached token is useful only when it produces a complete document.
+		// In particular, do not keep a token whose response is a signin redirect.
 		if err := c.remove_pcweb_zse_cookie(); err != nil {
 			return nil, err
 		}
 	}
 
-	meta, script_url, err := parse_pcweb_challenge(first.body, raw_url)
-	if err != nil {
-		return nil, fmt.Errorf("parse zhihu pcweb challenge (HTTP %d): %w", first.status, err)
-	}
-	script, err := c.prepare_pcweb_challenge_script(browser, script_url, raw_url)
+	challenge_req, err := http.NewRequest(http.MethodGet, raw_url, nil)
 	if err != nil {
 		return nil, err
 	}
-	cookie_value, err := generate_pcweb_zse_cookie(browser, script, script_url, meta, raw_url)
+	set_pcweb_desktop_document_headers(challenge_req, "none", "")
+	challenge_ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	runtime_hooks := new_pcweb_minib_runtime_hooks()
+	c.log_request(http.MethodGet, raw_url, "")
+	challenge_page, err := browser.Navigate(challenge_ctx, raw_url, challenge_req.Header, minib.NavigateOptions{
+		DisableCache:       true,
+		DisableCSS:         true,
+		DisableImages:      true,
+		DisableMedia:       true,
+		JavaScriptTimeout:  timeout,
+		ResourceTimeout:    timeout,
+		WaitUntil:          minib.WaitUntilLoad,
+		RuntimeInitializer: runtime_hooks.initialize(raw_url),
+		RuntimeFinalizer:   runtime_hooks.finalize,
+		RuntimeCleanup:     runtime_hooks.cleanup,
+		UseCustomRuntime:   true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("navigate zhihu pcweb challenge with minib: %w", err)
+	}
+	c.log_response(http.MethodGet, raw_url, challenge_page.StatusCode)
+	if challenge_page.StatusCode >= 200 && challenge_page.StatusCode < 300 && document_validator([]byte(challenge_page.RenderedHTML), content_id) {
+		return []byte(challenge_page.RenderedHTML), nil
+	}
+	meta, script_url, err := parse_pcweb_challenge([]byte(challenge_page.HTML), raw_url)
+	if err != nil {
+		return nil, fmt.Errorf("parse zhihu pcweb challenge (HTTP %d): %w", challenge_page.StatusCode, err)
+	}
+	if len(challenge_page.ScriptFailures) != 0 {
+		return nil, fmt.Errorf("execute zhihu pcweb challenge script %s: %v", script_url, challenge_page.ScriptFailures[0].Err)
+	}
+	cookie_value, err := pcweb_zse_cookie_from_browser(browser, raw_url, meta)
 	if err != nil {
 		return nil, err
+	}
+	if !valid_pcweb_zse_cookie(cookie_value) || !strings.HasSuffix(cookie_value, "-"+meta) {
+		return nil, errors.New("zhihu minib generated an incomplete __zse_ck")
 	}
 	if err := set_pcweb_zse_cookie(browser, raw_url, cookie_value); err != nil {
 		return nil, err
@@ -274,6 +303,9 @@ func (c *Client) pcweb_desktop_document(raw_url, content_id, content_kind string
 	}
 	c.log_response(http.MethodGet, raw_url, retry_resp.StatusCode)
 	retry := &pcweb_response{status: retry_resp.StatusCode, body: retry_resp.Body, location: retry_resp.Header.Get("Location")}
+	if retry.status == http.StatusForbidden {
+		return nil, fmt.Errorf("zhihu rejected minib-generated __zse_ck: HTTP %d body=%s", retry.status, debug_snippet(retry.body))
+	}
 	if retry.status >= 200 && retry.status < 300 && document_validator(retry.body, content_id) {
 		if err := c.write_pcweb_zse_cookie(cookie_value); err != nil {
 			return nil, err
@@ -284,6 +316,39 @@ func (c *Client) pcweb_desktop_document(raw_url, content_id, content_kind string
 		return nil, fmt.Errorf("zhihu pcweb retry status %d location=%s", retry.status, retry.location)
 	}
 	return nil, fmt.Errorf("zhihu pcweb retry status %d body=%s", retry.status, debug_snippet(retry.body))
+}
+
+func pcweb_zse_cookie_from_browser(browser *minib.MiniBrowser, raw_url, meta string) (string, error) {
+	cookies, err := browser.Cookies(raw_url)
+	if err != nil {
+		return "", fmt.Errorf("inspect zhihu minib cookies: %w", err)
+	}
+	for _, cookie := range cookies {
+		if cookie.Name == "__zse_ck" && strings.HasSuffix(cookie.Value, "-"+meta) {
+			return cookie.Value, nil
+		}
+	}
+	core_value, execute_err := browser.ExecuteJS(context.Background(), `(function () {
+  return typeof __g === "object" && typeof __g.ck === "string" ? __g.ck : "";
+})()`)
+	if execute_err != nil {
+		return "", fmt.Errorf("inspect zhihu minib challenge result: %w", execute_err)
+	}
+	if cookie_core := strings.TrimSpace(core_value.String()); strings.HasPrefix(cookie_core, "005_") {
+		return cookie_core + "-" + meta, nil
+	}
+	value, execute_err := browser.ExecuteJS(context.Background(), `(function () {
+  const written = typeof __writtenCookie === "string" ? __writtenCookie : "";
+  const match = written.match(/^__zse_ck=([^;]+)/);
+  return match ? match[1] : "";
+})()`)
+	if execute_err != nil {
+		return "", fmt.Errorf("inspect zhihu minib challenge cookie: %w", execute_err)
+	}
+	if cookie_value := strings.TrimSpace(value.String()); cookie_value != "" {
+		return cookie_value, nil
+	}
+	return "", errors.New("zhihu pcweb challenge did not set __zse_ck in the minib cookie jar")
 }
 
 func (c *Client) pcweb_http_client(jar http.CookieJar, no_redirect bool) *http.Client {
@@ -606,7 +671,16 @@ func valid_pcweb_zse_cookie(value string) bool {
 }
 
 func (c *Client) read_pcweb_zse_cookie() (string, error) {
-	if c == nil || c.file_cache == nil || !c.file_cache.Enabled() {
+	if c == nil {
+		return "", nil
+	}
+	c.pcweb_zse_mutex.RLock()
+	memory_value := c.pcweb_zse_cookie
+	c.pcweb_zse_mutex.RUnlock()
+	if valid_pcweb_zse_cookie(memory_value) {
+		return memory_value, nil
+	}
+	if c.file_cache == nil || !c.file_cache.Enabled() {
 		return "", nil
 	}
 	cached, err := c.file_cache.Read(pcweb_zse_cookie_cache)
@@ -621,15 +695,24 @@ func (c *Client) read_pcweb_zse_cookie() (string, error) {
 		_ = c.file_cache.Remove(pcweb_zse_cookie_cache)
 		return "", nil
 	}
+	c.pcweb_zse_mutex.Lock()
+	c.pcweb_zse_cookie = value
+	c.pcweb_zse_mutex.Unlock()
 	return value, nil
 }
 
 func (c *Client) write_pcweb_zse_cookie(value string) error {
-	if c == nil || c.file_cache == nil || !c.file_cache.Enabled() {
+	if c == nil {
 		return nil
 	}
 	if !valid_pcweb_zse_cookie(value) {
 		return errors.New("refuse to cache invalid zhihu zse-ck cookie")
+	}
+	c.pcweb_zse_mutex.Lock()
+	c.pcweb_zse_cookie = value
+	c.pcweb_zse_mutex.Unlock()
+	if c.file_cache == nil || !c.file_cache.Enabled() {
+		return nil
 	}
 	if err := c.file_cache.Write(pcweb_zse_cookie_cache, []byte(value)); err != nil {
 		return fmt.Errorf("cache zhihu zse-ck cookie: %w", err)
@@ -638,7 +721,13 @@ func (c *Client) write_pcweb_zse_cookie(value string) error {
 }
 
 func (c *Client) remove_pcweb_zse_cookie() error {
-	if c == nil || c.file_cache == nil || !c.file_cache.Enabled() {
+	if c == nil {
+		return nil
+	}
+	c.pcweb_zse_mutex.Lock()
+	c.pcweb_zse_cookie = ""
+	c.pcweb_zse_mutex.Unlock()
+	if c.file_cache == nil || !c.file_cache.Enabled() {
 		return nil
 	}
 	if err := c.file_cache.Remove(pcweb_zse_cookie_cache); err != nil {

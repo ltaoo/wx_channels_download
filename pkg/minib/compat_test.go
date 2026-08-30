@@ -55,7 +55,7 @@ func TestMainstreamSiteCompatibility(t *testing.T) {
 					t.Fatal(err)
 				}
 				html_path := filepath.Join(output_dir, test_case.name+".html")
-				if err := os.WriteFile(html_path, []byte(page.RenderedHTML), 0600); err != nil {
+				if err := page.SaveHTML(html_path); err != nil {
 					t.Fatal(err)
 				}
 				if err := page.SaveHAR(filepath.Join(output_dir, test_case.name+".har")); err != nil {

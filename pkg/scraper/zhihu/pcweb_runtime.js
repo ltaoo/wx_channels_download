@@ -497,13 +497,23 @@ globalThis.__setupBrowser = function (config) {
     open: markNative(() => null, "open"), print: markNative(() => {}, "print"), name: "", length: 0,
   };
   for (const [name, value] of Object.entries(globals)) {
-    Object.defineProperty(globalThis, name, { configurable: true, enumerable: true, writable: true, value });
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
+    if (!descriptor || descriptor.configurable) {
+      Object.defineProperty(globalThis, name, { configurable: true, enumerable: true, writable: true, value });
+    } else if (descriptor.writable) {
+      globalThis[name] = value;
+    }
   }
   for (const [name, value] of Object.entries({
     window: globalThis, self: globalThis, top: globalThis, parent: globalThis, frames: globalThis,
     document, location, navigator, screen, history,
   })) {
-    Object.defineProperty(globalThis, name, { configurable: false, enumerable: true, get: () => value });
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
+    if (!descriptor || descriptor.configurable) {
+      Object.defineProperty(globalThis, name, { configurable: false, enumerable: true, get: () => value });
+    } else if (descriptor.writable) {
+      globalThis[name] = value;
+    }
   }
   Object.setPrototypeOf(globalThis, Window.prototype);
   Object.defineProperty(globalThis, Symbol.toStringTag, { configurable: true, value: "Window" });

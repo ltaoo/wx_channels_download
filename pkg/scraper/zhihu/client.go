@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -36,11 +37,13 @@ var article_url_re = regexp.MustCompile(`^/p/([0-9]+)$`)
 var article_appview_url_re = regexp.MustCompile(`^/appview/p/([0-9]+)$`)
 
 type Client struct {
-	http_client   *http.Client
-	cookie_reader *cookies.Reader
-	logger        *zerolog.Logger
-	file_cache    *cache.CacheProvider
-	OnProgress    func(downloaded int64)
+	http_client      *http.Client
+	cookie_reader    *cookies.Reader
+	logger           *zerolog.Logger
+	file_cache       *cache.CacheProvider
+	pcweb_zse_mutex  sync.RWMutex
+	pcweb_zse_cookie string
+	OnProgress       func(downloaded int64)
 }
 
 func (c *Client) Fetch(raw_url string) (any, error) {

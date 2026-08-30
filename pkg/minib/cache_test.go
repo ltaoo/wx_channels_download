@@ -223,8 +223,51 @@ harXhr.send('{"ok":true}');
 	if file_info, err := os.Stat(har_path); err != nil || file_info.Mode().Perm() != 0600 {
 		t.Fatalf("HAR file mode: info=%v err=%v", file_info, err)
 	}
+	html_path := filepath.Join(t.TempDir(), "navigation.html")
+	if err := second_page.SaveHTML(html_path); err != nil {
+		t.Fatal(err)
+	}
+	html_data, err := os.ReadFile(html_path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(html_data) != second_page.RenderedHTML {
+		t.Fatal("saved HTML does not match the post-JavaScript DOM")
+	}
+	if file_info, err := os.Stat(html_path); err != nil || file_info.Mode().Perm() != 0600 {
+		t.Fatalf("HTML file mode: info=%v err=%v", file_info, err)
+	}
 	if len(first_page.ScriptFailures) != 0 || len(second_page.ScriptFailures) != 0 || len(disabled_page.ScriptFailures) != 0 {
 		t.Fatalf("script failures: first=%+v second=%+v disabled=%+v", first_page.ScriptFailures, second_page.ScriptFailures, disabled_page.ScriptFailures)
+	}
+}
+
+func TestResourceCacheEvictsLeastRecentlyUsedEntriesWithinLimits(t *testing.T) {
+	cache := new_resource_cache(ResourceCacheLimits{MaxEntries: 2, MaxBytes: 1 << 20})
+	headers := http.Header{"Cache-Control": []string{"max-age=3600"}}
+	store := func(raw_url string, body string) {
+		cache.store(raw_url, nil, headers, Resource{URL: raw_url, StatusCode: http.StatusOK, Body: []byte(body)}, time.Now())
+	}
+	store("https://example.test/one", "1")
+	store("https://example.test/two", "2")
+	if _, found := cache.lookup("https://example.test/one", nil); !found {
+		t.Fatal("first entry was not cached")
+	}
+	store("https://example.test/three", "3")
+	if _, found := cache.lookup("https://example.test/two", nil); found {
+		t.Fatal("least-recently-used entry was not evicted")
+	}
+	if _, found := cache.lookup("https://example.test/one", nil); !found {
+		t.Fatal("recently used entry was evicted")
+	}
+	if _, found := cache.lookup("https://example.test/three", nil); !found {
+		t.Fatal("new entry was evicted")
+	}
+
+	byte_limit := cache.current_bytes - 1
+	cache.set_limits(ResourceCacheLimits{MaxBytes: byte_limit})
+	if cache.entry_count != 1 || cache.current_bytes > byte_limit {
+		t.Fatalf("byte limit not applied: entries=%d bytes=%d", cache.entry_count, cache.current_bytes)
 	}
 }
 

@@ -25,13 +25,17 @@ const default_timeout = 30 * time.Second
 
 // MiniBrowser keeps cookies and JavaScript state across requests.
 type MiniBrowser struct {
-	http_client     *clawreq.Client
-	cookie_jar      *cookiejar.Jar
-	js_runtime      *goja.Runtime
-	js_mutex        sync.Mutex
-	resource_cache  *resource_cache
-	timeout         time.Duration
-	cookie_provider *cookies.Reader
+	http_client       *clawreq.Client
+	cookie_jar        *cookiejar.Jar
+	js_runtime        *goja.Runtime
+	js_mutex          sync.Mutex
+	page_runtime      *page_runtime
+	resource_cache    *resource_cache
+	request_scheduler request_scheduler
+	timeout           time.Duration
+	cookie_provider   *cookies.Reader
+	lifecycle_ctx     context.Context
+	lifecycle_cancel  context.CancelFunc
 }
 
 // NewMiniBrowser creates a Chrome-fingerprint session that does not follow
@@ -55,13 +59,20 @@ func NewMiniBrowser(timeout time.Duration, cookie_providers ...*cookies.Reader) 
 	if len(cookie_providers) > 0 {
 		cookie_provider = cookie_providers[0]
 	}
+	lifecycle_ctx, lifecycle_cancel := context.WithCancel(context.Background())
 	return &MiniBrowser{
-		http_client:     http_client,
-		cookie_jar:      cookie_jar,
-		js_runtime:      goja.New(),
-		resource_cache:  new_resource_cache(),
-		timeout:         timeout,
-		cookie_provider: cookie_provider,
+		http_client:    http_client,
+		cookie_jar:     cookie_jar,
+		js_runtime:     goja.New(),
+		resource_cache: new_resource_cache(DefaultResourceCacheLimits()),
+		request_scheduler: &host_scheduler{
+			per_host_concurrency: per_host_resource_concurrency,
+			states:               make(map[string]*host_schedule_state),
+		},
+		timeout:          timeout,
+		cookie_provider:  cookie_provider,
+		lifecycle_ctx:    lifecycle_ctx,
+		lifecycle_cancel: lifecycle_cancel,
 	}, nil
 }
 
@@ -70,6 +81,15 @@ func (b *MiniBrowser) Request(ctx context.Context, method, raw_url string, body 
 	if b == nil || b.http_client == nil {
 		return nil, fmt.Errorf("minib: browser is closed")
 	}
+	release_request := func() {}
+	if b.request_scheduler != nil {
+		var err error
+		release_request, err = b.request_scheduler.before_request(ctx, raw_url)
+		if err != nil {
+			return nil, err
+		}
+	}
+	defer release_request()
 	prepared_headers, err := b.prepare_request_headers(raw_url, headers)
 	if err != nil {
 		return nil, err
@@ -95,6 +115,9 @@ func (b *MiniBrowser) Request(ctx context.Context, method, raw_url string, body 
 	}
 	if err != nil {
 		return nil, err
+	}
+	if b.request_scheduler != nil {
+		b.request_scheduler.observe_response(raw_url, response.StatusCode, response.Header)
 	}
 	b.store_response_cookies(request_url, response)
 	return response, nil
@@ -128,6 +151,20 @@ func (b *MiniBrowser) SetCookieProvider(cookie_provider *cookies.Reader) {
 	b.cookie_provider = cookie_provider
 }
 
+// SetResourceCacheLimits changes the in-memory cache bounds and immediately
+// evicts least-recently-used entries if necessary. Zero disables an individual
+// bound; negative values are rejected.
+func (b *MiniBrowser) SetResourceCacheLimits(limits ResourceCacheLimits) error {
+	if b == nil || b.resource_cache == nil {
+		return fmt.Errorf("minib: browser is closed")
+	}
+	if limits.MaxEntries < 0 || limits.MaxBytes < 0 {
+		return fmt.Errorf("minib: resource cache limits cannot be negative")
+	}
+	b.resource_cache.set_limits(limits)
+	return nil
+}
+
 // Get sends a GET request.
 func (b *MiniBrowser) Get(ctx context.Context, raw_url string, headers http.Header) (*clawreq.Response, error) {
 	return b.Request(ctx, http.MethodGet, raw_url, nil, headers)
@@ -147,6 +184,27 @@ func (b *MiniBrowser) SetCookie(raw_url string, cookie *http.Cookie) error {
 	}
 	b.cookie_jar.SetCookies(parsed_url, []*http.Cookie{cookie})
 	return nil
+}
+
+// Cookies returns copies of the in-memory session cookies visible to raw_url.
+func (b *MiniBrowser) Cookies(raw_url string) ([]*http.Cookie, error) {
+	if b == nil || b.cookie_jar == nil {
+		return nil, fmt.Errorf("minib: browser is closed")
+	}
+	parsed_url, err := url.Parse(raw_url)
+	if err != nil {
+		return nil, err
+	}
+	if parsed_url.Scheme == "" || parsed_url.Host == "" {
+		return nil, fmt.Errorf("minib: invalid cookie URL %q", raw_url)
+	}
+	cookies := b.cookie_jar.Cookies(parsed_url)
+	result := make([]*http.Cookie, 0, len(cookies))
+	for _, cookie := range cookies {
+		copy_cookie := *cookie
+		result = append(result, &copy_cookie)
+	}
+	return result, nil
 }
 
 // SetCookieHeader imports a Cookie request-header value into the session.
@@ -174,7 +232,7 @@ func (b *MiniBrowser) JavaScriptRuntime() *goja.Runtime {
 }
 
 // ExecuteJS evaluates JavaScript in the persistent goja runtime.
-func (b *MiniBrowser) ExecuteJS(ctx context.Context, expression string) (goja.Value, error) {
+func (b *MiniBrowser) ExecuteJS(ctx context.Context, expression string) (value goja.Value, err error) {
 	if b == nil || b.js_runtime == nil {
 		return nil, fmt.Errorf("minib: browser is closed")
 	}
@@ -191,6 +249,12 @@ func (b *MiniBrowser) ExecuteJS(ctx context.Context, expression string) (goja.Va
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if b.page_runtime != nil {
+		b.page_runtime.ctx = ctx
+		defer func() {
+			b.page_runtime.ctx = b.lifecycle_ctx
+		}()
+	}
 	finished := make(chan struct{})
 	interrupt_done := make(chan struct{})
 	go func() {
@@ -201,12 +265,26 @@ func (b *MiniBrowser) ExecuteJS(ctx context.Context, expression string) (goja.Va
 		}
 		close(interrupt_done)
 	}()
-	value, err := b.js_runtime.RunString(expression)
-	close(finished)
-	<-interrupt_done
-	b.js_runtime.ClearInterrupt()
+	defer func() {
+		close(finished)
+		<-interrupt_done
+		b.js_runtime.ClearInterrupt()
+		if recovered := recover(); recovered != nil {
+			value = nil
+			err = javascript_panic_error(recovered)
+		}
+	}()
+	value, err = b.js_runtime.RunString(expression)
 	if err != nil {
 		return nil, fmt.Errorf("minib: JavaScript failed: %w", err)
+	}
+	if b.page_runtime != nil && b.page_runtime.page != nil && b.page_runtime.page.Document != nil {
+		b.page_runtime.pump_event_loop(ctx)
+		if !b.page_runtime.use_custom_runtime {
+			b.page_runtime.sync_named_elements()
+			b.page_runtime.refresh_style_sheets()
+			b.page_runtime.page.RenderedHTML = render_node(b.page_runtime.page.Document)
+		}
 	}
 	return value, nil
 }
@@ -219,11 +297,21 @@ func (b *MiniBrowser) Close() {
 	if b.http_client != nil {
 		b.http_client.CloseIdleConnections()
 	}
+	if b.lifecycle_cancel != nil {
+		b.lifecycle_cancel()
+	}
+	if b.page_runtime != nil {
+		b.page_runtime.close_webassembly()
+	}
 	b.http_client = nil
 	b.cookie_jar = nil
 	b.js_runtime = nil
+	b.page_runtime = nil
 	b.resource_cache = nil
+	b.request_scheduler = nil
 	b.cookie_provider = nil
+	b.lifecycle_ctx = nil
+	b.lifecycle_cancel = nil
 }
 
 func (b *MiniBrowser) cookie_header(request_url *url.URL, persistent_header string, explicit_header string) string {

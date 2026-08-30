@@ -15,26 +15,56 @@ type resource_cache_entry struct {
 	vary_headers     []string
 	vary_values      map[string]string
 	stored_at        time.Time
+	size_bytes       int64
+	last_access      uint64
 }
 
 type resource_cache struct {
-	mutex   sync.RWMutex
-	entries map[string][]resource_cache_entry
+	mutex         sync.Mutex
+	entries       map[string][]resource_cache_entry
+	limits        ResourceCacheLimits
+	entry_count   int
+	current_bytes int64
+	access_clock  uint64
 }
 
-func new_resource_cache() *resource_cache {
-	return &resource_cache{entries: make(map[string][]resource_cache_entry)}
+// ResourceCacheLimits bounds response data retained between navigations. A
+// zero field disables that individual limit.
+type ResourceCacheLimits struct {
+	MaxEntries int
+	MaxBytes   int64
+}
+
+const (
+	default_resource_cache_entries = 256
+	default_resource_cache_bytes   = 64 << 20
+)
+
+// DefaultResourceCacheLimits returns the browser's bounded cache defaults.
+func DefaultResourceCacheLimits() ResourceCacheLimits {
+	return ResourceCacheLimits{
+		MaxEntries: default_resource_cache_entries,
+		MaxBytes:   default_resource_cache_bytes,
+	}
+}
+
+func new_resource_cache(limits ResourceCacheLimits) *resource_cache {
+	return &resource_cache{entries: make(map[string][]resource_cache_entry), limits: limits}
 }
 
 func (cache *resource_cache) lookup(raw_url string, request_headers http.Header) (resource_cache_entry, bool) {
 	if cache == nil {
 		return resource_cache_entry{}, false
 	}
-	cache.mutex.RLock()
-	defer cache.mutex.RUnlock()
-	for _, entry := range cache.entries[raw_url] {
-		if entry.matches(request_headers) {
-			return entry.clone(), true
+	cache.mutex.Lock()
+	defer cache.mutex.Unlock()
+	entries := cache.entries[raw_url]
+	for index := range entries {
+		if entries[index].matches(request_headers) {
+			cache.access_clock++
+			entries[index].last_access = cache.access_clock
+			cache.entries[raw_url] = entries
+			return entries[index].clone(), true
 		}
 	}
 	return resource_cache_entry{}, false
@@ -56,6 +86,7 @@ func (cache *resource_cache) store(raw_url string, request_headers http.Header, 
 	for _, name := range vary_headers {
 		entry.vary_values[name] = request_header_value(request_headers, name)
 	}
+	entry.size_bytes = resource_cache_entry_size(entry)
 
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
@@ -64,9 +95,20 @@ func (cache *resource_cache) store(raw_url string, request_headers http.Header, 
 	for _, existing := range entries {
 		if !existing.matches(request_headers) {
 			kept = append(kept, existing)
+		} else {
+			cache.entry_count--
+			cache.current_bytes -= existing.size_bytes
 		}
 	}
+	for index := len(kept); index < len(entries); index++ {
+		entries[index] = resource_cache_entry{}
+	}
+	cache.access_clock++
+	entry.last_access = cache.access_clock
 	cache.entries[raw_url] = append(kept, entry)
+	cache.entry_count++
+	cache.current_bytes += entry.size_bytes
+	cache.evict_to_limits()
 }
 
 func (cache *resource_cache) remove(raw_url string, request_headers http.Header) {
@@ -80,13 +122,86 @@ func (cache *resource_cache) remove(raw_url string, request_headers http.Header)
 	for _, entry := range entries {
 		if !entry.matches(request_headers) {
 			kept = append(kept, entry)
+		} else {
+			cache.entry_count--
+			cache.current_bytes -= entry.size_bytes
 		}
+	}
+	for index := len(kept); index < len(entries); index++ {
+		entries[index] = resource_cache_entry{}
 	}
 	if len(kept) == 0 {
 		delete(cache.entries, raw_url)
 	} else {
 		cache.entries[raw_url] = kept
 	}
+}
+
+func (cache *resource_cache) set_limits(limits ResourceCacheLimits) {
+	if cache == nil {
+		return
+	}
+	cache.mutex.Lock()
+	cache.limits = limits
+	cache.evict_to_limits()
+	cache.mutex.Unlock()
+}
+
+func (cache *resource_cache) evict_to_limits() {
+	for cache.exceeds_limits() && cache.entry_count > 0 {
+		oldest_url := ""
+		oldest_index := -1
+		var oldest_access uint64
+		for raw_url, entries := range cache.entries {
+			for index := range entries {
+				if oldest_index < 0 || entries[index].last_access < oldest_access {
+					oldest_url = raw_url
+					oldest_index = index
+					oldest_access = entries[index].last_access
+				}
+			}
+		}
+		if oldest_index < 0 {
+			return
+		}
+		cache.remove_at(oldest_url, oldest_index)
+	}
+}
+
+func (cache *resource_cache) exceeds_limits() bool {
+	return cache.limits.MaxEntries > 0 && cache.entry_count > cache.limits.MaxEntries ||
+		cache.limits.MaxBytes > 0 && cache.current_bytes > cache.limits.MaxBytes
+}
+
+func (cache *resource_cache) remove_at(raw_url string, index int) {
+	entries := cache.entries[raw_url]
+	if index < 0 || index >= len(entries) {
+		return
+	}
+	cache.entry_count--
+	cache.current_bytes -= entries[index].size_bytes
+	copy(entries[index:], entries[index+1:])
+	entries[len(entries)-1] = resource_cache_entry{}
+	entries = entries[:len(entries)-1]
+	if len(entries) == 0 {
+		delete(cache.entries, raw_url)
+	} else {
+		cache.entries[raw_url] = entries
+	}
+}
+
+func resource_cache_entry_size(entry resource_cache_entry) int64 {
+	size_bytes := int64(len(entry.resource.URL) + len(entry.resource.FinalURL) + len(entry.resource.Kind) + len(entry.resource.ContentType) + len(entry.resource.Body))
+	for name, values := range entry.response_headers {
+		size_bytes += int64(len(name))
+		for _, value := range values {
+			size_bytes += int64(len(value))
+		}
+	}
+	for _, name := range entry.vary_headers {
+		size_bytes += int64(len(name) + len(entry.vary_values[name]))
+	}
+	return size_bytes
 }
 
 func (entry resource_cache_entry) clone() resource_cache_entry {

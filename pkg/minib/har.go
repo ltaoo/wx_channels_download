@@ -29,11 +29,14 @@ const (
 )
 
 type har_recorder struct {
-	mutex           sync.Mutex
-	started_at      time.Time
-	entries         []har_entry
-	on_content_load float64
-	on_load         float64
+	mutex               sync.Mutex
+	started_at          time.Time
+	entries             []har_entry
+	on_content_load     float64
+	on_load             float64
+	omit_bodies         bool
+	max_body_bytes      int64
+	captured_body_bytes int64
 }
 
 type har_archive struct {
@@ -103,10 +106,11 @@ type har_response struct {
 }
 
 type har_content struct {
-	Size     int64  `json:"size"`
-	MimeType string `json:"mimeType"`
-	Text     string `json:"text,omitempty"`
-	Encoding string `json:"encoding,omitempty"`
+	Size      int64  `json:"size"`
+	MimeType  string `json:"mimeType"`
+	Text      string `json:"text,omitempty"`
+	Encoding  string `json:"encoding,omitempty"`
+	Truncated bool   `json:"_truncated,omitempty"`
 }
 
 type har_cookie struct {
@@ -126,8 +130,9 @@ type har_name_value struct {
 }
 
 type har_post_data struct {
-	MimeType string `json:"mimeType"`
-	Text     string `json:"text"`
+	MimeType  string `json:"mimeType"`
+	Text      string `json:"text"`
+	Truncated bool   `json:"_truncated,omitempty"`
 }
 
 type har_timings struct {
@@ -140,8 +145,14 @@ type har_timings struct {
 	SSL     float64 `json:"ssl"`
 }
 
-func new_har_recorder(started_at time.Time) *har_recorder {
-	return &har_recorder{started_at: started_at, on_content_load: -1, on_load: -1}
+func new_har_recorder(started_at time.Time, omit_bodies bool, max_body_bytes int64) *har_recorder {
+	return &har_recorder{
+		started_at:      started_at,
+		on_content_load: -1,
+		on_load:         -1,
+		omit_bodies:     omit_bodies,
+		max_body_bytes:  max_body_bytes,
+	}
 }
 
 func with_har_recorder(ctx context.Context, recorder *har_recorder) context.Context {
@@ -185,7 +196,9 @@ func (recorder *har_recorder) record_network(ctx context.Context, started_at tim
 		status_text = http.StatusText(status_code)
 		response_body = response.Body
 	}
-	entry := build_har_entry(started_at, duration, method, raw_url, request_headers, request_body, status_code, status_text, response_headers, response_body, har_resource_type_from_context(ctx), "")
+	captured_request_body, request_truncated := recorder.capture_body(request_body)
+	captured_response_body, response_truncated := recorder.capture_body(response_body)
+	entry := build_har_entry(started_at, duration, method, raw_url, request_headers, captured_request_body, int64(len(request_body)), request_truncated, status_code, status_text, response_headers, captured_response_body, int64(len(response_body)), response_truncated, har_resource_type_from_context(ctx), "")
 	if request_err != nil {
 		entry.Error = request_err.Error()
 	}
@@ -196,8 +209,32 @@ func (recorder *har_recorder) record_cached(ctx context.Context, raw_url string,
 	if recorder == nil {
 		return
 	}
-	entry := build_har_entry(time.Now(), 0, http.MethodGet, raw_url, request_headers, nil, resource.StatusCode, http.StatusText(resource.StatusCode), response_headers, resource.Body, har_resource_type_from_context(ctx), "memory")
+	captured_response_body, response_truncated := recorder.capture_body(resource.Body)
+	entry := build_har_entry(time.Now(), 0, http.MethodGet, raw_url, request_headers, nil, 0, false, resource.StatusCode, http.StatusText(resource.StatusCode), response_headers, captured_response_body, int64(len(resource.Body)), response_truncated, har_resource_type_from_context(ctx), "memory")
 	recorder.append_entry(entry)
+}
+
+func (recorder *har_recorder) capture_body(body []byte) ([]byte, bool) {
+	if recorder == nil || len(body) == 0 {
+		return nil, false
+	}
+	recorder.mutex.Lock()
+	defer recorder.mutex.Unlock()
+	if recorder.omit_bodies {
+		return nil, true
+	}
+	allowed_bytes := int64(len(body))
+	if recorder.max_body_bytes > 0 {
+		remaining_bytes := recorder.max_body_bytes - recorder.captured_body_bytes
+		if remaining_bytes <= 0 {
+			return nil, true
+		}
+		if allowed_bytes > remaining_bytes {
+			allowed_bytes = remaining_bytes
+		}
+	}
+	recorder.captured_body_bytes += allowed_bytes
+	return body[:allowed_bytes], allowed_bytes < int64(len(body))
 }
 
 func (recorder *har_recorder) append_entry(entry har_entry) {
@@ -250,11 +287,12 @@ func (recorder *har_recorder) marshal(title string) ([]byte, error) {
 		}},
 		Entries: entries,
 	}}
-	return json.MarshalIndent(archive, "", "  ")
+	return json.Marshal(archive)
 }
 
-func build_har_entry(started_at time.Time, duration time.Duration, method string, raw_url string, request_headers http.Header, request_body []byte, status_code int, status_text string, response_headers http.Header, response_body []byte, resource_type string, from_cache string) har_entry {
+func build_har_entry(started_at time.Time, duration time.Duration, method string, raw_url string, request_headers http.Header, request_body []byte, request_body_size int64, request_truncated bool, status_code int, status_text string, response_headers http.Header, response_body []byte, response_body_size int64, response_truncated bool, resource_type string, from_cache string) har_entry {
 	mime_type := response_headers.Get("Content-Type")
+	response_body = valid_har_text_prefix(response_body, mime_type)
 	content_text, content_encoding := har_content_body(response_body, mime_type)
 	entry := har_entry{
 		PageRef:         har_page_id,
@@ -268,7 +306,7 @@ func build_har_entry(started_at time.Time, duration time.Duration, method string
 			Headers:     har_headers(request_headers),
 			QueryString: har_query_string(raw_url),
 			HeadersSize: -1,
-			BodySize:    int64(len(request_body)),
+			BodySize:    request_body_size,
 		},
 		Response: har_response{
 			Status:      status_code,
@@ -276,10 +314,10 @@ func build_har_entry(started_at time.Time, duration time.Duration, method string
 			HTTPVersion: "HTTP/1.1",
 			Cookies:     har_response_cookies(response_headers),
 			Headers:     har_headers(response_headers),
-			Content:     har_content{Size: int64(len(response_body)), MimeType: mime_type, Text: content_text, Encoding: content_encoding},
+			Content:     har_content{Size: response_body_size, MimeType: mime_type, Text: content_text, Encoding: content_encoding, Truncated: response_truncated},
 			RedirectURL: response_headers.Get("Location"),
 			HeadersSize: -1,
-			BodySize:    int64(len(response_body)),
+			BodySize:    response_body_size,
 		},
 		Cache:        make(map[string]interface{}),
 		Timings:      har_timings{Blocked: -1, DNS: -1, Connect: -1, Send: 0, Wait: milliseconds(duration), Receive: 0, SSL: -1},
@@ -287,8 +325,10 @@ func build_har_entry(started_at time.Time, duration time.Duration, method string
 		FromCache:    from_cache,
 		started_at:   started_at,
 	}
-	if len(request_body) > 0 {
-		entry.Request.PostData = &har_post_data{MimeType: request_headers.Get("Content-Type"), Text: string(request_body)}
+	if request_body_size > 0 {
+		request_mime_type := request_headers.Get("Content-Type")
+		request_body = valid_har_text_prefix(request_body, request_mime_type)
+		entry.Request.PostData = &har_post_data{MimeType: request_mime_type, Text: string(request_body), Truncated: request_truncated}
 	}
 	return entry
 }
@@ -379,6 +419,21 @@ func har_content_body(body []byte, mime_type string) (string, string) {
 	return base64.StdEncoding.EncodeToString(body), "base64"
 }
 
+func valid_har_text_prefix(body []byte, mime_type string) []byte {
+	if len(body) == 0 || !har_text_mime_type(mime_type) {
+		return body
+	}
+	for len(body) > 0 && !utf8.Valid(body) {
+		body = body[:len(body)-1]
+	}
+	return body
+}
+
+func har_text_mime_type(mime_type string) bool {
+	lower_mime_type := strings.ToLower(mime_type)
+	return strings.HasPrefix(lower_mime_type, "text/") || strings.Contains(lower_mime_type, "json") || strings.Contains(lower_mime_type, "javascript") || strings.Contains(lower_mime_type, "xml") || strings.Contains(lower_mime_type, "svg") || strings.Contains(lower_mime_type, "form")
+}
+
 func milliseconds(duration time.Duration) float64 {
 	return float64(duration) / float64(time.Millisecond)
 }
@@ -397,9 +452,8 @@ func (page *Page) SaveHAR(file_path string) error {
 	if file_path == "" {
 		return errors.New("minib: HAR output path is empty")
 	}
-	har_data, err := page.HAR()
-	if err != nil {
-		return err
+	if page == nil || len(page.har_data) == 0 {
+		return errors.New("minib: HAR data is unavailable")
 	}
 	if err := os.MkdirAll(filepath.Dir(file_path), 0755); err != nil {
 		return fmt.Errorf("minib: create HAR directory: %w", err)
@@ -412,12 +466,43 @@ func (page *Page) SaveHAR(file_path string) error {
 		_ = file.Close()
 		return fmt.Errorf("minib: secure HAR permissions: %w", err)
 	}
-	if _, err := file.Write(har_data); err != nil {
+	if _, err := file.Write(page.har_data); err != nil {
 		_ = file.Close()
 		return fmt.Errorf("minib: write HAR: %w", err)
 	}
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("minib: close HAR: %w", err)
+	}
+	return nil
+}
+
+// SaveHTML writes the post-JavaScript DOM serialization with owner-only
+// permissions because the document can contain session-specific data.
+func (page *Page) SaveHTML(file_path string) error {
+	if page == nil {
+		return errors.New("minib: page is nil")
+	}
+	file_path = strings.TrimSpace(file_path)
+	if file_path == "" {
+		return errors.New("minib: HTML output path is empty")
+	}
+	if err := os.MkdirAll(filepath.Dir(file_path), 0755); err != nil {
+		return fmt.Errorf("minib: create HTML directory: %w", err)
+	}
+	file, err := os.OpenFile(file_path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return fmt.Errorf("minib: open HTML: %w", err)
+	}
+	if err := file.Chmod(0600); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("minib: secure HTML permissions: %w", err)
+	}
+	if _, err := file.WriteString(page.RenderedHTML); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("minib: write HTML: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("minib: close HTML: %w", err)
 	}
 	return nil
 }
