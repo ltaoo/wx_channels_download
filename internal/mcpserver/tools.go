@@ -312,6 +312,7 @@ func tool_definitions() []any {
 	definitions = append(definitions, scraper_job_tool_definitions()...)
 	definitions = append(definitions, wxchannels_tool_definitions()...)
 	definitions = append(definitions, wxchannels_download_tool_definitions()...)
+	definitions = append(definitions, sph_tool_definitions()...)
 	return append(definitions, data_tool_definitions()...)
 }
 
@@ -363,6 +364,8 @@ func (s *Server) supports_tool(name string) bool {
 		return s.data_reader != nil || s.api_client != nil
 	case "delete_download_tasks":
 		return s.download_task_deleter != nil
+	case "deploy_sph_worker":
+		return s.sph_deployer != nil
 	default:
 		return s.api_client != nil
 	}
@@ -431,6 +434,8 @@ func (s *Server) call_tool(ctx context.Context, params call_tool_params) (map[st
 		return s.get_logs(ctx, params.Arguments)
 	case "get_certificate_status":
 		return s.get_certificate_status(ctx)
+	case "deploy_sph_worker":
+		return s.deploy_sph_worker(ctx, params.Arguments)
 	default:
 		return nil, fmt.Errorf("%w: %s", err_unknown_tool, params.Name)
 	}

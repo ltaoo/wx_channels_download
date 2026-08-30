@@ -94,6 +94,14 @@ MCP 中的“命令”以工具（tool）的形式提供。调用时由 AI 客�
 
 重启期间 HTTP、WebSocket 和 MCP 连接可能短暂断开，客户端应重新连接。若修改了 `api.hostname` 或 `api.port`，应改用新地址连接；stdio 客户端也需要更新 API 地址或重新启动。提交的值与当前值完全相同时不会写盘或重启。
 
+### Worker 部署
+
+| 工具 | 主要参数 | 用途 |
+| --- | --- | --- |
+| `deploy_sph_worker` | 无 | 从应用配置读取 Cloudflare 凭证，部署或覆盖视频号查询 Worker，并返回 workers.dev 地址。 |
+
+`deploy_sph_worker` 读取 `cloudflare.accountId`、`cloudflare.apiToken`、`cloudflare.sphWorkerName`、`cloudflare.sphCookie` 和 `cloudflare.sphCredential`，不会通过 MCP 参数传输这些敏感值。调用会覆盖同名远端 Worker，因此必须先获得用户确认。`get_config` 可用时，可先检查这些字段的 `configured` 状态。
+
 ### 内容解析与下载
 
 | 工具 | 主要参数 | 用途 |

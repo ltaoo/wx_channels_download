@@ -278,6 +278,7 @@ type ContentListItem struct {
 	CoverWidth    string                      `json:"cover_width"`
 	CoverHeight   string                      `json:"cover_height"`
 	PublishTime   int64                       `json:"publish_time"`
+	CreatedAt     int64                       `json:"created_at"`
 	Accounts      []ContentAccountRecord      `json:"accounts"`
 	Influencers   []ContentInfluencerRecord   `json:"influencers"`
 	DownloadTasks []ContentDownloadTaskRecord `json:"download_tasks"`
@@ -554,6 +555,9 @@ func (s *ContentService) load_content_relations(content_ids []string, include_re
 
 	var tasks []model.DownloadTask
 	if err := s.db.
+		Select(`id, content_id, parent_task_id, root_task_id, relation_type, name,
+			platform_id, status, source_url, cover_url, cover_width, cover_height,
+			error_message, created_at, updated_at`).
 		Where("content_id IN ? AND deleted_at IS NULL", content_ids).
 		Order("content_id ASC, id DESC").
 		Find(&tasks).Error; err != nil {
@@ -1387,6 +1391,7 @@ func (s *ContentService) GetContentDetail(content_id string) (*ContentDetailItem
 			CoverWidth:    content.CoverWidth,
 			CoverHeight:   content.CoverHeight,
 			PublishTime:   publish_time,
+			CreatedAt:     content.CreatedAt,
 			Accounts:      accounts,
 			Influencers:   influencers,
 			DownloadTasks: download_tasks,
@@ -1467,13 +1472,17 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 	}
 
 	var total int64
-	if err := build_query().Distinct("content.id").Count(&total).Error; err != nil {
+	if err := build_query().Count(&total).Error; err != nil {
 		return nil, err
 	}
 
 	var contents []model.Content
 	if err := build_query().
-		Distinct("content.*").
+		Select(`content.id, content.platform_id, content.type, content.subtype,
+			content.external_id, content.external_id2, content.external_id3,
+			content.title, content.description, content.url, content.source_url,
+			content.cover_url, content.cover_width, content.cover_height,
+			content.publish_time, content.created_at`).
 		Order("content.created_at DESC, content.id DESC").
 		Limit(page_size).
 		Offset(offset).
@@ -1570,6 +1579,7 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 			CoverWidth:    content.CoverWidth,
 			CoverHeight:   content.CoverHeight,
 			PublishTime:   publish_time,
+			CreatedAt:     content.CreatedAt,
 			Accounts:      accounts,
 			Influencers:   influencers,
 			DownloadTasks: download_tasks,

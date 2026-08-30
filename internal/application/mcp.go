@@ -23,6 +23,7 @@ func new_mcp_service(
 		ScraperJobs:         new_mcp_scraper_job_backend(scraper_job_service),
 		DownloadTaskCreator: new_mcp_download_task_creator(download_task_service),
 		DownloadTaskDeleter: new_mcp_download_task_deleter(download_task_service),
+		SphDeployer:         NewMCPSphDeployer(api_config.Original),
 	}
 	if !enabled {
 		return services.NewLazyMCPService(service_config), nil

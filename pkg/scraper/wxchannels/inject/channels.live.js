@@ -167,6 +167,7 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
       var [liveErr, p, liveData] = WXU.check_live_existing({ silence: true });
       if (
         liveErr ||
+        !p ||
         !liveData ||
         !liveData.liveSdkInfo ||
         !liveData.liveSdkInfo.liveCdnUrl
@@ -177,7 +178,7 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
         });
         return;
       }
-      var content = Object.assign({}, liveData, p);
+      var content = { profile: p, live: liveData };
       try {
         var ins = WXU.loading({ msg: "正在创建直播下载任务..." });
         var [err, data] = await WXU.request({
@@ -253,7 +254,7 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
   });
 
   async function handleLoaded(profile, data) {
-    if (!data) {
+    if (!profile || !data) {
       return;
     }
     if (live_page_mounted) {
@@ -262,33 +263,7 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
     live_page_mounted = true;
     clearTimeout(error_tip_timer);
     error_tip_timer = null;
-    const feed = {
-      id: data.liveInfo.liveId,
-      liveInfo: data.liveInfo,
-      liveDescription: data.liveDescription,
-      objectDesc: {
-        description: data.liveDescription,
-      },
-      contact: (() => {
-        if (data.bizUserInfo) {
-          return {
-            nickname: data.bizUserInfo.bizNickname,
-            username: data.bizUserInfo.bizUsername,
-          };
-        }
-        if (profile) {
-          return {
-            nickname: profile.nickname,
-            username: profile.username,
-          };
-        }
-        return {
-          nickname: "",
-          username: "",
-        };
-      })(),
-    };
-    WXU.set_live_feed(feed);
+    WXU.set_live_feed({ profile, live: data });
     __wx_setup_live_btn();
   }
   WXU.onFetchFeedProfile((feed) => {

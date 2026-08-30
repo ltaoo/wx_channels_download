@@ -40,6 +40,7 @@ type Config struct {
 	ScraperJobs         ScraperJobBackend
 	DownloadTaskCreator DownloadTaskCreator
 	DownloadTaskDeleter DownloadTaskDeleter
+	SphDeployer         SphDeployer
 }
 
 // Server implements the MCP stdio transport and exposes the tools supported by
@@ -50,6 +51,7 @@ type Server struct {
 	scraper_jobs          ScraperJobBackend
 	download_task_creator DownloadTaskCreator
 	download_task_deleter DownloadTaskDeleter
+	sph_deployer          SphDeployer
 	input                 io.Reader
 	output                io.Writer
 	error_output          io.Writer
@@ -120,7 +122,7 @@ func NewServer(config Config) (*Server, error) {
 			return nil, err
 		}
 	}
-	if client == nil && config.DataReader == nil && config.ScraperJobs == nil && config.DownloadTaskCreator == nil && config.DownloadTaskDeleter == nil {
+	if client == nil && config.DataReader == nil && config.ScraperJobs == nil && config.DownloadTaskCreator == nil && config.DownloadTaskDeleter == nil && config.SphDeployer == nil {
 		return nil, fmt.Errorf("至少需要配置一种工具后端")
 	}
 	return &Server{
@@ -129,6 +131,7 @@ func NewServer(config Config) (*Server, error) {
 		scraper_jobs:          config.ScraperJobs,
 		download_task_creator: config.DownloadTaskCreator,
 		download_task_deleter: config.DownloadTaskDeleter,
+		sph_deployer:          config.SphDeployer,
 		input:                 config.Input,
 		output:                config.Output,
 		error_output:          config.ErrorOutput,
@@ -288,7 +291,7 @@ func (s *Server) server_info() map[string]any {
 }
 
 func server_instructions() string {
-	return "查询下载器平台状态、解析受支持平台的内容链接，并创建和启动内容下载任务。调用 download_content、download_wxchannels_live、download_wxchannels_video 或 delete_download_tasks 前应先获得用户确认。凡涉及下载文件的文件系统操作，包括重命名、移动、删除以及修改文件名或路径，都必须在同一业务流程中同步更新数据库中的 DownloadResource 表记录，禁止仅操作本地文件。若当前工具无法保证文件系统与 DownloadResource 记录一致，必须停止操作并明确告知用户暂不支持，不得使用其他本地文件工具绕过该约束。只读数据工具可查询下载任务及详情、账号、浏览记录、应用日志和代理证书状态；列表结果支持分页，应优先使用筛选参数限制返回量。微信视频号工具可搜索账号、查询账号视频、直播详情与直播回放、赞或收藏的视频、关注账号、播放记录、视频详情、评论及分享链接；这些工具依赖已连接的视频号页面，调用前可先使用 get_wxchannels_status。用户确认后，下载当前直播应直接调用 download_wxchannels_live，只传精确昵称或 username，由命令自动定位直播并创建任务；不要先获取 FLV 流地址，也不要把直播流交给 download_content。下载单个视频应优先直接调用 download_wxchannels_video，传分享链接 url，或使用 oid+nid/eid；无需先调用视频详情、fetch_content 或 download_content。分页时把上一次响应的 lastBuffer 原样传给 next_marker。微信视频号 fetch_content 结果包含可供 aria2 等第三方下载器使用的 download_resources；第三方下载完成后，仅在 requires_decryption 为 true 时使用 decode_key 调用 decrypt_wxchannels_video。解密会原地覆盖文件。"
+	return "查询下载器平台状态、解析受支持平台的内容链接，并创建和启动内容下载任务。调用 download_content、download_wxchannels_live、download_wxchannels_video、delete_download_tasks 或 deploy_sph_worker 前应先获得用户确认。deploy_sph_worker 会读取应用中的 Cloudflare 敏感配置，并覆盖同名的远端视频号查询 Worker；get_config 可用时，应先用它确认 cloudflare.accountId、cloudflare.apiToken、cloudflare.sphWorkerName、cloudflare.sphCookie 和 cloudflare.sphCredential 均已配置。凡涉及下载文件的文件系统操作，包括重命名、移动、删除以及修改文件名或路径，都必须在同一业务流程中同步更新数据库中的 DownloadResource 表记录，禁止仅操作本地文件。若当前工具无法保证文件系统与 DownloadResource 记录一致，必须停止操作并明确告知用户暂不支持，不得使用其他本地文件工具绕过该约束。只读数据工具可查询下载任务及详情、账号、浏览记录、应用日志和代理证书状态；列表结果支持分页，应优先使用筛选参数限制返回量。微信视频号工具可搜索账号、查询账号视频、直播详情与直播回放、赞或收藏的视频、关注账号、播放记录、视频详情、评论及分享链接；这些工具依赖已连接的视频号页面，调用前可先使用 get_wxchannels_status。用户确认后，下载当前直播应直接调用 download_wxchannels_live，只传精确昵称或 username，由命令自动定位直播并创建任务；不要先获取 FLV 流地址，也不要把直播流交给 download_content。下载单个视频应优先直接调用 download_wxchannels_video，传分享链接 url，或使用 oid+nid/eid；无需先调用视频详情、fetch_content 或 download_content。分页时把上一次响应的 lastBuffer 原样传给 next_marker。微信视频号 fetch_content 结果包含可供 aria2 等第三方下载器使用的 download_resources；第三方下载完成后，仅在 requires_decryption 为 true 时使用 decode_key 调用 decrypt_wxchannels_video。解密会原地覆盖文件。"
 }
 
 func (s *Server) is_modern_request(request rpc_request) bool {

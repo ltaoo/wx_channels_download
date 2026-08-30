@@ -77,9 +77,9 @@ const Icons = {
    * @returns {HTMLDivElement}
    */
   download_btn2() {
-    var icon_download_html = `<div class="op-icon download-icon" style="font-size: 28px;" data-v-5611c716>${this.download_icon2}</div>`;
+    var icon_download_html = `<div data-v-311f5750 class="op-icon download-icon" style="font-size: 28px;">${this.download_icon2}</div>`;
     var $icon = document.createElement("div");
-    $icon.innerHTML = `<div class=""><div data-v-6548f11a data-v-1fe2ed37 class="click-box op-item" role="button" aria-label="下载" style="padding: 4px 4px 4px 4px; --border-radius: 4px; --left: 0; --top: 0; --right: 0; --bottom: 0;">${icon_download_html}<div data-v-1fe2ed37 class="op-text">下载</div></div></div>`;
+    $icon.innerHTML = `<div data-v-6548f11a data-v-1fe2ed37 class="click-box op-item" role="button" aria-label="下载" style="padding: 4px 4px 4px 4px; --border-radius: 4px; --left: 0; --top: 0; --right: 0; --bottom: 0;">${icon_download_html}<div data-v-311f5750 class="op-text">下载</div></div>`;
     return $icon.firstChild;
   },
   /**

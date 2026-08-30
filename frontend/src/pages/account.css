@@ -1,78 +1,73 @@
-.wx-content-page.wx-account-page {
+.content-page.account-page {
   height: 100vh;
   min-height: 0;
   overflow: hidden;
 }
 
-.wx-account-page > .dm-pagination {
+.account-page > .dm-pagination {
   flex: 0 0 auto;
 }
 
-.wx-account-toolbar-wrap {
+.account-toolbar-wrap {
   flex: 0 0 auto;
 }
 
-.wx-account-toolbar {
+.account-toolbar {
   justify-content: flex-start;
 }
 
-.wx-account-search {
-  min-height: var(--dm-control-height-md);
+.account-search {
   flex: 1 1 480px;
 }
 
-.wx-account-page > .wx-content-main {
+.account-page > .content-main {
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-.wx-account-row {
-  grid-template-columns: minmax(0, 1fr) 110px 180px;
-}
-
-.wx-account-row:not(.wx-content-row-head) {
+.account-row:not(.dm-table-header) {
   min-height: 72px;
 }
 
-.wx-account-identity {
+.account-identity {
   min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--dm-space-3);
 }
 
-.wx-account-avatar-wrap {
+.account-avatar-wrap {
   position: relative;
   width: 46px;
   height: 46px;
   flex: 0 0 auto;
   overflow: hidden;
-  border-radius: 50%;
+  border-radius: var(--dm-radius-avatar);
   background: var(--dm-content-panel-soft);
 }
 
-.wx-account-avatar-fallback,
-.wx-account-avatar {
+.account-avatar-fallback,
+.account-avatar {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
 }
 
-.wx-account-avatar-fallback {
+.account-avatar-fallback {
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--dm-content-muted);
 }
 
-.wx-account-avatar {
+.account-avatar {
   display: block;
   object-fit: cover;
 }
 
-.wx-account-details {
+.account-details {
   min-width: 0;
   display: flex;
   align-items: flex-start;
@@ -80,7 +75,7 @@
   gap: var(--dm-space-1);
 }
 
-.wx-account-name {
+.account-name {
   min-width: 0;
   overflow: hidden;
   color: var(--dm-content-text);
@@ -90,7 +85,7 @@
   white-space: nowrap;
 }
 
-.wx-account-meta {
+.account-meta {
   min-width: 0;
   max-width: 100%;
   display: flex;
@@ -98,7 +93,7 @@
   gap: var(--dm-space-2);
 }
 
-.wx-account-id {
+.account-id {
   min-width: 0;
   overflow: hidden;
   color: var(--dm-content-muted);
@@ -108,8 +103,29 @@
   white-space: nowrap;
 }
 
-.wx-account-content-count,
-.wx-account-added {
+.account-copy-id-action {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  color: var(--dm-content-muted);
+  line-height: 1;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.account-copy-id-action:hover:not(:disabled) {
+  color: var(--dm-color-primary);
+}
+
+.account-copy-id-action.is-copied,
+.account-copy-id-action.is-copied:hover {
+  color: var(--dm-color-success);
+}
+
+.account-content-count,
+.account-added {
   display: flex;
   align-items: center;
   gap: var(--dm-space-1);
@@ -119,45 +135,35 @@
   white-space: nowrap;
 }
 
-.wx-account-skeleton-details {
+.account-skeleton-details {
   width: min(320px, 60%);
 }
 
 @media (max-width: 520px) {
-  .wx-account-toolbar .wx-content-filter-actions {
-    width: 100%;
-  }
-
-  .wx-account-toolbar .wx-account-page-button {
-    flex: 1 1 0;
-  }
-
-  .wx-account-row {
+  .account-row {
     grid-template-columns: minmax(0, 1fr) 58px 96px;
     gap: var(--dm-space-2);
-    padding-right: var(--dm-space-3);
-    padding-left: var(--dm-space-3);
   }
 
-  .wx-account-identity {
+  .account-identity {
     gap: var(--dm-space-2);
   }
 
-  .wx-account-avatar-wrap {
+  .account-avatar-wrap {
     width: 40px;
     height: 40px;
   }
 
-  .wx-account-details {
+  .account-details {
     max-width: 100%;
   }
 
-  .wx-account-name {
+  .account-name {
     max-width: 100%;
   }
 
-  .wx-account-content-count,
-  .wx-account-added {
+  .account-content-count,
+  .account-added {
     font-size: var(--dm-font-size-xs);
     white-space: normal;
   }

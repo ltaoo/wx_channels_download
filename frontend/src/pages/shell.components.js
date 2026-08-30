@@ -97,38 +97,80 @@ function CertificateSettingsDetails(props) {
       ]),
       View(
         {
-          class: Timeless.classNames([
-            "settings-certificate-status",
-            Timeless.computed(status_, function (status) {
-              return "settings-certificate-status--" + status.tone;
-            }),
-          ]),
+          class: "settings-certificate-hero__actions",
+          attributes: { n: "settings-certificate-actions" },
         },
         [
-          Show({
-            when: Timeless.computed(status_, function (status) {
-              return status.icon === "check";
-            }),
-            ok() {
-              return Timeless.Icon({ name: "check", size: 14 });
+          View(
+            {
+              class: Timeless.classNames([
+                "settings-certificate-status",
+                Timeless.computed(status_, function (status) {
+                  return "settings-certificate-status--" + status.tone;
+                }),
+              ]),
+              attributes: { n: "settings-certificate-status" },
             },
-            else() {
-              return Show({
+            [
+              Show({
                 when: Timeless.computed(status_, function (status) {
-                  return status.icon === "circle-x";
+                  return status.icon === "check";
                 }),
                 ok() {
-                  return Timeless.Icon({ name: "circle-x", size: 14 });
+                  return Timeless.Icon({
+                    name: "check",
+                    size: 14,
+                    attributes: {
+                      n: "settings-certificate-status-trusted-icon",
+                    },
+                  });
                 },
                 else() {
-                  return Timeless.Icon({ name: "circle-alert", size: 14 });
+                  return Show({
+                    when: Timeless.computed(status_, function (status) {
+                      return status.icon === "circle-x";
+                    }),
+                    ok() {
+                      return Timeless.Icon({
+                        name: "circle-x",
+                        size: 14,
+                        attributes: {
+                          n: "settings-certificate-status-uninstalled-icon",
+                        },
+                      });
+                    },
+                    else() {
+                      return Timeless.Icon({
+                        name: "circle-alert",
+                        size: 14,
+                        attributes: {
+                          n: "settings-certificate-status-warning-icon",
+                        },
+                      });
+                    },
+                  });
                 },
-              });
+              }),
+              Timeless.computed(status_, function (status) {
+                return status.label;
+              }),
+            ],
+          ),
+          Button(
+            {
+              store: props.delete_button,
+              prefix: Timeless.Icon({
+                name: "trash2",
+                size: 14,
+                attributes: { n: "settings-certificate-delete-icon" },
+              }),
+              attributes: {
+                n: "settings-certificate-delete-button",
+                "aria-label": "删除当前证书",
+              },
             },
-          }),
-          Timeless.computed(status_, function (status) {
-            return status.label;
-          }),
+            ["删除"],
+          ),
         ],
       ),
     ]),
@@ -674,8 +716,9 @@ export function SettingsDialog(props) {
   return Dialog(
     {
       store: props.dialog,
-      class: "settings-dialog",
+      class: "dm-dialog--settings",
       closeLabel: "关闭设置",
+      attributes: { n: "settings-dialog" },
     },
     [
       DialogTitle({ class: "settings-dialog__heading" }, [
@@ -704,14 +747,15 @@ export function SettingsDialog(props) {
               {
                 store: props.certificate_menu_button,
                 class: Timeless.classNames([
-                  "settings-dialog__menu dm-justify-start",
+                  "dm-button--sidebar-nav",
                   Timeless.computed(props.section, function (section) {
                     return section === "certificate"
-                      ? "settings-dialog__menu--active"
+                      ? "is-active"
                       : null;
                   }),
                 ]),
                 attributes: {
+                  n: "settings-certificate-menu-action",
                   "aria-current": Timeless.computed(
                     props.section,
                     function (section) {
@@ -729,14 +773,15 @@ export function SettingsDialog(props) {
               {
                 store: props.mcp_menu_button,
                 class: Timeless.classNames([
-                  "settings-dialog__menu dm-justify-start",
+                  "dm-button--sidebar-nav",
                   Timeless.computed(props.section, function (section) {
                     return section === "mcp"
-                      ? "settings-dialog__menu--active"
+                      ? "is-active"
                       : null;
                   }),
                 ]),
                 attributes: {
+                  n: "settings-mcp-menu-action",
                   "aria-current": Timeless.computed(
                     props.section,
                     function (section) {
@@ -754,14 +799,15 @@ export function SettingsDialog(props) {
               {
                 store: props.about_menu_button,
                 class: Timeless.classNames([
-                  "settings-dialog__menu dm-justify-start",
+                  "dm-button--sidebar-nav",
                   Timeless.computed(props.section, function (section) {
                     return section === "about"
-                      ? "settings-dialog__menu--active"
+                      ? "is-active"
                       : null;
                   }),
                 ]),
                 attributes: {
+                  n: "settings-about-menu-action",
                   "aria-current": Timeless.computed(
                     props.section,
                     function (section) {
@@ -794,7 +840,6 @@ export function SettingsDialog(props) {
                   Button(
                     {
                       store: props.refresh_button,
-                      class: "settings-dialog__refresh",
                       prefix: Timeless.Icon({ name: "refresh-cw", size: 14 }),
                       attributes: { "aria-label": "刷新证书信息" },
                     },
@@ -859,6 +904,7 @@ export function SettingsDialog(props) {
                           ok() {
                             return CertificateSettingsDetails({
                               certificate: props.certificate,
+                              delete_button: props.delete_button,
                             });
                           },
                         });
@@ -885,7 +931,6 @@ export function SettingsDialog(props) {
                   Button(
                     {
                       store: props.mcp_refresh_button,
-                      class: "settings-dialog__refresh",
                       prefix: Timeless.Icon({ name: "refresh-cw", size: 14 }),
                       attributes: { "aria-label": "刷新 MCP 状态" },
                     },
@@ -927,7 +972,7 @@ export function UpdateDialog(props) {
   return Dialog(
     {
       store: model.ui.dialog$,
-      class: "update-dialog",
+      class: "dm-dialog--md",
       zIndex: 12000,
       showClose: false,
       attributes: { "aria-labelledby": "update-dialog-title" },

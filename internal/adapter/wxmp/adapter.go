@@ -21,7 +21,6 @@ type OfficialAccountAdapter struct {
 	client              *wxmp.Client
 	file_cache          *cache.CacheProvider
 	routes              *Routes
-	interceptor_config  *InterceptorPluginConfig
 	status_mu           sync.Mutex
 	status_bus          *events.Bus
 	cancel_status_check func()
@@ -118,11 +117,12 @@ func (a *OfficialAccountAdapter) register(d *adapter.AdapterOptions) error {
 		}
 	}
 
-	var interceptor_config *InterceptorPluginConfig
 	if d.Interceptor != nil {
-		interceptor_config = NewConfig(d.Config)
-		for _, p := range interceptor_config.GetPlugins() {
-			d.Interceptor.AddPostPlugin(p)
+		if d.Config == nil {
+			return errors.New("wxmp config is required for interceptor registration")
+		}
+		for _, plugin := range wxmp.NewInterceptorPlugins(new_interceptor_config(d.Config), d.Logger) {
+			d.Interceptor.AddPostPlugin(plugin)
 		}
 	}
 
@@ -134,7 +134,6 @@ func (a *OfficialAccountAdapter) register(d *adapter.AdapterOptions) error {
 
 	a.runtime_mu.Lock()
 	a.routes = r
-	a.interceptor_config = interceptor_config
 	a.runtime_mu.Unlock()
 	registered = true
 	return nil
@@ -160,7 +159,6 @@ func (a *OfficialAccountAdapter) Stop() {
 	a.runtime_registered = false
 	a.routes = nil
 	a.file_cache = nil
-	a.interceptor_config = nil
 	a.runtime_mu.Unlock()
 	if client != nil {
 		client.SetPersistentCache(nil)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"wx_channel/internal/adapter"
+	"wx_channel/pkg/scraper/zhihu"
 )
 
 // Handle owns the adapter's runtime components.
@@ -25,10 +26,12 @@ func Register(d *adapter.AdapterOptions) (*Handle, error) {
 	}
 
 	// 2. Interceptor plugins
-	icfg := NewConfig(d.Config)
 	if d.Interceptor != nil {
-		for _, p := range icfg.GetPlugins() {
-			d.Interceptor.AddPostPlugin(p)
+		if d.Config == nil {
+			return nil, fmt.Errorf("zhihu config is required for interceptor registration")
+		}
+		for _, plugin := range zhihu.NewInterceptorPlugins(new_interceptor_config(d.Config), d.Logger) {
+			d.Interceptor.AddPostPlugin(plugin)
 		}
 	}
 

@@ -59,6 +59,18 @@ func (r *Routes) handle_fetch_article_list(ctx *gin.Context) {
 	result.Ok(ctx, data)
 }
 
+func (r *Routes) handle_fetch_biz_msg_list(ctx *gin.Context) {
+	data, err := r.server.FetchBizMsgList(
+		ctx.Query("username"),
+		ctx.Query("offset"),
+	)
+	if err != nil {
+		write_client_error(ctx, err, api_code_fetch_message)
+		return
+	}
+	result.Ok(ctx, data)
+}
+
 func (r *Routes) handle_fetch_page_content(ctx *gin.Context) {
 	if !r.server.ValidateToken(ctx.Query("token")) {
 		write_api_error(ctx, api_code_token_invalid)

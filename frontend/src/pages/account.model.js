@@ -134,6 +134,7 @@ function AccountViewModel(props) {
   const initial_ = ref(true);
   const loading_ = ref(false);
   const error_ = ref("");
+  const copied_account_id_ = ref("");
   let request_sequence = 0;
 
   const reqs = {
@@ -187,6 +188,9 @@ function AccountViewModel(props) {
       onChange(value) {
         set_keyword(value);
       },
+      onEnter() {
+        return methods.search();
+      },
     }),
     btn_search$: new Timeless.vm.ButtonCore({
       disabled: loading_.value,
@@ -196,6 +200,8 @@ function AccountViewModel(props) {
       disabled: loading_.value,
       variant: "outline",
       onClick() {
+        set_keyword("");
+        sync_search_location();
         return load(1);
       },
     }),
@@ -302,6 +308,15 @@ function AccountViewModel(props) {
     keyword_.as(keyword);
   }
 
+  function change_page(target_page) {
+    const page = Math.min(
+      page_count_.value,
+      Math.max(1, Number(target_page) || 1),
+    );
+    if (page === page_.value || loading_.value) return null;
+    return load(page);
+  }
+
   const methods = {
     ready() {
       return load(1);
@@ -314,17 +329,17 @@ function AccountViewModel(props) {
       return load(1);
     },
     setKeyword: set_keyword,
+    changePage: change_page,
     previousPage() {
-      if (page_.value <= 1 || loading_.value) {
-        return null;
-      }
-      return load(page_.value - 1);
+      return change_page(page_.value - 1);
     },
     nextPage() {
-      if (page_.value >= page_count_.value || loading_.value) {
-        return null;
-      }
-      return load(page_.value + 1);
+      return change_page(page_.value + 1);
+    },
+    copyId(account) {
+      const result = props.app.copy(account.id);
+      copied_account_id_.as(account.id);
+      return result;
     },
     platformName: account_platform_name,
     formatTime: window.format_time,
@@ -343,6 +358,7 @@ function AccountViewModel(props) {
     range_text: range_text_,
     loading: loading_,
     error: error_,
+    copied_account_id: copied_account_id_,
   };
 
   return { state, ui, methods };

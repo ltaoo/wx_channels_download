@@ -234,10 +234,10 @@ function ScraperPageViewModel(props) {
                 : "不可用",
           status_class:
             status.status === "checking"
-              ? "wx-home-platform-status-item is-checking"
+              ? "home-platform-status-item is-checking"
               : status.available
-                ? "wx-home-platform-status-item is-available"
-                : "wx-home-platform-status-item is-unavailable",
+                ? "home-platform-status-item is-available"
+                : "home-platform-status-item is-unavailable",
         };
       }),
   );
@@ -263,19 +263,19 @@ function ScraperPageViewModel(props) {
     (statuses) => {
       const items = Array.isArray(statuses) ? statuses : [];
       if (items.length === 0) {
-        return "wx-home-platform-status-trigger is-pending";
+        return "dm-button--status is-pending";
       }
       if (
         items.some(
           (status) => !status.available && status.status !== "checking",
         )
       ) {
-        return "wx-home-platform-status-trigger is-unavailable";
+        return "dm-button--status is-unavailable";
       }
       if (items.some((status) => status.status === "checking")) {
-        return "wx-home-platform-status-trigger is-checking";
+        return "dm-button--status is-checking";
       }
-      return "wx-home-platform-status-trigger is-available";
+      return "dm-button--status is-available";
     },
   );
   const status_text_ = combine(
@@ -459,8 +459,8 @@ function ScraperPageViewModel(props) {
     { has_percent: progress_has_percent_, loading: loading_ },
     (state) =>
       state.loading && !state.has_percent
-        ? "wx-home-fetch-progress-bar is-indeterminate"
-        : "wx-home-fetch-progress-bar",
+        ? "home-fetch-progress-bar is-indeterminate"
+        : "home-fetch-progress-bar",
   );
   const submit_button_text_ = computed(fetch_progress_, (progress) => {
     if (
@@ -607,10 +607,10 @@ function ScraperPageViewModel(props) {
       },
       (state) =>
         state.error
-          ? "wx-home-download-preview-badge is-error"
+          ? "home-download-preview-badge is-error"
           : state.loading
-            ? "wx-home-download-preview-badge is-loading"
-            : "wx-home-download-preview-badge",
+            ? "home-download-preview-badge is-loading"
+            : "home-download-preview-badge",
     ),
     task: {
       id_text: computed(
@@ -850,6 +850,7 @@ function ScraperPageViewModel(props) {
       disabled: interrupt_disabled_.value,
       loading: interrupt_loading_.value,
       variant: "destructive",
+      size: "lg",
       onClick() {
         return interrupt_fetch();
       },
@@ -857,6 +858,7 @@ function ScraperPageViewModel(props) {
     btn_submit$: new Timeless.vm.ButtonCore({
       disabled: submit_disabled_.value,
       variant: "primary",
+      size: "lg",
       onClick() {
         return submit();
       },
@@ -923,6 +925,7 @@ function ScraperPageViewModel(props) {
     btn_force_refresh$: new Timeless.vm.ButtonCore({
       disabled: cache_action_disabled_.value,
       variant: "outline",
+      size: "lg",
       onClick() {
         return submit({ force_refresh: true });
       },
@@ -931,6 +934,7 @@ function ScraperPageViewModel(props) {
       disabled: cache_action_disabled_.value,
       loading: cache_loading_.value,
       variant: "destructive",
+      size: "lg",
       onClick() {
         return clear_fetch_cache();
       },

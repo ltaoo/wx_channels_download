@@ -1,10 +1,9 @@
+import { Checkbox, createCheckboxStore } from "../dmui.js";
 import {
-  DOWNLOAD_STATUS_COUNT_ITEMS,
   MaxRunning,
   format_download_percent,
   format_download_size,
   format_download_speed,
-  get_download_status_count,
   is_download_open_external,
   is_download_waiting_status,
   normalize_download_status,
@@ -30,21 +29,6 @@ const OVERWRITE_ACTION_ITEMS = [
     icon: "copy",
   },
 ];
-
-const DIALOG_STYLE = {
-  width: "min(560px, calc(100vw - 32px))",
-};
-
-const FIELD_GROUP_STYLE = {
-  display: "grid",
-  gap: "6px",
-};
-
-const FIELD_LABEL_STYLE = {
-  "font-size": "13px",
-  "font-weight": "600",
-  color: "var(--dm-color-text-secondary)",
-};
 
 function task_value(task_) {
   return task_ && task_.value !== undefined ? task_.value : task_;
@@ -81,50 +65,44 @@ function task_has_content(raw) {
 function DownloadV2ActionButton(props) {
   const {
     attributes,
-    class: extra_class,
-    compact,
     icon,
     iconSize: icon_size,
     label,
     store,
     title,
   } = props;
+  const semantic_name = props.name || "download-action";
   return Button(
     {
       store,
-      class: [
-        "wx-dl-v2-action",
-        compact ? "wx-content-action-compact" : "",
-        extra_class,
-      ]
-        .filter(Boolean)
-        .join(" "),
+      class: "dm-button--toolbar",
       attributes: {
+        n: semantic_name,
         type: "button",
         title: title || "",
         ...(attributes || {}),
       },
       prefix: icon
-        ? Timeless.Icon({ name: icon, size: icon_size || 16 })
+        ? Timeless.Icon({
+            name: icon,
+            size: icon_size || 16,
+            attributes: { n: `${semantic_name}-icon` },
+          })
         : null,
     },
-    typeof label !== "undefined"
-      ? [View({ class: "wx-content-action-label" }, [label])]
-      : [],
+    typeof label !== "undefined" ? [label] : [],
   );
 }
 
 function DownloadV2Number(props = {}) {
   const {
     attributes,
-    characterStyle: character_style,
     characterWidth: character_width = "0.65em",
     class: extra_class,
     decimalWidth: decimal_width = "0.3em",
     number,
     separatorWidth: separator_width = "0.4em",
     spaceWidth: space_width = "0.25em",
-    style,
     value: provided_value,
   } = props;
   const value = provided_value === undefined ? number : provided_value;
@@ -139,13 +117,7 @@ function DownloadV2Number(props = {}) {
 
   return View(
     {
-      class: ["wx-number-view", extra_class].filter(Boolean).join(" "),
-      style: {
-        display: "inline-flex",
-        "align-items": "center",
-        "white-space": "nowrap",
-        ...(style || {}),
-      },
+      class: ["number-view", extra_class].filter(Boolean).join(" "),
       attributes: attributes || {},
     },
     [
@@ -159,17 +131,11 @@ function DownloadV2Number(props = {}) {
           else if (item.character === "/") width = separator_width;
           return View(
             {
-              class: "wx-number-view-character",
+              class: "number-view-character",
               style: {
-                display: "inline-flex",
                 width,
                 "min-width": width,
                 "flex-basis": width,
-                "flex-shrink": "0",
-                "align-items": "center",
-                "justify-content": "center",
-                "text-align": "center",
-                ...(character_style || {}),
               },
             },
             [item.character],
@@ -184,7 +150,7 @@ function DownloadV2InfinityIcon(props = {}) {
   const { size = 14 } = props;
   return SVG.SVG(
     {
-      style: { display: "block", "flex-shrink": "0" },
+      class: "number-view-infinity",
       attributes: {
         width: String(size),
         height: String(size),
@@ -209,10 +175,9 @@ function DownloadV2InfinityIcon(props = {}) {
 }
 
 function DownloadV2Skeleton(props = {}) {
-  const { attributes, class: extra_class, style } = props;
+  const { attributes, class: extra_class } = props;
   return View({
-    class: ["wx-skeleton", extra_class].filter(Boolean).join(" "),
-    style: style || {},
+    class: ["download-skeleton", extra_class].filter(Boolean).join(" "),
     attributes: attributes || {},
   });
 }
@@ -266,7 +231,7 @@ function DownloadV2TaskState(task$) {
         Number(progress.total) || 0,
       );
       let status_text = source.status || "";
-      let status_color = "var(--dm-dl-page-muted)";
+      let status_color = "var(--dm-color-text-secondary)";
       let error_text = "";
       let progress_text = "";
       let speed_text = "";
@@ -275,7 +240,7 @@ function DownloadV2TaskState(task$) {
         speed_text = format_download_speed(progress.speed);
         status_text = "下载中";
         progress_text = is_live_stream ? "" : format_progress_text(percent);
-        status_color = "var(--dm-dl-page-primary)";
+        status_color = "var(--dm-color-primary)";
       } else if (is_completed) {
         status_text = has_deleted_files
           ? all_files_deleted
@@ -336,7 +301,7 @@ function DownloadV2TaskCover(props) {
       (state) => !state.is_live_stream && (state.is_running || state.is_paused),
     ),
     ok() {
-      return View({ class: "wx-dl-page-task-cover-progress" }, [
+      return View({ class: "dl-page-task-cover-progress" }, [
         DownloadV2Number({
           value: computed(state_, (state) => state.progress_text),
         }),
@@ -344,15 +309,15 @@ function DownloadV2TaskCover(props) {
     },
   });
   const fallback = () =>
-    View({ class: "wx-dl-page-task-cover wx-dl-page-task-cover-fallback" });
+    View({ class: "dl-page-task-cover dl-page-task-cover-fallback" });
 
   return Show({
     when: computed(raw_, (raw) => Boolean(task_cover_url(raw))),
     ok() {
-      return View({ class: "wx-dl-page-task-cover-wrap" }, [
+      return View({ class: "dl-page-task-cover-wrap" }, [
         fallback(),
         Img({
-          class: "wx-dl-page-task-cover",
+          class: "dl-page-task-cover",
           src: computed(raw_, task_cover_url),
           alt: task$.state.name,
           attributes: {
@@ -375,8 +340,8 @@ function DownloadV2TaskActionButton(props) {
     {
       type: "button",
       class: [
-        "wx-dl-page-task-action",
-        danger ? "wx-dl-page-task-action-danger" : "",
+        "dl-page-task-action",
+        danger ? "dl-page-task-action-danger" : "",
       ]
         .filter(Boolean)
         .join(" "),
@@ -391,8 +356,9 @@ function DownloadV2TaskActionButton(props) {
   );
 }
 
-function DownloadV2TaskActions(props) {
-  const { state: state_, store: vm$, task: task$ } = props;
+export function DownloadV2TaskActions(props) {
+  const { store: vm$, task: task$ } = props;
+  const state_ = DownloadV2TaskState(task$);
   const is_open_external = is_download_open_external();
 
   return [
@@ -431,7 +397,7 @@ function DownloadV2TaskActions(props) {
           return View(
             {
               type: "button",
-              class: "wx-dl-page-task-action",
+              class: "dl-page-task-action",
               attributes: {
                 type: "button",
                 title: computed(state_, (state) =>
@@ -479,7 +445,7 @@ function DownloadV2TaskActions(props) {
           });
         },
         5() {
-          return View({ class: "wx-dl-page-task-action-spacer" });
+          return View({ class: "dl-page-task-action-spacer" });
         },
       },
     }),
@@ -494,7 +460,7 @@ function DownloadV2TaskActions(props) {
   ];
 }
 
-function DownloadV2TaskMain(props) {
+export function DownloadV2TaskMain(props) {
   const { store: vm$ } = props;
   const task$ = task_value(props.task);
   const state_ = DownloadV2TaskState(task$);
@@ -503,20 +469,20 @@ function DownloadV2TaskMain(props) {
     DownloadV2TaskCover({ task: task$, state: state_ }),
     View(
       {
-        class: "wx-dl-page-task-info",
+        class: "dl-page-task-info",
         attributes: { n: "download-task-info" },
       },
       [
         View(
           {
-            class: "wx-dl-page-task-title-line",
+            class: "dl-page-task-title-line",
             attributes: { n: "download-task-title-line" },
           },
           [
             View(
               {
                 as: "button",
-                class: "wx-dl-page-task-title",
+                class: "dl-page-task-title",
                 attributes: {
                   n: "download-task-preview-trigger",
                   type: "button",
@@ -535,7 +501,7 @@ function DownloadV2TaskMain(props) {
               ok() {
                 return View(
                   {
-                    class: "wx-dl-page-task-live",
+                    class: "dl-page-task-live",
                     attributes: { n: "download-task-live-badge" },
                   },
                   ["流媒体"],
@@ -548,7 +514,7 @@ function DownloadV2TaskMain(props) {
                 return View(
                   {
                     class:
-                      "wx-dl-page-task-missing-detail dm-badge dm-badge--warning",
+                      "dl-page-task-missing-detail dm-badge dm-badge--warning",
                     attributes: {
                       n: "download-task-missing-detail-badge",
                       title: "该下载任务没有关联内容详情",
@@ -562,13 +528,13 @@ function DownloadV2TaskMain(props) {
         ),
         View(
           {
-            class: "wx-dl-page-task-desc",
+            class: "dl-page-task-desc",
             attributes: { n: "download-task-description" },
           },
           [
             View(
               {
-                class: "wx-dl-page-task-status",
+                class: "dl-page-task-status",
                 style: computed(state_, (state) => ({
                   color: state.status_color,
                 })),
@@ -633,7 +599,7 @@ function DownloadV2TaskMain(props) {
           ok() {
             return View(
               {
-                class: "wx-dl-page-task-error",
+                class: "dl-page-task-error",
                 attributes: {
                   n: "download-task-error",
                   title: computed(state_, (state) => state.error_text),
@@ -648,149 +614,133 @@ function DownloadV2TaskMain(props) {
   ];
 }
 
-export function DownloadV2TaskColumns(props) {
-  const vm$ = props.store;
-  return [
-    {
-      name: "task",
-      title: "下载任务",
-      cellClass: "wx-dl-page-task-main-cell",
-      render(task$) {
-        return DownloadV2TaskMain({
-          store: vm$,
-          task: task$,
-        });
-      },
-    },
-    {
-      name: "created-at",
-      title: "下载时间",
-      cellClass: "wx-dl-page-task-time-cell",
-      cellAttributes(task$) {
-        return {
-          title: computed(task$.state.raw, (raw) =>
-            window.format_time(raw && raw.created_at),
-          ),
-        };
-      },
-      render(task$) {
-        return computed(task$.state.raw, (raw) =>
-          window.format_time(raw && raw.created_at),
-        );
-      },
-    },
-    {
-      name: "actions",
-      title: "操作",
-      headerClass: "wx-dl-page-table-head-action",
-      cellClass: "wx-dl-page-task-actions-cell",
-      render(task$) {
-        const state_ = DownloadV2TaskState(task$);
-        return DownloadV2TaskActions({
-          store: vm$,
-          task: task$,
-          state: state_,
-        });
-      },
-    },
-  ];
-}
-
 export function DownloadV2TaskSkeletonRow() {
   return View(
     {
-      class: "wx-table-row wx-dl-page-task-row wx-dl-page-task-skeleton",
+      class:
+        "dm-table-row dm-grid dm-items-center dl-page-task-row dl-page-task-skeleton",
       attributes: { n: "download-task-skeleton-row", role: "row" },
     },
     [
       View(
         {
-          class: "wx-table-selection-cell",
+          class:
+            "dm-table-selection-cell dm-flex dm-items-center dm-justify-center dm-min-w-0",
           attributes: { n: "download-task-skeleton-selection", role: "cell" },
         },
         [
           DownloadV2Skeleton({
+            class: "dl-skeleton-checkbox",
             attributes: { n: "download-task-skeleton-checkbox" },
-            style: {
-              width: "18px",
-              height: "18px",
-              "border-radius": "4px",
-            },
           }),
         ],
       ),
       View(
         {
-          class: "wx-dl-page-task-main-cell",
+          class: "dm-table-cell dl-page-task-main-cell",
           attributes: { n: "download-task-skeleton-main", role: "cell" },
         },
         [
           DownloadV2Skeleton({
+            class: "dl-skeleton-cover",
             attributes: { n: "download-task-skeleton-cover" },
-            style: {
-              width: "var(--dm-control-height-lg)",
-              height: "var(--dm-control-height-lg)",
-              "border-radius": "6px",
-              "margin-right": "12px",
-            },
           }),
           View(
             {
-              class: "wx-dl-page-task-info",
+              class: "dl-page-task-info",
               attributes: { n: "download-task-skeleton-info" },
             },
             [
               DownloadV2Skeleton({
-                class: "wx-dl-skeleton-line",
+                class: "dl-skeleton-line dl-skeleton-title",
                 attributes: { n: "download-task-skeleton-title" },
-                style: {
-                  width: "56%",
-                  height: "14px",
-                  "border-radius": "5px",
-                },
               }),
               DownloadV2Skeleton({
-                class: "wx-dl-skeleton-line",
+                class: "dl-skeleton-line dl-skeleton-status",
                 attributes: { n: "download-task-skeleton-status" },
-                style: {
-                  width: "36%",
-                  height: "12px",
-                  "border-radius": "5px",
-                  "margin-top": "7px",
-                },
               }),
             ],
           ),
         ],
       ),
-      DownloadV2Skeleton({
-        attributes: {
-          n: "download-task-skeleton-created-at",
-          role: "cell",
-        },
-        style: { width: "128px", height: "12px", "border-radius": "5px" },
-      }),
       View(
         {
-          class: "wx-dl-page-task-actions-cell",
+          class: "dm-table-cell",
+          attributes: {
+            n: "download-task-skeleton-created-at",
+            role: "cell",
+          },
+        },
+        [
+          DownloadV2Skeleton({
+            class: "dl-skeleton-created-at",
+            attributes: { n: "download-task-skeleton-created-at-value" },
+          }),
+        ],
+      ),
+      View(
+        {
+          class: "dm-table-cell dl-page-task-actions-cell",
           attributes: { n: "download-task-skeleton-actions", role: "cell" },
         },
         [
           DownloadV2Skeleton({
+            class: "dl-skeleton-action",
             attributes: { n: "download-task-skeleton-primary-action" },
-            style: {
-              width: "34px",
-              height: "34px",
-              "border-radius": "8px",
-            },
           }),
           DownloadV2Skeleton({
+            class: "dl-skeleton-action",
             attributes: { n: "download-task-skeleton-delete-action" },
-            style: {
-              width: "34px",
-              height: "34px",
-              "border-radius": "8px",
-            },
+          }),
+        ],
+      ),
+    ],
+  );
+}
+
+function DownloadV2StatusTab(vm$, status, label) {
+  const active_status_ = vm$.state.active_status;
+  const status_counts_ = vm$.state.status_counts;
+
+  return View(
+    {
+      type: "button",
+      attributes: {
+        n: `download-status-${status}-tab`,
+        type: "button",
+        "aria-pressed": computed(active_status_, (active_status) =>
+          active_status === status ? "true" : "false",
+        ),
+      },
+      class: computed(active_status_, (active_status) =>
+        [
+          "dl-v2-tab dm-focus-ring",
+          active_status === status ? "dl-v2-tab-active" : "",
+          status === "error" ? "dl-v2-tab-error" : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      ),
+      onClick() {
+        vm$.methods.setStatusFilter(status);
+      },
+    },
+    [
+      View(
+        {
+          class: "dl-v2-tab-label",
+          attributes: { n: `download-status-${status}-label` },
+        },
+        [label],
+      ),
+      View(
+        {
+          class: "dl-v2-tab-count",
+          attributes: { n: `download-status-${status}-count` },
+        },
+        [
+          computed(status_counts_, (counts) => {
+            return String(Number(counts[status]) || 0);
           }),
         ],
       ),
@@ -800,54 +750,23 @@ export function DownloadV2TaskSkeletonRow() {
 
 function DownloadV2StatusCounts(props) {
   const { store: vm$ } = props;
-  const active_status_ = vm$.state.active_status;
-  const status_counts_ = vm$.state.status_counts;
 
   return View(
     {
-      class: "wx-dl-page-counts wx-dl-v2-page-counts",
+      class: "dl-page-counts dl-v2-page-counts",
       attributes: {
+        n: "download-status-tabs",
         role: "group",
         "aria-label": "Download status filters",
       },
     },
     [
-      For({
-        each: DOWNLOAD_STATUS_COUNT_ITEMS,
-        render(item) {
-          return View(
-            {
-              type: "button",
-              attributes: {
-                type: "button",
-                "aria-pressed": computed(active_status_, (status) =>
-                  status === item.key ? "true" : "false",
-                ),
-              },
-              class: computed(active_status_, (status) =>
-                [
-                  "wx-dl-v2-tab dm-focus-ring",
-                  status === item.key ? "wx-dl-v2-tab-active" : "",
-                  item.key === "error" ? "wx-dl-v2-tab-error" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" "),
-              ),
-              onClick() {
-                vm$.methods.setStatusFilter(item.key);
-              },
-            },
-            [
-              View({ class: "wx-dl-v2-tab-label" }, [item.label]),
-              View({ class: "wx-dl-v2-tab-count" }, [
-                computed(status_counts_, (counts) => {
-                  return String(get_download_status_count(counts, item));
-                }),
-              ]),
-            ],
-          );
-        },
-      }),
+      DownloadV2StatusTab(vm$, "total", "全部"),
+      DownloadV2StatusTab(vm$, "running", "下载中"),
+      DownloadV2StatusTab(vm$, "pause", "暂停"),
+      DownloadV2StatusTab(vm$, "wait", "等待中"),
+      DownloadV2StatusTab(vm$, "done", "已完成"),
+      DownloadV2StatusTab(vm$, "error", "失败"),
     ],
   );
 }
@@ -857,9 +776,10 @@ function DownloadV2StatusActions(props) {
   const running_count_ = vm$.state.running_count;
 
   return View(
-    { class: "wx-dl-page-status-actions wx-dl-v2-page-status-actions" },
+    { class: "dl-page-status-actions dl-v2-page-status-actions" },
     [
       DownloadV2ActionButton({
+        name: "download-refresh-action",
         store: vm$.ui.btn_refresh_tasks$,
         icon: "refresh-cw",
         label: "刷新",
@@ -868,6 +788,7 @@ function DownloadV2StatusActions(props) {
         when: computed(running_count_, (count) => count < MaxRunning),
         ok() {
           return DownloadV2ActionButton({
+            name: "download-start-all-action",
             store: vm$.ui.btn_start_all_tasks$,
             icon: "play",
             label: "全部开始",
@@ -875,11 +796,13 @@ function DownloadV2StatusActions(props) {
         },
       }),
       DownloadV2ActionButton({
+        name: "download-pause-all-action",
         store: vm$.ui.btn_pause_all_tasks$,
         icon: "pause",
         label: "全部暂停",
       }),
       DownloadV2ActionButton({
+        name: "download-clear-action",
         store: vm$.ui.btn_clear_tasks$,
         icon: "trash2",
         label: "清空记录",
@@ -890,8 +813,8 @@ function DownloadV2StatusActions(props) {
 
 export function DownloadV2StatusBar(props) {
   const { store: vm$ } = props;
-  return View({ class: "wx-content-toolbar-wrap wx-dl-v2-toolbar-wrap" }, [
-    View({ class: "wx-content-toolbar wx-dl-v2-toolbar" }, [
+  return View({ class: "content-toolbar-wrap dl-v2-toolbar-wrap" }, [
+    View({ class: "content-toolbar dl-v2-toolbar" }, [
       DownloadV2StatusCounts({ store: vm$ }),
       DownloadV2StatusActions({ store: vm$ }),
     ]),
@@ -907,17 +830,18 @@ export function DownloadV2SelectionBar(props) {
     ok() {
       return View(
         {
-          class: "wx-dl-page-selection-bar",
+          class: "dl-page-selection-bar",
           attributes: {
             role: "toolbar",
             "aria-label": "选中任务操作",
           },
         },
         [
-          View({ class: "wx-dl-page-selection-summary" }, [
+          View({ class: "dl-page-selection-summary" }, [
             computed(selected_task_count_, (count) => `已选中 ${count} 个任务`),
           ]),
           DownloadV2ActionButton({
+            name: "download-delete-selected-action",
             store: vm$.ui.btn_delete_selected_tasks$,
             icon: "trash2",
             label: computed(
@@ -934,18 +858,14 @@ export function DownloadV2SelectionBar(props) {
 function DownloadV2Field(props) {
   const { control, hint, label } = props;
   return View(
-    { style: FIELD_GROUP_STYLE },
+    { class: "dl-dialog-field" },
     [
-      View({ type: "label", style: FIELD_LABEL_STYLE }, [label]),
+      View({ type: "label", class: "dl-dialog-field-label" }, [label]),
       control,
       hint
         ? View(
             {
-              style: {
-                "font-size": "12px",
-                "line-height": "18px",
-                color: "var(--dm-color-text-secondary)",
-              },
+              class: "dl-dialog-field-hint",
             },
             [hint],
           )
@@ -971,63 +891,37 @@ function DownloadV2DialogHeading(props) {
 }
 
 function boolean_toggle(props) {
-  const { checked: checked_, label, onToggle: on_toggle } = props;
+  const { checked: checked_, label, name, onToggle: on_toggle } = props;
+  const checkbox_store = createCheckboxStore({
+    checked: checked_,
+    onChange: on_toggle,
+  });
   return View(
     {
-      role: "checkbox",
-      tabIndex: "0",
-      attributes: {
-        "aria-checked": computed(checked_, (checked) =>
-          checked ? "true" : "false",
-        ),
-      },
-      style: {
-        display: "flex",
-        "align-items": "center",
-        gap: "10px",
-        padding: "8px 0",
-        cursor: "pointer",
-        "user-select": "none",
-        "font-size": "14px",
-        "line-height": "20px",
-      },
-      onClick: on_toggle,
-      onKeyDown(event) {
-        if (event.key === " " || event.key === "Enter") {
-          event.preventDefault();
-          on_toggle();
-        }
+      class: "dl-checkbox-control",
+      attributes: { n: `${name}-control` },
+      onClick() {
+        checkbox_store.toggle();
       },
     },
     [
+      Checkbox({
+        store: checkbox_store,
+        attributes: {
+          n: `${name}-checkbox`,
+          "aria-label": label,
+        },
+        onClick(event) {
+          event.stopPropagation();
+        },
+      }),
       View(
         {
-          style: computed(checked_, (checked) => ({
-            width: "18px",
-            height: "18px",
-            "box-sizing": "border-box",
-            "border-radius": "4px",
-            border: `1px solid ${checked ? "var(--dm-color-primary-fill)" : "var(--dm-color-border)"}`,
-            background: checked
-              ? "var(--dm-color-primary-fill)"
-              : "transparent",
-            color: "var(--dm-color-on-primary)",
-            display: "inline-flex",
-            "align-items": "center",
-            "justify-content": "center",
-            "flex-shrink": "0",
-          })),
+          as: "span",
+          attributes: { n: `${name}-label` },
         },
-        [
-          Show({
-            when: checked_,
-            ok() {
-              return Timeless.Icon({ name: "check", size: 14 });
-            },
-          }),
-        ],
+        [label],
       ),
-      View({}, [label]),
     ],
   );
 }
@@ -1038,7 +932,7 @@ export function CreateTaskDialog(props) {
     {
       store: vm$.ui.createTaskDialog$,
       zIndex: 10000,
-      style: DIALOG_STYLE,
+      class: "dm-dialog--form",
       okText: "下一步",
     },
     [
@@ -1048,7 +942,7 @@ export function CreateTaskDialog(props) {
       }),
       DialogBody(
         {
-          style: { display: "grid", gap: "16px" },
+          class: "dl-dialog-fields",
         },
         [
           DownloadV2Field({
@@ -1087,7 +981,7 @@ export function CreatePlatformTaskDialog(props) {
     {
       store: vm$.ui.createPlatformTaskDialog$,
       zIndex: 10000,
-      style: DIALOG_STYLE,
+      class: "dm-dialog--form",
       okText: "下一步",
     },
     [
@@ -1097,12 +991,7 @@ export function CreatePlatformTaskDialog(props) {
       }),
       DialogBody(
         {
-          style: {
-            display: "grid",
-            gap: "16px",
-            "max-height": "min(62vh, 560px)",
-            overflow: "auto",
-          },
+          class: "dl-dialog-fields dm-dialog-body--scrollable",
         },
         [
           DownloadV2Field({
@@ -1120,7 +1009,7 @@ export function CreatePlatformTaskDialog(props) {
             label: "内容 JSON",
             control: Textarea({
               store: vm$.ui.input_create_platform_json$,
-              style: { "min-height": "112px", resize: "vertical" },
+              class: "dm-textarea--tall",
               attributes: {
                 rows: "5",
                 spellcheck: "false",
@@ -1145,10 +1034,9 @@ export function CreatePlatformTaskDialog(props) {
           boolean_toggle({
             checked: vm$.state.create_platform_download_cover,
             label: "同时下载封面",
-            onToggle() {
-              vm$.state.create_platform_download_cover.as(
-                !vm$.state.create_platform_download_cover.value,
-              );
+            name: "create-platform-download-cover",
+            onToggle(checked) {
+              vm$.state.create_platform_download_cover.as(checked);
             },
           }),
         ],
@@ -1241,41 +1129,31 @@ function PreviewResourceNode(props) {
   const is_directory = node && node.type === "directory";
 
   if (is_directory) {
-    return View({ style: { "margin-left": indent, "margin-bottom": "2px" } }, [
+    return View({
+      class: "dl-preview-tree-item",
+      style: { "margin-left": indent },
+    }, [
       View(
         {
-          style: {
-            display: "flex",
-            "align-items": "center",
-            gap: "6px",
-            padding: "3px 6px",
-            "border-radius": "4px",
-            "font-size": "13px",
-            "font-weight": "600",
-            color: "var(--dm-color-text-secondary)",
-          },
+          class: "dl-preview-tree-row is-directory",
         },
         [
           View(
             {
-              style: { width: "18px", "flex-shrink": "0" },
+              class: "dl-preview-tree-icon",
               attributes: { n: "preview-directory-icon" },
             },
             [Timeless.Icon({ name: "folder", size: 16 })],
           ),
           View(
             {
-              style: {
-                overflow: "hidden",
-                "text-overflow": "ellipsis",
-                "white-space": "nowrap",
-              },
+              class: "dm-truncate",
             },
             [node.name || "根目录"],
           ),
         ],
       ),
-      View({ style: { "margin-left": "6px" } }, [
+      View({ class: "dl-preview-tree-children" }, [
         For({
           each: node.children || [],
           render(child) {
@@ -1286,23 +1164,18 @@ function PreviewResourceNode(props) {
     ]);
   }
 
-  return View({ style: { "margin-left": indent, "margin-bottom": "2px" } }, [
+  return View({
+    class: "dl-preview-tree-item",
+    style: { "margin-left": indent },
+  }, [
     View(
       {
-        style: {
-          display: "flex",
-          "align-items": "center",
-          gap: "6px",
-          padding: "3px 6px",
-          "border-radius": "4px",
-          "font-size": "13px",
-          color: "var(--dm-color-text-primary)",
-        },
+        class: "dl-preview-tree-row",
       },
       [
         View(
           {
-            style: { width: "18px", "flex-shrink": "0" },
+            class: "dl-preview-tree-icon",
             attributes: { n: "preview-resource-icon" },
           },
           [
@@ -1314,11 +1187,7 @@ function PreviewResourceNode(props) {
         ),
         View(
           {
-            style: {
-              overflow: "hidden",
-              "text-overflow": "ellipsis",
-              "white-space": "nowrap",
-            },
+            class: "dm-truncate",
             attributes: { title: (node && node.name) || "文件" },
           },
           [(node && node.name) || "文件"],
@@ -1332,24 +1201,13 @@ function PreviewDetailRow(props) {
   const { label, value } = props;
   return View(
     {
-      style: {
-        display: "grid",
-        "grid-template-columns": "104px minmax(0, 1fr)",
-        gap: "12px",
-        padding: "9px 0",
-        "border-bottom": "1px solid var(--dm-color-border-translucent)",
-      },
+      class: "dl-preview-detail-row",
     },
     [
-      View({ style: FIELD_LABEL_STYLE }, [label]),
+      View({ class: "dl-dialog-field-label" }, [label]),
       View(
         {
-          style: {
-            "font-size": "14px",
-            "line-height": "20px",
-            "word-break": "break-all",
-            color: "var(--dm-color-text-primary)",
-          },
+          class: "dl-preview-detail-value",
         },
         [value],
       ),
@@ -1372,17 +1230,10 @@ function PreviewResourceList(props) {
     ok() {
       return View(
         {
-          style: {
-            display: "grid",
-            gap: "8px",
-            padding: "12px",
-            "border-radius": "10px",
-            border: "1px solid var(--dm-color-border-translucent)",
-            background: "var(--dm-color-bg-subtle)",
-          },
+          class: "dl-preview-resource-list",
         },
         [
-          View({ style: FIELD_LABEL_STYLE }, [
+          View({ class: "dl-dialog-field-label" }, [
             "资源列表（",
             computed(resource_count_, (count) => String(count)),
             " 项）",
@@ -1403,12 +1254,7 @@ function PreviewDialogContent(props) {
   const { platform, preview: preview_ } = props;
   return DialogBody(
     {
-      style: {
-        display: "grid",
-        gap: "14px",
-        "max-height": "min(62vh, 560px)",
-        overflow: "auto",
-      },
+      class: "dm-grid dm-gap-3 dm-dialog-body--scrollable",
     },
     [
       View({}, [
@@ -1455,7 +1301,7 @@ export function CreateTaskPreviewDialog(props) {
     {
       store: vm$.ui.createTaskPreviewDialog$,
       zIndex: 10001,
-      style: DIALOG_STYLE,
+      class: "dm-dialog--form",
       okText: "创建任务",
     },
     [
@@ -1474,7 +1320,7 @@ export function CreatePlatformTaskPreviewDialog(props) {
     {
       store: vm$.ui.createPlatformTaskPreviewDialog$,
       zIndex: 10001,
-      style: DIALOG_STYLE,
+      class: "dm-dialog--form",
       okText: "创建任务",
     },
     [
@@ -1495,6 +1341,7 @@ function DeleteFilesControl(props) {
   return boolean_toggle({
     checked: vm$.state.delete_delete_files,
     label: "同时删除已下载的文件",
+    name: "delete-downloaded-files",
     onToggle() {
       vm$.methods.handleClickCheckboxConfirmDeleteFiles();
     },
@@ -1507,7 +1354,7 @@ export function TaskDeleteConfirmDialog(props) {
     {
       store: vm$.ui.deleteConfirmDialog$,
       zIndex: 10000,
-      style: DIALOG_STYLE,
+      class: "dm-dialog--form",
       okText: "删除",
     },
     [
@@ -1525,10 +1372,7 @@ export function TaskDeleteConfirmDialog(props) {
           ok() {
             return View(
               {
-                style: {
-                  "font-size": "12px",
-                  color: "var(--dm-color-text-secondary)",
-                },
+                class: "dm-text-xs dm-text-muted",
               },
               ["正在删除任务..."],
             );
@@ -1545,7 +1389,7 @@ export function ClearTasksConfirmDialog(props) {
     {
       store: vm$.ui.clearConfirmDialog$,
       zIndex: 10000,
-      style: DIALOG_STYLE,
+      class: "dm-dialog--form",
       okText: "清空",
     },
     [
@@ -1562,10 +1406,7 @@ export function ClearTasksConfirmDialog(props) {
           ok() {
             return View(
               {
-                style: {
-                  "font-size": "12px",
-                  color: "var(--dm-color-text-secondary)",
-                },
+                class: "dm-text-xs dm-text-muted",
               },
               ["正在清空任务..."],
             );
@@ -1588,7 +1429,7 @@ function OverwriteActionList(props) {
   return View(
     {
       role: "radiogroup",
-      style: { display: "grid", gap: "8px" },
+      class: "dm-choice-list",
     },
     [
       For({
@@ -1613,20 +1454,15 @@ function OverwriteActionList(props) {
                   state.processing ? "true" : undefined,
                 ),
               },
-              style: computed(row_state_, (state) => ({
-                display: "flex",
-                "align-items": "center",
-                gap: "12px",
-                padding: "11px 12px",
-                "border-radius": "10px",
-                border: `1px solid ${state.checked ? "var(--dm-color-primary-fill)" : "var(--dm-color-border)"}`,
-                background: state.checked
-                  ? "color-mix(in srgb, var(--dm-color-primary-fill) 10%, transparent)"
-                  : "transparent",
-                cursor: state.processing ? "wait" : "pointer",
-                opacity: state.processing ? "0.72" : "1",
-                "user-select": "none",
-              })),
+              class: computed(row_state_, (state) =>
+                [
+                  "dm-choice-row",
+                  state.checked ? "is-selected" : "",
+                  state.processing ? "is-processing" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              ),
               onClick() {
                 select(item.value);
               },
@@ -1640,43 +1476,20 @@ function OverwriteActionList(props) {
             [
               View(
                 {
-                  style: computed(row_state_, (state) => ({
-                    width: "30px",
-                    height: "30px",
-                    "border-radius": "50%",
-                    background: state.checked
-                      ? "var(--dm-color-primary-fill)"
-                      : "var(--dm-color-bg-subtle)",
-                    color: state.checked
-                      ? "var(--dm-color-on-primary)"
-                      : "var(--dm-color-text-secondary)",
-                    display: "inline-flex",
-                    "align-items": "center",
-                    "justify-content": "center",
-                    "flex-shrink": "0",
-                  })),
+                  class: "dm-choice-row__icon",
                 },
                 [Timeless.Icon({ name: item.icon, size: 16 })],
               ),
-              View({ style: { "min-width": "0", flex: "1 1 auto" } }, [
+              View({ class: "dm-min-w-0 dm-flex-1" }, [
                 View(
                   {
-                    style: {
-                      "font-size": "14px",
-                      "font-weight": "600",
-                      "line-height": "20px",
-                    },
+                    class: "dm-choice-row__title",
                   },
                   [item.label],
                 ),
                 View(
                   {
-                    style: {
-                      "font-size": "12px",
-                      "line-height": "18px",
-                      color: "var(--dm-color-text-secondary)",
-                      "margin-top": "2px",
-                    },
+                    class: "dm-choice-row__description",
                   },
                   [item.description],
                 ),
@@ -1704,29 +1517,13 @@ function OverwriteConflictCard(props) {
     ok() {
       return View(
         {
-          style: {
-            display: "flex",
-            "align-items": "center",
-            gap: "10px",
-            padding: "10px 12px",
-            "border-radius": "10px",
-            background: "var(--dm-color-bg-subtle)",
-            border: "1px solid var(--dm-color-border-translucent)",
-          },
+          class: "dm-notice-row",
         },
         [
           Timeless.Icon({ name: "circle-alert", size: 18 }),
           View(
             {
-              style: {
-                "min-width": "0",
-                flex: "1 1 auto",
-                overflow: "hidden",
-                "text-overflow": "ellipsis",
-                "white-space": "nowrap",
-                "font-size": "13px",
-                "font-weight": "600",
-              },
+              class: "dm-truncate dm-flex-1 dm-text-sm dm-font-semibold",
               attributes: {
                 title: computed(conflict_, (conflict) => conflict.name || ""),
               },
@@ -1738,11 +1535,7 @@ function OverwriteConflictCard(props) {
             ok() {
               return View(
                 {
-                  style: {
-                    "font-size": "12px",
-                    color: "var(--dm-color-text-secondary)",
-                    "white-space": "nowrap",
-                  },
+                  class: "dm-text-xs dm-text-muted",
                 },
                 [
                   computed(conflict_, (conflict) => {
@@ -1763,6 +1556,7 @@ function OverwriteApplyAllControl(props) {
   return boolean_toggle({
     checked: vm$.state.overwrite_apply_all,
     label: "将此选择应用给本批次的所有冲突任务",
+    name: "overwrite-apply-all",
     onToggle() {
       if (!vm$.state.overwrite_processing.value) {
         vm$.methods.toggleOverwriteApplyAll();
@@ -1774,7 +1568,7 @@ function OverwriteApplyAllControl(props) {
 function OverwriteDialogBody(props) {
   const { batch, store: vm$ } = props;
   return DialogBody(
-    { style: { display: "grid", gap: "14px" } },
+    { class: "dm-grid dm-gap-3" },
     [
       OverwriteConflictCard({ store: vm$ }),
       OverwriteActionList({ store: vm$ }),
@@ -1785,17 +1579,11 @@ function OverwriteDialogBody(props) {
           return View(
             {
               role: "status",
-              style: {
-                display: "flex",
-                "align-items": "center",
-                gap: "8px",
-                "font-size": "12px",
-                color: "var(--dm-color-text-secondary)",
-              },
+              class: "dm-status-inline",
             },
             [
               View({
-                class: "dm-ui-spinner",
+                class: "dm-spinner",
                 attributes: { "aria-hidden": "true" },
               }),
               "正在处理冲突...",
@@ -1813,7 +1601,7 @@ export function OverwriteConfirmDialog(props) {
     {
       store: vm$.ui.overwriteConfirmDialog$,
       zIndex: 10000,
-      style: DIALOG_STYLE,
+      class: "dm-dialog--form",
       okText: "继续",
     },
     [
@@ -1832,7 +1620,7 @@ export function SingleOverwriteConfirmDialog(props) {
     {
       store: vm$.ui.singleOverwriteConfirmDialog$,
       zIndex: 10000,
-      style: DIALOG_STYLE,
+      class: "dm-dialog--form",
       okText: "继续",
     },
     [
@@ -1851,7 +1639,7 @@ export function BatchOverwriteConfirmDialog(props) {
     {
       store: vm$.ui.batchOverwriteConfirmDialog$,
       zIndex: 10001,
-      style: DIALOG_STYLE,
+      class: "dm-dialog--form",
       okText: "继续",
     },
     [

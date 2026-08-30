@@ -5,19 +5,19 @@ import {
 
 function FileHelperHeaderView(props) {
   const vm$ = props.store;
-  return View({ class: "wx-filehelper-header dm-page-header" }, [
-    View({ class: "wx-filehelper-header-brand" }, [
-      View({ class: "wx-filehelper-header-icon" }, [
+  return View({ class: "filehelper-header page-header" }, [
+    View({ class: "filehelper-header-brand" }, [
+      View({ class: "filehelper-header-icon" }, [
         Timeless.Icon({ name: "upload", size: 18 }),
       ]),
       View({}, [
-        View({ class: "wx-filehelper-header-title" }, ["文件传输助手"]),
-        View({ class: "wx-filehelper-header-subtitle" }, [
+        View({ class: "filehelper-header-title" }, ["文件传输助手"]),
+        View({ class: "filehelper-header-subtitle" }, [
           "连接微信，跨设备传送内容",
         ]),
       ]),
     ]),
-    View({ class: "wx-filehelper-header-actions" }, [
+    View({ class: "filehelper-header-actions" }, [
       Show({
         when: computed(
           vm$.state.channels_status,
@@ -25,7 +25,7 @@ function FileHelperHeaderView(props) {
         ),
         ok() {
           return View(
-            { class: "wx-filehelper-channels-status dm-badge dm-badge--info" },
+            { class: "filehelper-channels-status dm-badge dm-badge--info" },
             [
             "视频号API: ",
             View(
@@ -45,8 +45,8 @@ function FileHelperHeaderView(props) {
         {
           class: computed(vm$.state.logged_in, (logged_in) =>
             logged_in
-              ? "wx-filehelper-status is-online"
-              : "wx-filehelper-status",
+              ? "filehelper-status is-online"
+              : "filehelper-status",
           ),
         },
         [vm$.state.connection_text],
@@ -57,7 +57,7 @@ function FileHelperHeaderView(props) {
           return Button(
             {
               store: vm$.ui.btn_logout$,
-              class: "wx-filehelper-logout dm-button dm-focus-ring",
+              attributes: { n: "file-helper-logout-action" },
             },
             [
               computed(vm$.state.logout_loading, (loading) =>
@@ -76,31 +76,31 @@ function FileHelperQRCodeView(props) {
   return Show({
     when: computed(vm$.state.login_stage, (stage) => stage === "scanned"),
     ok() {
-      return View({ class: "wx-filehelper-scanned-user" }, [
+      return View({ class: "filehelper-scanned-user" }, [
         Show({
           when: computed(vm$.state.scanned_avatar, (avatar) => Boolean(avatar)),
           ok() {
             return Timeless.Img({
-              class: "wx-filehelper-scanned-avatar",
+              class: "filehelper-scanned-avatar",
               src: vm$.state.scanned_avatar,
               alt: "用户头像",
             });
           },
         }),
-        View({ class: "wx-filehelper-scanned-tip" }, [
+        View({ class: "filehelper-scanned-tip" }, [
           "请在手机上确认登录",
         ]),
       ]);
     },
     else() {
-      return View({ class: "wx-filehelper-qrcode" }, [
+      return View({ class: "filehelper-qrcode" }, [
         Show({
           when: computed(
             vm$.state.login_stage,
             (stage) => stage === "loading",
           ),
           ok() {
-            return View({ class: "wx-filehelper-loading-spinner" });
+            return View({ class: "filehelper-loading-spinner" });
           },
         }),
         Show({
@@ -110,7 +110,7 @@ function FileHelperQRCodeView(props) {
           ),
           ok() {
             return Timeless.Img({
-              class: "wx-filehelper-qrcode-image",
+              class: "filehelper-qrcode-image",
               src: vm$.state.qrcode_url,
               alt: "登录二维码",
             });
@@ -122,8 +122,8 @@ function FileHelperQRCodeView(props) {
             (stage) => stage === "expired" || stage === "error",
           ),
           ok() {
-            return View({ class: "wx-filehelper-qrcode-expired" }, [
-              View({ class: "wx-filehelper-qrcode-expired-text" }, [
+            return View({ class: "filehelper-qrcode-expired" }, [
+              View({ class: "filehelper-qrcode-expired-text" }, [
                 computed(vm$.state.login_stage, (stage) =>
                   stage === "expired" ? "二维码已过期" : "二维码加载失败",
                 ),
@@ -131,8 +131,7 @@ function FileHelperQRCodeView(props) {
               Button(
                 {
                   store: vm$.ui.btn_refresh_qrcode$,
-                  class:
-                    "wx-filehelper-refresh dm-button dm-button--primary dm-focus-ring",
+                  attributes: { n: "file-helper-refresh-qr-action" },
                 },
                 ["刷新二维码"],
               ),
@@ -146,47 +145,47 @@ function FileHelperQRCodeView(props) {
 
 function FileHelperLoginView(props) {
   const vm$ = props.store;
-  return View({ class: "wx-filehelper-login" }, [
-    View({ class: "wx-filehelper-login-copy" }, [
-      View({ class: "wx-filehelper-login-eyebrow" }, ["微信连接"]),
-      View({ as: "h1", class: "wx-filehelper-login-title" }, [
+  return View({ class: "filehelper-login" }, [
+    View({ class: "filehelper-login-copy" }, [
+      View({ class: "filehelper-login-eyebrow" }, ["微信连接"]),
+      View({ as: "h1", class: "filehelper-login-title" }, [
         "把手机里的内容，直接送到工作台",
       ]),
-      View({ class: "wx-filehelper-login-description" }, [
+      View({ class: "filehelper-login-description" }, [
         "扫码连接文件传输助手后，可在电脑与微信之间同步消息、图片、文件和视频号内容。",
       ]),
-      View({ class: "wx-filehelper-login-features" }, [
-        View({ class: "wx-filehelper-login-feature" }, [
-          View({ class: "wx-filehelper-login-feature-icon" }, [
+      View({ class: "filehelper-login-features" }, [
+        View({ class: "filehelper-login-feature" }, [
+          View({ class: "filehelper-login-feature-icon" }, [
             Timeless.Icon({ name: "upload", size: 17 }),
           ]),
           View({}, [
-            View({ class: "wx-filehelper-login-feature-title" }, ["双向传输"]),
-            View({ class: "wx-filehelper-login-feature-text" }, [
+            View({ class: "filehelper-login-feature-title" }, ["双向传输"]),
+            View({ class: "filehelper-login-feature-text" }, [
               "发送和接收内容，无需额外中转。",
             ]),
           ]),
         ]),
-        View({ class: "wx-filehelper-login-feature" }, [
-          View({ class: "wx-filehelper-login-feature-icon" }, [
+        View({ class: "filehelper-login-feature" }, [
+          View({ class: "filehelper-login-feature-icon" }, [
             Timeless.Icon({ name: "file", size: 17 }),
           ]),
           View({}, [
-            View({ class: "wx-filehelper-login-feature-title" }, ["统一归档"]),
-            View({ class: "wx-filehelper-login-feature-text" }, [
+            View({ class: "filehelper-login-feature-title" }, ["统一归档"]),
+            View({ class: "filehelper-login-feature-text" }, [
               "文件与媒体资源继续进入下载工作流。",
             ]),
           ]),
         ]),
       ]),
     ]),
-    View({ class: "wx-filehelper-login-panel" }, [
-      View({ class: "wx-filehelper-login-panel-title" }, ["微信扫码登录"]),
-      View({ class: "wx-filehelper-login-panel-caption" }, [
+    View({ class: "filehelper-login-panel" }, [
+      View({ class: "filehelper-login-panel-title" }, ["微信扫码登录"]),
+      View({ class: "filehelper-login-panel-caption" }, [
         "使用手机微信扫描下方二维码",
       ]),
       FileHelperQRCodeView({ store: vm$ }),
-      View({ class: "wx-filehelper-login-tip" }, [vm$.state.login_tip]),
+      View({ class: "filehelper-login-tip" }, [vm$.state.login_tip]),
     ]),
   ]);
 }
@@ -194,10 +193,10 @@ function FileHelperLoginView(props) {
 function FileHelperFinderMessageView(props) {
   const data = props.message.finder_data;
   const cover_url = data.cover_url || data.thumb_url || "";
-  return View({ class: "wx-filehelper-finder-card" }, [
+  return View({ class: "filehelper-finder-card" }, [
     cover_url
       ? Timeless.Img({
-          class: "wx-filehelper-finder-cover",
+          class: "filehelper-finder-cover",
           src: cover_url,
           alt: "封面",
           onError(event) {
@@ -208,14 +207,14 @@ function FileHelperFinderMessageView(props) {
           },
         })
       : null,
-    View({ class: "wx-filehelper-finder-content" }, [
-      View({ class: "wx-filehelper-finder-desc" }, [
+    View({ class: "filehelper-finder-content" }, [
+      View({ class: "filehelper-finder-desc" }, [
         data.desc || "[视频号]",
       ]),
-      View({ class: "wx-filehelper-finder-author" }, [
+      View({ class: "filehelper-finder-author" }, [
         data.avatar
           ? Timeless.Img({
-              class: "wx-filehelper-finder-avatar",
+              class: "filehelper-finder-avatar",
               src: data.avatar,
               alt: "头像",
               onError(event) {
@@ -226,8 +225,8 @@ function FileHelperFinderMessageView(props) {
               },
             })
           : null,
-        View({ class: "wx-filehelper-finder-nickname" }, [data.nickname]),
-        View({ class: "wx-filehelper-finder-badge" }, ["视频号"]),
+        View({ class: "filehelper-finder-nickname" }, [data.nickname]),
+        View({ class: "filehelper-finder-badge" }, ["视频号"]),
       ].filter(Boolean)),
     ]),
   ].filter(Boolean));
@@ -240,19 +239,19 @@ function FileHelperMessageView(props) {
   return View(
     {
       class: message.is_mine
-        ? "wx-filehelper-message is-self"
-        : "wx-filehelper-message",
+        ? "filehelper-message is-self"
+        : "filehelper-message",
     },
     [
-      View({ class: "wx-filehelper-message-avatar" }, [
+      View({ class: "filehelper-message-avatar" }, [
         message.is_mine ? "我" : "文",
       ]),
-      View({ class: "wx-filehelper-message-content" }, [
+      View({ class: "filehelper-message-content" }, [
         message.type === "finder" && message.finder_data
           ? FileHelperFinderMessageView({ message })
-          : View({ class: "wx-filehelper-message-bubble" }, [message.text]),
+          : View({ class: "filehelper-message-bubble" }, [message.text]),
         time
-          ? View({ class: "wx-filehelper-message-time" }, [time])
+          ? View({ class: "filehelper-message-time" }, [time])
           : null,
       ].filter(Boolean)),
     ],
@@ -260,7 +259,7 @@ function FileHelperMessageView(props) {
 }
 
 function FileHelperEmptyMessagesView() {
-  return View({ class: "wx-filehelper-empty" }, [
+  return View({ class: "filehelper-empty" }, [
     Timeless.Icon({ name: "upload", size: 48 }),
     View({}, ["暂无消息"]),
     View({}, ["发送的文件将同步到手机微信"]),
@@ -271,7 +270,7 @@ function FileHelperMessageListView(props) {
   const vm$ = props.store;
   return View(
     {
-      class: "wx-filehelper-message-list",
+      class: "filehelper-message-list",
       onMounted(event) {
         vm$.methods.setMessageListElement(event);
       },
@@ -304,13 +303,12 @@ function FileHelperMessageListView(props) {
 
 function FileHelperComposerView(props) {
   const vm$ = props.store;
-  return View({ class: "wx-filehelper-input-area" }, [
-    View({ class: "wx-filehelper-composer" }, [
-      View({ class: "wx-filehelper-toolbar" }, [
+  return View({ class: "filehelper-input-area" }, [
+    View({ class: "filehelper-composer" }, [
+      View({ class: "filehelper-toolbar" }, [
         Button(
           {
             store: vm$.ui.btn_open_image_picker$,
-            class: "wx-filehelper-toolbar-button dm-focus-ring",
             attributes: {
               n: "open-image-picker-button",
               title: "发送图片",
@@ -322,7 +320,6 @@ function FileHelperComposerView(props) {
         Button(
           {
             store: vm$.ui.btn_open_file_picker$,
-            class: "wx-filehelper-toolbar-button dm-focus-ring",
             attributes: {
               n: "open-file-picker-button",
               title: "发送文件",
@@ -332,19 +329,18 @@ function FileHelperComposerView(props) {
           [Timeless.Icon({ name: "file", size: 18 })],
         ),
       ]),
-      View({ class: "wx-filehelper-compose-row" }, [
-        View({ class: "wx-filehelper-input-wrapper" }, [
+      View({ class: "filehelper-compose-row" }, [
+        View({ class: "filehelper-input-wrapper" }, [
           Textarea({
             store: vm$.ui.input_message$,
-            class: "wx-filehelper-input dm-field",
-            attributes: { rows: "1" },
+            class: "dm-textarea--compact",
+            attributes: { n: "file-helper-message-input", rows: "1" },
           }),
         ]),
         Button(
           {
             store: vm$.ui.btn_send_message$,
-            class:
-              "wx-filehelper-send dm-button dm-button--primary dm-focus-ring",
+            attributes: { n: "file-helper-send-action" },
           },
           [
             computed(vm$.state.sending, (sending) =>
@@ -359,7 +355,7 @@ function FileHelperComposerView(props) {
 
 function FileHelperChatView(props) {
   const vm$ = props.store;
-  return View({ class: "wx-filehelper-chat" }, [
+  return View({ class: "filehelper-chat" }, [
     FileHelperMessageListView({ store: vm$ }),
     FileHelperComposerView({ store: vm$ }),
   ]);
@@ -370,9 +366,14 @@ function FileHelperHiddenInputsView(props) {
   return [
     Input({
       store: vm$.ui.input_image_file$,
-      class: "wx-filehelper-hidden-input",
-      rootClass: "wx-filehelper-hidden-input",
-      attributes: { type: "file", accept: "image/*" },
+      class: "dm-sr-only",
+      rootClass: "dm-sr-only",
+      rootAttributes: { n: "file-helper-image-file-field" },
+      attributes: {
+        n: "file-helper-image-file-input",
+        type: "file",
+        accept: "image/*",
+      },
       onMounted(event) {
         vm$.methods.setImageInputElement(event);
       },
@@ -385,9 +386,10 @@ function FileHelperHiddenInputsView(props) {
     }),
     Input({
       store: vm$.ui.input_file$,
-      class: "wx-filehelper-hidden-input",
-      rootClass: "wx-filehelper-hidden-input",
-      attributes: { type: "file" },
+      class: "dm-sr-only",
+      rootClass: "dm-sr-only",
+      rootAttributes: { n: "file-helper-file-field" },
+      attributes: { n: "file-helper-file-input", type: "file" },
       onMounted(event) {
         vm$.methods.setFileInputElement(event);
       },
@@ -405,7 +407,7 @@ function FileHelperPageView(props) {
   const vm$ = FileHelperViewModel(props);
   return View(
     {
-      class: "wx-filehelper-page dm-page",
+      class: "filehelper-page page",
       onMounted() {
         vm$.methods.ready();
       },
@@ -414,7 +416,7 @@ function FileHelperPageView(props) {
       },
     },
     [
-      View({ class: "wx-filehelper-container dm-panel" }, [
+      View({ class: "filehelper-container dm-panel" }, [
         FileHelperHeaderView({ store: vm$ }),
         Show({
           when: vm$.state.logged_in,
@@ -432,7 +434,7 @@ function FileHelperPageView(props) {
         ok() {
           return View(
             {
-              class: "wx-filehelper-toast dm-panel dm-shadow-popover",
+              class: "filehelper-toast dm-panel dm-shadow-popover",
               attributes: { role: "status", "aria-live": "polite" },
             },
             [vm$.state.toast_message],

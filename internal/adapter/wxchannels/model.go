@@ -375,9 +375,25 @@ func ToContent(obj *wxchannels.ChannelsObject) (*model.Content, any, error) {
 // BuildBrowseHistory converts an intercepted ChannelsObject into the standard
 // browse history result.
 func (a *ChannelsAdapter) BuildBrowseHistory(content_json json.RawMessage) (*adapter.BrowseHistoryResult, error) {
-	var obj wxchannels.ChannelsObject
-	if err := json.Unmarshal(content_json, &obj); err != nil {
-		return nil, fmt.Errorf("解析视频号内容失败: %w", err)
+	obj, live, is_live_page, err := parse_live_page_payload(content_json)
+	if err != nil {
+		return nil, err
+	}
+	if !is_live_page {
+		if err := json.Unmarshal(content_json, &obj); err != nil {
+			return nil, fmt.Errorf("解析视频号内容失败: %w", err)
+		}
+	} else {
+		if obj.LiveInfo == nil {
+			obj.LiveInfo = &wxchannels.ChannelsLiveInfo{}
+		}
+		if live.LiveInfo != nil {
+			obj.ID = live.LiveInfo.LiveId
+			obj.CreateTime = live.LiveInfo.StartTime
+		}
+		if live.LiveDescription != "" {
+			obj.ObjectDesc.Description = live.LiveDescription
+		}
 	}
 
 	account_username := strings.TrimSpace(obj.Contact.Username)
@@ -403,6 +419,9 @@ func (a *ChannelsAdapter) BuildBrowseHistory(content_json json.RawMessage) (*ada
 	cover_url := ""
 	cover_width := ""
 	cover_height := ""
+	if obj.LiveInfo != nil {
+		cover_url = strings.TrimSpace(obj.Contact.LiveCoverImgUrl)
+	}
 	media_list := obj.Files
 	if len(media_list) == 0 {
 		media_list = obj.ObjectDesc.Media
@@ -420,7 +439,9 @@ func (a *ChannelsAdapter) BuildBrowseHistory(content_json json.RawMessage) (*ada
 	publish_time := int64(obj.CreateTime)
 
 	content_type := "video"
-	if obj.ObjectDesc.MediaType == wxchannels.MediaTypePicture {
+	if obj.LiveInfo != nil {
+		content_type = "live"
+	} else if obj.ObjectDesc.MediaType == wxchannels.MediaTypePicture {
 		content_type = "album"
 	}
 
@@ -513,13 +534,58 @@ const (
 	mime_application_zip = "application/zip"
 )
 
+type live_page_payload struct {
+	Profile json.RawMessage `json:"profile"`
+	Live    json.RawMessage `json:"live"`
+}
+
+func parse_live_page_payload(content_json json.RawMessage) (wxchannels.ChannelsObject, wxchannels.JoinLivePayload, bool, error) {
+	var profile wxchannels.ChannelsObject
+	var live wxchannels.JoinLivePayload
+	var payload live_page_payload
+	if err := json.Unmarshal(content_json, &payload); err != nil {
+		return profile, live, false, err
+	}
+	if len(payload.Profile) == 0 && len(payload.Live) == 0 {
+		return profile, live, false, nil
+	}
+	if len(payload.Profile) == 0 || strings.TrimSpace(string(payload.Profile)) == "null" {
+		return profile, live, true, errors.New("直播数据缺少原始 profile")
+	}
+	if len(payload.Live) == 0 || strings.TrimSpace(string(payload.Live)) == "null" {
+		return profile, live, true, errors.New("直播数据缺少原始 live")
+	}
+	if err := json.Unmarshal(payload.Profile, &profile); err != nil {
+		return profile, live, true, fmt.Errorf("解析直播 profile 失败: %w", err)
+	}
+	if err := json.Unmarshal(payload.Live, &live); err != nil {
+		return profile, live, true, fmt.Errorf("解析直播 live 失败: %w", err)
+	}
+	return profile, live, true, nil
+}
+
 func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config_raw json.RawMessage) (*adapter.DownloadTaskResult, error) {
 	var config map[string]any
 	if err := json.Unmarshal(config_raw, &config); err != nil {
 		return nil, fmt.Errorf("解析下载配置失败: %w", err)
 	}
 
-	// Live stream detection: joinLive response contains liveSdkInfo
+	profile, live, is_live_page, err := parse_live_page_payload(content_json)
+	if err != nil {
+		return nil, err
+	}
+	if is_live_page {
+		live.Contact = &profile.Contact
+		if live.LiveDescription == "" {
+			live.LiveDescription = profile.ObjectDesc.Description
+		}
+		if live.LiveSdkInfo == nil || live.LiveSdkInfo.LiveCdnUrl == "" {
+			return nil, errors.New("直播数据缺少直播流地址")
+		}
+		return a.build_live_download_task(&live, config)
+	}
+
+	// Legacy live payload detection: joinLive response contains liveSdkInfo.
 	var jl wxchannels.JoinLivePayload
 	if json.Unmarshal(content_json, &jl) == nil && jl.LiveSdkInfo != nil && jl.LiveSdkInfo.LiveCdnUrl != "" {
 		return a.build_live_download_task(&jl, config)
@@ -826,6 +892,14 @@ func (a *ChannelsAdapter) build_live_download_task(jl *wxchannels.JoinLivePayloa
 		author_avatar_url = jl.Contact.HeadUrl
 	}
 
+	live_cover_url := ""
+	if jl.Contact != nil {
+		if author_avatar_url == "" {
+			author_avatar_url = jl.Contact.HeadUrl
+		}
+		live_cover_url = jl.Contact.LiveCoverImgUrl
+	}
+
 	title := config_string(config, "filename")
 	if title == "" {
 		if jl.LiveDescription != "" {
@@ -852,6 +926,7 @@ func (a *ChannelsAdapter) build_live_download_task(jl *wxchannels.JoinLivePayloa
 		ExternalId: live_id,
 		Type:       "live",
 		Title:      title,
+		CoverURL:   live_cover_url,
 		Timestamps: model.Timestamps{
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -902,6 +977,7 @@ func (a *ChannelsAdapter) build_live_download_task(jl *wxchannels.JoinLivePayloa
 			UniqueID:     unique_id,
 			PlatformId:   PlatformID,
 			Status:       model.TaskStatusWaiting,
+			CoverURL:     live_cover_url,
 			ConfigJSON:   string(config_json),
 			MetadataJSON: string(metadata_json),
 		},

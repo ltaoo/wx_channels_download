@@ -26,7 +26,9 @@ require (
 	github.com/Danny-Dasilva/CycleTLS/cycletls v1.0.23
 	github.com/adrg/xdg v0.4.0
 	github.com/andybalholm/brotli v1.1.1
-	github.com/dop251/goja v0.0.0-20241024094426-79f3a7efcdbd
+	github.com/andybalholm/cascadia v1.3.2
+	github.com/aymerick/douceur v0.2.0
+	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c
 	github.com/ebitengine/oto/v3 v3.2.0-alpha.4
 	github.com/evanw/esbuild v0.21.5
 	github.com/expr-lang/expr v1.16.9
@@ -110,8 +112,6 @@ require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/Danny-Dasilva/fhttp v0.0.0-20231127034941-9494939f30fa // indirect
 	github.com/Trisia/gosysproxy v1.1.0 // indirect
-	github.com/andybalholm/cascadia v1.3.2 // indirect
-	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/bytedance/sonic v1.14.0 // indirect
 	github.com/bytedance/sonic/loader v0.3.0 // indirect
 	github.com/cloudflare/circl v1.5.0 // indirect

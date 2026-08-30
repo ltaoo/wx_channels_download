@@ -1,4 +1,4 @@
-package wxchannelsadapter
+package wxchannels
 
 import (
 	"encoding/json"
@@ -7,127 +7,25 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/ltaoo/echo"
 	"github.com/rs/zerolog"
 
 	"wx_channel/frontend"
-	"wx_channel/internal/config"
-	"wx_channel/internal/interceptor"
-	"wx_channel/internal/interceptor/proxy"
-	"wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/util"
 )
 
-type interceptor_settings struct {
-	version                           string
-	debug_show_error                  bool
-	channels_disable_location_to_home bool
-	global_script_path                string
-	inject_content_script             string
-	frontend_variables                map[string]any
-	logger                            *zerolog.Logger
-}
-
-func new_interceptor_settings(c *config.Config, logger *zerolog.Logger) *interceptor_settings {
-	api_protocol := c.GetString("api.protocol")
-	api_bind_hostname := c.GetString("api.hostname")
-	api_port := c.GetInt("api.port")
-	api_host := config.APIClientHost(api_bind_hostname, api_port)
-	remote_server_protocol := c.GetString("download.remoteServer.protocol")
-	remote_server_hostname := c.GetString("download.remoteServer.hostname")
-	remote_server_port := c.GetInt("download.remoteServer.port")
-	max_running := c.GetInt("download.maxRunning")
-	if max_running == 0 {
-		max_running = 3
-	}
-	settings := &interceptor_settings{
-		version:                           c.Version,
-		debug_show_error:                  c.GetBool("debug.error"),
-		channels_disable_location_to_home: c.GetBool("channels.disableLocationToHome"),
-		global_script_path:                c.GlobalScriptPath,
-		inject_content_script:             c.ContentScriptContent,
-		frontend_variables: map[string]any{
-			"apiHost":                    api_host,
-			"apiOrigin":                  config.APIClientOrigin(api_protocol, api_bind_hostname, api_port),
-			"apiProtocol":                api_protocol,
-			"remoteServerEnabled":        c.GetBool("download.remoteServer.enabled"),
-			"remoteServerOrigin":         remote_server_protocol + "://" + remote_server_hostname + ":" + strconv.Itoa(remote_server_port),
-			"maxRunning":                 max_running,
-			"downloadFilenameTemplate":   c.GetString("download.filenameTemplate"),
-			"defaultHighest":             c.GetBool("channels.download.defaultHighest") || c.GetBool("download.defaultHighest"),
-			"downloadPauseWhenDownload":  c.GetBool("channels.download.pauseWhenDownload"),
-			"downloadInFrontend":         c.GetBool("channels.download.frontend"),
-			"downloadForceCheckAllFeeds": c.GetBool("channels.download.forceCheckAllFeeds"),
-		},
-		logger: logger,
-	}
-
-	if logger == nil {
-		return settings
-	}
-	if settings.global_script_path == "" {
-		logger.Info().
-			Str("file", "internal/adapter/wxchannels/interceptor.go").
-			Msg("wxchannels global script path is empty")
-	} else {
-		logger.Info().
-			Str("file", "internal/adapter/wxchannels/interceptor.go").
-			Str("path", settings.global_script_path).
-			Str("asset_path", frontend.UserGlobalScriptAssetPath(settings.global_script_path)).
-			Msg("wxchannels global script path configured")
-	}
-
-	return settings
-}
-
-// InterceptorPluginConfig contains the video-channel interceptor configuration.
-// It keeps scraper-specific settings out of the application startup layer.
-type InterceptorPluginConfig struct {
-	settings *interceptor_settings
-	logger   *zerolog.Logger
-}
-
-func NewConfig(cfg *config.Config, logger *zerolog.Logger) *InterceptorPluginConfig {
-	component_logger := logger
-	if logger != nil {
-		derived_logger := logger.With().Str("component", "wxchanenls_adapter").Logger()
-		component_logger = &derived_logger
-	}
-	return &InterceptorPluginConfig{
-		settings: new_interceptor_settings(cfg, component_logger),
-		logger:   component_logger,
-	}
-}
-
-// GetPlugins returns the video-channel scraper plugins with callbacks wired
-// to adapter-owned persistence and browse record events.
-func (c *InterceptorPluginConfig) GetPlugins() []interface{} {
-	if c == nil || c.settings == nil {
-		return nil
-	}
-	if c.logger != nil {
-		c.logger.Info().
-			Str("file", "internal/adapter/wxchannels/interceptor.go").
-			Bool("global_script_configured", c.settings.global_script_path != "").
-			Str("global_script_path", c.settings.global_script_path).
-			Msg("wxchannels interceptor config: creating proxy plugins")
-	}
-
-	raw := create_interceptor_plugins(c.settings)
-	plugins := make([]interface{}, len(raw))
-	if c.logger != nil {
-		c.logger.Info().
-			Str("file", "internal/adapter/wxchannels/interceptor.go").
-			Int("plugin_count", len(raw)).
-			Msg("wxchannels interceptor config: proxy plugins created")
-	}
-	for i, p := range raw {
-		plugins[i] = p
-	}
-	return plugins
+// InterceptorConfig contains the application values needed by the wxchannels
+// proxy interception rules.
+type InterceptorConfig struct {
+	Version               string
+	DebugShowError        bool
+	DisableLocationToHome bool
+	GlobalScriptPath      string
+	InjectContentScript   string
+	FrontendVariables     map[string]any
 }
 
 var (
@@ -149,6 +47,7 @@ var (
 	js_feed_profile_reg                       = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
 	js_comment_list_reg                       = regexp.MustCompile(`async finderGetCommentList\((\w+)\)\{(.*?)\}async`)
 	js_pc_flow_reg                            = regexp.MustCompile(`async finderPcFlow\((\w+)\)\{(.*?)\}async`)
+	js_get_recommend_tabs_from_service_reg    = regexp.MustCompile(`async getRecommendTabsFromService\(\)\{(.*?)\}async`)
 	js_live_info_reg                          = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
 	js_live_feed_list_reg                     = regexp.MustCompile(`async finderLiveUserPage\((\w+)\)\{(.*?)\}async`)
 	js_join_live_reg                          = regexp.MustCompile(`async joinLive\((\w+)\)\{(.*?)\}async`)
@@ -160,6 +59,7 @@ var (
 	js_finder_get_play_history_reg            = regexp.MustCompile(`async finderGetPlayHistory\((\w+)\)\{(.*?)\}async`)
 	js_finder_get_interactioned_feed_list_reg = regexp.MustCompile(`async finderGetInteractionedFeedList\((\w+)\)\{(.*?)\}\}const`)
 	js_finder_get_feed_h5_url                 = regexp.MustCompile(`async finderGetFeedH5Url\((\w+)\)\{(.*?)\}\}const`)
+	js_preload_feed_reg                       = regexp.MustCompile(` ([a-zA-Z_$][a-zA-Z0-9_$]*\.invoke\([a-zA-Z_$][a-zA-Z0-9_$]*\));\(`)
 	js_go_to_prev_flow_reg                    = regexp.MustCompile(`goToPrevFlowFeed:([a-zA-Z_$]{1,})`)
 	js_go_to_next_flow_reg                    = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z_$]{1,})`)
 	js_flow_tab_reg                           = regexp.MustCompile(`flowTab:([a-zA-Z_$]{1,})`)
@@ -167,18 +67,23 @@ var (
 	js_load_local_playlist_reg                = regexp.MustCompile(`loadLocalPlaylist:([a-zA-Z]{1,})`)
 )
 
-func create_interceptor_plugins(cfg *interceptor_settings) []*proxy.Plugin {
-	if cfg == nil {
-		cfg = &interceptor_settings{}
+// NewInterceptorPlugins builds the Echo interception and rewrite rules owned by
+// the wxchannels scraper.
+func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*echo.Plugin {
+	if logger == nil {
+		nop_logger := zerolog.Nop()
+		logger = &nop_logger
+	} else {
+		component_logger := logger.With().Str("component", "wxchannels_scraper").Logger()
+		logger = &component_logger
 	}
-	logger := cfg.logger
-	version := cfg.version
+	version := cfg.Version
 	asset_version := version
 	if asset_version == "" {
 		asset_version = "static"
 	}
 	version_query := url.Values{"v": []string{asset_version}}
-	variables := cfg.frontend_variables
+	variables := cfg.FrontendVariables
 	if variables == nil {
 		variables = map[string]any{}
 	}
@@ -186,39 +91,41 @@ func create_interceptor_plugins(cfg *interceptor_settings) []*proxy.Plugin {
 	url_build := frontend.NewURLBuild(asset_base_url, nil)
 	v := "?t=" + version
 	global_script_asset_path := ""
-	if cfg.global_script_path != "" {
-		global_script_asset_path = frontend.UserGlobalScriptAssetPath(cfg.global_script_path)
+	if cfg.GlobalScriptPath != "" {
+		global_script_asset_path = frontend.UserGlobalScriptAssetPath(cfg.GlobalScriptPath)
 		logger.Info().
-			Str("file", "internal/adapter/wxchannels/interceptor.go").
-			Str("path", cfg.global_script_path).
+			Str("file", "pkg/scraper/wxchannels/interceptor.go").
+			Str("path", cfg.GlobalScriptPath).
 			Str("asset_path", global_script_asset_path).
 			Msg("wxchannels interceptor initialized with global script")
 	}
-	plugins := make([]*proxy.Plugin, 0, 5)
-	plugin_1 := &proxy.Plugin{
+	plugins := make([]*echo.Plugin, 0, 2)
+	plugin_1 := &echo.Plugin{
 		Match: "channels.weixin.qq.com",
-		OnRequest: func(ctx proxy.Context) {
-			pathname := ctx.Req().URL.Path
-			if interceptor.MockFrontendStaticAsset(ctx, pathname, interceptor.FrontendStaticAssetMockOptions{
-				PlatformPrefix: static_assets_path + "/",
-				PlatformFS:     wxchannels.InjectAssets(),
-				UserScriptPath: cfg.global_script_path,
+		OnRequest: func(ctx *echo.Context) {
+			pathname := ctx.Req.URL.Path
+			if frontend.MockStaticAsset(pathname, ctx.Req.Header, func(status int, headers map[string]string, body string) {
+				ctx.Mock(status, headers, body)
+			}, frontend.StaticAssetMockOptions{
+				PlatformPrefix: InjectAssetsPath + "/",
+				PlatformFS:     InjectAssets(),
+				UserScriptPath: cfg.GlobalScriptPath,
 				Logger:         logger,
 			}) {
 				return
 			}
 		},
-		OnResponse: func(ctx proxy.Context) {
+		OnResponse: func(ctx *echo.Context) {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
-			hostname := ctx.Req().URL.Hostname()
-			pathname := ctx.Req().URL.Path
+			hostname := ctx.Req.URL.Hostname()
+			pathname := ctx.Req.URL.Path
 			// /__assets is reserved for scripts and styles served by OnRequest.
 			// Never treat an upstream SPA fallback for an asset as an HTML page.
 			if strings.HasPrefix(pathname, asset_base_url+"/") {
 				return
 			}
-			if pathname == "/web/pages/feed" && cfg.channels_disable_location_to_home && ctx.Res().StatusCode == 302 {
-				original_req := ctx.Req()
+			if pathname == "/web/pages/feed" && cfg.DisableLocationToHome && ctx.Res.StatusCode == http.StatusFound {
+				original_req := ctx.Req
 				u := &url.URL{Scheme: "https", Host: original_req.URL.Hostname(), Path: pathname, RawQuery: original_req.URL.RawQuery}
 				q := u.Query()
 				q.Set("flow", "2")
@@ -244,9 +151,9 @@ func create_interceptor_plugins(cfg *interceptor_settings) []*proxy.Plugin {
 						if ct == "" || strings.Contains(lct, "text/html") {
 							ct = "text/html; charset=utf-8"
 						}
-						ctx.SetStatusCode(200)
-						ctx.Res().Header.Del("Content-Encoding")
-						ctx.Res().Header.Del("Content-Length")
+						ctx.Res.StatusCode = http.StatusOK
+						ctx.Res.Header.Del("Content-Encoding")
+						ctx.Res.Header.Del("Content-Length")
 						ctx.SetResponseHeader("Content-Type", ct)
 						ctx.SetResponseBody(string(body_2))
 						resp_content_type = strings.ToLower(ct)
@@ -255,7 +162,7 @@ func create_interceptor_plugins(cfg *interceptor_settings) []*proxy.Plugin {
 			}
 			if hostname == "channels.weixin.qq.com" && strings.Contains(resp_content_type, "text/html") {
 				logger.Info().
-					Str("file", "internal/adapter/wxchannels/interceptor.go").
+					Str("file", "pkg/scraper/wxchannels/interceptor.go").
 					Str("hostname", hostname).
 					Str("pathname", pathname).
 					Msg("match channels.weixin.qq.com")
@@ -264,25 +171,25 @@ func create_interceptor_plugins(cfg *interceptor_settings) []*proxy.Plugin {
 					fmt.Println("[error]get response body failed,", err)
 					return
 				}
-				html := string(resp_body)
+				html := resp_body
 				html = script_src_reg.ReplaceAllString(html, `src="$1.js`+v+`"`)
 				html = script_href_reg.ReplaceAllString(html, `href="$1.js`+v+`"`)
 
 				var injected strings.Builder
 				crossorigin_attr := ` crossorigin="anonymous"`
-				if cfg.debug_show_error {
+				if cfg.DebugShowError {
 					/** Global error capture and show dialog */
 					frontend.AppendScripts(&injected, crossorigin_attr, url_build("/inject/error.js", version_query))
 				}
 				frontend.AppendStylesheets(&injected, "", url_build("/inject/components.css", version_query))
-				frontend.AppendStylesheets(&injected, "", url_build("/public/timeless/0.31.4/timeless.weui.css"))
+				frontend.AppendStylesheets(&injected, "", url_build("/public/timeless/0.32.0/timeless.weui.css"))
 				frontend.AppendScripts(
 					&injected,
 					crossorigin_attr,
-					url_build("/public/timeless/0.31.4/timeless.umd.min.js"),
-					url_build("/public/timeless/0.31.4/timeless.weui.umd.min.js"),
-					url_build("/public/timeless/0.31.4/timeless.dom.umd.min.js"),
-					url_build("/public/timeless/0.31.4/timeless.web.umd.min.js"),
+					url_build("/public/timeless/0.32.0/timeless.umd.min.js"),
+					url_build("/public/timeless/0.32.0/timeless.weui.umd.min.js"),
+					url_build("/public/timeless/0.32.0/timeless.dom.umd.min.js"),
+					url_build("/public/timeless/0.32.0/timeless.web.umd.min.js"),
 				)
 				frontend_config := make(map[string]any, len(variables)+2)
 				for key, value := range variables {
@@ -291,7 +198,7 @@ func create_interceptor_plugins(cfg *interceptor_settings) []*proxy.Plugin {
 				frontend_config["version"] = version
 				frontend_config["assets_base_url"] = asset_base_url
 				logger.Info().
-					Str("file", "internal/adapter/wxchannels/interceptor.go").
+					Str("file", "pkg/scraper/wxchannels/interceptor.go").
 					Interface("variables", variables).
 					Interface("frontend_config", frontend_config).
 					Msg("wxchannels frontend config built")
@@ -330,13 +237,13 @@ func create_interceptor_plugins(cfg *interceptor_settings) []*proxy.Plugin {
 				if global_script_asset_path != "" {
 					frontend.AppendScripts(&injected, crossorigin_attr, global_script_asset_path)
 					logger.Info().
-						Str("file", "internal/adapter/wxchannels/interceptor.go").
-						Str("path", cfg.global_script_path).
+						Str("file", "pkg/scraper/wxchannels/interceptor.go").
+						Str("path", cfg.GlobalScriptPath).
 						Str("asset_path", global_script_asset_path).
 						Msg("after append global script")
 				}
-				if cfg.inject_content_script != "" {
-					frontend.AppendInlineScript(&injected, "", cfg.inject_content_script)
+				if cfg.InjectContentScript != "" {
+					frontend.AppendInlineScript(&injected, "", cfg.InjectContentScript)
 				}
 				if pathname == "/web/pages/home" {
 					frontend.AppendScripts(&injected, crossorigin_attr, asset_url(asset_base_url, "/inject/channels.home.js", version_query))
@@ -356,12 +263,12 @@ func create_interceptor_plugins(cfg *interceptor_settings) []*proxy.Plugin {
 			}
 		},
 	}
-	plugin_2 := &proxy.Plugin{
+	plugin_2 := &echo.Plugin{
 		Match: "res.wx.qq.com",
-		OnResponse: func(ctx proxy.Context) {
+		OnResponse: func(ctx *echo.Context) {
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
-			hostname := ctx.Req().URL.Hostname()
-			pathname := ctx.Req().URL.Path
+			hostname := ctx.Req.URL.Hostname()
+			pathname := ctx.Req.URL.Path
 			if hostname == "res.wx.qq.com" && strings.Contains(resp_content_type, "application/javascript") {
 				if util.Includes(pathname, "wasm_video_decode") {
 					return
@@ -372,13 +279,14 @@ func create_interceptor_plugins(cfg *interceptor_settings) []*proxy.Plugin {
 					return
 				}
 				// fmt.Println("response2", hostname, pathname, resp_content_type, ctx.Res().StatusCode)
-				js_script := string(resp_body)
+				js_script := resp_body
 				js_script = js_from_reg.ReplaceAllString(js_script, `from"$1.js`+v+`"`)
 				js_script = js_dep_reg.ReplaceAllString(js_script, `"js/$1.js`+v+`"`)
 				js_script = js_lazy_import_reg.ReplaceAllString(js_script, `import("$1.js`+v+`")`)
 				js_script = js_import_reg.ReplaceAllString(js_script, `import"$1.js`+v+`"`)
 
 				if strings.Contains(pathname, "virtual_svg-icons-register.publish") {
+					js_script = js_preload_feed_reg.ReplaceAllString(js_script, ` (async()=>{const _r = await $1; typeof WXU !== "undefined" && WXU.emit("channels:PreloadFeeds", _r.data.object); return _r;})();(`)
 					flow_list_variable_name := "yt"
 					if m := js_flow_tab_reg.FindStringSubmatch(js_script); len(m) >= 2 {
 						flow_list_variable_name = m[1]
@@ -432,6 +340,18 @@ func create_interceptor_plugins(cfg *interceptor_settings) []*proxy.Plugin {
 					return result;
 				}async`
 						js_script = js_pc_flow_reg.ReplaceAllString(js_script, js_pc_flow)
+					}
+					{
+						js_get_recommend_tabs_from_service := `async getRecommendTabsFromService() {
+					var result = await (async () => {
+						$1;
+					})();
+					var feeds = result.data ? result.data.object : [];
+					// console.log("before RecommendFeedsLoaded", result.data);
+					typeof WXU !== "undefined" && WXU.emit("channels:RecommendFeedsLoaded", feeds);
+					return result;
+				}async`
+						js_script = js_get_recommend_tabs_from_service_reg.ReplaceAllString(js_script, js_get_recommend_tabs_from_service)
 					}
 					{
 						js_recommend_feeds := `async finderGetRecommend($1) {

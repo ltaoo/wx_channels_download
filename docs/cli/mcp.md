@@ -9,6 +9,7 @@ title: MCP Server
 - `get_config`：获取应用配置 schema、当前值和解析后的生效值；敏感值不会返回明文。
 - `update_config`：批量修改非只读配置，保存成功后安排应用优雅重启。
 - `get_restart_status`：通过 `update_config` 返回的确认令牌验证新进程和新配置是否已经生效。
+- `deploy_sph_worker`：读取 Cloudflare 配置，部署或覆盖视频号查询 Worker。
 - `get_platform_status`：获取各平台当前可用状态。
 - `fetch_content`：传入平台内容链接，等待解析完成并返回规范化内容。
 - `download_content`：复用 `fetch_content` 的 `job_id`，或直接传入链接，创建并启动下载任务。
@@ -40,6 +41,10 @@ http://127.0.0.1:2022/mcp
 ```
 
 设置页可立即启用或关闭 Streamable HTTP MCP。将 `api.hostname` 配置为局域网地址时，只应向可信网络开放。
+
+## Worker 部署
+
+`deploy_sph_worker` 不接收 Cloudflare Token、Cookie 等敏感参数，而是读取应用配置中的 `cloudflare.accountId`、`cloudflare.apiToken`、`cloudflare.sphWorkerName`、`cloudflare.sphCookie` 和 `cloudflare.sphCredential`。它会部署或覆盖同名远端 Worker，调用前必须获得用户确认。`get_config` 可用时，可先用它检查这些字段的 `configured` 状态；敏感字段不会返回明文。
 
 ## 微信视频号工具
 

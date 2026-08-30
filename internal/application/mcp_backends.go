@@ -7,9 +7,48 @@ import (
 	"fmt"
 	"strings"
 
+	"wx_channel/internal/config"
 	"wx_channel/internal/mcpserver"
 	"wx_channel/internal/services"
+	"wx_channel/internal/workers/sph"
 )
+
+type mcp_sph_deployer struct {
+	config *config.Config
+}
+
+// NewMCPSphDeployer creates the application-owned deployment backend used by
+// MCP transports. Cloudflare credentials remain in the application config.
+func NewMCPSphDeployer(cfg *config.Config) mcpserver.SphDeployer {
+	if cfg == nil {
+		return nil
+	}
+	return &mcp_sph_deployer{config: cfg}
+}
+
+func (d *mcp_sph_deployer) DeploySphWorker(ctx context.Context) (*mcpserver.SphDeployResult, error) {
+	if d == nil || d.config == nil {
+		return nil, fmt.Errorf("应用配置未初始化")
+	}
+	result, err := sph.Deploy(ctx, sph.DeployOptions{
+		AccountID:     d.config.GetString("cloudflare.accountId"),
+		AuthToken:     d.config.GetString("cloudflare.apiToken"),
+		WorkerName:    d.config.GetString("cloudflare.sphWorkerName"),
+		Cookie:        d.config.GetString("cloudflare.sphCookie"),
+		Credential:    d.config.GetString("cloudflare.sphCredential"),
+		RepositoryDir: d.config.RootDir,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &mcpserver.SphDeployResult{
+		WorkerID:         result.WorkerID,
+		WorkerName:       result.WorkerName,
+		WorkerURL:        result.WorkerURL,
+		WorkerURLWarning: result.WorkerURLWarning,
+		ScriptBytes:      result.ScriptBytes,
+	}, nil
+}
 
 // mcp_data_reader adapts the transport-neutral data query service to the MCP
 // consumer interface. Other transports can call DataQueryService directly.

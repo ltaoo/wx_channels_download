@@ -41,6 +41,7 @@ function DashboardViewModel() {
     name: "",
     token: "",
     expires_in_seconds: "604800",
+    credits: "0",
   });
   const access_token_action_ = refobj({
     creating: false,
@@ -76,6 +77,9 @@ function DashboardViewModel() {
       expires_at: Number(access_token.expires_at || 0),
       created_at: Number(access_token.created_at || 0),
       last_used_at: Number(access_token.last_used_at || 0),
+      credit_balance: Number(access_token.credit_balance || 0),
+      total_credits_granted: Number(access_token.total_credits_granted || 0),
+      total_credits_used: Number(access_token.total_credits_used || 0),
     };
   }
 
@@ -178,6 +182,13 @@ function DashboardViewModel() {
       return;
     }
     const expires_value = String(draft.expires_in_seconds || "");
+    const credits = Number(draft.credits || 0);
+    if (!Number.isInteger(credits) || credits < 0 || credits > 1000000000) {
+      set_access_token_action({
+        error: "初始积分必须是 0–1000000000 之间的整数",
+      });
+      return;
+    }
     set_access_token_action({
       creating: true,
       copy_message: "",
@@ -193,6 +204,7 @@ function DashboardViewModel() {
           name,
           token: token || null,
           expires_in_seconds: expires_value === "" ? null : Number(expires_value),
+          credits,
         }),
       });
       const value = await response.json().catch(() => ({}));
@@ -213,6 +225,7 @@ function DashboardViewModel() {
         name: "",
         token: "",
         expires_in_seconds: expires_value,
+        credits: String(credits),
       });
       set_access_token_action({
         creating: false,
@@ -253,6 +266,58 @@ function DashboardViewModel() {
       const value = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(value.error || "设置 Token 过期失败：HTTP " + response.status);
+      }
+      sync_access_tokens(
+        access_tokens_.value.map((candidate) =>
+          candidate.id === access_token_id
+            ? normalize_access_token(value.access_token)
+            : candidate,
+        ),
+      );
+      set_access_token_action({ busy_id: "", busy_action: "", error: "" });
+    } catch (error) {
+      set_access_token_action({
+        busy_id: "",
+        busy_action: "",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  async function grant_access_token_credits(access_token_id) {
+    const access_token = access_tokens_.value.find(
+      (candidate) => candidate.id === access_token_id,
+    );
+    if (!access_token) return;
+    const requested_amount = window.prompt(
+      "为调用 Token“" + access_token.name + "”充值多少积分？",
+      "100",
+    );
+    if (requested_amount === null) return;
+    const amount = Number(requested_amount.trim());
+    if (!Number.isInteger(amount) || amount <= 0 || amount > 10000000) {
+      set_access_token_action({ error: "单次充值积分必须是 1–10000000 之间的整数" });
+      return;
+    }
+    set_access_token_action({
+      busy_id: access_token_id,
+      busy_action: "credits",
+      error: "",
+    });
+    try {
+      const response = await fetch(
+        "/admin/api/access-tokens/" + encodeURIComponent(access_token_id) + "/credits",
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ amount, reason: "admin console credit grant" }),
+        },
+      );
+      const value = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(value.error || "充值积分失败：HTTP " + response.status);
       }
       sync_access_tokens(
         access_tokens_.value.map((candidate) =>
@@ -759,6 +824,7 @@ function DashboardViewModel() {
     setDownloadDraft: set_download_draft,
     setAccessTokenDraft: set_access_token_draft,
     createAccessToken: create_access_token,
+    grantAccessTokenCredits: grant_access_token_credits,
     expireAccessToken: expire_access_token,
     removeAccessToken: remove_access_token,
     copyCreatedAccessToken: copy_created_access_token,
@@ -1069,6 +1135,13 @@ function AccessTokenCardView(props) {
     access_token_,
     (access_token) => "创建于 " + format_time(access_token.created_at),
   );
+  const credits_ = computed(
+    access_token_,
+    (access_token) =>
+      "积分余额 " + String(access_token.credit_balance) +
+      " · 已消耗 " + String(access_token.total_credits_used) +
+      " · 累计发放 " + String(access_token.total_credits_granted),
+  );
   const busy_ = computed(
     vm$.state.access_token_action,
     (action) => Boolean(action.busy_id),
@@ -1087,6 +1160,13 @@ function AccessTokenCardView(props) {
       action.busy_id === access_token_id && action.busy_action === "remove"
         ? "移除中…"
         : "移除",
+  );
+  const credits_label_ = computed(
+    vm$.state.access_token_action,
+    (action) =>
+      action.busy_id === access_token_id && action.busy_action === "credits"
+        ? "充值中…"
+        : "充值积分",
   );
 
   return View(
@@ -1146,6 +1226,13 @@ function AccessTokenCardView(props) {
           View(
             {
               class: "access-token-time",
+              attributes: { n: "access-token-credits" },
+            },
+            [credits_],
+          ),
+          View(
+            {
+              class: "access-token-time",
               attributes: { n: "access-token-last-used" },
             },
             [usage_],
@@ -1165,6 +1252,16 @@ function AccessTokenCardView(props) {
           attributes: { n: "access-token-card-actions" },
         },
         [
+          Button(
+            {
+              attributes: { n: "grant-access-token-credits-button" },
+              disabled: busy_,
+              onClick() {
+                return vm$.methods.grantAccessTokenCredits(access_token_id);
+              },
+            },
+            [credits_label_],
+          ),
           Show({
             when: expire_visible_,
             ok() {
@@ -1211,6 +1308,10 @@ function AccessTokenManagementView(props) {
   const expires_in_seconds_ = computed(
     vm$.state.access_token_draft,
     (draft) => String(draft.expires_in_seconds || ""),
+  );
+  const credits_ = computed(
+    vm$.state.access_token_draft,
+    (draft) => String(draft.credits ?? "0"),
   );
   const creating_ = computed(
     vm$.state.access_token_action,
@@ -1273,7 +1374,7 @@ function AccessTokenManagementView(props) {
                   attributes: { n: "access-token-management-description" },
                 },
                 [
-                  "Token 可自动生成或手动指定，用途/使用人可选填。明文只显示一次；过期或移除后立即停止访问。",
+                  "每次调用消耗 1 积分。Token 可设置初始积分并随时充值；明文只显示一次，过期或移除后立即停止访问。",
                 ],
               ),
             ],
@@ -1335,6 +1436,27 @@ function AccessTokenManagementView(props) {
                 },
                 onInput(event) {
                   vm$.methods.setAccessTokenDraft("token", String(event.target.value));
+                },
+              }),
+            ],
+          ),
+          View(
+            {
+              class: "test-field",
+              attributes: { n: "access-token-credits-field" },
+            },
+            [
+              "初始积分",
+              Input({
+                class: "test-control",
+                value: credits_,
+                attributes: {
+                  n: "access-token-credits-input",
+                  "aria-label": "Token 初始积分",
+                  inputmode: "numeric",
+                },
+                onInput(event) {
+                  vm$.methods.setAccessTokenDraft("credits", String(event.target.value));
                 },
               }),
             ],

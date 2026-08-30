@@ -291,6 +291,7 @@ export function ThirdPartyDownloaderModel(props = {}) {
     select_kind$: new Timeless.vm.SelectCore({
       defaultValue: saved.kind,
       placeholder: "选择下载器",
+      position: "item-aligned",
       options: THIRD_PARTY_DOWNLOADER_OPTIONS.map(
         (option) =>
           new Timeless.vm.SelectItemCore({

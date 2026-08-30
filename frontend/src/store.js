@@ -126,16 +126,24 @@ function lazy(module_url, css_url) {
   };
 }
 
+const route_animation = Object.freeze({
+  in: "route-view--enter",
+  out: "route-view--exit",
+});
+const animated_route_options = Object.freeze({ animation: route_animation });
+
 const routes_configure = {
   filehelper: {
     title: "微信文件传输助手",
     pathname: "/filehelper",
     component: lazy("src/pages/filehelper.js", "src/pages/filehelper.css"),
+    options: animated_route_options,
   },
   preview: {
     title: "预览",
     pathname: "/preview",
     component: lazy("src/pages/preview.js", "src/pages/preview.css"),
+    options: animated_route_options,
   },
   shell: {
     title: "首页",
@@ -146,17 +154,20 @@ const routes_configure = {
         is_default: true,
         title: "下载",
         pathname: "/download",
-        component: lazy("src/pages/downloadv2.js", "src/pages/preview.css"),
+        component: lazy("src/pages/downloadv2.js", "src/pages/downloadv2.css"),
+        // options: animated_route_options,
       },
       scraper: {
         title: "内容抓取",
         pathname: "/scraper",
         component: lazy("src/pages/scraper.js", "src/pages/scraper.css"),
+        // options: animated_route_options,
       },
       content: {
         title: "内容管理",
         pathname: "/content",
-        component: lazy("src/pages/content.js", "src/pages/content_detail.css"),
+        component: lazy("src/pages/content.js", "src/pages/content.css"),
+        // options: animated_route_options,
       },
       content_detail: {
         title: "内容详情",
@@ -165,21 +176,28 @@ const routes_configure = {
           "src/pages/content_detail.js",
           "src/pages/content_detail.css",
         ),
+        // options: animated_route_options,
       },
       browsehistory: {
         title: "浏览记录",
         pathname: "/browsehistory",
-        component: lazy("src/pages/browsehistory.js"),
+        component: lazy(
+          "src/pages/browsehistory.js",
+          "src/pages/browsehistory.css",
+        ),
+        // options: animated_route_options,
       },
       account: {
         title: "帐号管理",
         pathname: "/account",
         component: lazy("src/pages/account.js", "src/pages/account.css"),
+        // options: animated_route_options,
       },
       logs: {
         title: "日志",
         pathname: "/logs",
-        component: lazy("src/pages/logs.js"),
+        component: lazy("src/pages/logs.js", "src/pages/logs.css"),
+        // options: animated_route_options,
       },
     },
   },

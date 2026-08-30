@@ -50,7 +50,7 @@ func Start(cfg *config.Config) error {
 	b := velo.NewApp(&velo.VeloAppOpt{Mode: velo.ModeHttp})
 	if err := b.Migrate(&velo.VeloDatabaseOpt{
 		DBType:                    velo.DBTypeSQLite,
-		DBPath:                    cfg.DBPath,
+		DBPath:                    database.SQLiteDSN(cfg.DBPath),
 		Migrations:                &database.Migrations,
 		DisableTimestampCallbacks: true,
 	}); err != nil {

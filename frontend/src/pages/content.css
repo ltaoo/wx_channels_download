@@ -1,0 +1,99 @@
+@import url("./content_detail.css");
+
+.content-list-page {
+  background: var(--dm-content-bg);
+}
+
+.content-scope-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--dm-space-2);
+  white-space: nowrap;
+}
+
+.content-row-clickable {
+  cursor: pointer;
+}
+
+.content-row-clickable:hover {
+  position: relative;
+  z-index: 1;
+  background: var(--dm-content-panel-soft);
+  box-shadow: inset var(--dm-border-width-strong) 0 var(--dm-color-primary-fill);
+}
+
+.content-row-stat {
+  flex: 0 0 auto;
+  min-height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--dm-space-1-5);
+  padding: 0 var(--dm-space-2);
+  border: var(--dm-border-width) solid var(--dm-content-border);
+  border-radius: var(--dm-radius-badge);
+  background: var(--dm-content-panel-soft);
+  font-weight: var(--dm-font-weight-medium);
+  white-space: nowrap;
+}
+
+.content-row-stat-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.content-row-stat-value {
+  flex: 0 0 auto;
+  font-weight: var(--dm-font-weight-semibold);
+}
+
+.content-row-stat-in-progress {
+  /* border-color: color-mix(in srgb, var(--dm-color-warning) 28%, transparent); */
+  background: var(--dm-color-warning-soft);
+  color: var(--dm-color-warning);
+}
+
+.content-row-stat-success {
+  /* border-color: var(--dm-color-info-border); */
+  background: var(--dm-color-success-soft);
+  color: var(--dm-color-success);
+}
+
+.content-row-stat-failed {
+  /* border-color: var(--dm-color-danger-border); */
+  background: var(--dm-color-danger-soft);
+  color: var(--dm-color-danger);
+}
+
+.content-row-stat-files {
+  /* border-color: var(--dm-color-primary-border); */
+  background: var(--dm-color-primary-soft);
+  color: var(--dm-color-primary);
+}
+
+.content-row-stats {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dm-space-1-5);
+  color: var(--dm-content-muted);
+  font-size: var(--dm-font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 760px) {
+  .content-list-page .dm-table-row:not(.dm-table-header) {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .content-list-page .content-row-meta {
+    grid-row: 1 / 3;
+    grid-column: 2;
+    justify-self: end;
+  }
+
+  .content-list-page .content-row-stats {
+    display: none;
+  }
+}

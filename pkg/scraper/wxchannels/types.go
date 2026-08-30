@@ -192,11 +192,12 @@ type ChannelsContactExtInfo struct {
 }
 
 type ChannelsContact struct {
-	Username    string `json:"username"`
-	Nickname    string `json:"nickname"`
-	HeadUrl     string `json:"headUrl"`
-	Signature   string `json:"signature"`
-	CoverImgUrl string `json:"coverImgUrl"`
+	Username        string `json:"username"`
+	Nickname        string `json:"nickname"`
+	HeadUrl         string `json:"headUrl"`
+	Signature       string `json:"signature"`
+	CoverImgUrl     string `json:"coverImgUrl"`
+	LiveCoverImgUrl string `json:"liveCoverImgUrl"`
 }
 
 type ShortTitle struct {
@@ -744,16 +745,32 @@ type SphProfile struct {
 	ErrMsg          string `json:"err_msg,omitempty"`
 }
 
-// JoinLivePayload is the structure used for joinLive response detection.
-// The frontend merges joinLive data with feed profile info before sending.
+type JoinLiveInfo struct {
+	LiveId    string `json:"liveId"`
+	StartTime int    `json:"startTime"`
+}
+
+func (i *JoinLiveInfo) UnmarshalJSON(data []byte) error {
+	type alias JoinLiveInfo
+	aux := &struct {
+		LiveId flexibleString `json:"liveId"`
+		*alias
+	}{
+		alias: (*alias)(i),
+	}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	i.LiveId = string(aux.LiveId)
+	return nil
+}
+
+// JoinLivePayload is the raw joinLive response used for live stream detection.
 type JoinLivePayload struct {
 	LiveSdkInfo *struct {
 		LiveCdnUrl string `json:"liveCdnUrl"`
 	} `json:"liveSdkInfo"`
-	LiveInfo *struct {
-		LiveId    string `json:"liveId"`
-		StartTime int    `json:"startTime"`
-	} `json:"liveInfo"`
+	LiveInfo        *JoinLiveInfo    `json:"liveInfo"`
 	LiveDescription string           `json:"liveDescription"`
 	Nickname        string           `json:"nickname"`
 	Username        string           `json:"username"`

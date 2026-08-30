@@ -14,6 +14,8 @@ import { DurableObject } from "cloudflare:workers";
  * @property {string} id
  * @property {string} method
  * @property {string} publisher_device_id
+ * @property {string | null} access_token_id
+ * @property {number} credit_cost
  * @property {string | null} target_device_id
  * @property {string | null} idempotency_key
  * @property {string} args_json
@@ -63,6 +65,23 @@ import { DurableObject } from "cloudflare:workers";
  * @property {number | null} expires_at
  * @property {number} created_at
  * @property {number | null} last_used_at
+ * @property {number | null} revoked_at
+ * @property {number} credit_balance
+ * @property {number} total_credits_granted
+ * @property {number} total_credits_used
+ */
+
+/**
+ * @typedef {Object} CreditTransactionRow
+ * @property {string} id
+ * @property {string} access_token_id
+ * @property {string | null} task_id
+ * @property {"grant" | "charge" | "adjustment"} type
+ * @property {number} amount
+ * @property {number} balance_after
+ * @property {string | null} method
+ * @property {string} note
+ * @property {number} created_at
  */
 
 /**
@@ -76,6 +95,13 @@ import { DurableObject } from "cloudflare:workers";
  * @property {string} [name]
  * @property {string | null} [token]
  * @property {number | null} [expires_in_seconds]
+ * @property {number} [credits]
+ */
+
+/**
+ * @typedef {Object} AdjustCreditsBody
+ * @property {number} [amount]
+ * @property {string} [reason]
  */
 
 /**
@@ -143,26 +169,31 @@ const MIN_ACCESS_TOKEN_LENGTH = 16;
 const MAX_ACCESS_TOKEN_LENGTH = 256;
 const MAX_ACCESS_TOKEN_LIFETIME_SECONDS = 366 * 24 * 60 * 60;
 const INVOKE_TIMEOUT_MILLISECONDS = 10_000;
+const DEFAULT_CALL_CREDIT_COST = 1;
+const MAX_CREDIT_BALANCE = 1_000_000_000;
+const MAX_CREDIT_ADJUSTMENT = 10_000_000;
 
 /**
  * @param {unknown} value
  * @param {number} [status]
+ * @param {HeadersInit} [headers]
  * @returns {Response}
  */
-function json_response(value, status = 200) {
+function json_response(value, status = 200, headers = {}) {
   return Response.json(value, {
     status,
-    headers: { "Cache-Control": "no-store" },
+    headers: { ...headers, "Cache-Control": "no-store" },
   });
 }
 
 /**
  * @param {string} error
  * @param {number} status
+ * @param {HeadersInit} [headers]
  * @returns {Response}
  */
-function error_response(error, status) {
-  return json_response({ error }, status);
+function error_response(error, status, headers = {}) {
+  return json_response({ error }, status, headers);
 }
 
 /**
@@ -251,11 +282,52 @@ function access_token_value(row, now = Date.now()) {
     id: row.id,
     name: row.name,
     token_hint: row.token_hint,
-    status: expired ? "expired" : "active",
+    status: row.revoked_at !== null ? "revoked" : expired ? "expired" : "active",
     expires_at: row.expires_at,
     created_at: row.created_at,
     last_used_at: row.last_used_at,
+    credit_balance: Number(row.credit_balance),
+    total_credits_granted: Number(row.total_credits_granted),
+    total_credits_used: Number(row.total_credits_used),
   };
+}
+
+/**
+ * @param {CreditTransactionRow} row
+ * @returns {Record<string, unknown>}
+ */
+function credit_transaction_value(row) {
+  return {
+    id: row.id,
+    access_token_id: row.access_token_id,
+    task_id: row.task_id,
+    type: row.type,
+    amount: Number(row.amount),
+    balance_after: Number(row.balance_after),
+    method: row.method,
+    note: row.note,
+    created_at: row.created_at,
+  };
+}
+
+/**
+ * Keep pricing in one place so method-specific costs can be introduced without
+ * changing the accounting or task schema.
+ * @param {string} method
+ * @returns {number}
+ */
+function credit_cost_for_method(method) {
+  void method;
+  return DEFAULT_CALL_CREDIT_COST;
+}
+
+/**
+ * @param {number | null} balance
+ * @returns {Record<string, string>}
+ */
+function credit_headers(balance) {
+  if (balance === null) return {};
+  return { "X-Bridge-Credit-Balance": String(balance) };
 }
 
 /**
@@ -335,6 +407,19 @@ async function admin_overview(env) {
 async function admin_access_token_request(env, request, path) {
   const object = env.BRIDGES.getByName(BRIDGE_OBJECT_NAME);
   return object.fetch(new Request("https://internal/_admin/access-tokens" + path, request));
+}
+
+/**
+ * @param {Env} env
+ * @param {Request} request
+ * @returns {Promise<Response>}
+ */
+async function admin_credit_transactions(env, request) {
+  const object = env.BRIDGES.getByName(BRIDGE_OBJECT_NAME);
+  const source_url = new URL(request.url);
+  const internal_url = new URL("https://internal/_admin/credit-transactions");
+  internal_url.search = source_url.search;
+  return object.fetch(new Request(internal_url, request));
 }
 
 /**
@@ -432,6 +517,7 @@ function task_value(row) {
     id: row.id,
     method: row.method,
     kind: row.method,
+    credit_cost: Number(row.credit_cost),
     publisher_id: row.publisher_device_id,
     publisher_device_id: row.publisher_device_id,
     target_client_id: row.target_device_id,
@@ -504,6 +590,8 @@ export class BridgeDurableObject extends DurableObject {
         id TEXT PRIMARY KEY,
         method TEXT NOT NULL,
         publisher_device_id TEXT NOT NULL,
+        access_token_id TEXT,
+        credit_cost INTEGER NOT NULL DEFAULT 0,
         target_device_id TEXT,
         idempotency_key TEXT,
         args_json TEXT NOT NULL,
@@ -545,10 +633,63 @@ export class BridgeDurableObject extends DurableObject {
         token_hint TEXT NOT NULL,
         expires_at INTEGER,
         created_at INTEGER NOT NULL,
-        last_used_at INTEGER
+        last_used_at INTEGER,
+        revoked_at INTEGER,
+        credit_balance INTEGER NOT NULL DEFAULT 0,
+        total_credits_granted INTEGER NOT NULL DEFAULT 0,
+        total_credits_used INTEGER NOT NULL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS access_tokens_expiration
         ON access_tokens(expires_at);
+    `);
+    const call_columns = this.ctx.storage.sql.exec("PRAGMA table_info(calls)").toArray();
+    if (!call_columns.some((column) => column.name === "access_token_id")) {
+      this.ctx.storage.sql.exec("ALTER TABLE calls ADD COLUMN access_token_id TEXT");
+    }
+    if (!call_columns.some((column) => column.name === "credit_cost")) {
+      this.ctx.storage.sql.exec(
+        "ALTER TABLE calls ADD COLUMN credit_cost INTEGER NOT NULL DEFAULT 0",
+      );
+    }
+    const access_token_columns = this.ctx.storage.sql
+      .exec("PRAGMA table_info(access_tokens)")
+      .toArray();
+    if (!access_token_columns.some((column) => column.name === "revoked_at")) {
+      this.ctx.storage.sql.exec("ALTER TABLE access_tokens ADD COLUMN revoked_at INTEGER");
+    }
+    if (!access_token_columns.some((column) => column.name === "credit_balance")) {
+      this.ctx.storage.sql.exec(
+        "ALTER TABLE access_tokens ADD COLUMN credit_balance INTEGER NOT NULL DEFAULT 0",
+      );
+    }
+    if (!access_token_columns.some((column) => column.name === "total_credits_granted")) {
+      this.ctx.storage.sql.exec(
+        "ALTER TABLE access_tokens ADD COLUMN total_credits_granted INTEGER NOT NULL DEFAULT 0",
+      );
+    }
+    if (!access_token_columns.some((column) => column.name === "total_credits_used")) {
+      this.ctx.storage.sql.exec(
+        "ALTER TABLE access_tokens ADD COLUMN total_credits_used INTEGER NOT NULL DEFAULT 0",
+      );
+    }
+    this.ctx.storage.sql.exec(`
+      CREATE INDEX IF NOT EXISTS calls_access_token
+        ON calls(access_token_id, created_at);
+      CREATE TABLE IF NOT EXISTS credit_transactions (
+        id TEXT PRIMARY KEY,
+        access_token_id TEXT NOT NULL,
+        task_id TEXT,
+        type TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        balance_after INTEGER NOT NULL,
+        method TEXT,
+        note TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS credit_transactions_token_time
+        ON credit_transactions(access_token_id, created_at DESC);
+      CREATE UNIQUE INDEX IF NOT EXISTS credit_transactions_task_charge
+        ON credit_transactions(task_id) WHERE type = 'charge';
     `);
     const legacy_tables = new Set(
       this.ctx.storage.sql
@@ -616,6 +757,9 @@ export class BridgeDurableObject extends DurableObject {
     if (url.pathname === "/tasks" && request.method === "GET") {
       return this.list_tasks(request, url);
     }
+    if (url.pathname === "/credits" && request.method === "GET") {
+      return this.credit_usage(request);
+    }
     const task_match = url.pathname.match(/^\/tasks\/([A-Za-z0-9-]+)$/);
     if (task_match && request.method === "GET") {
       return this.get_task(request, task_match[1]);
@@ -625,6 +769,15 @@ export class BridgeDurableObject extends DurableObject {
     }
     if (url.pathname === "/_admin/access-tokens" && request.method === "POST") {
       return this.create_access_token(request);
+    }
+    if (url.pathname === "/_admin/credit-transactions" && request.method === "GET") {
+      return this.list_credit_transactions(url);
+    }
+    const access_token_credits_match = url.pathname.match(
+      /^\/_admin\/access-tokens\/([A-Za-z0-9-]+)\/credits$/,
+    );
+    if (access_token_credits_match && request.method === "POST") {
+      return this.adjust_access_token_credits(request, access_token_credits_match[1]);
     }
     const access_token_match = url.pathname.match(
       /^\/_admin\/access-tokens\/([A-Za-z0-9-]+)$/,
@@ -655,7 +808,7 @@ export class BridgeDurableObject extends DurableObject {
       return task_response;
     }
 
-    /** @type {{ task?: { id?: string } }} */
+    /** @type {{ task?: { id?: string }, credits?: { charged?: number, balance?: number } }} */
     let created;
     try {
       created = await task_response.json();
@@ -666,22 +819,35 @@ export class BridgeDurableObject extends DurableObject {
     if (!/^[A-Za-z0-9-]{1,128}$/.test(task_id)) {
       return error_response("failed to create invoke task", 500);
     }
+    const credit_balance = Number.isInteger(created.credits?.balance)
+      ? Number(created.credits.balance)
+      : null;
+    const invoke_headers = credit_balance === null
+      ? {}
+      : {
+          ...credit_headers(credit_balance),
+          "X-Bridge-Credits-Charged": String(created.credits?.charged ?? 0),
+        };
 
     const remaining_milliseconds = Math.max(0, deadline - Date.now());
     const row = await this.wait_for_invoke(task_id, remaining_milliseconds);
     if (row === null) {
-      return error_response("invoke timed out after 10 seconds", 504);
+      return error_response("invoke timed out after 10 seconds", 504, invoke_headers);
     }
     if (row.status === "failed") {
-      return error_response(row.error_message ?? "invoke failed", 502);
+      return error_response(row.error_message ?? "invoke failed", 502, invoke_headers);
     }
     if (row.status !== "completed") {
-      return error_response("invoke ended without a result", 500);
+      return error_response("invoke ended without a result", 500, invoke_headers);
     }
     try {
-      return json_response(row.result_json === null ? null : JSON.parse(row.result_json));
+      return json_response(
+        row.result_json === null ? null : JSON.parse(row.result_json),
+        200,
+        invoke_headers,
+      );
     } catch {
-      return error_response("invoke returned invalid JSON", 502);
+      return error_response("invoke returned invalid JSON", 502, invoke_headers);
     }
   }
 
@@ -732,10 +898,70 @@ export class BridgeDurableObject extends DurableObject {
   list_access_tokens() {
     /** @type {AccessTokenRow[]} */
     const rows = this.ctx.storage.sql
-      .exec("SELECT * FROM access_tokens ORDER BY created_at DESC")
+      .exec("SELECT * FROM access_tokens WHERE revoked_at IS NULL ORDER BY created_at DESC")
       .toArray();
     const now = Date.now();
     return json_response({ access_tokens: rows.map((row) => access_token_value(row, now)) });
+  }
+
+  /**
+   * @param {URL} url
+   * @returns {Response}
+   */
+  list_credit_transactions(url) {
+    const access_token_id = (url.searchParams.get("access_token_id") ?? "").trim();
+    if (access_token_id !== "" && !valid_identifier(access_token_id)) {
+      return error_response("invalid access_token_id", 400);
+    }
+    const limit_value = Number(url.searchParams.get("limit") ?? "100");
+    const limit = Number.isFinite(limit_value)
+      ? Math.max(1, Math.min(500, Math.floor(limit_value)))
+      : 100;
+    /** @type {CreditTransactionRow[]} */
+    const rows = access_token_id === ""
+      ? this.ctx.storage.sql
+          .exec("SELECT * FROM credit_transactions ORDER BY created_at DESC LIMIT ?", limit)
+          .toArray()
+      : this.ctx.storage.sql
+          .exec(
+            `SELECT * FROM credit_transactions
+             WHERE access_token_id = ? ORDER BY created_at DESC LIMIT ?`,
+            access_token_id,
+            limit,
+          )
+          .toArray();
+    return json_response({ credit_transactions: rows.map(credit_transaction_value) });
+  }
+
+  /**
+   * @param {Request} request
+   * @returns {Response}
+   */
+  credit_usage(request) {
+    const access_token_id = (request.headers.get("X-Bridge-Access-Token-ID") ?? "").trim();
+    if (!valid_identifier(access_token_id)) {
+      return error_response("credit usage is only available to access tokens", 403);
+    }
+    /** @type {AccessTokenRow | undefined} */
+    const row = this.ctx.storage.sql
+      .exec("SELECT * FROM access_tokens WHERE id = ? LIMIT 1", access_token_id)
+      .toArray()[0];
+    const now = Date.now();
+    if (
+      row === undefined ||
+      row.revoked_at !== null ||
+      (row.expires_at !== null && row.expires_at <= now)
+    ) {
+      return error_response("unauthorized", 401);
+    }
+    return json_response({
+      credits: {
+        balance: Number(row.credit_balance),
+        total_granted: Number(row.total_credits_granted),
+        total_used: Number(row.total_credits_used),
+        default_call_cost: DEFAULT_CALL_CREDIT_COST,
+      },
+    });
   }
 
   /**
@@ -796,9 +1022,13 @@ export class BridgeDurableObject extends DurableObject {
         return error_response("invalid expires_in_seconds", 400);
       }
     }
+    const credits = body.credits === undefined ? 0 : Number(body.credits);
+    if (!Number.isInteger(credits) || credits < 0 || credits > MAX_CREDIT_BALANCE) {
+      return error_response("credits must be an integer between 0 and 1000000000", 400);
+    }
     const token_count = Number(
       this.ctx.storage.sql
-        .exec("SELECT COUNT(*) AS count FROM access_tokens")
+        .exec("SELECT COUNT(*) AS count FROM access_tokens WHERE revoked_at IS NULL")
         .toArray()[0]?.count ?? 0,
     );
     if (token_count >= MAX_ACCESS_TOKENS) {
@@ -818,22 +1048,129 @@ export class BridgeDurableObject extends DurableObject {
       expires_in_seconds === null ? null : now + expires_in_seconds * 1000;
     const id = crypto.randomUUID();
     const token_hint = access_token_hint(token);
-    this.ctx.storage.sql.exec(
-      `INSERT INTO access_tokens (
-        id, name, token_hash, token_hint, expires_at, created_at, last_used_at
-      ) VALUES (?, ?, ?, ?, ?, ?, NULL)`,
-      id,
-      name,
-      token_hash,
-      token_hint,
-      expires_at,
-      now,
-    );
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec(
+        `INSERT INTO access_tokens (
+          id, name, token_hash, token_hint, expires_at, created_at, last_used_at,
+          revoked_at, credit_balance, total_credits_granted, total_credits_used
+        ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, 0)`,
+        id,
+        name,
+        token_hash,
+        token_hint,
+        expires_at,
+        now,
+        credits,
+        credits,
+      );
+      if (credits > 0) {
+        this.ctx.storage.sql.exec(
+          `INSERT INTO credit_transactions (
+            id, access_token_id, task_id, type, amount, balance_after, method, note, created_at
+          ) VALUES (?, ?, NULL, 'grant', ?, ?, NULL, 'initial credits', ?)`,
+          crypto.randomUUID(),
+          id,
+          credits,
+          credits,
+          now,
+        );
+      }
+    });
     /** @type {AccessTokenRow} */
     const row = this.ctx.storage.sql
       .exec("SELECT * FROM access_tokens WHERE id = ? LIMIT 1", id)
       .toArray()[0];
     return json_response({ access_token: access_token_value(row, now), token }, 201);
+  }
+
+  /**
+   * @param {Request} request
+   * @param {string} access_token_id
+   * @returns {Promise<Response>}
+   */
+  async adjust_access_token_credits(request, access_token_id) {
+    const content_length = Number(request.headers.get("Content-Length") ?? "0");
+    if (content_length > 16 * 1024) {
+      return error_response("request body is too large", 413);
+    }
+    /** @type {AdjustCreditsBody} */
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return error_response("invalid JSON", 400);
+    }
+    if (body === null || typeof body !== "object" || Array.isArray(body)) {
+      return error_response("invalid JSON body", 400);
+    }
+    const amount = Number(body.amount);
+    if (
+      !Number.isInteger(amount) ||
+      amount === 0 ||
+      Math.abs(amount) > MAX_CREDIT_ADJUSTMENT
+    ) {
+      return error_response("amount must be a non-zero integer between -10000000 and 10000000", 400);
+    }
+    if (body.reason !== undefined && typeof body.reason !== "string") {
+      return error_response("reason must be a string", 400);
+    }
+    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+    if (reason.length > 256 || /[\r\n]/.test(reason)) {
+      return error_response("reason must not exceed 256 characters or contain newlines", 400);
+    }
+    const now = Date.now();
+    const adjustment = this.ctx.storage.transactionSync(() => {
+      /** @type {AccessTokenRow | undefined} */
+      const existing = this.ctx.storage.sql
+        .exec(
+          "SELECT * FROM access_tokens WHERE id = ? AND revoked_at IS NULL LIMIT 1",
+          access_token_id,
+        )
+        .toArray()[0];
+      if (existing === undefined) return { error: "not_found" };
+      const balance = Number(existing.credit_balance) + amount;
+      if (balance < 0) return { error: "negative_balance", balance: Number(existing.credit_balance) };
+      if (balance > MAX_CREDIT_BALANCE) return { error: "balance_limit" };
+      this.ctx.storage.sql.exec(
+        `UPDATE access_tokens
+         SET credit_balance = ?,
+             total_credits_granted = total_credits_granted + ?
+         WHERE id = ?`,
+        balance,
+        Math.max(0, amount),
+        access_token_id,
+      );
+      this.ctx.storage.sql.exec(
+        `INSERT INTO credit_transactions (
+          id, access_token_id, task_id, type, amount, balance_after, method, note, created_at
+        ) VALUES (?, ?, NULL, ?, ?, ?, NULL, ?, ?)`,
+        crypto.randomUUID(),
+        access_token_id,
+        amount > 0 ? "grant" : "adjustment",
+        amount,
+        balance,
+        reason || (amount > 0 ? "admin credit grant" : "admin credit adjustment"),
+        now,
+      );
+      /** @type {AccessTokenRow} */
+      const row = this.ctx.storage.sql
+        .exec("SELECT * FROM access_tokens WHERE id = ? LIMIT 1", access_token_id)
+        .toArray()[0];
+      return { row };
+    });
+    if (adjustment.error === "not_found") {
+      return error_response("access token not found", 404);
+    }
+    if (adjustment.error === "negative_balance") {
+      return json_response(
+        { error: "credit adjustment would make the balance negative", balance: adjustment.balance },
+        409,
+      );
+    }
+    if (adjustment.error === "balance_limit") {
+      return error_response("credit balance limit exceeded", 409);
+    }
+    return json_response({ access_token: access_token_value(adjustment.row, now) });
   }
 
   /**
@@ -843,7 +1180,10 @@ export class BridgeDurableObject extends DurableObject {
   expire_access_token(access_token_id) {
     /** @type {AccessTokenRow | undefined} */
     const existing = this.ctx.storage.sql
-      .exec("SELECT * FROM access_tokens WHERE id = ? LIMIT 1", access_token_id)
+      .exec(
+        "SELECT * FROM access_tokens WHERE id = ? AND revoked_at IS NULL LIMIT 1",
+        access_token_id,
+      )
       .toArray()[0];
     if (existing === undefined) {
       return error_response("access token not found", 404);
@@ -867,12 +1207,19 @@ export class BridgeDurableObject extends DurableObject {
    */
   delete_access_token(access_token_id) {
     const existing = this.ctx.storage.sql
-      .exec("SELECT id FROM access_tokens WHERE id = ? LIMIT 1", access_token_id)
+      .exec(
+        "SELECT id FROM access_tokens WHERE id = ? AND revoked_at IS NULL LIMIT 1",
+        access_token_id,
+      )
       .toArray()[0];
     if (existing === undefined) {
       return error_response("access token not found", 404);
     }
-    this.ctx.storage.sql.exec("DELETE FROM access_tokens WHERE id = ?", access_token_id);
+    this.ctx.storage.sql.exec(
+      "UPDATE access_tokens SET revoked_at = ? WHERE id = ?",
+      Date.now(),
+      access_token_id,
+    );
     return json_response({ removed: true, id: access_token_id });
   }
 
@@ -898,7 +1245,11 @@ export class BridgeDurableObject extends DurableObject {
       .exec("SELECT * FROM access_tokens WHERE token_hash = ? LIMIT 1", token_hash)
       .toArray()[0];
     const now = Date.now();
-    if (row === undefined || (row.expires_at !== null && row.expires_at <= now)) {
+    if (
+      row === undefined ||
+      row.revoked_at !== null ||
+      (row.expires_at !== null && row.expires_at <= now)
+    ) {
       return error_response("unauthorized", 401);
     }
     this.ctx.storage.sql.exec(
@@ -911,6 +1262,7 @@ export class BridgeDurableObject extends DurableObject {
         id: row.id,
         name: row.name,
         publisher_id: "caller:" + row.id,
+        credit_balance: Number(row.credit_balance),
       },
     });
   }
@@ -1244,6 +1596,13 @@ export class BridgeDurableObject extends DurableObject {
     if (!valid_identifier(publisher_device_id)) {
       return error_response("invalid X-Bridge-Device-ID", 400);
     }
+    const access_token_id = (request.headers.get("X-Bridge-Access-Token-ID") ?? "").trim();
+    if (
+      access_token_id !== "" &&
+      (!valid_identifier(access_token_id) || publisher_device_id !== "caller:" + access_token_id)
+    ) {
+      return error_response("unauthorized", 401);
+    }
     const content_length = Number(request.headers.get("Content-Length") ?? "0");
     if (content_length > MAX_BODY_BYTES) {
       return error_response("request body is too large", 413);
@@ -1311,40 +1670,131 @@ export class BridgeDurableObject extends DurableObject {
       }
     }
 
-    if (idempotency_key !== "") {
-      /** @type {CallRow | undefined} */
-      const existing = this.ctx.storage.sql
-        .exec(
-          "SELECT * FROM calls WHERE publisher_device_id = ? AND idempotency_key = ? LIMIT 1",
-          publisher_device_id,
-          idempotency_key,
-        )
-        .toArray()[0];
-      if (existing !== undefined) {
-        return json_response({ task: task_value(existing), idempotent_replay: true });
-      }
-    }
-
     const now = Date.now();
     const task_id = crypto.randomUUID();
-    this.ctx.storage.sql.exec(
-      `INSERT INTO calls (
-        id, method, publisher_device_id, target_device_id,
-        idempotency_key, args_json, status, attempt_count, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?)`,
-      task_id,
-      method,
-      publisher_device_id,
-      target_device_id || null,
-      idempotency_key || null,
-      args_json,
-      now,
-      now,
-    );
+    const credit_cost = access_token_id === "" ? 0 : credit_cost_for_method(method);
+    const creation = this.ctx.storage.transactionSync(() => {
+      /** @type {AccessTokenRow | undefined} */
+      const access_token = access_token_id === ""
+        ? undefined
+        : this.ctx.storage.sql
+            .exec("SELECT * FROM access_tokens WHERE id = ? LIMIT 1", access_token_id)
+            .toArray()[0];
+      if (
+        access_token_id !== "" &&
+        (
+          access_token === undefined ||
+          access_token.revoked_at !== null ||
+          (access_token.expires_at !== null && access_token.expires_at <= now)
+        )
+      ) {
+        return { error: "unauthorized" };
+      }
+      if (idempotency_key !== "") {
+        /** @type {CallRow | undefined} */
+        const existing = this.ctx.storage.sql
+          .exec(
+            "SELECT * FROM calls WHERE publisher_device_id = ? AND idempotency_key = ? LIMIT 1",
+            publisher_device_id,
+            idempotency_key,
+          )
+          .toArray()[0];
+        if (existing !== undefined) {
+          return {
+            row: existing,
+            replay: true,
+            balance: access_token === undefined ? null : Number(access_token.credit_balance),
+          };
+        }
+      }
+      const current_balance = access_token === undefined
+        ? null
+        : Number(access_token.credit_balance);
+      if (current_balance !== null && current_balance < credit_cost) {
+        return { error: "insufficient_credits", balance: current_balance };
+      }
+      const balance_after = current_balance === null ? null : current_balance - credit_cost;
+      if (access_token !== undefined) {
+        this.ctx.storage.sql.exec(
+          `UPDATE access_tokens
+           SET credit_balance = ?, total_credits_used = total_credits_used + ?
+           WHERE id = ?`,
+          balance_after,
+          credit_cost,
+          access_token_id,
+        );
+      }
+      this.ctx.storage.sql.exec(
+        `INSERT INTO calls (
+          id, method, publisher_device_id, access_token_id, credit_cost, target_device_id,
+          idempotency_key, args_json, status, attempt_count, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?)`,
+        task_id,
+        method,
+        publisher_device_id,
+        access_token_id || null,
+        credit_cost,
+        target_device_id || null,
+        idempotency_key || null,
+        args_json,
+        now,
+        now,
+      );
+      if (access_token !== undefined) {
+        this.ctx.storage.sql.exec(
+          `INSERT INTO credit_transactions (
+            id, access_token_id, task_id, type, amount, balance_after, method, note, created_at
+          ) VALUES (?, ?, ?, 'charge', ?, ?, ?, 'Bridge call', ?)`,
+          crypto.randomUUID(),
+          access_token_id,
+          task_id,
+          -credit_cost,
+          balance_after,
+          method,
+          now,
+        );
+      }
+      return {
+        row: /** @type {CallRow} */ (this.find_task(task_id)),
+        replay: false,
+        balance: balance_after,
+      };
+    });
+    if (creation.error === "unauthorized") {
+      return error_response("unauthorized", 401);
+    }
+    if (creation.error === "insufficient_credits") {
+      return json_response(
+        {
+          error: "insufficient credits",
+          required: credit_cost,
+          balance: creation.balance,
+        },
+        402,
+        credit_headers(creation.balance),
+      );
+    }
+    if (creation.replay) {
+      return json_response(
+        {
+          task: task_value(creation.row),
+          idempotent_replay: true,
+          credits: { charged: 0, balance: creation.balance },
+        },
+        200,
+        credit_headers(creation.balance),
+      );
+    }
     await this.dispatch_pending();
     await this.schedule_alarm();
-    const row = this.find_task(task_id);
-    return json_response({ task: task_value(/** @type {CallRow} */ (row)) }, 201);
+    return json_response(
+      {
+        task: task_value(creation.row),
+        credits: { charged: credit_cost, balance: creation.balance },
+      },
+      201,
+      credit_headers(creation.balance),
+    );
   }
 
   /**
@@ -1712,6 +2162,19 @@ export default {
         }
         return admin_access_token_request(env, request, "");
       }
+      if (url.pathname === "/admin/api/credit-transactions" && request.method === "GET") {
+        return admin_credit_transactions(env, request);
+      }
+      const admin_access_token_credits_match = url.pathname.match(
+        /^\/admin\/api\/access-tokens\/([A-Za-z0-9-]+)\/credits$/,
+      );
+      if (admin_access_token_credits_match !== null && request.method === "POST") {
+        return admin_access_token_request(
+          env,
+          request,
+          "/" + admin_access_token_credits_match[1] + "/credits",
+        );
+      }
       const admin_access_token_expire_match = url.pathname.match(
         /^\/admin\/api\/access-tokens\/([A-Za-z0-9-]+)\/expire$/,
       );
@@ -1769,7 +2232,12 @@ export default {
       return error_response("unauthorized", 401);
     }
     if (device_authorized) {
-      return object.fetch(new Request(forwarded_url, request));
+      const headers = new Headers(request.headers);
+      headers.delete("X-Bridge-Publisher-ID");
+      headers.delete("X-Bridge-Authenticated-Publisher-ID");
+      headers.delete("X-Bridge-Access-Token-ID");
+      headers.set("X-Bridge-Authenticated-Publisher-ID", device_id);
+      return object.fetch(new Request(forwarded_url, new Request(request, { headers })));
     }
 
     const authorization_response = await object.fetch(
@@ -1791,8 +2259,10 @@ export default {
     }
     const headers = new Headers(request.headers);
     headers.delete("X-Bridge-Publisher-ID");
+    headers.delete("X-Bridge-Authenticated-Publisher-ID");
     headers.delete("X-Bridge-Device-ID");
     headers.delete("X-Bridge-Client-ID");
+    headers.delete("X-Bridge-Access-Token-ID");
     headers.set("X-Bridge-Authenticated-Publisher-ID", publisher_id);
     headers.set("X-Bridge-Access-Token-ID", String(authorization.access_token?.id ?? ""));
     return object.fetch(new Request(forwarded_url, new Request(request, { headers })));

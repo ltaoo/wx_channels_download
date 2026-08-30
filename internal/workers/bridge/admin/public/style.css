@@ -30,7 +30,7 @@ button:disabled { cursor: progress; opacity: .6; transform: none; }
 .section-title { font-size: 20px; font-weight: 720; }
 .section-description { max-width: 720px; margin-top: 7px; color: #8290ad; font-size: 12px; line-height: 1.6; }
 .access-token-count { flex: none; border-radius: 999px; padding: 6px 10px; background: #1b3151; color: #a8cbff; font-size: 12px; }
-.access-token-create-form { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(260px, 1.2fr) minmax(150px, .4fr) auto; align-items: end; gap: 10px; margin-top: 18px; padding-top: 18px; border-top: 1px solid rgba(132, 154, 216, .14); }
+.access-token-create-form { display: grid; grid-template-columns: minmax(160px, .8fr) minmax(220px, 1.2fr) minmax(100px, .35fr) minmax(130px, .4fr) auto; align-items: end; gap: 10px; margin-top: 18px; padding-top: 18px; border-top: 1px solid rgba(132, 154, 216, .14); }
 .access-token-message { margin-top: 12px; font-size: 12px; line-height: 1.55; }
 .error-message { color: #ff9fac; }
 .success-message { color: #8de2bd; }
@@ -41,7 +41,7 @@ button:disabled { cursor: progress; opacity: .6; transform: none; }
 .created-access-token-value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .access-token-list { display: grid; gap: 10px; margin-top: 18px; }
 .access-token-list-empty { border: 1px dashed rgba(132, 154, 216, .22); border-radius: 14px; padding: 20px; }
-.access-token-card { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(280px, 1.4fr) auto; align-items: center; gap: 18px; border: 1px solid rgba(132, 154, 216, .16); border-radius: 14px; padding: 14px 15px; background: rgba(9, 14, 27, .62); }
+.access-token-card { display: grid; grid-template-columns: minmax(160px, .7fr) minmax(300px, 1.5fr) minmax(250px, auto); align-items: center; gap: 18px; border: 1px solid rgba(132, 154, 216, .16); border-radius: 14px; padding: 14px 15px; background: rgba(9, 14, 27, .62); }
 .access-token-card.expired { opacity: .68; }
 .access-token-name { font-size: 14px; font-weight: 680; overflow-wrap: anywhere; }
 .access-token-hint { margin-top: 5px; color: #7784a0; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
@@ -50,7 +50,7 @@ button:disabled { cursor: progress; opacity: .6; transform: none; }
 .access-token-status.active { background: rgba(52, 139, 105, .22); color: #8de2bd; }
 .access-token-status.expired { background: rgba(123, 51, 64, .3); color: #ff9fac; }
 .access-token-time { color: #7784a0; font-size: 11px; }
-.access-token-card-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.access-token-card-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .access-token-drawer-overlay { position: fixed; inset: 0; background: rgba(3, 6, 14, .68); backdrop-filter: blur(4px); }
 .access-token-drawer-positioner { position: fixed; inset: 0; display: flex; justify-content: flex-end; pointer-events: none; }
 .access-token-drawer-content { position: relative; display: flex; height: 100%; min-height: 0; flex-direction: column; overflow: hidden; border-left: 1px solid rgba(132, 154, 216, .25); background: #0b1020; box-shadow: -24px 0 72px rgba(0, 0, 0, .46); outline: 0; pointer-events: auto; }

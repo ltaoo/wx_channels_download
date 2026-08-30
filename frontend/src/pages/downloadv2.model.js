@@ -1,15 +1,6 @@
 const MaxRunning = Math.max(1, Number(window.config.maxRunning) || 3);
 const DOWNLOAD_PAGE_SIZE_DEFAULT = 12;
 
-const DOWNLOAD_STATUS_COUNT_ITEMS = [
-  { key: "total", label: "全部" },
-  { key: "running", label: "下载中" },
-  { key: "pause", label: "暂停" },
-  { key: "wait", label: "等待中" },
-  { key: "done", label: "已完成" },
-  { key: "error", label: "失败" },
-];
-
 const DOWNLOAD_SERVER_STATUS_FILTERS = {
   wait: "0,1",
   running: "2,4",
@@ -110,11 +101,6 @@ function format_download_percent(record) {
     100,
     Math.max(0, Math.round(((downloaded * 100) / total) * 100) / 100),
   );
-}
-
-function get_download_status_count(counts, item) {
-  if (!counts || !item) return 0;
-  return Number(counts[item.key]) || 0;
 }
 
 function empty_status_counts() {
@@ -612,9 +598,11 @@ function DownloadV2Model(props = {}) {
   }
 
   function set_status_filter(status) {
-    const value = DOWNLOAD_STATUS_COUNT_ITEMS.some((item) => item.key === status)
-      ? status
-      : "total";
+    const value =
+      status === "total" ||
+      Object.prototype.hasOwnProperty.call(DOWNLOAD_SERVER_STATUS_FILTERS, status)
+        ? status
+        : "total";
     active_status_.as(value);
     page_.as(1);
     reset_list_scroll();
@@ -626,18 +614,22 @@ function DownloadV2Model(props = {}) {
     if (list_view_element) list_view_element.scrollTop = 0;
   }
 
-  function previous_page() {
-    if (page_.value <= 1 || loading_.value) return null;
-    const target_page = page_.value - 1;
+  function change_page(target_page) {
+    const page = Math.min(
+      page_count_.value,
+      Math.max(1, Number(target_page) || 1),
+    );
+    if (page === page_.value || loading_.value) return null;
     reset_list_scroll();
-    return load_page(target_page);
+    return load_page(page);
+  }
+
+  function previous_page() {
+    return change_page(page_.value - 1);
   }
 
   function next_page() {
-    if (page_.value >= page_count_.value || loading_.value) return null;
-    const target_page = page_.value + 1;
-    reset_list_scroll();
-    return load_page(target_page);
+    return change_page(page_.value + 1);
   }
 
   function refresh_tasks() {
@@ -1159,6 +1151,7 @@ function DownloadV2Model(props = {}) {
 
   Object.assign(methods, {
     setStatusFilter: set_status_filter,
+    changePage: change_page,
     previousPage: previous_page,
     nextPage: next_page,
     refreshTasks: refresh_tasks,
@@ -1321,13 +1314,11 @@ function DownloadV2Model(props = {}) {
 }
 
 export {
-  DOWNLOAD_STATUS_COUNT_ITEMS,
   DownloadV2Model,
   MaxRunning,
   format_download_percent,
   format_download_size,
   format_download_speed,
-  get_download_status_count,
   is_download_open_external,
   is_download_waiting_status,
   normalize_download_status,

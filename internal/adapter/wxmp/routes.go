@@ -11,8 +11,6 @@ import (
 	"wx_channel/pkg/scraper/wxmp"
 )
 
-const WebsocketPath = "/ws/mp"
-
 var jsapi_category_paths = []string{
 	"/api/mp/jsapi/control",
 	"/api/mp/jsapi/network_auth",
@@ -141,11 +139,12 @@ func (r *Routes) RegisterRoutes(registrar adapter.RouteRegistrar) {
 	if r == nil || r.server == nil || registrar == nil {
 		return
 	}
-	registrar.RegisterGET(WebsocketPath, r.handle_websocket)
+	registrar.RegisterGET(wxmp.WebsocketPath, r.handle_websocket)
 	registrar.RegisterGET("/api/mp/ws_pool", r.handle_fetch_official_account_clients)
 	registrar.RegisterGET("/api/mp/list", r.handle_fetch_list)
 	registrar.RegisterGET("/api/mp/msg/list", r.handle_fetch_message_list)
 	registrar.RegisterGET("/api/mp/article/list", r.handle_fetch_article_list)
+	registrar.RegisterGET("/api/mp/biz/msg/list", r.handle_fetch_biz_msg_list)
 	registrar.RegisterGET("/api/mp/page/content", r.handle_fetch_page_content)
 	registrar.RegisterPOST("/api/mp/jsapi", r.handle_jsapi)
 	for _, jsapi_category_path := range jsapi_category_paths {

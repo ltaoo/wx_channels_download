@@ -590,6 +590,12 @@ function PreviewViewModel(props) {
       destroy_live_player();
       gallery_file_.as(file);
     },
+    showFile(file) {
+      return window.dl$.requests.file.show.run({
+        path: file.local_path,
+        name: file.name,
+      });
+    },
     openPreview(file) {
       if (!file_playable(file)) {
         return;

@@ -204,6 +204,9 @@ function ContentViewModel(props) {
       onChange(value) {
         set_keyword(value);
       },
+      onEnter() {
+        return methods.search();
+      },
     }),
     checkbox_all$: new Timeless.vm.CheckboxCore({
       checked: scope_.value === "all",
@@ -214,6 +217,7 @@ function ContentViewModel(props) {
     select_content_type$: new Timeless.vm.SelectCore({
       defaultValue: "",
       placeholder: "全部类型",
+      position: "item-aligned",
       options: [
         new Timeless.vm.SelectItemCore({ label: "全部类型", value: "" }),
         new Timeless.vm.SelectItemCore({ label: "视频", value: "video" }),
@@ -240,6 +244,7 @@ function ContentViewModel(props) {
       disabled: loading_.value,
       variant: "outline",
       onClick() {
+        set_keyword("");
         return load(1);
       },
     }),
@@ -386,6 +391,15 @@ function ContentViewModel(props) {
     return load(1);
   }
 
+  function change_page(target_page) {
+    const page = Math.min(
+      page_count_.value,
+      Math.max(1, Number(target_page) || 1),
+    );
+    if (page === page_.value || loading_.value) return null;
+    return load(page);
+  }
+
   const methods = {
     ready() {
       return load(1);
@@ -397,17 +411,12 @@ function ContentViewModel(props) {
       return load(1);
     },
     setKeyword: set_keyword,
+    changePage: change_page,
     previousPage() {
-      if (page_.value <= 1 || loading_.value) {
-        return null;
-      }
-      return load(page_.value - 1);
+      return change_page(page_.value - 1);
     },
     nextPage() {
-      if (page_.value >= page_count_.value || loading_.value) {
-        return null;
-      }
-      return load(page_.value + 1);
+      return change_page(page_.value + 1);
     },
     openSource(content) {
       if (!content || !content.url) {

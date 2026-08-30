@@ -346,6 +346,26 @@ func (c *OfficialAccountServer) FetchArticleList(biz string) (*ArticleListRespon
 	return c.client.FetchArticleList(acct)
 }
 
+func (c *OfficialAccountServer) FetchBizMsgList(username, offset string) (json.RawMessage, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return nil, new_scraper_error(
+			ErrorKindInvalidArgument,
+			ErrorMessage(ErrorKindInvalidArgument),
+			errors.New("missing username"),
+		)
+	}
+	response, err := c.RequestFrontend(
+		"key:mp:bizmsglist",
+		map[string]string{"username": username, "offset": offset},
+		20*time.Second,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return response.Data, nil
+}
+
 func get_official_account(biz string) *OfficialAccount {
 	acct_mu.RLock()
 	defer acct_mu.RUnlock()

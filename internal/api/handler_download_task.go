@@ -1315,7 +1315,6 @@ func (c *APIClient) handle_list_download_task(ctx *gin.Context) {
 	}
 
 	var tasks []model.DownloadTask
-	var total int64
 
 	query := c.db.Model(&model.DownloadTask{}).Where("deleted_at IS NULL")
 	if parentTaskID, err := strconv.Atoi(ctx.Query("parent_task_id")); err == nil && parentTaskID > 0 {
@@ -1324,23 +1323,19 @@ func (c *APIClient) handle_list_download_task(ctx *gin.Context) {
 	if rootTaskID, err := strconv.Atoi(ctx.Query("root_task_id")); err == nil && rootTaskID > 0 {
 		query = query.Where("root_task_id = ?", rootTaskID)
 	}
+	statuses := make([]int, 0)
 	if statusFilter != "" {
 		parts := strings.Split(statusFilter, ",")
-		ints := make([]int, 0, len(parts))
 		for _, p := range parts {
 			if v, err := strconv.Atoi(strings.TrimSpace(p)); err == nil {
-				ints = append(ints, v)
+				statuses = append(statuses, v)
 			}
 		}
-		if len(ints) == 1 {
-			query = query.Where("status = ?", ints[0])
-		} else if len(ints) > 1 {
-			query = query.Where("status IN ?", ints)
+		if len(statuses) == 1 {
+			query = query.Where("status = ?", statuses[0])
+		} else if len(statuses) > 1 {
+			query = query.Where("status IN ?", statuses)
 		}
-	}
-	if err := query.Count(&total).Error; err != nil {
-		result.Err(ctx, 500, "查询下载任务总数失败: "+err.Error())
-		return
 	}
 
 	// stats: count of tasks grouped by status (same base filters minus status filter)
@@ -1349,8 +1344,16 @@ func (c *APIClient) handle_list_download_task(ctx *gin.Context) {
 		result.Err(ctx, 500, "查询下载任务统计失败: "+err.Error())
 		return
 	}
+	total := download_task_stats_total(stats, statuses)
 
-	if err := query.Order("id DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&tasks).Error; err != nil {
+	if err := query.
+		Select(`id, content_id, parent_task_id, root_task_id, relation_type, name,
+			platform_id, status, source_url, cover_url, cover_width, cover_height,
+			config_json, metadata_json, error_message, created_at, updated_at`).
+		Order("id DESC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Find(&tasks).Error; err != nil {
 		result.Err(ctx, 500, "查询下载任务失败: "+err.Error())
 		return
 	}
@@ -1368,6 +1371,23 @@ func (c *APIClient) handle_list_download_task(ctx *gin.Context) {
 		"page_size": pageSize,
 		"stats":     stats,
 	})
+}
+
+func download_task_stats_total(stats map[int]int64, statuses []int) int64 {
+	var total int64
+	for status, count := range stats {
+		if len(statuses) == 0 {
+			total += count
+			continue
+		}
+		for _, selected_status := range statuses {
+			if status == selected_status {
+				total += count
+				break
+			}
+		}
+	}
+	return total
 }
 
 // queryTaskStats returns a map of status -> count for download tasks, respecting

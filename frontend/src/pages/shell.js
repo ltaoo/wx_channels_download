@@ -15,7 +15,7 @@ export default function SiderLayoutView(props) {
 
   return View(
     {
-      class: "app-shell dm-page",
+      class: "app-shell page",
       onMounted: function () {
         model.methods.ready();
       },
@@ -46,8 +46,9 @@ export default function SiderLayoutView(props) {
                   Button(
                     {
                       store: model.models.update.ui.notice_button$,
-                      class: "app-brand__version-button dm-focus-ring",
+                      class: "dm-button--version",
                       attributes: {
+                        n: "app-version-update-action",
                         type: "button",
                         title: `当前版本 ${current_version}，发现新版本 ${latest_version}`,
                         "aria-label": `当前版本 ${current_version}，发现新版本 ${latest_version}，点击查看`,
@@ -84,14 +85,12 @@ export default function SiderLayoutView(props) {
                   {
                     store: item.button$,
                     class: Timeless.classNames([
-                      "app-menu__item",
-                      "dm-focus-ring",
-                      "dm-justify-start",
+                      "dm-button--sidebar-nav",
                       Timeless.computed(
                         model.models.menu.cur,
                         function (current) {
                           return model.models.menu.isSelected(current, menu)
-                            ? "app-menu__item--active"
+                            ? "is-active"
                             : null;
                         },
                       ),
@@ -108,21 +107,29 @@ export default function SiderLayoutView(props) {
                 );
               },
             }),
-            Button(
+            View(
               {
-                store: model.ui.settings_button$,
-                class:
-                  "app-menu__item app-menu__settings dm-focus-ring dm-justify-start",
-                attributes: {
-                  "aria-haspopup": "dialog",
-                  "aria-label": "打开设置",
-                },
+                class: "app-menu__settings",
+                attributes: { n: "app-settings-action-container" },
               },
               [
-                View({ class: "app-menu__icon" }, [
-                  Timeless.Icon({ name: "settings", size: 17 }),
-                ]),
-                View({ as: "span", class: "app-menu__label" }, ["设置"]),
+                Button(
+                  {
+                    store: model.ui.settings_button$,
+                    class: "dm-button--sidebar-nav",
+                    attributes: {
+                      n: "app-settings-action",
+                      "aria-haspopup": "dialog",
+                      "aria-label": "打开设置",
+                    },
+                  },
+                  [
+                    View({ class: "app-menu__icon" }, [
+                      Timeless.Icon({ name: "settings", size: 17 }),
+                    ]),
+                    View({ as: "span", class: "app-menu__label" }, ["设置"]),
+                  ],
+                ),
               ],
             ),
           ],
@@ -142,17 +149,18 @@ export default function SiderLayoutView(props) {
       View(
         {
           as: "main",
-          class: "app-content dm-min-w-0 dm-overflow-auto",
+          class: "app-content dm-min-w-0",
+          attributes: { n: "app-content" },
         },
         [
-          Timeless.ui.StandardSubViews({
+          Timeless.ui.KeepAliveSubViews({
             app: props.app,
             client: props.client,
             history: props.history,
             storage: props.storage,
             view: props.view,
             views: props.views,
-            placeholder: [LoadingView()],
+            placeholder: LoadingView,
             ErrorFallback: ErrorFallbackView,
           }),
         ],
@@ -171,6 +179,7 @@ export default function SiderLayoutView(props) {
         mcp_refresh_button: model.models.mcp.ui.refresh_button$,
         refresh_button: model.ui.refresh_certificate_button$,
         retry_button: model.ui.retry_certificate_button$,
+        delete_button: model.ui.delete_certificate_button$,
       }),
       UpdateDialog({ store: model.models.update }),
     ],

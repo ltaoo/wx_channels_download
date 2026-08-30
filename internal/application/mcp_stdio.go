@@ -62,7 +62,7 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 	app := velo.NewApp(&velo.VeloAppOpt{Mode: velo.ModeHttp})
 	if err := app.Migrate(&velo.VeloDatabaseOpt{
 		DBType:                    velo.DBTypeSQLite,
-		DBPath:                    cfg.DBPath,
+		DBPath:                    database.SQLiteDSN(cfg.DBPath),
 		Migrations:                &database.Migrations,
 		DisableTimestampCallbacks: true,
 	}); err != nil {
@@ -166,6 +166,7 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 		ScraperJobs:         new_mcp_scraper_job_backend(scraper_job_service),
 		DownloadTaskCreator: new_mcp_download_task_creator(download_task_service),
 		DownloadTaskDeleter: new_mcp_download_task_deleter(download_task_service),
+		SphDeployer:         NewMCPSphDeployer(cfg),
 	})
 	if err != nil {
 		stop_adapter_handles(adapter_handles)

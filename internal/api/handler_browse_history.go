@@ -212,20 +212,6 @@ func (c *APIClient) handle_fetch_browse_history_list(ctx *gin.Context) {
 		page_size = *body.PageSizeLegacy
 	}
 
-	if c.logger != nil {
-		c.logger.Info().
-			Str("api", "POST /api/browse_history/list").
-			Strs("platform_ids", platform_ids).
-			Str("username", func() string {
-				if body.Username == nil {
-					return ""
-				}
-				return *body.Username
-			}()).
-			Int("page", page).
-			Int("page_size", page_size).
-			Msg("Querying browse history list")
-	}
 	if c.browse_history_service == nil {
 		if c.logger != nil {
 			c.logger.Warn().
