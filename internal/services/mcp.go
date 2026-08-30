@@ -20,6 +20,7 @@ type MCPServiceConfig struct {
 	ScraperJobs         mcpserver.ScraperJobBackend
 	DownloadTaskCreator mcpserver.DownloadTaskCreator
 	DownloadTaskDeleter mcpserver.DownloadTaskDeleter
+	SphDeployer         mcpserver.SphDeployer
 }
 
 // MCPServiceStatus describes the process-local MCP service state.
@@ -65,6 +66,7 @@ func build_mcp_handler(config MCPServiceConfig) (http.Handler, error) {
 		ScraperJobs:         config.ScraperJobs,
 		DownloadTaskCreator: config.DownloadTaskCreator,
 		DownloadTaskDeleter: config.DownloadTaskDeleter,
+		SphDeployer:         config.SphDeployer,
 	})
 	if err != nil {
 		return nil, err

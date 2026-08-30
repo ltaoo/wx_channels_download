@@ -43,6 +43,7 @@ var mcp_cmd = &cobra.Command{
 			Input:       cmd.InOrStdin(),
 			Output:      cmd.OutOrStdout(),
 			ErrorOutput: cmd.ErrOrStderr(),
+			SphDeployer: application.NewMCPSphDeployer(Cfg),
 		})
 		if err != nil {
 			return err
