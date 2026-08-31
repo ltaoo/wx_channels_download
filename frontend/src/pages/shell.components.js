@@ -27,9 +27,7 @@ function certificate_date_label(value) {
 }
 
 function certificate_list_label(value) {
-  return Array.isArray(value) && value.length > 0
-    ? value.join("、")
-    : "未提供";
+  return Array.isArray(value) && value.length > 0 ? value.join("、") : "未提供";
 }
 
 function certificate_status(data) {
@@ -81,9 +79,7 @@ function CertificateSettingsDetails(props) {
         Timeless.Icon({ name: "file-lock", size: 25 }),
       ]),
       View({ class: "settings-certificate-hero__identity" }, [
-        View({ class: "settings-certificate-hero__eyebrow" }, [
-          "当前实际使用",
-        ]),
+        View({ class: "settings-certificate-hero__eyebrow" }, ["当前实际使用"]),
         View({ class: "settings-certificate-hero__name" }, [
           Timeless.computed(certificate_, function (data) {
             return (data && data.name) || "未命名证书";
@@ -262,9 +258,7 @@ function CertificateSettingsDetails(props) {
       ]),
     ]),
     View({ class: "settings-certificate-section" }, [
-      View({ class: "settings-certificate-section__title" }, [
-        "有效期与信任",
-      ]),
+      View({ class: "settings-certificate-section__title" }, ["有效期与信任"]),
       View({ class: "settings-certificate-grid" }, [
         CertificateDetailItem({
           label: "生效时间",
@@ -364,10 +358,9 @@ function CertificateSettingsDetails(props) {
       }),
       ok() {
         return View({ as: "details", class: "settings-certificate-pem" }, [
-          View(
-            { as: "summary", class: "settings-certificate-pem__summary" },
-            ["查看 PEM 原文"],
-          ),
+          View({ as: "summary", class: "settings-certificate-pem__summary" }, [
+            "查看 PEM 原文",
+          ]),
           View({ as: "pre", class: "settings-certificate-pem__content" }, [
             Timeless.computed(certificate_, function (data) {
               return data.pem;
@@ -398,9 +391,7 @@ function AboutSettingsDetails(props) {
         ]),
       ]),
       View({ class: "settings-about__version" }, [
-        View({ as: "span", class: "settings-about__version-label" }, [
-          "版本",
-        ]),
+        View({ as: "span", class: "settings-about__version-label" }, ["版本"]),
         View({ as: "code", class: "settings-about__version-value" }, [
           props.version,
         ]),
@@ -422,9 +413,7 @@ function AboutSettingsDetails(props) {
             Timeless.Icon({ name: "git-fork", size: 20 }),
           ]),
           View({ class: "settings-about__resource-copy" }, [
-            View({ class: "settings-about__resource-title" }, [
-              "GitHub 仓库",
-            ]),
+            View({ class: "settings-about__resource-title" }, ["GitHub 仓库"]),
             View({ class: "settings-about__resource-url" }, [
               "github.com/ltaoo/wx_channels_download",
             ]),
@@ -466,9 +455,7 @@ function MCPUsageGuide(props) {
         Timeless.Icon({ name: "file-code", size: 18 }),
       ]),
       View({}, [
-        View({ class: "settings-mcp__guide-title" }, [
-          "让 Agent 创建下载任务",
-        ]),
+        View({ class: "settings-mcp__guide-title" }, ["让 Agent 创建下载任务"]),
         View({ class: "settings-mcp__guide-description" }, [
           "完成连接后，Agent 会按以下顺序调用工具。",
         ]),
@@ -521,9 +508,7 @@ function MCPUsageGuide(props) {
       View({ as: "li", class: "settings-mcp__step" }, [
         View({ class: "settings-mcp__step-number" }, ["4"]),
         View({ class: "settings-mcp__step-body" }, [
-          View({ class: "settings-mcp__step-title" }, [
-            "视频号外部下载与解密",
-          ]),
+          View({ class: "settings-mcp__step-title" }, ["视频号外部下载与解密"]),
           View({ class: "settings-mcp__step-description" }, [
             "fetch_content 的 download_resources 提供下载地址和可选 key。可交给 aria2 等工具下载到运行本服务的机器；仅 requires_decryption 为 true 时，使用绝对路径原地解密。",
           ]),
@@ -559,9 +544,7 @@ function MCPSettingsDetails(props) {
         View({ class: "settings-dialog__state-spinner" }, [
           Timeless.Icon({ name: "refresh-cw", size: 22 }),
         ]),
-        View({ class: "settings-dialog__state-title" }, [
-          "正在读取 MCP 状态",
-        ]),
+        View({ class: "settings-dialog__state-title" }, ["正在读取 MCP 状态"]),
         View({ class: "settings-dialog__state-text" }, [
           "正在检查 Agent 工具入口和当前配置。",
         ]),
@@ -650,7 +633,7 @@ function MCPSettingsDetails(props) {
                   "允许 Agent 连接",
                 ]),
                 View({ class: "settings-mcp__control-description" }, [
-                  "更改仅在当前运行期间生效；应用重启后默认开启。",
+                  "更改仅在当前运行期间生效；应用重启后默认关闭。",
                 ]),
               ]),
               Button(
@@ -672,6 +655,7 @@ function MCPSettingsDetails(props) {
                 ],
               ),
             ]),
+            MCPUsageGuide({ endpoint: model.state.endpoint }),
             View({ class: "settings-mcp__section" }, [
               View({ class: "settings-mcp__section-label" }, ["连接地址"]),
               View({ as: "code", class: "settings-mcp__endpoint" }, [
@@ -694,7 +678,6 @@ function MCPSettingsDetails(props) {
                 }),
               ]),
             ]),
-            MCPUsageGuide({ endpoint: model.state.endpoint }),
             View(
               {
                 class:
@@ -729,10 +712,9 @@ export function SettingsDialog(props) {
           View({ as: "span", class: "settings-dialog__heading-title" }, [
             "设置",
           ]),
-          View(
-            { as: "span", class: "settings-dialog__heading-description" },
-            ["查看当前运行环境和安全配置"],
-          ),
+          View({ as: "span", class: "settings-dialog__heading-description" }, [
+            "查看当前运行环境和安全配置",
+          ]),
         ]),
       ]),
       DialogBody({ class: "settings-dialog__body" }, [
@@ -749,9 +731,7 @@ export function SettingsDialog(props) {
                 class: Timeless.classNames([
                   "dm-button--sidebar-nav",
                   Timeless.computed(props.section, function (section) {
-                    return section === "certificate"
-                      ? "is-active"
-                      : null;
+                    return section === "certificate" ? "is-active" : null;
                   }),
                 ]),
                 attributes: {
@@ -775,9 +755,7 @@ export function SettingsDialog(props) {
                 class: Timeless.classNames([
                   "dm-button--sidebar-nav",
                   Timeless.computed(props.section, function (section) {
-                    return section === "mcp"
-                      ? "is-active"
-                      : null;
+                    return section === "mcp" ? "is-active" : null;
                   }),
                 ]),
                 attributes: {
@@ -801,9 +779,7 @@ export function SettingsDialog(props) {
                 class: Timeless.classNames([
                   "dm-button--sidebar-nav",
                   Timeless.computed(props.section, function (section) {
-                    return section === "about"
-                      ? "is-active"
-                      : null;
+                    return section === "about" ? "is-active" : null;
                   }),
                 ]),
                 attributes: {
@@ -983,10 +959,9 @@ export function UpdateDialog(props) {
           Timeless.Icon({ name: "cloud-download", size: 23 }),
         ]),
         View({ class: "update-dialog__heading" }, [
-          DialogTitle(
-            { attributes: { id: "update-dialog-title" } },
-            [model.state.phase_title],
-          ),
+          DialogTitle({ attributes: { id: "update-dialog-title" } }, [
+            model.state.phase_title,
+          ]),
           DialogDescription({}, [model.state.phase_message]),
         ]),
       ]),
@@ -1029,10 +1004,7 @@ export function UpdateDialog(props) {
           ok() {
             return View({ class: "update-dialog__meta" }, [
               Show({
-                when: Timeless.computed(
-                  model.state.published_text,
-                  Boolean,
-                ),
+                when: Timeless.computed(model.state.published_text, Boolean),
                 ok() {
                   return View({ as: "span" }, [
                     Timeless.Icon({ name: "calendar", size: 14 }),
@@ -1109,9 +1081,7 @@ export function UpdateDialog(props) {
                       },
                       function (state) {
                         return {
-                          width: state.has_total
-                            ? `${state.percent}%`
-                            : "36%",
+                          width: state.has_total ? `${state.percent}%` : "36%",
                         };
                       },
                     ),
@@ -1173,12 +1143,9 @@ export function UpdateDialog(props) {
                     prefix: Timeless.Icon({ name: "download", size: 15 }),
                   },
                   [
-                    Timeless.computed(
-                      model.state.status,
-                      function (status) {
-                        return status === "error" ? "重新下载" : "下载并更新";
-                      },
-                    ),
+                    Timeless.computed(model.state.status, function (status) {
+                      return status === "error" ? "重新下载" : "下载并更新";
+                    }),
                   ],
                 );
               },

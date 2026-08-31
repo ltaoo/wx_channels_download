@@ -124,15 +124,6 @@ export default defineConfig(async () => {
           text: "功能",
           items: [
             { text: "API", link: "/feature/api" },
-            {
-              text: "MCP",
-              link: "/feature/mcp",
-              items: [
-                { text: "启用", link: "/feature/mcp#启用" },
-                { text: "命令", link: "/feature/mcp#命令" },
-                { text: "常用场景", link: "/feature/mcp#常用场景" },
-              ],
-            },
             { text: "指定文件名", link: "/feature/filename" },
             {
               text: "视频号",
@@ -153,6 +144,34 @@ export default defineConfig(async () => {
             {
               text: "公众号",
               items: [{ text: "下载公众号文章", link: "/feature/wxmp/guide" }],
+            },
+            {
+              text: "MCP",
+              link: "/feature/mcp",
+              items: [
+                { text: "启用", link: "/feature/mcp/enable" },
+                {
+                  text: "下载视频",
+                  link: "/feature/mcp/scenarios/fetch-and-download",
+                },
+                {
+                  text: "下载视频评论",
+                  link: "/feature/mcp/scenarios/comment-download",
+                },
+                {
+                  text: "修改下载目录",
+                  link: "/feature/mcp/scenarios/change-download-directory",
+                },
+                {
+                  text: "查询账号内容和浏览记录",
+                  link: "/feature/mcp/scenarios/query-account-content",
+                },
+                {
+                  text: "使用第三方下载器保存视频号视频",
+                  link: "/feature/mcp/scenarios/external-downloader",
+                },
+                { text: "命令", link: "/feature/mcp/commands" },
+              ],
             },
           ],
         },
