@@ -3,56 +3,98 @@
     "tags": [
       "下载任务"
     ],
-    "summary": "开始/恢复下载任务（兼容 wx_channels_api）",
+    "summary": "批量启动下载任务",
+    "description": "启动等待中（0）、已暂停（3）或失败（6）的任务。每个任务独立返回结果；单项失败不改变外层 code=0。所有业务响应的 HTTP 状态码均为 200。",
     "requestBody": {
       "required": true,
       "content": {
         "application/json": {
           "schema": {
             "type": "object",
-            "properties": {
-              "download_task_id": {
-                "type": "integer",
-                "description": "download_task 表主键 id"
-              }
-            },
             "required": [
-              "download_task_id"
-            ]
-          },
-          "examples": {
-            "start": {
-              "summary": "开始任务",
-              "value": {
-                "download_task_id": 1
+              "task_ids"
+            ],
+            "properties": {
+              "task_ids": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "integer"
+                },
+                "description": "download_task 表主键 ID"
               }
             }
+          },
+          "example": {
+            "task_ids": [
+              42,
+              43
+            ]
           }
         }
       }
     },
     "responses": {
       "200": {
-        "description": "操作结果",
+        "description": "统一业务响应",
         "content": {
           "application/json": {
             "examples": {
               "success": {
-                "summary": "成功",
+                "summary": "任务已提交启动",
                 "value": {
                   "code": 0,
                   "msg": "成功",
                   "data": {
-                    "message": "开始下载"
+                    "results": [
+                      {
+                        "status_text": "preparing",
+                        "success": true,
+                        "task": {
+                          "id": 44,
+                          "root_task_id": 44,
+                          "name": "example.json",
+                          "platform_id": "",
+                          "unique_id": "",
+                          "status": 1,
+                          "source_url": "",
+                          "cover_url": "",
+                          "cover_width": "",
+                          "cover_height": "",
+                          "config_json": "{\"download_dir\":\"/data/downloads\",\"filename\":\"example.json\",\"url\":\"https://example.com/files/example.json\"}",
+                          "metadata_json": "",
+                          "error_message": "",
+                          "created_at": 1787019341973,
+                          "updated_at": 1787019341,
+                          "deleted_at": null
+                        },
+                        "task_id": 44
+                      }
+                    ]
                   }
                 }
               },
-              "not_found": {
-                "summary": "任务不存在",
+              "partial_failure": {
+                "summary": "单项失败",
                 "value": {
-                  "code": 404,
-                  "msg": "未找到下载任务",
-                  "data": {}
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "results": [
+                      {
+                        "task_id": 999,
+                        "success": false,
+                        "error": "下载任务不存在"
+                      }
+                    ]
+                  }
+                }
+              },
+              "invalid_body": {
+                "summary": "task_ids 为空",
+                "value": {
+                  "code": 400,
+                  "msg": "task_ids 不能为空"
                 }
               }
             }

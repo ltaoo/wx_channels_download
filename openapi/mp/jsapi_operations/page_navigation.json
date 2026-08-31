@@ -1,0 +1,50 @@
+{
+  "post": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "调用微信 JSAPI - 页面与导航",
+    "operationId": "invoke_wechat_jsapi_page_navigation",
+    "description": "页面窗口、快速加载 WebView、沉浸式文章流、星标和导航栏能力。",
+    "parameters": [
+      {
+        "$ref": "../jsapi_common.json#/token_parameter"
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "../jsapi/page_navigation.json"
+          },
+          "examples": {
+            "close_window": {
+              "summary": "关闭当前窗口",
+              "value": {
+                "operation": "invoke",
+                "method": "closeWindow",
+                "args": {}
+              }
+            },
+            "operate_star": {
+              "summary": "星标当前文章",
+              "value": {
+                "operation": "invoke",
+                "method": "operateStar",
+                "args": {
+                  "opType": "addStar"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "$ref": "../jsapi_common.json#/success_response"
+      }
+    }
+  }
+}

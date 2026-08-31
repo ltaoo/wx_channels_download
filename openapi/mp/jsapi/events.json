@@ -1,0 +1,265 @@
+{
+  "title": "Bridge 原生事件",
+  "description": "wait_event 等待下一次事件并返回；remove_event 取消当前页面中尚未完成的等待。WeixinJSBridge 没有 off，因此 remove_event 不会卸载底层原生监听。",
+  "x-event-name": {
+    "oneOf": [
+      {
+        "title": "activity:state_change",
+        "description": "页面 Activity 状态变化",
+        "type": "string",
+        "enum": [
+          "activity:state_change"
+        ]
+      },
+      {
+        "title": "fakeImmersiveUIStyleTopInsetChanged",
+        "description": "模拟沉浸式 UI 顶部 inset 变化，结果通常包含 top",
+        "type": "string",
+        "enum": [
+          "fakeImmersiveUIStyleTopInsetChanged"
+        ]
+      },
+      {
+        "title": "immersiveStreamEnterFullArticle",
+        "description": "沉浸式文章流进入全文",
+        "type": "string",
+        "enum": [
+          "immersiveStreamEnterFullArticle"
+        ]
+      },
+      {
+        "title": "immersiveStreamExitFullArticle",
+        "description": "沉浸式文章流退出全文",
+        "type": "string",
+        "enum": [
+          "immersiveStreamExitFullArticle"
+        ]
+      },
+      {
+        "title": "immersiveStreamExposeArticle",
+        "description": "沉浸式文章流曝光文章",
+        "type": "string",
+        "enum": [
+          "immersiveStreamExposeArticle"
+        ]
+      },
+      {
+        "title": "immersiveStreamSlideOutArticle",
+        "description": "沉浸式文章流滑出文章",
+        "type": "string",
+        "enum": [
+          "immersiveStreamSlideOutArticle"
+        ]
+      },
+      {
+        "title": "menu:general:share",
+        "description": "通用分享菜单触发",
+        "type": "string",
+        "enum": [
+          "menu:general:share"
+        ]
+      },
+      {
+        "title": "menu:share:QZone",
+        "description": "QQ 空间分享菜单触发",
+        "type": "string",
+        "enum": [
+          "menu:share:QZone"
+        ]
+      },
+      {
+        "title": "menu:share:appmessage",
+        "description": "好友分享菜单触发",
+        "type": "string",
+        "enum": [
+          "menu:share:appmessage"
+        ]
+      },
+      {
+        "title": "menu:share:email",
+        "description": "邮件分享菜单触发",
+        "type": "string",
+        "enum": [
+          "menu:share:email"
+        ]
+      },
+      {
+        "title": "menu:share:facebook",
+        "description": "Facebook 分享菜单触发",
+        "type": "string",
+        "enum": [
+          "menu:share:facebook"
+        ]
+      },
+      {
+        "title": "menu:share:qq",
+        "description": "QQ 分享菜单触发",
+        "type": "string",
+        "enum": [
+          "menu:share:qq"
+        ]
+      },
+      {
+        "title": "menu:share:timeline",
+        "description": "朋友圈分享菜单触发",
+        "type": "string",
+        "enum": [
+          "menu:share:timeline"
+        ]
+      },
+      {
+        "title": "menu:share:weibo",
+        "description": "微博分享菜单触发",
+        "type": "string",
+        "enum": [
+          "menu:share:weibo"
+        ]
+      },
+      {
+        "title": "menu:share:weiboApp",
+        "description": "微博 App 分享菜单触发",
+        "type": "string",
+        "enum": [
+          "menu:share:weiboApp"
+        ]
+      },
+      {
+        "title": "onActionBarClickEventInImmersiveMode",
+        "description": "沉浸模式操作栏被点击",
+        "type": "string",
+        "enum": [
+          "onActionBarClickEventInImmersiveMode"
+        ]
+      },
+      {
+        "title": "onBackgroundAudioStateChange",
+        "description": "后台音频播放状态变化",
+        "type": "string",
+        "enum": [
+          "onBackgroundAudioStateChange"
+        ]
+      },
+      {
+        "title": "onMPPageAction",
+        "description": "公众号页面原生 action",
+        "type": "string",
+        "enum": [
+          "onMPPageAction"
+        ]
+      },
+      {
+        "title": "onPageStarStateChanged",
+        "description": "当前文章星标状态变化",
+        "type": "string",
+        "enum": [
+          "onPageStarStateChanged"
+        ]
+      },
+      {
+        "title": "onScreenShot",
+        "description": "客户端检测到截图",
+        "type": "string",
+        "enum": [
+          "onScreenShot"
+        ]
+      },
+      {
+        "title": "onTingAudioStateChanged",
+        "description": "微信听一听音频状态变化",
+        "type": "string",
+        "enum": [
+          "onTingAudioStateChanged"
+        ]
+      },
+      {
+        "title": "onWebPageUrlExposed",
+        "description": "网页 URL 被客户端曝光",
+        "type": "string",
+        "enum": [
+          "onWebPageUrlExposed"
+        ]
+      },
+      {
+        "title": "onWindowFocusChanged",
+        "description": "WebView 焦点变化",
+        "type": "string",
+        "enum": [
+          "onWindowFocusChanged"
+        ]
+      },
+      {
+        "title": "reportOnLeaveForMP",
+        "description": "公众号页面离开上报事件",
+        "type": "string",
+        "enum": [
+          "reportOnLeaveForMP"
+        ]
+      },
+      {
+        "title": "wxdownload:progress_change",
+        "description": "客户端下载任务进度变化",
+        "type": "string",
+        "enum": [
+          "wxdownload:progress_change"
+        ]
+      }
+    ]
+  },
+  "oneOf": [
+    {
+      "title": "wait_event — 等待下一次事件",
+      "type": "object",
+      "required": [
+        "operation",
+        "event"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "wait_event"
+          ]
+        },
+        "event": {
+          "$ref": "#/x-event-name"
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120000,
+          "default": 30000
+        }
+      },
+      "additionalProperties": false,
+      "example": {
+        "operation": "wait_event",
+        "event": "onPageStarStateChanged",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "title": "remove_event — 取消事件等待",
+      "type": "object",
+      "required": [
+        "operation",
+        "event"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "remove_event"
+          ]
+        },
+        "event": {
+          "$ref": "#/x-event-name"
+        }
+      },
+      "additionalProperties": false,
+      "example": {
+        "operation": "remove_event",
+        "event": "onPageStarStateChanged"
+      }
+    }
+  ]
+}

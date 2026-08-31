@@ -3,48 +3,85 @@
     "tags": [
       "下载任务"
     ],
-    "summary": "删除下载任务（兼容 wx_channels_api）",
+    "summary": "批量删除下载任务",
+    "description": "停止任务并软删除任务及其关联资源、端点、分片和连接记录。delete_files=true 时先安全删除下载目录内的最终文件、临时文件和直播录制目录；文件清理失败时该任务不会执行数据库软删除。每个任务独立返回结果。",
     "requestBody": {
       "required": true,
       "content": {
         "application/json": {
           "schema": {
             "type": "object",
-            "properties": {
-              "download_task_id": {
-                "type": "integer",
-                "description": "download_task 表主键 id"
-              }
-            },
             "required": [
-              "download_task_id"
-            ]
+              "task_ids"
+            ],
+            "properties": {
+              "task_ids": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "delete_files": {
+                "type": "boolean",
+                "default": false,
+                "description": "是否同时删除关联的本地文件"
+              }
+            }
+          },
+          "example": {
+            "task_ids": [
+              42,
+              43
+            ],
+            "delete_files": false
           }
         }
       }
     },
     "responses": {
       "200": {
-        "description": "删除结果",
+        "description": "统一业务响应；所有业务响应的 HTTP 状态码均为 200",
         "content": {
           "application/json": {
             "examples": {
               "success": {
-                "summary": "成功",
+                "summary": "删除成功",
                 "value": {
                   "code": 0,
                   "msg": "成功",
                   "data": {
-                    "message": "删除下载任务成功"
+                    "results": [
+                      {
+                        "task_id": 44,
+                        "success": true,
+                        "status_text": "cancelled"
+                      }
+                    ]
                   }
                 }
               },
-              "not_found": {
-                "summary": "任务不存在",
+              "partial_failure": {
+                "summary": "单项失败",
                 "value": {
-                  "code": 404,
-                  "msg": "未找到下载任务",
-                  "data": {}
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "results": [
+                      {
+                        "task_id": 999,
+                        "success": false,
+                        "error": "下载任务不存在"
+                      }
+                    ]
+                  }
+                }
+              },
+              "invalid_body": {
+                "summary": "task_ids 为空",
+                "value": {
+                  "code": 400,
+                  "msg": "task_ids 不能为空"
                 }
               }
             }

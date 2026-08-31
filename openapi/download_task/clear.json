@@ -1,0 +1,84 @@
+{
+  "post": {
+    "tags": [
+      "下载任务"
+    ],
+    "summary": "清理指定下载任务",
+    "description": "按 task_ids 清理任务。当前实现与批量删除使用相同的停止、可选本地文件清理和数据库软删除流程，并额外返回成功清理数量。",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "required": [
+              "task_ids"
+            ],
+            "properties": {
+              "task_ids": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "delete_files": {
+                "type": "boolean",
+                "default": false,
+                "description": "是否同时删除关联的本地文件"
+              }
+            }
+          },
+          "example": {
+            "task_ids": [
+              42,
+              43
+            ],
+            "delete_files": false
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "统一业务响应；所有业务响应的 HTTP 状态码均为 200",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "清理完成",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "cleared": 1,
+                    "total": 2,
+                    "results": [
+                      {
+                        "task_id": 42,
+                        "success": true,
+                        "status_text": "cancelled"
+                      },
+                      {
+                        "task_id": 43,
+                        "success": false,
+                        "error": "下载任务不存在"
+                      }
+                    ]
+                  }
+                }
+              },
+              "invalid_body": {
+                "summary": "task_ids 为空",
+                "value": {
+                  "code": 400,
+                  "msg": "task_ids 不能为空"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -3,112 +3,99 @@
     "tags": [
       "下载任务"
     ],
-    "summary": "创建视频号下载任务（兼容 wx_channels_api）",
-    "description": "接收 ChannelsObject 结构的原始视频号数据，后端自动处理 format_feed（类似 format_feed 逻辑）、链接拼接、文件名生成、spec 处理等。支持 video、picture、live 三种类型。",
+    "summary": "批量创建平台下载任务",
+    "description": "使用平台注册适配器从原始 content 构建并持久化下载任务。默认自动启动；单项失败记录在 tasks 中，不影响同批其他对象。config.existing_action 可设置 skip、duplicate 或 overwrite 处理重复内容。所有业务响应的 HTTP 状态码均为 200。",
     "requestBody": {
       "required": true,
       "content": {
         "application/json": {
           "schema": {
             "type": "object",
+            "required": [
+              "objects"
+            ],
             "properties": {
-              "id": {
-                "type": "string",
-                "description": "内容 id（视频号 object id）"
-              },
-              "contact": {
-                "type": "object",
-                "properties": {
-                  "username": {
-                    "type": "string",
-                    "description": "视频号账号 username"
-                  },
-                  "nickname": {
-                    "type": "string",
-                    "description": "视频号昵称"
-                  },
-                  "headUrl": {
-                    "type": "string",
-                    "description": "视频号头像 URL"
-                  }
-                }
-              },
-              "objectDesc": {
-                "type": "object",
-                "properties": {
-                  "description": {
-                    "type": "string",
-                    "description": "标题/描述"
-                  },
-                  "mediaType": {
-                    "type": "integer",
-                    "description": "媒体类型（2=图片视频, 4=普通视频, 9=直播）"
-                  },
-                  "media": {
-                    "type": "array",
-                    "items": {
+              "objects": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "platform",
+                    "content"
+                  ],
+                  "properties": {
+                    "platform": {
+                      "type": "string",
+                      "description": "已注册的平台适配器 ID"
+                    },
+                    "content": {
+                      "description": "平台适配器可识别的原始内容 JSON"
+                    },
+                    "build_from_fetch": {
+                      "type": "boolean",
+                      "default": false,
+                      "description": "是否从适配器 Fetch 结果构建任务"
+                    },
+                    "download_dir": {
+                      "type": "string",
+                      "description": "下载目录；为空时使用应用默认下载目录"
+                    },
+                    "filename": {
+                      "type": "string",
+                      "description": "可选文件名"
+                    },
+                    "config": {
                       "type": "object",
+                      "additionalProperties": true,
                       "properties": {
-                        "url": {
+                        "existing_action": {
                           "type": "string",
-                          "description": "媒体 URL"
-                        },
-                        "urlToken": {
-                          "type": "string",
-                          "description": "媒体 token"
-                        },
-                        "coverUrl": {
-                          "type": "string",
-                          "description": "封面 URL"
-                        },
-                        "decodeKey": {
-                          "type": "string",
-                          "description": "解密 key"
-                        },
-                        "spec": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "fileFormat": {
-                                "type": "string",
-                                "description": "视频规格名称"
-                              }
-                            }
-                          }
+                          "enum": [
+                            "skip",
+                            "duplicate",
+                            "overwrite"
+                          ],
+                          "description": "检测到已有相同内容任务时的处理方式"
                         }
-                      }
+                      },
+                      "description": "平台下载配置"
+                    },
+                    "auto_start": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "parent_task_id": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "relation_type": {
+                      "type": "string",
+                      "enum": [
+                        "discovered",
+                        "derived",
+                        "dependency"
+                      ]
                     }
                   }
                 }
-              },
-              "objectNonceId": {
-                "type": "string",
-                "description": "nonce id"
-              },
-              "source_url": {
-                "type": "string",
-                "description": "来源页面 URL（提供则直接使用）"
-              },
-              "type": {
-                "type": "string",
-                "description": "feed 类型：media、picture、live"
-              },
-              "liveInfo": {
-                "type": "object",
-                "description": "直播信息（live 类型时使用）"
-              },
-              "files": {
-                "type": "array",
-                "description": "图片列表（picture 类型时使用）"
-              },
-              "anchorContact": {
-                "type": "object",
-                "description": "主播信息（live 类型时使用）"
               }
-            },
-            "required": [
-              "id"
+            }
+          },
+          "example": {
+            "objects": [
+              {
+                "platform": "wxchannels",
+                "content": {
+                  "id": "14545102784038246591"
+                },
+                "download_dir": "downloads",
+                "auto_start": true,
+                "config": {
+                  "download_cover": true,
+                  "existing_action": "skip"
+                }
+              }
             ]
           }
         }
@@ -116,27 +103,84 @@
     },
     "responses": {
       "200": {
-        "description": "创建结果",
+        "description": "批量创建结果。tasks 与输入对象逐项对应；ids 仅包含本次实际创建成功的任务 ID。",
         "content": {
           "application/json": {
             "examples": {
               "success": {
-                "summary": "成功",
+                "summary": "创建成功",
                 "value": {
                   "code": 0,
                   "msg": "成功",
                   "data": {
-                    "message": "创建下载任务成功",
-                    "task_id": "fqG2OhiJFRYpnELqZmPRW"
+                    "tasks": [
+                      {
+                        "code": 0,
+                        "msg": "成功",
+                        "data": {
+                          "id": 42,
+                          "content_id": "wxchannels:14545102784038246591",
+                          "root_task_id": 42,
+                          "name": "示例视频",
+                          "unique_id": "wxchannels:14545102784038246591",
+                          "platform_id": "wxchannels",
+                          "status": 1,
+                          "source_url": "https://channels.weixin.qq.com/...",
+                          "cover_url": "https://example.com/cover.jpg",
+                          "cover_width": "1080",
+                          "cover_height": "1440",
+                          "config_json": "{\"download_dir\":\"/absolute/path/downloads\"}",
+                          "metadata_json": "{}",
+                          "resources": [
+                            {
+                              "id": 73,
+                              "task_id": 42,
+                              "download_dir": "/absolute/path/downloads",
+                              "name": "示例视频",
+                              "kind": "video",
+                              "type": "FILE",
+                              "unique_id": "video:14545102784038246591",
+                              "size": 0,
+                              "downloaded": 0,
+                              "speed": 0,
+                              "status": 0,
+                              "output_path": "示例视频",
+                              "file_path": "/absolute/path/downloads/示例视频"
+                            }
+                          ],
+                          "created_at": 1787000000000,
+                          "updated_at": 1787000000000
+                        }
+                      }
+                    ],
+                    "ids": [
+                      42
+                    ]
                   }
                 }
               },
-              "invalid": {
-                "summary": "参数不合法",
+              "partial_failure": {
+                "summary": "单项平台不受支持",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "tasks": [
+                      {
+                        "code": 400,
+                        "msg": "不支持的平台: unknown",
+                        "data": {}
+                      }
+                    ],
+                    "ids": []
+                  }
+                }
+              },
+              "invalid_body": {
+                "summary": "未传入对象",
                 "value": {
                   "code": 400,
-                  "msg": "不合法的参数",
-                  "data": {}
+                  "msg": "没有传入要下载的内容"
                 }
               }
             }

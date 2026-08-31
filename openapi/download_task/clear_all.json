@@ -1,0 +1,70 @@
+{
+  "post": {
+    "tags": [
+      "下载任务"
+    ],
+    "summary": "清理全部下载任务",
+    "description": "查询全部未删除任务并逐个执行停止、可选本地文件清理和数据库软删除。请求体可省略。",
+    "requestBody": {
+      "required": false,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "delete_files": {
+                "type": "boolean",
+                "default": false,
+                "description": "是否同时删除所有任务关联的本地文件"
+              }
+            }
+          },
+          "example": {
+            "delete_files": false
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "统一业务响应；所有业务响应的 HTTP 状态码均为 200",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": {
+                "summary": "清理完成",
+                "value": {
+                  "code": 0,
+                  "msg": "成功",
+                  "data": {
+                    "cleared": 2,
+                    "total": 2,
+                    "results": [
+                      {
+                        "task_id": 42,
+                        "success": true,
+                        "status_text": "cancelled"
+                      },
+                      {
+                        "task_id": 43,
+                        "success": true,
+                        "status_text": "cancelled"
+                      }
+                    ]
+                  }
+                }
+              },
+              "database_unavailable": {
+                "summary": "数据库不可用",
+                "value": {
+                  "code": 500,
+                  "msg": "应用未初始化，数据库不可用"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

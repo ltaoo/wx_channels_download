@@ -1,0 +1,104 @@
+{
+  "token_parameter": {
+    "name": "token",
+    "in": "query",
+    "required": false,
+    "schema": {
+      "type": "string"
+    },
+    "description": "公众号 API Token；配置了 Token 文件时必填。request、下载、安装、跳转和分享等敏感能力应始终启用 Token。"
+  },
+  "success_response": {
+    "description": "HTTP 层始终返回 JSON。code=0 表示转发和 Bridge 回调完成；原生业务是否成功仍需检查 data.result.err_msg。",
+    "content": {
+      "application/json": {
+        "schema": {
+          "type": "object",
+          "required": [
+            "code",
+            "msg"
+          ],
+          "properties": {
+            "code": {
+              "type": "integer",
+              "description": "0 为 API 成功；2005 为 JSAPI/Bridge 错误"
+            },
+            "msg": {
+              "type": "string"
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "type": "string"
+                },
+                "event": {
+                  "type": "string"
+                },
+                "result": {
+                  "description": "第一个原生回调参数"
+                },
+                "results": {
+                  "type": "array",
+                  "items": {},
+                  "description": "全部原生回调参数"
+                },
+                "elapsed_ms": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "examples": {
+          "success": {
+            "summary": "调用完成且原生成功",
+            "value": {
+              "code": 0,
+              "msg": "成功",
+              "data": {
+                "method": "getNetworkType",
+                "result": {
+                  "err_msg": "getNetworkType:wifi"
+                },
+                "results": [
+                  {
+                    "err_msg": "getNetworkType:wifi"
+                  }
+                ],
+                "elapsed_ms": 3
+              }
+            }
+          },
+          "native_fail": {
+            "summary": "Bridge 已回调但原生业务拒绝",
+            "value": {
+              "code": 0,
+              "msg": "成功",
+              "data": {
+                "method": "openCardDetail",
+                "result": {
+                  "err_msg": "openCardDetail:fail invalid card"
+                },
+                "results": [
+                  {
+                    "err_msg": "openCardDetail:fail invalid card"
+                  }
+                ],
+                "elapsed_ms": 8
+              }
+            }
+          },
+          "bridge_error": {
+            "summary": "Bridge 不可用",
+            "value": {
+              "code": 2005,
+              "msg": "JSAPI 调用失败 [1102]: waiting for WeixinJSBridge timed out"
+            }
+          }
+        }
+      }
+    }
+  }
+}

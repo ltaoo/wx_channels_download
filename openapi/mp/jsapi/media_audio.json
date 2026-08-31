@@ -1,0 +1,104 @@
+{
+  "title": "图片与音频 JSAPI",
+  "description": "operation 固定为 invoke。音频查询方法不需要 args；图片预览需要当前图片和完整 URL 列表。",
+  "type": "object",
+  "required": [
+    "operation",
+    "method",
+    "args"
+  ],
+  "properties": {
+    "operation": {
+      "type": "string",
+      "enum": [
+        "invoke"
+      ],
+      "default": "invoke"
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "getBackgroundAudioState",
+        "getTingAudioState",
+        "imagePreview"
+      ]
+    },
+    "args": {
+      "oneOf": [
+        {
+          "title": "getBackgroundAudioState.args",
+          "description": "无参数。返回后台音频播放状态；具体字段随客户端版本变化。",
+          "type": "object",
+          "maxProperties": 0,
+          "additionalProperties": false,
+          "example": {}
+        },
+        {
+          "title": "getTingAudioState.args",
+          "description": "无参数。返回微信听一听音频状态；具体字段随客户端版本变化。",
+          "type": "object",
+          "maxProperties": 0,
+          "additionalProperties": false,
+          "example": {}
+        },
+        {
+          "title": "imagePreview.args",
+          "description": "打开客户端图片预览。current 必须是 urls 中的一项；forbidForward=1 可请求禁止转发。",
+          "type": "object",
+          "required": [
+            "current",
+            "urls"
+          ],
+          "properties": {
+            "current": {
+              "type": "string",
+              "format": "uri"
+            },
+            "urls": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "forbidForward": {
+              "type": "integer",
+              "enum": [
+                0,
+                1
+              ],
+              "default": 0
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "current": "https://mmbiz.qpic.cn/example/0",
+            "urls": [
+              "https://mmbiz.qpic.cn/example/0",
+              "https://mmbiz.qpic.cn/example/1"
+            ],
+            "forbidForward": 0
+          }
+        }
+      ]
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 120000,
+      "default": 15000
+    }
+  },
+  "example": {
+    "operation": "invoke",
+    "method": "imagePreview",
+    "args": {
+      "current": "https://mmbiz.qpic.cn/example/0",
+      "urls": [
+        "https://mmbiz.qpic.cn/example/0"
+      ],
+      "forbidForward": 0
+    }
+  }
+}

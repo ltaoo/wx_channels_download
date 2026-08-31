@@ -1,0 +1,418 @@
+{
+  "title": "页面、窗口与导航栏 JSAPI",
+  "description": "operation 固定为 invoke。涉及关闭窗口或跳转的调用会直接改变当前微信 WebView。",
+  "type": "object",
+  "required": [
+    "operation",
+    "method",
+    "args"
+  ],
+  "properties": {
+    "operation": {
+      "type": "string",
+      "enum": [
+        "invoke"
+      ],
+      "default": "invoke"
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "closeWindow",
+        "createWebViewForFastLoad",
+        "disableBounceScroll",
+        "downloadPageDataForFastLoad",
+        "handleImmersiveStream",
+        "handleMPPageAction",
+        "openLiteApp",
+        "openUrlWithExtraWebview",
+        "openWebViewUseFastLoad",
+        "operateStar",
+        "setNavigationBarButtons",
+        "setNavigationBarColor"
+      ]
+    },
+    "args": {
+      "oneOf": [
+        {
+          "title": "closeWindow.args",
+          "description": "无参数。关闭承载当前文章的 WebView。",
+          "type": "object",
+          "maxProperties": 0,
+          "additionalProperties": false,
+          "example": {}
+        },
+        {
+          "title": "createWebViewForFastLoad.args",
+          "description": "创建 FastLoad 预加载 WebView。当前文章源码使用 scene=1。",
+          "type": "object",
+          "required": [
+            "scene"
+          ],
+          "properties": {
+            "scene": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "scene": 1
+          }
+        },
+        {
+          "title": "disableBounceScroll.args",
+          "description": "关闭指定方向的 WebView 回弹效果。",
+          "type": "object",
+          "required": [
+            "place"
+          ],
+          "properties": {
+            "place": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "top",
+                  "bottom"
+                ]
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": false,
+          "example": {
+            "place": [
+              "top",
+              "bottom"
+            ]
+          }
+        },
+        {
+          "title": "downloadPageDataForFastLoad.args",
+          "description": "向 FastLoad WebView 下载页面列表。",
+          "type": "object",
+          "required": [
+            "itemList"
+          ],
+          "properties": {
+            "itemList": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "item_show_type",
+                  "url"
+                ],
+                "properties": {
+                  "item_show_type": {
+                    "type": "integer"
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "itemList": [
+              {
+                "item_show_type": 5,
+                "url": "https://mp.weixin.qq.com/s/example"
+              }
+            ]
+          }
+        },
+        {
+          "title": "handleImmersiveStream.args",
+          "description": "进入沉浸式文章全文。",
+          "type": "object",
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "enterFullArticle"
+              ]
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "enterTime": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "毫秒时间戳"
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "action": "enterFullArticle",
+            "params": {
+              "enterTime": 1760000000000
+            }
+          }
+        },
+        {
+          "title": "handleMPPageAction.args",
+          "description": "公众号页面复合操作。getBiz 使用 needCheckBiz/bizType；reportByLeaveForMPGateway 使用 reportData；wxConfig 使用 appid/webComptList/url。",
+          "type": "object",
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "getBiz",
+                "reportByLeaveForMPGateway",
+                "wxConfig"
+              ]
+            },
+            "needCheckBiz": {
+              "type": "boolean"
+            },
+            "bizType": {
+              "type": "integer"
+            },
+            "reportData": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "appid": {
+              "type": "string"
+            },
+            "webComptList": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "url": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "action": "getBiz",
+            "needCheckBiz": false,
+            "bizType": 1
+          }
+        },
+        {
+          "title": "openLiteApp.args",
+          "description": "打开 LiteApp 页面。appId 和 page 为核心字段，query 会原样传递给 LiteApp。",
+          "type": "object",
+          "required": [
+            "appId",
+            "page"
+          ],
+          "properties": {
+            "appId": {
+              "type": "string"
+            },
+            "page": {
+              "type": "string"
+            },
+            "isTransparent": {
+              "type": "boolean",
+              "default": false
+            },
+            "query": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "appId": "wx1234567890abcdef",
+            "page": "pages/index/index",
+            "isTransparent": false,
+            "query": {
+              "ssid": 0,
+              "username": "example"
+            }
+          }
+        },
+        {
+          "title": "openUrlWithExtraWebview.args",
+          "description": "在额外 WebView 打开 URL。openType 在当前源码中通常为 1；可选 scene、bizUsername 和 interactiveDismiss。",
+          "type": "object",
+          "required": [
+            "url"
+          ],
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "openType": {
+              "type": "integer",
+              "default": 1
+            },
+            "scene": {
+              "type": "integer"
+            },
+            "bizUsername": {
+              "type": "string"
+            },
+            "interactiveDismiss": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "url": "https://mp.weixin.qq.com/s/example",
+            "openType": 1
+          }
+        },
+        {
+          "title": "openWebViewUseFastLoad.args",
+          "description": "通过 FastLoad WebView 打开文章 URL。",
+          "type": "object",
+          "required": [
+            "url"
+          ],
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "item_show_type": {
+              "type": "integer"
+            },
+            "openType": {
+              "type": "integer",
+              "default": 0
+            },
+            "scene": {
+              "type": "integer",
+              "default": 0
+            },
+            "subscene": {
+              "type": "integer",
+              "default": 0
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "url": "https://mp.weixin.qq.com/s/example",
+            "item_show_type": 0,
+            "openType": 0,
+            "scene": 0,
+            "subscene": 0
+          }
+        },
+        {
+          "title": "operateStar.args",
+          "description": "添加或取消当前文章星标。注意字段名是 opType，不是 action。",
+          "type": "object",
+          "required": [
+            "opType"
+          ],
+          "properties": {
+            "opType": {
+              "type": "string",
+              "enum": [
+                "addStar",
+                "cancelStar"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "example": {
+            "opType": "addStar"
+          }
+        },
+        {
+          "title": "setNavigationBarButtons.args",
+          "description": "设置导航栏左右按钮。按钮结构为客户端私有结构；当前源码使用 right.hidden 隐藏右侧按钮。",
+          "type": "object",
+          "properties": {
+            "left": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "right": {
+              "type": "object",
+              "properties": {
+                "hidden": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "right": {
+              "hidden": true
+            }
+          }
+        },
+        {
+          "title": "setNavigationBarColor.args",
+          "description": "设置导航栏浅色/深色主题颜色与透明度。",
+          "type": "object",
+          "required": [
+            "wxcolor"
+          ],
+          "properties": {
+            "wxcolor": {
+              "type": "object",
+              "required": [
+                "light",
+                "dark"
+              ],
+              "properties": {
+                "light": {
+                  "type": "string",
+                  "pattern": "^#[0-9A-Fa-f]{6}$"
+                },
+                "dark": {
+                  "type": "string",
+                  "pattern": "^#[0-9A-Fa-f]{6}$"
+                }
+              }
+            },
+            "alpha": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "additionalProperties": true,
+          "example": {
+            "wxcolor": {
+              "light": "#FFFFFF",
+              "dark": "#191919"
+            },
+            "alpha": 0
+          }
+        }
+      ]
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 120000,
+      "default": 15000
+    }
+  },
+  "example": {
+    "operation": "invoke",
+    "method": "openUrlWithExtraWebview",
+    "args": {
+      "url": "https://mp.weixin.qq.com/s/example",
+      "openType": 1
+    }
+  }
+}

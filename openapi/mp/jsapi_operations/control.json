@@ -1,0 +1,53 @@
+{
+  "post": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "调用微信 JSAPI - Bridge 控制",
+    "operationId": "invoke_wechat_jsapi_control",
+    "description": "查询运行时能力、等待 WeixinJSBridge Ready，或执行无参数 call。普通 invoke 请使用对应能力分类接口。",
+    "parameters": [
+      {
+        "$ref": "../jsapi_common.json#/token_parameter"
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "../jsapi/control.json"
+          },
+          "examples": {
+            "capabilities": {
+              "summary": "查询运行时能力",
+              "value": {
+                "operation": "capabilities"
+              }
+            },
+            "ready": {
+              "summary": "等待 Bridge Ready",
+              "value": {
+                "operation": "ready",
+                "timeout_ms": 15000
+              }
+            },
+            "call": {
+              "summary": "无参数 call",
+              "value": {
+                "operation": "call",
+                "method": "closeWindow",
+                "timeout_ms": 15000
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "$ref": "../jsapi_common.json#/success_response"
+      }
+    }
+  }
+}
