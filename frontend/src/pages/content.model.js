@@ -193,7 +193,9 @@ function ContentViewModel(props) {
   const loading_ = ref(false);
   const error_ = ref("");
   const detail_id_ = ref("");
+  const copied_content_id_ = ref("");
   let request_sequence = 0;
+  let copy_feedback_timer = null;
 
   const ui = {
     input_keyword$: new Timeless.vm.InputCore({
@@ -418,6 +420,13 @@ function ContentViewModel(props) {
     nextPage() {
       return change_page(page_.value + 1);
     },
+    copyId(content) {
+      const result = props.app.copy(content.id);
+      copied_content_id_.as(content.id);
+      clearTimeout(copy_feedback_timer);
+      copy_feedback_timer = setTimeout(() => copied_content_id_.as(""), 3000);
+      return result;
+    },
     openSource(content) {
       if (!content || !content.url) {
         return;
@@ -452,6 +461,7 @@ function ContentViewModel(props) {
     loading: loading_,
     error: error_,
     detail_id: detail_id_,
+    copied_content_id: copied_content_id_,
   };
 
   return { state, ui, methods };

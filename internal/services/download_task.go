@@ -182,6 +182,14 @@ type duplicateConflict struct {
 	ResourceKey string
 }
 
+var duplicate_blocking_task_statuses = []int{
+	model.TaskStatusWaiting,
+	model.TaskStatusPreparing,
+	model.TaskStatusDownloading,
+	model.TaskStatusPaused,
+	model.TaskStatusMerging,
+}
+
 func build_platform_config_json(config map[string]any, download_dir, filename string) ([]byte, error) {
 	platform_config := make(map[string]any, len(config)+2)
 	for key, value := range config {
@@ -683,17 +691,22 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 	stage = "check_duplicate"
 	duplicate := download_config_bool(body.Config, "duplicate")
 	overwrite := download_config_bool(body.Config, "overwrite")
+	content_type := ""
+	if content != nil {
+		content_type = content.Type
+	}
 	s.logger.Info().
 		Str("file", "/services/download_task.go").
 		Str("platform", body.Platform).
 		Str("stage", stage).
+		Str("content_type", content_type).
 		Str("task_unique_id", info.Task.UniqueID).
 		Int("resource_count", len(resource_infos)).
 		Int("endpoint_count", endpoint_count).
 		Bool("duplicate", duplicate).
 		Bool("overwrite", overwrite).
 		Msg("checking download task conflicts")
-	if err := s.check_duplicate(save_dir, info.Task.UniqueID, resource_keys, resource_names, duplicate, overwrite); err != nil {
+	if err := s.check_duplicate(save_dir, info.Task.UniqueID, resource_keys, resource_names, content_type, duplicate, overwrite); err != nil {
 		return nil, err
 	}
 	s.logger.Info().
@@ -3103,19 +3116,25 @@ func (s *DownloadTaskService) resolve_save_dir(requested string) (string, error)
 	return download_dir, nil
 }
 
-func (s *DownloadTaskService) check_duplicate(save_dir string, task_unique_id string, resource_keys []string, resource_names []string, duplicate bool, overwrite bool) error {
+func (s *DownloadTaskService) check_duplicate(save_dir string, task_unique_id string, resource_keys []string, resource_names []string, content_type string, duplicate bool, overwrite bool) error {
 	if duplicate {
 		return nil
 	}
+	filter_non_terminal_tasks := content_type == model.ContentTypeLive
 
 	var conflicts []duplicateConflict
 	var existing_task_id int
 	var existing_task_name string
 
-	// Task-level duplicate check: any existing task with the same unique_id (regardless of status)
 	if task_unique_id != "" {
 		var existing_task model.DownloadTask
-		err := s.db.Where("unique_id = ? AND deleted_at IS NULL", task_unique_id).First(&existing_task).Error
+		task_query := s.db.Where("unique_id = ? AND deleted_at IS NULL", task_unique_id)
+		if filter_non_terminal_tasks {
+			// A completed live recording is a historical execution and does not
+			// prevent recording the same live session again.
+			task_query = task_query.Where("status IN ?", duplicate_blocking_task_statuses)
+		}
+		err := task_query.First(&existing_task).Error
 		switch {
 		case err == nil:
 			existing_task_id = existing_task.Id
@@ -3160,14 +3179,16 @@ func (s *DownloadTaskService) check_duplicate(save_dir string, task_unique_id st
 			batch_end = len(unique_resource_keys)
 		}
 		var duplicate_rows []duplicate_resource_row
-		if err := s.db.
+		resource_query := s.db.
 			Table("download_resource AS resource").
 			Select("resource.unique_id, resource.task_id, task.name AS task_name").
 			Joins("JOIN download_task AS task ON task.id = resource.task_id").
 			Where("resource.unique_id IN ?", unique_resource_keys[batch_start:batch_end]).
-			Where("task.deleted_at IS NULL").
-			Order("resource.id ASC").
-			Scan(&duplicate_rows).Error; err != nil {
+			Where("task.deleted_at IS NULL")
+		if filter_non_terminal_tasks {
+			resource_query = resource_query.Where("task.status IN ?", duplicate_blocking_task_statuses)
+		}
+		if err := resource_query.Order("resource.id ASC").Scan(&duplicate_rows).Error; err != nil {
 			return fmt.Errorf("查询重复下载资源失败: %w", err)
 		}
 		for _, duplicate_row := range duplicate_rows {

@@ -22,6 +22,46 @@
   box-shadow: inset var(--dm-border-width-strong) 0 var(--dm-color-primary-fill);
 }
 
+.content-row-id {
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--dm-space-2);
+  margin-top: var(--dm-space-1);
+}
+
+.content-row-id-value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dm-content-muted);
+  font-family: var(--dm-font-family-mono, monospace);
+  font-size: var(--dm-font-size-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-copy-id-action {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  color: var(--dm-content-muted);
+  line-height: 1;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.content-copy-id-action:hover:not(:disabled) {
+  color: var(--dm-color-primary);
+}
+
+.content-copy-id-action.is-copied,
+.content-copy-id-action.is-copied:hover {
+  color: var(--dm-color-success);
+}
+
 .content-row-stat {
   flex: 0 0 auto;
   min-height: 22px;

@@ -281,6 +281,10 @@ function ContentRowMain(props) {
   const content = props.content;
   const favicon = window.PLATFORM_FAVICONS[content.platform_id] || "";
   const title = content.title || "\u00a0";
+  const copied_ = computed(
+    vm$.state.copied_content_id,
+    (copied_content_id) => copied_content_id === content.id,
+  );
   return [
     ContentRowCover({ content }),
     View({ class: "content-row-main dm-min-w-0 dm-flex-1" }, [
@@ -290,6 +294,68 @@ function ContentRowMain(props) {
           attributes: { title: content.title },
         },
         [title],
+      ),
+      View(
+        {
+          class: "content-row-id",
+          attributes: { n: "content-id" },
+        },
+        [
+          View(
+            {
+              type: "button",
+              class: computed(copied_, (copied) =>
+                copied
+                  ? "content-copy-id-action dm-focus-ring is-copied"
+                  : "content-copy-id-action dm-focus-ring",
+              ),
+              attributes: {
+                n: "content-copy-id-action",
+                type: "button",
+                title: computed(copied_, (copied) =>
+                  copied ? "已复制" : "复制内容 ID",
+                ),
+                "aria-label": computed(copied_, (copied) =>
+                  copied ? "内容 ID 已复制" : "复制内容 ID",
+                ),
+                disabled: content.id ? undefined : true,
+              },
+              onClick(event) {
+                event.stopPropagation();
+                vm$.methods.copyId(content);
+              },
+            },
+            [
+              Show({
+                when: copied_,
+                ok() {
+                  return Timeless.Icon({
+                    name: "check",
+                    size: 12,
+                    attributes: { n: "content-copy-id-success-icon" },
+                  });
+                },
+                else() {
+                  return Timeless.Icon({
+                    name: "copy",
+                    size: 12,
+                    attributes: { n: "content-copy-id-icon" },
+                  });
+                },
+              }),
+            ],
+          ),
+          View(
+            {
+              class: "content-row-id-value",
+              attributes: {
+                n: "content-id-value",
+                title: content.id || "",
+              },
+            },
+            [content.id || "-"],
+          ),
+        ],
       ),
       View(
         {

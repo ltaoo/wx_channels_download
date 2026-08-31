@@ -909,7 +909,9 @@ func (a *ChannelsAdapter) build_live_download_task(jl *wxchannels.JoinLivePayloa
 		}
 	}
 
-	now := time.Now().Unix()
+	now := time.Now()
+	now_millis := now.UnixMilli()
+	now_seconds := now.Unix()
 	live_config := build_config_json(config, config_string(config, "spec"), wxchannels.MediaTypeLive)
 	config_json, _ := json.Marshal(live_config)
 	metadata_json, _ := json.Marshal(map[string]any{
@@ -917,7 +919,7 @@ func (a *ChannelsAdapter) build_live_download_task(jl *wxchannels.JoinLivePayloa
 		"id":           live_id,
 		"content_type": "live",
 		"author":       author_nickname,
-		"download_at":  now,
+		"download_at":  now_seconds,
 	})
 
 	content := &model.Content{
@@ -928,8 +930,8 @@ func (a *ChannelsAdapter) build_live_download_task(jl *wxchannels.JoinLivePayloa
 		Title:      title,
 		CoverURL:   live_cover_url,
 		Timestamps: model.Timestamps{
-			CreatedAt: now,
-			UpdatedAt: now,
+			CreatedAt: now_millis,
+			UpdatedAt: now_millis,
 		},
 	}
 	if session_start_time > 0 {
@@ -944,14 +946,14 @@ func (a *ChannelsAdapter) build_live_download_task(jl *wxchannels.JoinLivePayloa
 		Nickname:   author_nickname,
 		AvatarURL:  author_avatar_url,
 		Timestamps: model.Timestamps{
-			CreatedAt: now,
-			UpdatedAt: now,
+			CreatedAt: now_millis,
+			UpdatedAt: now_millis,
 		},
 	}
 
 	unique_id := live_id + "_" + strconv.FormatInt(session_start_time, 10)
 	if session_start_time == 0 {
-		unique_id = live_id + "_" + strconv.FormatInt(now, 10)
+		unique_id = live_id + "_" + strconv.FormatInt(now_seconds, 10)
 	}
 
 	stream_resource := model.DownloadResource{

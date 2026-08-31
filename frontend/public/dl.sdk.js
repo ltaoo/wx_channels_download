@@ -1475,10 +1475,15 @@
         return Result.Err(r1.error);
       }
       const r2 = extra_created_task(r1.data);
+      logger
+        .Info()
+        .JSON("r2.data", r2.data)
+        .Msg("task resp");
+      const task_resp = r2.data || {};
       const task$ = DownloadTaskModel({
         owner: downloader$,
         pending: true,
-        data: r2.data,
+        data: task_resp,
         error: r2.error,
         logger,
       });
@@ -1505,7 +1510,7 @@
           .Msg("before subscribe task status change");
         task$.methods.connectWebSocket();
       }
-      return Result.Ok(adopt_pending_task(task$, r2.data));
+      return Result.Ok(adopt_pending_task(task$, task_resp));
     }
 
     async function prepare(object) {

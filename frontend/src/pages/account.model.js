@@ -136,6 +136,7 @@ function AccountViewModel(props) {
   const error_ = ref("");
   const copied_account_id_ = ref("");
   let request_sequence = 0;
+  let copy_feedback_timer = null;
 
   const reqs = {
     account: {
@@ -339,6 +340,8 @@ function AccountViewModel(props) {
     copyId(account) {
       const result = props.app.copy(account.id);
       copied_account_id_.as(account.id);
+      clearTimeout(copy_feedback_timer);
+      copy_feedback_timer = setTimeout(() => copied_account_id_.as(""), 3000);
       return result;
     },
     platformName: account_platform_name,
