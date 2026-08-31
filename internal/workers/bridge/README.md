@@ -86,6 +86,14 @@ bridge:
 
 这些方法依赖设备上的视频号页面 WebSocket 连接；设备连接 Bridge 但视频号页面未连接时，调用会失败或超时。
 
+公众号 adapter 当前会注册以下 Bridge 方法：
+
+| method | args | 对应 scraper 方法 |
+| --- | --- | --- |
+| `wxmp.biz.msg.list` | `username`, `offset` | `FetchBizMsgList` |
+
+该方法依赖设备上的公众号页面 WebSocket 连接。`username` 必填，`offset` 可省略或传上一页返回的偏移量。
+
 Docker 中的 Linux 使用独立身份：
 
 ```yaml

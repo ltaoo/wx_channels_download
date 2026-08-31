@@ -146,16 +146,16 @@ func (r *Routes) RegisterRoutes(registrar adapter.RouteRegistrar) {
 	registrar.RegisterGET("/api/mp/article/list", r.handle_fetch_article_list)
 	registrar.RegisterGET("/api/mp/biz/msg/list", r.handle_fetch_biz_msg_list)
 	registrar.RegisterGET("/api/mp/page/content", r.handle_fetch_page_content)
-	registrar.RegisterPOST("/api/mp/jsapi", r.handle_jsapi)
-	for _, jsapi_category_path := range jsapi_category_paths {
-		registrar.RegisterPOST(jsapi_category_path, r.handle_jsapi)
-	}
-	registrar.RegisterGET("/api/mp/postprocess/flows", r.HandleFetchPostprocessFlows)
-	registrar.RegisterGET("/rss/mp", r.handle_official_account_rss)
-	registrar.RegisterGET("/mp/proxy", r.handle_official_account_proxy)
+	// registrar.RegisterPOST("/api/mp/jsapi", r.handle_jsapi)
+	// for _, jsapi_category_path := range jsapi_category_paths {
+	// 	registrar.RegisterPOST(jsapi_category_path, r.handle_jsapi)
+	// }
+	// registrar.RegisterGET("/api/mp/postprocess/flows", r.HandleFetchPostprocessFlows)
 	registrar.RegisterPOST("/api/mp/refresh_with_frontend", r.handle_refresh_with_frontend)
 	registrar.RegisterPOST("/api/mp/delete", r.handle_delete)
 	registrar.RegisterPOST("/api/mp/refresh", r.handle_refresh_event)
+	registrar.RegisterGET("/rss/mp", r.handle_official_account_rss)
+	registrar.RegisterGET("/mp/proxy", r.handle_official_account_proxy)
 }
 
 // HandleFetchPostprocessFlows returns wxmp postprocess flow configs for read-only visualization.

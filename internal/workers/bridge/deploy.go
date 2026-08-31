@@ -20,6 +20,7 @@ const (
 	default_worker_name             = "dm-bridge"
 	worker_compatibility_date       = "2026-05-03"
 	worker_class_name               = "BridgeDurableObject"
+	legacy_worker_class_name        = "HubDurableObject"
 	worker_binding_name             = "BRIDGES"
 	bridge_token_binding_name       = "BRIDGE_TOKEN"
 	bridge_admin_token_binding_name = "BRIDGE_ADMIN_TOKEN"
@@ -31,7 +32,7 @@ const (
 	worker_subdomain_timeout        = 30 * time.Second
 	pages_build_timeout             = 30 * time.Second
 	pages_deploy_timeout            = 5 * time.Minute
-	cloudflare_http_request_timeout = 2 * time.Minute
+	cloudflare_http_request_timeout = pages_deploy_timeout
 )
 
 // DeployStage identifies the current Bridge deployment phase.
@@ -116,6 +117,7 @@ func Deploy(request_context context.Context, options DeployOptions) (*DeployResu
 				Storage:     "sqlite",
 			},
 		},
+		Exports: bridge_worker_exports(),
 		Secrets: map[string]string{
 			bridge_token_binding_name:       options.BridgeToken,
 			bridge_admin_token_binding_name: options.AdminToken,
@@ -186,6 +188,15 @@ func Deploy(request_context context.Context, options DeployOptions) (*DeployResu
 	result.PagesDeploymentURL = pages_result.DeploymentURL
 	result.PagesFiles = pages_result.Files
 	return result, nil
+}
+
+func bridge_worker_exports() map[string]worker.Export {
+	return map[string]worker.Export{
+		legacy_worker_class_name: {
+			Type:  "durable-object",
+			State: "deleted",
+		},
+	}
 }
 
 func normalize_deploy_options(options DeployOptions) (DeployOptions, error) {
