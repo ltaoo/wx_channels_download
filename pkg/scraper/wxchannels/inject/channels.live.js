@@ -179,36 +179,40 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
         return;
       }
       var content = { profile: p, live: liveData };
-      try {
-        var ins = WXU.loading({ msg: "正在创建直播下载任务..." });
-        var [err, data] = await WXU.request({
-          method: "POST",
-          url: ChannelsAPIOrigin + "/api/v1/download_task/create",
-          body: {
-            objects: [
-              {
-                platform: "wxchannels",
-                content: content,
-                config: {},
-              },
-            ],
-          },
-        });
-        ins.hide();
-        if (err) {
-          WXU.error({
-            msg: err.message || "创建下载任务失败",
-            source: "channels.live.js:137",
-          });
-          return;
-        }
-        WXU.toast("直播下载任务已创建");
-      } catch (e) {
+      if (!dl$) {
         WXU.error({
-          msg: "创建下载任务失败: " + e.message,
+          msg: "下载器未初始化",
+          source: "channels.live.js:115",
+        });
+        return;
+      }
+      // var ins = WXU.loading({ msg: "正在创建直播下载任务..." });
+      var r = await dl$.create(content, {
+        platform: "wxchannels",
+      });
+      if (r.error) {
+        WXU.error({
+          msg: r.error.message || "创建下载任务失败",
+          source: "channels.live.js:137",
+        });
+        return;
+      }
+      var task$ = r.data;
+      if (task$.error) {
+        WXU.error({
+          msg: task$.error.message || "创建下载任务失败",
+          source: "channels.live.js:137",
+        });
+        return;
+      }
+      task$.onFailed((error) => {
+        WXU.log.Error().JSON("error", error).Msg("download task failed");
+        WXU.error({
+          msg: "下载失败: " + error.message,
           source: "channels.live.js:142",
         });
-      }
+      });
+      WXU.toast("直播下载任务已创建");
     };
     var api = WXU.API || {};
     var options = [];

@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <script src="frontend/public/timeless/0.32.0/timeless.umd.min.js"></script>
+    <script src="frontend/public/timeless/0.32.0/timeless.dom.umd.min.js"></script>
+    <script src="frontend/public/virtual-list-view.js"></script>
+    <style>
+      .list { height: 100px; }
+      [data-list-view-root] { height: 100px; overflow: auto; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      window.View = Timeless.View;
+      window.Show = Timeless.Show;
+      window.computed = Timeless.computed;
+      window.ref = Timeless.ref;
+      window.refarr = Timeless.refarr;
+      window.isElement = Timeless.isElement;
+
+      const tasks_ = refarr([]);
+      const list_render_enabled_ = ref(true);
+
+      function TestList() {
+        return View({ class: "list" }, [
+          Show({
+            when: computed(tasks_, (items) => items.length > 0),
+            ok() {
+              return Show({
+                when: list_render_enabled_,
+                ok() {
+                  return [
+                    VirtualListView({
+                      style: { height: "100px", overflow: "auto" },
+                      key: "id",
+                      size: 2,
+                      buffer: 1,
+                      gutter: 2,
+                      itemHeight: 30,
+                      each: tasks_,
+                      render(task_) {
+                        return View({}, [task_.value.name]);
+                      },
+                    }),
+                  ];
+                },
+              });
+            },
+            else() {
+              return [View({ class: "empty" }, ["empty"])];
+            },
+          }),
+        ]);
+      }
+
+      Timeless.DOM.render(TestList(), document.getElementById("root"));
+      setTimeout(() => {
+        tasks_.as([
+          { id: "1", name: "one" },
+          { id: "2", name: "two" },
+          { id: "3", name: "three" },
+          { id: "4", name: "four" },
+          { id: "5", name: "five" },
+        ]);
+      }, 20);
+      setTimeout(() => {
+        document.body.setAttribute(
+          "data-list-root-count",
+          String(document.querySelectorAll("[data-list-view-root]").length),
+        );
+        document.body.setAttribute(
+          "data-list-content-count",
+          String(document.querySelectorAll("[data-list-view-content]").length),
+        );
+      }, 300);
+    </script>
+  </body>
+</html>
