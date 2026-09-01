@@ -1362,7 +1362,7 @@ Node.prototype.normalize = function() {
     child = next;
   }
 };
-['insertAdjacentElement', 'getAttribute', 'setAttribute', 'getAttributeNS', 'setAttributeNS', 'removeAttribute', 'removeAttributeNS', 'hasAttribute', 'hasAttributeNS', 'hasAttributes', 'querySelector', 'querySelectorAll', 'getElementsByTagName', 'getElementsByClassName', 'matches', 'closest', 'getBoundingClientRect', 'getClientRects', 'focus', 'blur', 'click', 'getContext', 'toDataURL'].forEach(function(name) { Element.prototype[name] = __minibMethod(name); });
+['insertAdjacentElement', 'getAttribute', 'setAttribute', 'getAttributeNS', 'setAttributeNS', 'removeAttribute', 'removeAttributeNS', 'hasAttribute', 'hasAttributeNS', 'hasAttributes', 'getAttributeNames', 'querySelector', 'querySelectorAll', 'getElementsByTagName', 'getElementsByClassName', 'matches', 'closest', 'getBoundingClientRect', 'getClientRects', 'focus', 'blur', 'click', 'getContext', 'toDataURL'].forEach(function(name) { Element.prototype[name] = __minibMethod(name); });
 function HTMLElement() { if (typeof __minib_construct_html_element === 'function') return __minib_construct_html_element(this); }
 HTMLElement.prototype = Object.create(Element.prototype);
 function CustomElementRegistry() {}
@@ -1431,6 +1431,8 @@ function DocumentFragment() {}
 DocumentFragment.prototype = Object.create(Node.prototype);
 Object.defineProperty(DocumentFragment.prototype, 'children', __minibNodeAccessor('children', false));
 ['querySelector', 'querySelectorAll'].forEach(function(name) { DocumentFragment.prototype[name] = __minibMethod(name); });
+function ShadowRoot() {}
+ShadowRoot.prototype = Object.create(DocumentFragment.prototype);
 function __minibConvertNodes(owner, values) {
   var documentForNodes = owner.nodeType === Node.DOCUMENT_NODE ? owner : owner.ownerDocument;
   return Array.prototype.map.call(values, function(value) { return value instanceof Node ? value : documentForNodes.createTextNode(String(value)); });
@@ -2208,6 +2210,9 @@ func (request *xml_http_request) prepare_network_request(body []byte) (xhr_netwo
 		return xhr_network_request{}, err
 	}
 	headers := clawreq.DefaultHeaders(clawreq.ProfileChrome)
+	if request.runtime.user_agent != "" {
+		headers.Set("User-Agent", request.runtime.user_agent)
+	}
 	headers.Set("Accept", "application/json, text/plain, */*")
 	headers.Set("Referer", request.runtime.page.URL)
 	headers.Set("Sec-Fetch-Dest", "empty")
@@ -2678,6 +2683,9 @@ func (runtime *page_runtime) pump_event_loop(ctx context.Context) {
 		runtime.drain_dynamic_scripts(ctx)
 		runtime.drain_dynamic_resources(ctx)
 		if !had_immediate_work && !ran_timer {
+			if runtime.pending_network_tasks.Load() > 0 && runtime.wait_for_external_job(ctx) {
+				continue
+			}
 			return
 		}
 	}
@@ -2778,6 +2786,13 @@ func (runtime *page_runtime) node_object(node *html.Node) *goja.Object {
 	object := runtime.vm.NewObject()
 	runtime.bind_node_object(node, object, true)
 	return object
+}
+
+func (runtime *page_runtime) nullable_node_value(node *html.Node) goja.Value {
+	if node == nil {
+		return goja.Null()
+	}
+	return runtime.node_object(node)
 }
 
 func (runtime *page_runtime) bind_node_object(node *html.Node, object *goja.Object, set_prototype bool) {
@@ -3284,10 +3299,10 @@ func (runtime *page_runtime) install_document(object *goja.Object, node *html.No
 		clone := runtime.clone_node(node, call.Argument(1).ToBoolean())
 		return runtime.node_object(clone)
 	})
-	_ = object.Set("getElementById", func(id string) any { return runtime.node_object(find_by_attribute(node, "id", id)) })
+	_ = object.Set("getElementById", func(id string) any { return runtime.nullable_node_value(find_by_attribute(node, "id", id)) })
 	_ = object.Set("getElementsByTagName", func(name string) any { return runtime.node_array(find_by_tag(node, name)) })
 	_ = object.Set("getElementsByClassName", func(name string) any { return runtime.node_array(find_by_class(node, name)) })
-	_ = object.Set("querySelector", func(selector string) any { return runtime.node_object(query_first(node, selector)) })
+	_ = object.Set("querySelector", func(selector string) any { return runtime.nullable_node_value(query_first(node, selector)) })
 	_ = object.Set("querySelectorAll", func(selector string) any { return runtime.node_array(query_all(node, selector)) })
 	_ = object.Set("elementFromPoint", func(float64, float64) any { return runtime.node_object(find_element(node, "body")) })
 	_ = object.Set("write", func(markup string) {
@@ -3391,7 +3406,8 @@ func (runtime *page_runtime) install_element(object *goja.Object, node *html.Nod
 	_ = object.Set("hasAttribute", func(name string) bool { _, ok := find_attribute(node, name); return ok })
 	_ = object.Set("hasAttributeNS", func(_ string, name string) bool { _, ok := find_attribute(node, name); return ok })
 	_ = object.Set("hasAttributes", func() bool { return len(node.Attr) > 0 })
-	_ = object.Set("querySelector", func(selector string) any { return runtime.node_object(query_first(node, selector)) })
+	_ = object.Set("getAttributeNames", func() []string { return element_attribute_names(node) })
+	_ = object.Set("querySelector", func(selector string) any { return runtime.nullable_node_value(query_first(node, selector)) })
 	_ = object.Set("querySelectorAll", func(selector string) any { return runtime.node_array(query_all(node, selector)) })
 	_ = object.Set("getElementsByTagName", func(name string) any { return runtime.node_array(find_by_tag(node, name)) })
 	_ = object.Set("getElementsByClassName", func(name string) any { return runtime.node_array(find_by_class(node, name)) })
@@ -3436,9 +3452,17 @@ func (runtime *page_runtime) install_element(object *goja.Object, node *html.Nod
 		return nil
 	})
 	_ = object.Set("toDataURL", func() string { return "data:image/png;base64," })
-	for _, name := range []string{"insertAdjacentElement", "getAttribute", "setAttribute", "getAttributeNS", "setAttributeNS", "removeAttribute", "removeAttributeNS", "hasAttribute", "hasAttributeNS", "hasAttributes", "querySelector", "querySelectorAll", "getElementsByTagName", "getElementsByClassName", "matches", "closest", "getBoundingClientRect", "getClientRects"} {
+	for _, name := range []string{"insertAdjacentElement", "getAttribute", "setAttribute", "getAttributeNS", "setAttributeNS", "removeAttribute", "removeAttributeNS", "hasAttribute", "hasAttributeNS", "hasAttributes", "getAttributeNames", "querySelector", "querySelectorAll", "getElementsByTagName", "getElementsByClassName", "matches", "closest", "getBoundingClientRect", "getClientRects"} {
 		_ = object.Set("__minib_"+name, object.Get(name))
 	}
+}
+
+func element_attribute_names(node *html.Node) []string {
+	attribute_names := make([]string, len(node.Attr))
+	for attribute_index, attribute := range node.Attr {
+		attribute_names[attribute_index] = attribute.Key
+	}
+	return attribute_names
 }
 
 func (runtime *page_runtime) document_implementation() *goja.Object {

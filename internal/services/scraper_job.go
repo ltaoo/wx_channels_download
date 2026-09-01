@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,21 +14,6 @@ import (
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/events"
-	douyin_scraper "wx_channel/pkg/scraper/douyin"
-	youtube_scraper "wx_channel/pkg/scraper/youtube"
-)
-
-const (
-	scraper_platform_wxchannels  = "wxchannels"
-	scraper_platform_wxmp        = "wxmp"
-	scraper_platform_douyin      = "douyin"
-	scraper_platform_bilibili    = "bilibili"
-	scraper_platform_youtube     = "youtube"
-	scraper_platform_xiaohongshu = "xiaohongshu"
-	scraper_platform_zhihu       = "zhihu"
-	scraper_platform_cctv        = "cctv"
-	scraper_platform_ttk         = "ttk"
-	scraper_platform_webpage     = "webpage"
 )
 
 const default_scraper_job_retention_limit = 20
@@ -182,87 +166,6 @@ func (s *ScraperJobService) SetFetchRunner(fetch_runner ScraperFetchRunner) {
 	s.job_mu.Lock()
 	s.fetch_runner = fetch_runner
 	s.job_mu.Unlock()
-}
-
-type ScraperPlatformResolution struct {
-	Platform  string
-	StatusKey string
-}
-
-// DetectScraperPlatform maps a supported scraper URL to its adapter ID.
-func DetectScraperPlatform(raw_url string) (string, error) {
-	resolution, err := ResolveScraperPlatform(raw_url)
-	if err != nil {
-		return "", err
-	}
-	return resolution.Platform, nil
-}
-
-// ResolveScraperPlatform maps a supported scraper URL to its adapter ID and
-// the status entry that should gate that URL.
-func ResolveScraperPlatform(raw_url string) (ScraperPlatformResolution, error) {
-	raw_url = strings.TrimSpace(raw_url)
-	if raw_url == "" {
-		return ScraperPlatformResolution{}, fmt.Errorf("url 不能为空")
-	}
-
-	if _, err := douyin_scraper.ExtractURL(raw_url); err == nil {
-		return scraper_platform_resolution(scraper_platform_douyin, ""), nil
-	}
-
-	if strings.HasPrefix(strings.ToLower(raw_url), "zhihu://") {
-		return scraper_platform_resolution(scraper_platform_zhihu, ""), nil
-	}
-
-	if _, ok := youtube_scraper.ExtractVideoID(raw_url); ok {
-		return scraper_platform_resolution(scraper_platform_youtube, ""), nil
-	}
-
-	parsed_url, err := url.Parse(raw_url)
-	if err != nil || parsed_url.Hostname() == "" {
-		return ScraperPlatformResolution{}, fmt.Errorf("无法解析 URL: %s", raw_url)
-	}
-	parsed_url.Scheme = strings.ToLower(strings.TrimSpace(parsed_url.Scheme))
-	if parsed_url.Scheme != "http" && parsed_url.Scheme != "https" {
-		return ScraperPlatformResolution{}, fmt.Errorf("仅支持 HTTP/HTTPS URL: %s", raw_url)
-	}
-
-	host := strings.ToLower(parsed_url.Hostname())
-	switch {
-	case host == "weixin.qq.com" && strings.HasPrefix(parsed_url.EscapedPath(), "/sph/"):
-		return scraper_platform_resolution(scraper_platform_wxchannels, "wxchannels:sph"), nil
-	case host == "channels.weixin.qq.com":
-		return scraper_platform_resolution(scraper_platform_wxchannels, "wxchannels:page"), nil
-	case host == "mp.weixin.qq.com":
-		return scraper_platform_resolution(scraper_platform_wxmp, ""), nil
-	case scraper_host_matches(host, "douyin.com") || scraper_host_matches(host, "iesdouyin.com"):
-		return scraper_platform_resolution(scraper_platform_douyin, ""), nil
-	case scraper_host_matches(host, "bilibili.com") || host == "b23.tv" || host == "bili2233.cn":
-		return scraper_platform_resolution(scraper_platform_bilibili, ""), nil
-	case host == "v.cctv.com":
-		return scraper_platform_resolution(scraper_platform_cctv, ""), nil
-	case host == "www.zhihu.com" || host == "zhuanlan.zhihu.com":
-		return scraper_platform_resolution(scraper_platform_zhihu, ""), nil
-	case host == "ttks.tw" || host == "www.ttks.tw":
-		return scraper_platform_resolution(scraper_platform_ttk, ""), nil
-	case scraper_host_matches(host, "xiaohongshu.com") ||
-		scraper_host_matches(host, "xhslink.cn") ||
-		scraper_host_matches(host, "xhslink.com"):
-		return scraper_platform_resolution(scraper_platform_xiaohongshu, ""), nil
-	default:
-		return scraper_platform_resolution(scraper_platform_webpage, ""), nil
-	}
-}
-
-func scraper_platform_resolution(platform_id string, status_key string) ScraperPlatformResolution {
-	if strings.TrimSpace(status_key) == "" {
-		status_key = platform_id
-	}
-	return ScraperPlatformResolution{Platform: platform_id, StatusKey: status_key}
-}
-
-func scraper_host_matches(host, domain string) bool {
-	return host == domain || strings.HasSuffix(host, "."+domain)
 }
 
 // Create starts an asynchronous scraper fetch job.

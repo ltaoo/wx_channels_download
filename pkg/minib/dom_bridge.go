@@ -323,8 +323,10 @@ func (runtime *page_runtime) call_shared_node_method(node *html.Node, name strin
 		return runtime.vm.ToValue(ok)
 	case "hasAttributes":
 		return runtime.vm.ToValue(len(node.Attr) > 0)
+	case "getAttributeNames":
+		return runtime.vm.ToValue(element_attribute_names(node))
 	case "querySelector":
-		return runtime.node_object(query_first(node, argument(0).String()))
+		return runtime.nullable_node_value(query_first(node, argument(0).String()))
 	case "querySelectorAll":
 		return runtime.node_array(query_all(node, argument(0).String()))
 	case "getElementsByTagName":
