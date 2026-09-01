@@ -25,7 +25,7 @@ func TestESModuleGraphImportMapCyclesAndDynamicImport(t *testing.T) {
 			_, _ = fmt.Fprint(response_writer, `<!doctype html><body><script>window.moduleEvaluationCount=0;window.cycleOrder=[];</script><script type="importmap">{"imports":{"lib/":"/modules/"}}</script><link rel="modulepreload" href="/modules/shared.js"><script type="module" src="/entry.js"></script></body>`)
 		case "/entry.js":
 			response_writer.Header().Set("Content-Type", "application/javascript")
-			_, _ = fmt.Fprint(response_writer, `import sharedDefault,{counter,increment} from 'lib/shared.js';import {cycleValue} from './cycle-a.js';import data from './data.json' with {type:'json'};increment();document.body.setAttribute('data-module-static',[sharedDefault,counter,cycleValue,data.name,import.meta.url.endsWith('/entry.js')].join(':'));const lazyURL=new URL('./lazy.js',import.meta.url);lazyURL.searchParams.set('version','one two');const params=new URLSearchParams('a=1&a=2');params.append('b','x y');document.body.setAttribute('data-url-api',[lazyURL.search,lazyURL.searchParams.get('version'),params.getAll('a').join(','),params.toString()].join(':'));import(lazyURL.href).then(function(namespace){document.body.setAttribute('data-module-dynamic',namespace.default+':'+namespace.value+':'+window.moduleEvaluationCount);});`)
+			_, _ = fmt.Fprint(response_writer, `import sharedDefault,{counter,increment} from 'lib/shared.js';import {cycleValue} from './cycle-a.js';import data from './data.json' with {type:'json'};increment();document.body.setAttribute('data-module-static',[sharedDefault,counter,cycleValue,data.name,import.meta.url.endsWith('/entry.js')].join(':'));document.body.setAttribute('data-bigint',String(9007199254740992n+1n));const lazyURL=new URL('./lazy.js',import.meta.url);lazyURL.searchParams.set('version','one two');const params=new URLSearchParams('a=1&a=2');params.append('b','x y');document.body.setAttribute('data-url-api',[lazyURL.search,lazyURL.searchParams.get('version'),params.getAll('a').join(','),params.toString()].join(':'));import(lazyURL.href).then(function(namespace){document.body.setAttribute('data-module-dynamic',namespace.default+':'+namespace.value+':'+window.moduleEvaluationCount);});`)
 		case "/modules/shared.js":
 			response_writer.Header().Set("Content-Type", "application/javascript")
 			_, _ = fmt.Fprint(response_writer, `window.moduleEvaluationCount++;export let counter=1;export function increment(){counter++}export default 'shared';`)
@@ -61,6 +61,9 @@ func TestESModuleGraphImportMapCyclesAndDynamicImport(t *testing.T) {
 	}
 	if !strings.Contains(page.RenderedHTML, `data-module-static="shared:2:b,a:json:true"`) {
 		t.Fatalf("static module graph did not execute: %s", page.RenderedHTML)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-bigint="9007199254740993"`) {
+		t.Fatalf("BigInt module syntax did not execute: %s", page.RenderedHTML)
 	}
 	if !strings.Contains(page.RenderedHTML, `data-module-dynamic="shared-lazy:42:1"`) {
 		t.Fatalf("dynamic module did not execute or shared module was re-evaluated: %s", page.RenderedHTML)

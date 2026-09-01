@@ -120,6 +120,70 @@ window.addEventListener('load', function() { document.body.setAttribute('data-lo
 	}
 }
 
+func TestNavigateWaitsForSelectorAndContent(t *testing.T) {
+	request_counts := make(map[string]int)
+	var request_mutex sync.Mutex
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		request_mutex.Lock()
+		request_counts[request.URL.Path]++
+		request_mutex.Unlock()
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		switch request.URL.Path {
+		case "/initial":
+			_, _ = fmt.Fprint(response_writer, `<!doctype html><html data-n="initial-page"><head data-n="initial-head"><script data-n="late-resource" src="/late.js"></script></head><body data-n="initial-body"><main class="ready" data-n="initial-content">initial ready</main></body></html>`)
+		case "/dynamic":
+			_, _ = fmt.Fprint(response_writer, `<!doctype html><html data-n="dynamic-page"><head data-n="dynamic-head"></head><body data-n="dynamic-body"><script data-n="render-script">var node = document.createElement('main'); node.className = 'ready'; node.setAttribute('data-n', 'dynamic-content'); node.textContent = 'dynamic ready'; document.body.appendChild(node);</script><script data-n="late-script">document.body.setAttribute('data-late', 'ran');</script></body></html>`)
+		case "/missing":
+			_, _ = fmt.Fprint(response_writer, `<!doctype html><html data-n="missing-page"><head data-n="missing-head"></head><body data-n="missing-body">not ready</body></html>`)
+		case "/late.js":
+			response_writer.Header().Set("Content-Type", "application/javascript")
+			_, _ = fmt.Fprint(response_writer, `document.body.setAttribute('data-late-resource', 'ran')`)
+		default:
+			http.NotFound(response_writer, request)
+		}
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+
+	initial_page, err := browser.Navigate(context.Background(), server.URL+"/initial", nil, NavigateOptions{
+		WaitForSelector: ".ready",
+		WaitForContent:  "initial ready",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request_mutex.Lock()
+	late_requests := request_counts["/late.js"]
+	request_mutex.Unlock()
+	if initial_page.ExecutedScripts != 0 || len(initial_page.Resources) != 0 || late_requests != 0 {
+		t.Fatalf("initial wait did extra work: scripts=%d resources=%d late_requests=%d", initial_page.ExecutedScripts, len(initial_page.Resources), late_requests)
+	}
+	selector_value, err := browser.ExecuteJS(context.Background(), `document.querySelector('.ready').textContent`)
+	if err != nil || selector_value.String() != "initial ready" {
+		t.Fatalf("initial wait runtime value=%v error=%v", selector_value, err)
+	}
+
+	dynamic_page, err := browser.Navigate(context.Background(), server.URL+"/dynamic", nil, NavigateOptions{
+		WaitForSelector: ".ready",
+		WaitForContent:  "dynamic ready",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dynamic_page.ExecutedScripts != 1 || !strings.Contains(dynamic_page.RenderedHTML, `data-n="dynamic-content"`) || strings.Contains(dynamic_page.RenderedHTML, `data-late="ran"`) {
+		t.Fatalf("dynamic wait did not stop at the first match: scripts=%d html=%s", dynamic_page.ExecutedScripts, dynamic_page.RenderedHTML)
+	}
+
+	if _, err := browser.Navigate(context.Background(), server.URL+"/missing", nil, NavigateOptions{WaitForContent: "never rendered"}); err == nil || !strings.Contains(err.Error(), "wait condition") {
+		t.Fatalf("missing wait condition error = %v", err)
+	}
+}
+
 func TestNavigateCanDisableJavaScriptForSSRExtraction(t *testing.T) {
 	var script_requests int
 	var asset_requests int
@@ -197,6 +261,9 @@ func TestNavigateRejectsInvalidExecutionOptions(t *testing.T) {
 	}
 	if _, err := browser.Navigate(context.Background(), "https://example.invalid", nil, NavigateOptions{WaitUntil: "networkidle"}); err == nil {
 		t.Fatal("unsupported lifecycle milestone was accepted")
+	}
+	if _, err := browser.Navigate(context.Background(), "https://example.invalid", nil, NavigateOptions{WaitForSelector: "["}); err == nil {
+		t.Fatal("invalid wait selector was accepted")
 	}
 }
 

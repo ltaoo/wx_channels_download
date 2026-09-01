@@ -20,6 +20,7 @@ func new_interceptor_config(cfg *config.Config) zhihu.InterceptorConfig {
 	api_port := cfg.GetInt("api.port")
 	return zhihu.InterceptorConfig{
 		Version:          cfg.Version,
+		Mode:             cfg.Mode,
 		GlobalScriptPath: cfg.GlobalScriptPath,
 		FrontendVariables: map[string]any{
 			"apiHost":     config.APIClientHost(api_bind_hostname, api_port),

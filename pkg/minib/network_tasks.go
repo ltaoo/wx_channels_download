@@ -48,10 +48,16 @@ func (runtime *page_runtime) run_external_jobs(ctx context.Context) {
 		return
 	}
 	for callback_count := 0; callback_count < max_host_callbacks && ctx.Err() == nil; callback_count++ {
+		if runtime.wait_condition_met() {
+			return
+		}
 		select {
 		case job := <-runtime.external_jobs:
 			if job != nil {
 				job()
+			}
+			if runtime.wait_condition_met() {
+				return
 			}
 		default:
 			return

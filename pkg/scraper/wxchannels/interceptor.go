@@ -21,6 +21,7 @@ import (
 // proxy interception rules.
 type InterceptorConfig struct {
 	Version               string
+	Mode                  string
 	DebugShowError        bool
 	DisableLocationToHome bool
 	GlobalScriptPath      string
@@ -83,6 +84,11 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 		asset_version = "static"
 	}
 	version_query := url.Values{"v": []string{asset_version}}
+	inline_assets := cfg.Mode == "release" || cfg.Mode == "prod"
+	inline_asset_options := frontend.StaticAssetMockOptions{
+		PlatformPrefix: InjectAssetsPath + "/",
+		PlatformFS:     InjectAssets(),
+	}
 	variables := cfg.FrontendVariables
 	if variables == nil {
 		variables = map[string]any{}
@@ -177,15 +183,23 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 
 				var injected strings.Builder
 				crossorigin_attr := ` crossorigin="anonymous"`
+				append_scripts := func(srcs ...string) {
+					if err := frontend.AppendRegisteredScripts(&injected, crossorigin_attr, inline_assets, inline_asset_options, srcs...); err != nil {
+						logger.Warn().Err(err).Msg("failed to inline registered scripts; using external assets")
+					}
+				}
+				append_stylesheets := func(hrefs ...string) {
+					if err := frontend.AppendRegisteredStylesheets(&injected, "", inline_assets, inline_asset_options, hrefs...); err != nil {
+						logger.Warn().Err(err).Msg("failed to inline registered stylesheets; using external assets")
+					}
+				}
 				if cfg.DebugShowError {
 					/** Global error capture and show dialog */
-					frontend.AppendScripts(&injected, crossorigin_attr, url_build("/inject/error.js", version_query))
+					append_scripts(url_build("/inject/error.js", version_query))
 				}
-				frontend.AppendStylesheets(&injected, "", url_build("/inject/components.css", version_query))
-				frontend.AppendStylesheets(&injected, "", url_build("/public/timeless/0.33.0/timeless.weui.css"))
-				frontend.AppendScripts(
-					&injected,
-					crossorigin_attr,
+				append_stylesheets(url_build("/inject/components.css", version_query))
+				append_stylesheets(url_build("/public/timeless/0.33.0/timeless.weui.css"))
+				append_scripts(
 					url_build("/public/timeless/0.33.0/timeless.umd.min.js"),
 					url_build("/public/timeless/0.33.0/timeless.weui.umd.min.js"),
 					url_build("/public/timeless/0.33.0/timeless.dom.umd.min.js"),
@@ -208,9 +222,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 					"",
 					fmt.Sprintf(`window.__d_config = %s;`, frontend_config_byte),
 				)
-				frontend.AppendScripts(
-					&injected,
-					crossorigin_attr,
+				append_scripts(
 					url_build("/inject/eventbus.js", version_query),
 					url_build("/public/dl.utils.js", version_query),
 					url_build("/public/dl.sdk.js", version_query),
@@ -219,16 +231,12 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 					url_build("/inject/components.js", version_query),
 					url_build("/public/virtual-list-view.js", version_query),
 				)
-				frontend.AppendScripts(
-					&injected,
-					crossorigin_attr,
+				append_scripts(
 					url_build("/inject/download/model.js", version_query),
 					url_build("/inject/download/view.js", version_query),
 					url_build("/inject/download/panel.js", version_query),
 				)
-				frontend.AppendScripts(
-					&injected,
-					crossorigin_attr,
+				append_scripts(
 					asset_url(asset_base_url, "/inject/channels.events.js", version_query),
 					asset_url(asset_base_url, "/inject/channels.env.js", version_query),
 					asset_url(asset_base_url, "/inject/channels.utils.js", version_query),
@@ -246,16 +254,16 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 					frontend.AppendInlineScript(&injected, "", cfg.InjectContentScript)
 				}
 				if pathname == "/web/pages/home" {
-					frontend.AppendScripts(&injected, crossorigin_attr, asset_url(asset_base_url, "/inject/channels.home.js", version_query))
+					append_scripts(asset_url(asset_base_url, "/inject/channels.home.js", version_query))
 				}
 				if pathname == "/web/pages/feed" {
-					frontend.AppendScripts(&injected, crossorigin_attr, asset_url(asset_base_url, "/inject/channels.feed.js", version_query))
+					append_scripts(asset_url(asset_base_url, "/inject/channels.feed.js", version_query))
 				}
 				if pathname == "/web/pages/live" {
-					frontend.AppendScripts(&injected, crossorigin_attr, asset_url(asset_base_url, "/inject/channels.live.js", version_query))
+					append_scripts(asset_url(asset_base_url, "/inject/channels.live.js", version_query))
 				}
 				if pathname == "/web/pages/profile" {
-					frontend.AppendScripts(&injected, crossorigin_attr, asset_url(asset_base_url, "/inject/channels.profile.js", version_query))
+					append_scripts(asset_url(asset_base_url, "/inject/channels.profile.js", version_query))
 				}
 				html = strings.Replace(html, "<head>", "<head>\n"+injected.String(), 1)
 				ctx.SetResponseBody(html)

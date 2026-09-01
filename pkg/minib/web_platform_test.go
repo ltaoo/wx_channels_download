@@ -81,6 +81,34 @@ func TestMissingDOMQueriesReturnNull(t *testing.T) {
 	}
 }
 
+func TestShadowDOMCSSAndNamedElements(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write([]byte(`<!doctype html><html data-n="platform-page"><head data-n="platform-head"></head><body data-n="platform-body"><input data-n="first-account" name="account"><input data-n="second-account" name="account"><script data-n="platform-check">
+var host = document.createElement('section'); host.setAttribute('data-n', 'open-shadow-host'); document.body.appendChild(host);
+var root = host.attachShadow({mode: 'open'}), child = document.createElement('span'); child.setAttribute('data-n', 'shadow-child'); child.textContent = 'inside'; root.appendChild(child); var sheet = new CSSStyleSheet(); root.adoptedStyleSheets = [sheet]; document.adoptedStyleSheets = [sheet];
+var closedHost = document.createElement('section'); closedHost.setAttribute('data-n', 'closed-shadow-host'); document.body.appendChild(closedHost); var closedRoot = closedHost.attachShadow({mode: 'closed'});
+document.body.setAttribute('data-platform', [root instanceof ShadowRoot, root instanceof DocumentFragment, root.host === host, root.mode, host.shadowRoot === root, root.querySelector('[data-n="shadow-child"]').textContent, closedHost.shadowRoot === null, closedRoot.host === closedHost, root.adoptedStyleSheets.length, document.adoptedStyleSheets.length, document.getElementsByName('account').length, CSS.escape('0a b'), CSS.supports('display', 'block'), CSS.supports(''), typeof PerformanceObserver].join('|'));
+</script></body></html>`))
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(10 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.ScriptFailures) != 0 {
+		t.Fatalf("script failures: %+v", page.ScriptFailures)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-platform="true|true|true|open|true|inside|true|true|1|1|2|\30 a\ b|true|false|function"`) {
+		t.Fatalf("platform APIs are unavailable: %s", page.RenderedHTML)
+	}
+}
+
 func TestCustomRuntimeHooksAndCookieInspection(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Add("Set-Cookie", "challenge=ready; Path=/")

@@ -133,6 +133,7 @@ func new_official_account_config(cfg *config.Config) *wxmp.OfficialAccountConfig
 func new_interceptor_config(cfg *config.Config) wxmp.InterceptorConfig {
 	return wxmp.InterceptorConfig{
 		Version:  cfg.Version,
+		Mode:     cfg.Mode,
 		Settings: *new_official_account_config(cfg),
 	}
 }

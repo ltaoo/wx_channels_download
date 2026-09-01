@@ -68,6 +68,45 @@ func (runtime *page_runtime) install_cssom(window *goja.Object) {
 		sheet := runtime.new_css_style_sheet(nil, "", "", "")
 		return runtime.css_style_sheet_object(sheet)
 	})
+	css := runtime.vm.NewObject()
+	_ = css.Set("escape", css_escape)
+	_ = css.Set("supports", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) == 0 || strings.TrimSpace(call.Argument(0).String()) == "" {
+			return runtime.vm.ToValue(false)
+		}
+		// ponytail: syntactic support is enough without a rendering engine; parse properties when CSS layout exists.
+		return runtime.vm.ToValue(len(call.Arguments) == 1 || strings.TrimSpace(call.Argument(1).String()) != "")
+	})
+	_ = css.Set("registerProperty", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
+	_ = window.Set("CSS", css)
+}
+
+func css_escape(value string) string {
+	code_points := []rune(value)
+	var result strings.Builder
+	for index, code_point := range code_points {
+		if code_point == 0 {
+			result.WriteRune('\uFFFD')
+			continue
+		}
+		if code_point <= 31 || code_point == 127 || index == 0 && code_point >= '0' && code_point <= '9' || index == 1 && code_points[0] == '-' && code_point >= '0' && code_point <= '9' {
+			result.WriteByte('\\')
+			result.WriteString(strconv.FormatInt(int64(code_point), 16))
+			result.WriteByte(' ')
+			continue
+		}
+		if index == 0 && code_point == '-' && len(code_points) == 1 {
+			result.WriteString(`\-`)
+			continue
+		}
+		if code_point >= 128 || code_point == '-' || code_point == '_' || code_point >= '0' && code_point <= '9' || code_point >= 'A' && code_point <= 'Z' || code_point >= 'a' && code_point <= 'z' {
+			result.WriteRune(code_point)
+			continue
+		}
+		result.WriteByte('\\')
+		result.WriteRune(code_point)
+	}
+	return result.String()
 }
 
 func (runtime *page_runtime) style_object(node *html.Node) *goja.Object {

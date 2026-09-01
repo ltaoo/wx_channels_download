@@ -3,6 +3,7 @@ package frontend
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net"
@@ -154,6 +155,77 @@ func AppendInlineStyle(b *strings.Builder, attr string, css string) {
 	}
 	css = strings.ReplaceAll(css, "</style", `<\/style`)
 	b.WriteString(fmt.Sprintf(`<style%s>%s</style>`, attr, css))
+}
+
+func AppendRegisteredScripts(b *strings.Builder, attr string, inline bool, options StaticAssetMockOptions, srcs ...string) error {
+	if !inline {
+		AppendScripts(b, attr, srcs...)
+		return nil
+	}
+	var errs []error
+	for _, src := range srcs {
+		content, err := read_registered_asset(src, options)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("inline script %q: %w", src, err))
+			AppendScripts(b, attr, src)
+			continue
+		}
+		AppendInlineScript(b, attr, content)
+	}
+	return errors.Join(errs...)
+}
+
+func AppendRegisteredStylesheets(b *strings.Builder, attr string, inline bool, options StaticAssetMockOptions, hrefs ...string) error {
+	if !inline {
+		AppendStylesheets(b, attr, hrefs...)
+		return nil
+	}
+	var errs []error
+	for _, href := range hrefs {
+		content, err := read_registered_asset(href, options)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("inline stylesheet %q: %w", href, err))
+			AppendStylesheets(b, attr, href)
+			continue
+		}
+		AppendInlineStyle(b, attr, content)
+	}
+	return errors.Join(errs...)
+}
+
+func read_registered_asset(raw_url string, options StaticAssetMockOptions) (string, error) {
+	parsed, err := url.Parse(raw_url)
+	if err != nil {
+		return "", err
+	}
+	pathname := parsed.Path
+	var data []byte
+	var rel string
+	switch {
+	case strings.HasPrefix(pathname, assets_path+"/public/"):
+		rel = strings.TrimPrefix(pathname, assets_path+"/public/")
+		data, err = Assets().ReadPublic(rel)
+	case strings.HasPrefix(pathname, assets_path+"/inject/"):
+		rel = strings.TrimPrefix(pathname, assets_path+"/inject/")
+		data, err = Assets().ReadInject(rel)
+	case strings.HasPrefix(pathname, assets_path+"/src/"):
+		rel = strings.TrimPrefix(pathname, assets_path+"/src/")
+		data, err = Assets().ReadSrc(rel)
+	case options.PlatformPrefix != "" && options.PlatformFS != nil && strings.HasPrefix(pathname, options.PlatformPrefix):
+		rel = strings.TrimPrefix(pathname, options.PlatformPrefix)
+		if clean_rel, ok := clean_mock_asset_rel(rel); ok {
+			rel = clean_rel
+			data, err = fs.ReadFile(options.PlatformFS, rel)
+		} else {
+			err = fs.ErrInvalid
+		}
+	default:
+		return "", fmt.Errorf("asset %q is not registered", pathname)
+	}
+	if err != nil {
+		return "", err
+	}
+	return string(StaticAssetResponseData(rel, data)), nil
 }
 
 func StaticAssetResponseData(rel string, data []byte) []byte {

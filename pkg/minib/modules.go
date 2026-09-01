@@ -208,7 +208,7 @@ func transform_module_source(module_url string, source string, content_type stri
 	transformed := api.Transform(source, api.TransformOptions{
 		Sourcefile: module_url,
 		Loader:     loader,
-		Target:     api.ES2017,
+		Target:     api.ES2020,
 		Charset:    api.CharsetUTF8,
 		Format:     api.FormatCommonJS,
 		Define:     map[string]string{"import.meta.url": fmt.Sprintf("%q", module_url)},
