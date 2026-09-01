@@ -6,6 +6,29 @@ if (!Runtime) {
 
 const { Show, View } = Runtime;
 
+export function PlatformIcon(props = {}) {
+  const favicon = String(props.favicon || "");
+  if (!favicon.includes("#")) return null;
+  const semantic_name = props.name || "platform-icon";
+  return Runtime.SVG.SVG(
+    {
+      class: props.class,
+      attributes: {
+        n: semantic_name,
+        viewBox: "0 0 32 32",
+        "aria-hidden": "true",
+        focusable: "false",
+        ...(props.attributes || {}),
+      },
+    },
+    [
+      Runtime.SVG.Use({
+        attributes: { href: favicon },
+      }),
+    ],
+  );
+}
+
 export function LoadingView() {
   return View(
     {
@@ -87,18 +110,10 @@ export function TablePlatformBadge(props = {}) {
       Show({
         when: props.favicon,
         ok() {
-          return Runtime.Img({
+          return PlatformIcon({
             class: "dm-platform-badge__icon",
-            src: props.favicon,
-            alt: "",
-            attributes: {
-              n: `${semantic_name}-icon`,
-              loading: "lazy",
-              referrerpolicy: "no-referrer",
-            },
-            onError(event) {
-              event.target.style.display = "none";
-            },
+            favicon: props.favicon,
+            name: `${semantic_name}-icon`,
           });
         },
       }),

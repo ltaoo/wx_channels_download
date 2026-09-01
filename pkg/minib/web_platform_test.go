@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -57,6 +58,26 @@ crypto.subtle.digest("SHA-256", new TextEncoder().encode("abc")).then(result => 
 	}
 	if !regexp.MustCompile(`"uuid":"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"`).MatchString(state) {
 		t.Fatalf("invalid randomUUID in %s", state)
+	}
+}
+
+func TestMissingDOMQueriesReturnNull(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write([]byte(`<html><head></head><body data-present="yes"><script>document.body.setAttribute('data-ok', String(document.querySelector('#missing') === null && document.head.querySelector('#missing') === null && document.body.getAttributeNames().includes('data-present') && typeof ShadowRoot === 'function'))</script></body></html>`))
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(10 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.ScriptFailures) != 0 || !strings.Contains(page.RenderedHTML, `data-ok="true"`) {
+		t.Fatalf("html=%s failures=%+v", page.RenderedHTML, page.ScriptFailures)
 	}
 }
 

@@ -180,12 +180,7 @@ function ContentRowCover(props) {
   const content = props.content;
   const cover_url = content_cover_url(content);
   if (!cover_url) return null;
-  const fallback = View(
-    { class: "content-row-cover content-row-cover-fallback" },
-    [Timeless.Icon({ name: "file", size: 18 })],
-  );
   return View({ class: "content-row-cover-wrap" }, [
-    fallback,
     LazyImg({
       class: "content-row-cover",
       src: cover_url,
@@ -221,16 +216,13 @@ function ContentRowAccounts(props) {
           Show({
             when: account.avatar_url,
             ok() {
-              return Img({
+              return LazyImg({
                 class: "content-row-author-avatar",
                 src: account.avatar_url,
                 alt: name,
                 attributes: {
                   loading: "lazy",
                   referrerpolicy: "no-referrer",
-                },
-                onError(event) {
-                  event.target.style.display = "none";
                 },
               });
             },
@@ -542,7 +534,7 @@ function ContentPageBody(props) {
       page: vm$.state.page,
       pageCount: vm$.state.page_count,
       pageSize: vm$.state.page_size,
-      loading: vm$.state.loading,
+      loading: vm$.state.initial,
       onChange(page) {
         return vm$.methods.changePage(page);
       },

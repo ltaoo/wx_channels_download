@@ -60,15 +60,7 @@
 .content-cover.dm-lazy-img-error {
   display: grid;
   place-items: center;
-  color: var(--dm-content-muted);
-  background: var(--dm-content-panel-soft);
-  border: var(--dm-border-width) solid var(--dm-content-border);
   border-radius: inherit;
-}
-
-.content-cover.dm-lazy-img-error > svg {
-  width: 32px;
-  height: 32px;
 }
 
 .content-detail-info {

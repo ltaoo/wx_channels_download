@@ -1,5 +1,6 @@
 import { ThirdPartyDownloaderPanel } from "@/third-party-downloader.js";
 
+import { PlatformIcon } from "../components.js";
 import { ScraperPageViewModel } from "./scraper.model.js";
 
 const task_overwrite_actions = [
@@ -375,20 +376,17 @@ function ScraperContentCover(props) {
     when: content.cover_url,
     ok() {
       return View({ class: "home-content-cover" }, [
-        View({ class: "home-content-cover-fallback" }, [
-          Timeless.Icon({ name: "file", size: 34 }),
-          content.content_type_name,
-        ]),
-        Img({
+        // View({ class: "home-content-cover-fallback" }, [
+        //   Timeless.Icon({ name: "file", size: 34 }),
+        //   content.content_type_name,
+        // ]),
+        LazyImg({
           class: "home-content-cover-image",
           src: content.cover_url,
           alt: content.title,
           attributes: {
             loading: "lazy",
             referrerpolicy: "no-referrer",
-          },
-          onError(event) {
-            event.target.style.display = "none";
           },
         }),
       ]);
@@ -468,17 +466,10 @@ function ScraperContentCard(props) {
               Show({
                 when: content.platform_favicon,
                 ok() {
-                  return Img({
+                  return PlatformIcon({
                     class: "home-platform-favicon",
-                    src: content.platform_favicon,
-                    alt: "",
-                    attributes: {
-                      loading: "lazy",
-                      referrerpolicy: "no-referrer",
-                    },
-                    onError(event) {
-                      event.target.style.display = "none";
-                    },
+                    favicon: content.platform_favicon,
+                    name: "home-platform-favicon",
                   });
                 },
               }),
@@ -727,16 +718,13 @@ function HomeAccountAvatar(props) {
     Show({
       when: account.avatar_url,
       ok() {
-        return Img({
+        return LazyImg({
           class: "home-account-avatar-image",
           src: account.avatar_url,
           alt: account.nickname,
           attributes: {
             loading: "lazy",
             referrerpolicy: "no-referrer",
-          },
-          onError(event) {
-            event.target.style.display = "none";
           },
         });
       },
@@ -810,16 +798,13 @@ function ScraperVideoDetailMedia(props) {
               );
             },
             else() {
-              return Img({
+              return LazyImg({
                 class: "home-detail-video-cover",
                 src: media.cover_url,
                 alt: detail.title,
                 attributes: {
                   loading: "lazy",
                   referrerpolicy: "no-referrer",
-                },
-                onError(event) {
-                  event.target.style.display = "none";
                 },
               });
             },
@@ -1340,16 +1325,13 @@ function ScraperTypedContentDetail(props) {
                 render(image_) {
                   const image = ScraperDetailValue(image_);
                   return View({ class: "home-detail-image-item" }, [
-                    Img({
+                    LazyImg({
                       class: "home-detail-image",
                       src: image.url,
                       alt: "",
                       attributes: {
                         loading: "lazy",
                         referrerpolicy: "no-referrer",
-                      },
-                      onError(event) {
-                        event.target.style.display = "none";
                       },
                     }),
                     Show({

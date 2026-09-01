@@ -119,16 +119,13 @@ function AccountAvatar(props) {
     Show({
       when: account.avatar_url,
       ok() {
-        return Img({
+        return LazyImg({
           class: "account-avatar",
           src: account.avatar_url,
           alt: account.nickname,
           attributes: {
             loading: "lazy",
             referrerpolicy: "no-referrer",
-          },
-          onError(event) {
-            event.target.style.display = "none";
           },
         });
       },

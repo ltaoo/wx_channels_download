@@ -1,5 +1,4 @@
-const THIRD_PARTY_DOWNLOADER_STORAGE_KEY =
-  "wx_channels_download.third_party_downloader.v1";
+const third_party_downloader_storage_key = "third_party_downloader";
 
 export const THIRD_PARTY_DOWNLOADER_OPTIONS = Object.freeze([
   {
@@ -55,8 +54,7 @@ function default_profiles() {
 
 function read_saved_settings(storage) {
   try {
-    const raw_value = storage && storage.getItem(THIRD_PARTY_DOWNLOADER_STORAGE_KEY);
-    const saved = raw_value ? JSON.parse(raw_value) : {};
+    const saved = storage ? storage.get(third_party_downloader_storage_key) : {};
     const profiles = default_profiles();
     Object.keys(profiles).forEach((kind) => {
       const profile = saved.profiles && saved.profiles[kind];
@@ -197,7 +195,7 @@ function show_downloader_success(message) {
 }
 
 export function ThirdPartyDownloaderModel(props = {}) {
-  const storage = props.storage || window.localStorage;
+  const storage = props.storage;
   const saved = read_saved_settings(storage);
   const profiles = saved.profiles;
   const initial_profile = profiles[saved.kind];
@@ -520,16 +518,13 @@ export function ThirdPartyDownloaderModel(props = {}) {
   function persist_settings() {
     snapshot_profile();
     try {
-      storage?.setItem(
-        THIRD_PARTY_DOWNLOADER_STORAGE_KEY,
-        JSON.stringify({
-          kind: kind_.value,
-          directory: String(directory_.value || ""),
-          profiles,
-        }),
-      );
+      storage?.set(third_party_downloader_storage_key, {
+        kind: kind_.value,
+        directory: String(directory_.value || ""),
+        profiles,
+      });
     } catch {
-      // Local storage may be unavailable in private or restricted contexts.
+      // The host storage implementation may be unavailable.
     }
   }
 

@@ -86,6 +86,37 @@ Promise.all([fetch('/fetch-one').then(function(response) { return response.text(
 	}
 }
 
+func TestNavigateWaitsForXHRWhenIntervalIsPending(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/data" {
+			time.Sleep(20 * time.Millisecond)
+			_, _ = response_writer.Write([]byte("ready"))
+			return
+		}
+		_, _ = response_writer.Write([]byte(`<html><body><script>
+setInterval(function() {}, 1000);
+var request = new XMLHttpRequest();
+request.open('GET', '/data');
+request.onload = function() { document.body.setAttribute('data-result', request.responseText); };
+request.send();
+</script></body></html>`))
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(10 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-result="ready"`) {
+		t.Fatalf("HTML missing XHR result: %s", page.RenderedHTML)
+	}
+}
+
 func TestWebSocketLifecycleAndEvents(t *testing.T) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin:  func(*http.Request) bool { return true },

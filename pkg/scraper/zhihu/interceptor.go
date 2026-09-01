@@ -66,11 +66,11 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 
 			var early_injected strings.Builder
 			frontend.AppendScripts(&early_injected, "", url_build("/inject/fetch.js", version_query))
-			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.32.0/timeless.umd.min.js", version_query))
-			frontend.AppendStylesheets(&early_injected, "", url_build("/public/timeless/0.32.0/timeless.weui.css", version_query))
-			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.32.0/timeless.weui.umd.min.js", version_query))
-			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.32.0/timeless.dom.umd.min.js", version_query))
-			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.32.0/timeless.web.umd.min.js", version_query))
+			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.33.0/timeless.umd.min.js", version_query))
+			frontend.AppendStylesheets(&early_injected, "", url_build("/public/timeless/0.33.0/timeless.weui.css", version_query))
+			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.33.0/timeless.weui.umd.min.js", version_query))
+			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.33.0/timeless.dom.umd.min.js", version_query))
+			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.33.0/timeless.web.umd.min.js", version_query))
 			html = strings.Replace(html, "<head>", "<head>"+early_injected.String(), 1)
 
 			var injected strings.Builder

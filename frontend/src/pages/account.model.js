@@ -1,3 +1,5 @@
+import { proxy_image_url } from "@/image-proxy.model.js";
+
 function first_non_empty(...values) {
   for (const value of values) {
     if (value !== undefined && value !== null && value !== "") {
@@ -12,26 +14,14 @@ function number_or_default(value, fallback) {
   return Number.isFinite(number) ? number : fallback;
 }
 
-function account_search_from_location(query) {
-  if (query && typeof query === "object") {
-    const account_id = String(
-      first_non_empty(query.id, query.account_id),
-    ).trim();
-    return {
-      keyword: String(first_non_empty(query.keyword, account_id)),
-      account_id,
-    };
-  }
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const account_id = params.get("id") || params.get("account_id") || "";
-    return {
-      keyword: params.get("keyword") || account_id,
-      account_id,
-    };
-  } catch {
-    return { keyword: "", account_id: "" };
-  }
+function account_search_from_query(query = {}) {
+  const account_id = String(
+    first_non_empty(query.id, query.account_id),
+  ).trim();
+  return {
+    keyword: String(first_non_empty(query.keyword, account_id)),
+    account_id,
+  };
 }
 
 function normalize_account_list_response(data, fallbackPage, fallbackSize) {
@@ -66,14 +56,15 @@ function normalize_account_list_response(data, fallbackPage, fallbackSize) {
 
 function normalize_account_item(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
+  const platform_id = first_non_empty(
+    source.platform_id,
+    source.platformId,
+    source.PlatformID,
+  );
   return {
     ...source,
     id: first_non_empty(source.id, source.ID),
-    platform_id: first_non_empty(
-      source.platform_id,
-      source.platformId,
-      source.PlatformID,
-    ),
+    platform_id,
     external_id: first_non_empty(
       source.external_id,
       source.externalId,
@@ -88,10 +79,9 @@ function normalize_account_item(raw) {
       source.ExternalID,
       "未命名账号",
     ),
-    avatar_url: first_non_empty(
-      source.avatar_url,
-      source.avatarUrl,
-      source.AvatarURL,
+    avatar_url: proxy_image_url(
+      platform_id,
+      first_non_empty(source.avatar_url, source.avatarUrl, source.AvatarURL),
     ),
     content_count: Math.max(
       0,
@@ -122,7 +112,7 @@ function format_content_count(value) {
 
 function AccountViewModel(props) {
   const PAGE_SIZE_DEFAULT = 24;
-  const initial_search = account_search_from_location(
+  const initial_search = account_search_from_query(
     props.view && props.view.query,
   );
   const accounts_ = refarr([]);
@@ -235,29 +225,15 @@ function AccountViewModel(props) {
   });
 
   function sync_search_location() {
-    try {
-      const url = new URL(window.location.href);
-      const keyword = String(keyword_.value || "").trim();
-      const account_id = String(account_id_.value || "").trim();
-      if (keyword && keyword !== account_id) {
-        url.searchParams.set("keyword", keyword);
-      } else {
-        url.searchParams.delete("keyword");
-      }
-      if (account_id) {
-        url.searchParams.set("id", account_id);
-      } else {
-        url.searchParams.delete("id");
-      }
-      url.searchParams.delete("account_id");
-      window.history.replaceState(
-        window.history.state,
-        "",
-        `${url.pathname}${url.search}${url.hash}`,
-      );
-    } catch {
-      // Searching still works if browser history is unavailable.
-    }
+    const keyword = String(keyword_.value || "").trim();
+    const account_id = String(account_id_.value || "").trim();
+    const query = {};
+    if (keyword && keyword !== account_id) query.keyword = keyword;
+    if (account_id) query.id = account_id;
+    const search = Timeless.utils.qs_stringify(query);
+    props.history.$router.replaceState(
+      `${(props.view && props.view.pathname) || "/account"}${search ? `?${search}` : ""}`,
+    );
   }
 
   async function load(targetPage = page_.value) {

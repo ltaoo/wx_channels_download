@@ -1,6 +1,7 @@
 import { ThirdPartyDownloaderModel } from "@/third-party-downloader.model.js";
+import { proxy_image_url } from "@/image-proxy.model.js";
 
-const active_job_storage_key = "scraper.active_scraper_job_id";
+const active_job_storage_key = "scraper_active_job_id";
 const platform_status_popover_hide_delay = 240;
 const ChannelCore = Timeless.kit.ChannelCore;
 const { socket_client$ } = window.__store;
@@ -52,6 +53,7 @@ function ScraperPageViewModel(props) {
   const { client: home_http_client, downloader } = props;
   const third_party_downloader$ = ThirdPartyDownloaderModel({
     client: home_http_client,
+    storage: props.storage,
   });
 
   const url_ = ref("");
@@ -1473,7 +1475,7 @@ function ScraperPageViewModel(props) {
     if (disposed || loading_.value || active_job_id) {
       return null;
     }
-    const job_id = load_active_job_id();
+    const job_id = load_active_job_id(props.storage);
     if (!job_id) {
       return null;
     }
@@ -1505,7 +1507,7 @@ function ScraperPageViewModel(props) {
     if (result && result.error) {
       loading_.as(false);
       active_job_id = "";
-      save_active_job_id("");
+      save_active_job_id(props.storage, "");
       fetch_progress_.as(null);
       return result;
     }
@@ -1649,7 +1651,7 @@ function ScraperPageViewModel(props) {
     reset_cache_content(true);
     disposed = false;
     active_job_id = "";
-    save_active_job_id("");
+    save_active_job_id(props.storage, "");
     resolving_terminal_job_id = "";
     loading_.as(true);
     error_.as("");
@@ -1695,7 +1697,7 @@ function ScraperPageViewModel(props) {
       return result;
     }
     active_job_id = job_id;
-    save_active_job_id(job_id);
+    save_active_job_id(props.storage, job_id);
     apply_scraper_job(job, sequence);
     if (loading_.value) {
       try {
@@ -2047,7 +2049,7 @@ function ScraperPageViewModel(props) {
     if (!target_url) {
       return;
     }
-    window.open(target_url, "_blank", "noopener,noreferrer");
+    props.app.openWindow(target_url);
   }
 
   function set_url(value) {
@@ -2204,26 +2206,24 @@ function number_or_default(value, fallback) {
   return Number.isFinite(number) ? number : fallback;
 }
 
-function load_active_job_id() {
+function load_active_job_id(storage) {
   try {
-    return String(
-      window.localStorage.getItem(active_job_storage_key) || "",
-    ).trim();
-  } catch (error) {
+    return String(storage.get(active_job_storage_key) || "").trim();
+  } catch {
     return "";
   }
 }
 
-function save_active_job_id(job_id) {
+function save_active_job_id(storage, job_id) {
   const normalized_job_id = String(job_id || "").trim();
   try {
     if (normalized_job_id) {
-      window.localStorage.setItem(active_job_storage_key, normalized_job_id);
+      storage.set(active_job_storage_key, normalized_job_id);
       return;
     }
-    window.localStorage.removeItem(active_job_storage_key);
+    storage.clear(active_job_storage_key);
   } catch {
-    // Storage can be unavailable in restricted browser contexts.
+    // The host storage implementation may be unavailable.
   }
 }
 
@@ -3118,7 +3118,7 @@ function normalize_video_detail_media(data, content) {
   return {
     present: Boolean(video_url || cover_url),
     video_url,
-    cover_url,
+    cover_url: proxy_image_url(content && content.platform_id, cover_url),
     has_video: Boolean(video_url),
     has_cover: Boolean(cover_url),
   };
@@ -3692,7 +3692,7 @@ function normalize_typed_content_detail(
         );
         return {
           key: String(image.id || image.url || image_index),
-          url: String(image.url || "").trim(),
+          url: proxy_image_url(content.platform_id, image.url),
           meta:
             [image.width, image.height].filter(Boolean).join(" × ") ||
             image.ext ||
@@ -3974,16 +3974,18 @@ function normalize_content(result) {
   return {
     present: Boolean(result && result.content),
     id: first_non_empty(source.id, source.ID),
+    platform_id: String(platform_id || "")
+      .trim()
+      .toLowerCase(),
     type: String(content_type || "")
       .trim()
       .toLowerCase(),
     title,
     description,
     show_description: Boolean(description && description !== title),
-    cover_url: first_non_empty(
-      source.cover_url,
-      source.CoverURL,
-      source.coverUrl,
+    cover_url: proxy_image_url(
+      platform_id,
+      first_non_empty(source.cover_url, source.CoverURL, source.coverUrl),
     ),
     content_url: first_non_empty(
       source.url,
@@ -4031,10 +4033,9 @@ function normalize_account(result) {
     signature: String(
       first_non_empty(source.signature, source.Signature),
     ).trim(),
-    avatar_url: first_non_empty(
-      source.avatar_url,
-      source.AvatarURL,
-      source.avatarUrl,
+    avatar_url: proxy_image_url(
+      platform_id,
+      first_non_empty(source.avatar_url, source.AvatarURL, source.avatarUrl),
     ),
     profile_url: first_non_empty(
       source.profile_url,

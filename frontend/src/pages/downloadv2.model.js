@@ -1,3 +1,5 @@
+import { proxy_image_url } from "@/image-proxy.model.js";
+
 const MaxRunning = Math.max(1, Number(window.config.maxRunning) || 3);
 const DOWNLOAD_PAGE_SIZE_DEFAULT = 12;
 
@@ -19,6 +21,17 @@ function is_download_open_external() {
   return (
     runtime_flag(window.config.remoteServerEnabled) ||
     runtime_flag(window.config.inDocker)
+  );
+}
+
+function task_cover_url(raw) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  return proxy_image_url(
+    source.platform_id ||
+      source.platformId ||
+      source.PlatformID ||
+      source.PlatformId,
+    source.cover_url || source.coverUrl || source.CoverURL,
   );
 }
 
@@ -1188,6 +1201,7 @@ function DownloadV2Model(props = {}) {
     handleListViewScroll: handle_list_view_scroll,
     isPlaceholderTask: is_placeholder_task,
     ensureTaskPageForIndex: ensure_task_page_for_index,
+    taskCoverURL: task_cover_url,
   });
 
   const state = {

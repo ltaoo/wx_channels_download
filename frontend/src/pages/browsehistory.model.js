@@ -377,7 +377,7 @@ function BrowseHistoryViewModel(props) {
       if (!history || !history.source_url) {
         return;
       }
-      window.open(history.source_url, "_blank", "noopener,noreferrer");
+      props.app.openWindow(history.source_url);
     },
     platformFavicon: browse_history_platform_favicon,
     platformName: browse_history_platform_name,

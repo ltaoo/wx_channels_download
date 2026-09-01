@@ -1,3 +1,5 @@
+import { proxy_image_url } from "@/image-proxy.model.js";
+
 function number_or_default(value, fallback) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -47,8 +49,13 @@ function normalize_content_list_response(data, fallbackPage, fallbackSize) {
   };
 }
 
-function normalize_content_account(raw) {
+function normalize_content_account(raw, fallback_platform_id) {
   const source = raw && typeof raw === "object" ? raw : {};
+  const platform_id = first_non_empty(
+    source.platform_id,
+    source.PlatformID,
+    fallback_platform_id,
+  );
   return {
     id: first_non_empty(source.id, source.ID),
     external_id: first_non_empty(source.external_id, source.ExternalID),
@@ -59,13 +66,17 @@ function normalize_content_account(raw) {
       source.name,
       source.Name,
     ),
-    avatar_url: first_non_empty(source.avatar_url, source.AvatarURL),
+    avatar_url: proxy_image_url(
+      platform_id,
+      first_non_empty(source.avatar_url, source.AvatarURL),
+    ),
     profile_url: first_non_empty(source.profile_url, source.ProfileURL),
   };
 }
 
 function normalize_content_item(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
+  const platform_id = first_non_empty(source.platform_id, source.PlatformID);
   const accounts_source = Array.isArray(source.accounts)
     ? source.accounts
     : Array.isArray(source.Accounts)
@@ -87,7 +98,7 @@ function normalize_content_item(raw) {
   return {
     ...source,
     id: first_non_empty(source.id, source.ID),
-    platform_id: first_non_empty(source.platform_id, source.PlatformID),
+    platform_id,
     platform_name: first_non_empty(source.platform_name, source.PlatformName),
     content_type: first_non_empty(
       source.content_type,
@@ -116,16 +127,17 @@ function normalize_content_item(raw) {
       source.content_url,
       source.ContentURL,
     ),
-    cover_url: first_non_empty(
-      source.cover_url,
-      source.CoverURL,
-      source.coverUrl,
+    cover_url: proxy_image_url(
+      platform_id,
+      first_non_empty(source.cover_url, source.CoverURL, source.coverUrl),
     ),
     publish_time: number_or_default(
       first_non_empty(source.publish_time, source.PublishTime),
       0,
     ),
-    accounts: accounts_source.map(normalize_content_account),
+    accounts: accounts_source.map((account) =>
+      normalize_content_account(account, platform_id),
+    ),
     download_tasks: tasks,
     file_count,
   };
@@ -431,7 +443,7 @@ function ContentViewModel(props) {
       if (!content || !content.url) {
         return;
       }
-      window.open(content.url, "_blank", "noopener,noreferrer");
+      props.app.openWindow(content.url);
     },
     openDetail(content) {
       const id = String(

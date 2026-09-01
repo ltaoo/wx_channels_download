@@ -1,5 +1,44 @@
 import SiderLayoutView from "./pages/shell.js";
 
+const storage_key = "wx_channels_download";
+const legacy_scraper_job_key = "scraper.active_scraper_job_id";
+const legacy_downloader_key =
+  "wx_channels_download.third_party_downloader.v1";
+
+function read_json(client, key) {
+  try {
+    const value = JSON.parse(client.getItem(key) || "{}");
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function has_own(source, key) {
+  return Object.prototype.hasOwnProperty.call(source, key);
+}
+
+function load_storage_values(client) {
+  const values = read_json(client, storage_key);
+  if (!has_own(values, "third_party_downloader")) {
+    const legacy_downloader = read_json(client, legacy_downloader_key);
+    if (Object.keys(legacy_downloader).length > 0) {
+      values.third_party_downloader = legacy_downloader;
+    }
+  }
+  if (!has_own(values, "scraper_active_job_id")) {
+    try {
+      values.scraper_active_job_id =
+        client.getItem(legacy_scraper_job_key) || "";
+    } catch {
+      values.scraper_active_job_id = "";
+    }
+  }
+  return values;
+}
+
 const Timeless = window.Timeless;
 
 if (!Timeless) {
@@ -219,8 +258,10 @@ export const storage$ = new Timeless.kit.StorageCore({
   key: "wx_channels_download",
   defaultValues: {
     theme: "system",
+    scraper_active_job_id: "",
+    third_party_downloader: {},
   },
-  values: {},
+  values: load_storage_values(window.localStorage),
   client: window.localStorage,
 });
 export const http_client$ = new Timeless.kit.HttpClientCore({
@@ -229,6 +270,7 @@ export const http_client$ = new Timeless.kit.HttpClientCore({
   },
 });
 export const socket_client$ = new Timeless.kit.SocketClientCore();
+export const hls_player$ = new Timeless.kit.HLSPlayerCore();
 export const history$ = new Timeless.kit.HistoryCore({
   view: root_view_model,
   router: router$,
@@ -247,11 +289,15 @@ export const app$ = new Timeless.kit.ApplicationModel({
     return Timeless.Result.Ok(null);
   },
 });
+app$.openWindow = function (url) {
+  return window.open(url, "_blank", "noopener,noreferrer");
+};
 
 Timeless.web.provide_http_client(http_client$);
 Timeless.web.provide_socket_client(socket_client$, {
   WebSocket,
 });
+Timeless.web.provide_hls_player(hls_player$, { Hls: window.Hls });
 if (!window.dl$) {
   window.dl$ = window.DL({
     client: http_client$,

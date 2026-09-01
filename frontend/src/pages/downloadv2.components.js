@@ -287,13 +287,8 @@ function DownloadV2TaskState(task$) {
   );
 }
 
-function task_cover_url(raw) {
-  if (!raw || typeof raw !== "object") return "";
-  return String(raw.cover_url || raw.coverUrl || raw.CoverURL || "").trim();
-}
-
 function DownloadV2TaskCover(props) {
-  const { state: state_, task: task$ } = props;
+  const { state: state_, store: vm$, task: task$ } = props;
   const raw_ = task$.state.raw;
   const progress = Show({
     when: computed(
@@ -301,7 +296,10 @@ function DownloadV2TaskCover(props) {
       (state) => !state.is_live_stream && (state.is_running || state.is_paused),
     ),
     ok() {
-      return View({ class: "dl-page-task-cover-progress" }, [
+      return View({
+        class: "dl-page-task-cover-progress",
+        attributes: { n: "download-task-cover-progress" },
+      }, [
         DownloadV2Number({
           value: computed(state_, (state) => state.progress_text),
         }),
@@ -309,23 +307,30 @@ function DownloadV2TaskCover(props) {
     },
   });
   const fallback = () =>
-    View({ class: "dl-page-task-cover dl-page-task-cover-fallback" });
+    View({
+      class: "dl-page-task-cover dl-page-task-cover-fallback",
+      attributes: {
+        n: "download-task-cover-fallback",
+        "aria-hidden": "true",
+      },
+    });
 
   return Show({
-    when: computed(raw_, (raw) => Boolean(task_cover_url(raw))),
+    when: computed(raw_, (raw) => Boolean(vm$.methods.taskCoverURL(raw))),
     ok() {
-      return View({ class: "dl-page-task-cover-wrap" }, [
+      return View({
+        class: "dl-page-task-cover-wrap",
+        attributes: { n: "download-task-cover-wrap" },
+      }, [
         fallback(),
-        Img({
+        LazyImg({
           class: "dl-page-task-cover",
-          src: computed(raw_, task_cover_url),
+          src: computed(raw_, vm$.methods.taskCoverURL),
           alt: task$.state.name,
           attributes: {
+            n: "download-task-cover-image",
             loading: "lazy",
             referrerpolicy: "no-referrer",
-          },
-          onError(event) {
-            event.target.style.display = "none";
           },
         }),
         progress,
@@ -466,7 +471,7 @@ export function DownloadV2TaskMain(props) {
   const state_ = DownloadV2TaskState(task$);
 
   return [
-    DownloadV2TaskCover({ task: task$, state: state_ }),
+    DownloadV2TaskCover({ task: task$, state: state_, store: vm$ }),
     View(
       {
         class: "dl-page-task-info",

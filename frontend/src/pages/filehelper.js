@@ -1,7 +1,4 @@
-import {
-  FileHelperViewModel,
-  event_target_element,
-} from "./filehelper.model.js";
+import { FileHelperViewModel } from "./filehelper.model.js";
 
 function FileHelperHeaderView(props) {
   const vm$ = props.store;
@@ -195,16 +192,10 @@ function FileHelperFinderMessageView(props) {
   const cover_url = data.cover_url || data.thumb_url || "";
   return View({ class: "filehelper-finder-card" }, [
     cover_url
-      ? Timeless.Img({
+      ? LazyImg({
           class: "filehelper-finder-cover",
           src: cover_url,
           alt: "封面",
-          onError(event) {
-            const target = event_target_element(event);
-            if (target) {
-              target.style.display = "none";
-            }
-          },
         })
       : null,
     View({ class: "filehelper-finder-content" }, [
@@ -213,16 +204,10 @@ function FileHelperFinderMessageView(props) {
       ]),
       View({ class: "filehelper-finder-author" }, [
         data.avatar
-          ? Timeless.Img({
+          ? LazyImg({
               class: "filehelper-finder-avatar",
               src: data.avatar,
               alt: "头像",
-              onError(event) {
-                const target = event_target_element(event);
-                if (target) {
-                  target.style.display = "none";
-                }
-              },
             })
           : null,
         View({ class: "filehelper-finder-nickname" }, [data.nickname]),
