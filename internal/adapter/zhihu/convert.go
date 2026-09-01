@@ -238,19 +238,16 @@ func zhihu_page_from_fetch(data any) (any, error) {
 	return nil, fmt.Errorf("unsupported zhihu fetch JSON")
 }
 
-// BuildDownloadTaskFromFetch serializes a supported structured page and lets
-// BuildDownloadTask produce the same task shape used by normal task creation.
+// BuildDownloadTaskFromFetch builds a task directly from the structured page,
+// preserving any video play info already collected during fetch.
 func (h *handler) BuildDownloadTaskFromFetch(data any, config_json json.RawMessage) (*adapter.DownloadTaskResult, error) {
 	page_data, err := zhihu_page_from_fetch(data)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := h.ToContent(page_data); err != nil {
-		return nil, err
+	var config map[string]any
+	if err := json.Unmarshal(config_json, &config); err != nil {
+		return nil, fmt.Errorf("解析下载配置失败: %w", err)
 	}
-	content_json, err := json.Marshal(page_data)
-	if err != nil {
-		return nil, fmt.Errorf("encode zhihu download task content: %w", err)
-	}
-	return h.BuildDownloadTask(content_json, config_json)
+	return h.build_download_task(page_data, config, "", "")
 }

@@ -90,6 +90,7 @@ func compact_answer_page(page zhihu.AnswerPage) zhihu.AnswerPage {
 	page.PageHTML = ""
 	page.InitialData = nil
 	page.InitialDataJSON = nil
+	page.VideoPlayInfos = nil
 	return page
 }
 
@@ -97,6 +98,7 @@ func compact_question_page(page zhihu.QuestionPage) zhihu.QuestionPage {
 	page.PageHTML = ""
 	page.InitialData = nil
 	page.InitialDataJSON = nil
+	page.VideoPlayInfos = nil
 	return page
 }
 
@@ -104,6 +106,7 @@ func compact_article_page(page zhihu.ArticlePage) zhihu.ArticlePage {
 	page.PageHTML = ""
 	page.InitialData = nil
 	page.InitialDataJSON = nil
+	page.VideoPlayInfos = nil
 	return page
 }
 
