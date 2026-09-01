@@ -509,6 +509,19 @@ async function admin_task_status(env, task_id) {
 }
 
 /**
+ * @param {Env} env
+ * @param {Request} request
+ * @param {string} device_id
+ * @returns {Promise<Response>}
+ */
+async function admin_reset_device(env, request, device_id) {
+  const object = env.BRIDGES.getByName(BRIDGE_OBJECT_NAME);
+  return object.fetch(
+    new Request("https://internal/_admin/devices/" + device_id + "/reset", request),
+  );
+}
+
+/**
  * @param {CallRow} row
  * @returns {Record<string, unknown>}
  */
@@ -793,6 +806,12 @@ export class BridgeDurableObject extends DurableObject {
     }
     if (url.pathname === "/_internal/access-tokens/verify" && request.method === "POST") {
       return this.verify_access_token(request);
+    }
+    const device_reset_match = url.pathname.match(
+      /^\/_admin\/devices\/([A-Za-z0-9][A-Za-z0-9_.:-]{0,127})\/reset$/,
+    );
+    if (device_reset_match && request.method === "POST") {
+      return this.reset_device(device_reset_match[1]);
     }
     return error_response("not found", 404);
   }
@@ -1513,6 +1532,7 @@ export class BridgeDurableObject extends DurableObject {
       }),
     );
     await this.dispatch_pending();
+    await this.schedule_alarm();
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -1868,6 +1888,54 @@ export class BridgeDurableObject extends DurableObject {
   }
 
   /**
+   * @param {string} device_id
+   * @returns {Promise<Response>}
+   */
+  async reset_device(device_id) {
+    const device = this.ctx.storage.sql
+      .exec("SELECT device_id FROM devices WHERE device_id = ? LIMIT 1", device_id)
+      .toArray()[0];
+    if (device === undefined) {
+      return error_response("device not found", 404);
+    }
+
+    /** @type {CallRow[]} */
+    const rows = this.ctx.storage.sql
+      .exec(
+        `SELECT * FROM calls
+         WHERE assigned_device_id = ? AND status IN ('assigned', 'running')
+         ORDER BY created_at`,
+        device_id,
+      )
+      .toArray();
+    const now = Date.now();
+    this.ctx.storage.sql.exec(
+      `UPDATE calls
+       SET status = 'failed', assigned_device_id = NULL, lease_token = NULL,
+           lease_expires_at = NULL, error_message = 'task force reset by admin',
+           updated_at = ?, completed_at = ?
+       WHERE assigned_device_id = ? AND status IN ('assigned', 'running')`,
+      now,
+      now,
+      device_id,
+    );
+
+    const tasks = [];
+    for (const row of rows) {
+      const failed = this.find_task(row.id);
+      if (failed === null) continue;
+      tasks.push(task_value(failed));
+      this.resolve_invoke_waiter(failed.id, failed);
+      this.send_to_device(failed.publisher_device_id, {
+        type: "task.failed",
+        task: task_value(failed),
+      });
+    }
+    await this.schedule_alarm();
+    return json_response({ device_id, reset_count: tasks.length, tasks });
+  }
+
+  /**
    * @param {string} task_id
    * @returns {CallRow | null}
    */
@@ -2197,6 +2265,12 @@ export default {
           env,
           admin_task_match[1],
         );
+      }
+      const admin_device_reset_match = url.pathname.match(
+        /^\/admin\/api\/devices\/([A-Za-z0-9][A-Za-z0-9_.:-]{0,127})\/reset$/,
+      );
+      if (admin_device_reset_match !== null && request.method === "POST") {
+        return admin_reset_device(env, request, admin_device_reset_match[1]);
       }
       return error_response("not found", 404);
     }

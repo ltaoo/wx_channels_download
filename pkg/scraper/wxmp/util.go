@@ -19,11 +19,13 @@ import (
 const wechat_user_agent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.50(0x1800322f) NetType/WIFI Language/zh_CN"
 
 type WebsocketClient struct {
-	conn      *websocket.Conn
-	send      chan []byte
-	title     string
-	available bool
-	last_ping int64
+	conn          *websocket.Conn
+	send          chan []byte
+	title         string
+	available     bool
+	last_ping     int64
+	in_flight     int
+	last_selected uint64
 }
 
 func (c *WebsocketClient) write_pump() {

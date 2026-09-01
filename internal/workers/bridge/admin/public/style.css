@@ -74,6 +74,8 @@ button:disabled { cursor: progress; opacity: .6; transform: none; }
 .device-card.offline { opacity: .76; }
 .device-card.busy { border-color: rgba(255, 192, 94, .35); }
 .device-header { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 20px 22px; border-bottom: 1px solid rgba(132, 154, 216, .16); }
+.device-reset-actions { display: flex; align-items: center; gap: 10px; padding: 12px 22px 0; }
+.device-reset-error { color: #ff9fac; font-size: 11px; }
 .device-name { font-size: 20px; font-weight: 720; line-height: 1.3; overflow-wrap: anywhere; }
 .device-meta { margin-top: 6px; color: #9aa8c6; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
 .device-time { margin-top: 5px; color: #7784a0; font-size: 11px; }

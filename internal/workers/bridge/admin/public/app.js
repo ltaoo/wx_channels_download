@@ -60,6 +60,7 @@ function DashboardViewModel() {
   const test_drafts_ = refobj({});
   const download_drafts_ = refobj({});
   const tests_ = refobj({});
+  const device_reset_actions_ = refobj({});
   const device_sources = new Map();
   const access_token_sources = new Map();
   const test_poll_timers = new Map();
@@ -509,6 +510,56 @@ function DashboardViewModel() {
     );
   }
 
+  function set_device_reset_action(device_id, next_action) {
+    device_reset_actions_.as(
+      Object.assign({}, device_reset_actions_.value, {
+        [device_id]: Object.assign(
+          {},
+          device_reset_actions_.value[device_id] || {},
+          next_action,
+        ),
+      }),
+    );
+  }
+
+  async function reset_device(device_id) {
+    const device = devices_.value.find(
+      (candidate) => candidate.device_id === device_id,
+    );
+    if (!device || device.status !== "busy") return;
+    if (
+      !window.confirm(
+        "强制重置设备“" +
+          device.device_name +
+          "”？当前未完成调用会被标记为失败。",
+      )
+    ) {
+      return;
+    }
+    set_device_reset_action(device_id, { submitting: true, error: "" });
+    try {
+      const response = await fetch(
+        "/admin/api/devices/" + encodeURIComponent(device_id) + "/reset",
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+        },
+      );
+      const value = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(value.error || "强制重置设备失败：HTTP " + response.status);
+      }
+      set_device_reset_action(device_id, { submitting: false, error: "" });
+      await refresh(false);
+    } catch (error) {
+      set_device_reset_action(device_id, {
+        submitting: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   async function run_test(device_id) {
     const draft = test_drafts_.value[device_id] || { url: "" };
     if (!draft.url.trim()) {
@@ -812,6 +863,7 @@ function DashboardViewModel() {
     test_drafts: test_drafts_,
     download_drafts: download_drafts_,
     tests: tests_,
+    device_reset_actions: device_reset_actions_,
   };
 
   const methods = {
@@ -820,6 +872,7 @@ function DashboardViewModel() {
     refresh,
     runTest: run_test,
     runDownloadTest: run_download_test,
+    resetDevice: reset_device,
     setTestDraft: set_test_draft,
     setDownloadDraft: set_download_draft,
     setAccessTokenDraft: set_access_token_draft,
@@ -2212,6 +2265,19 @@ function DeviceView(props) {
         " · 最近活跃 " +
         format_time(device.last_seen_at),
   );
+  const reset_action_ = computed(
+    vm$.state.device_reset_actions,
+    (actions) => actions[device_id] || {},
+  );
+  const reset_button_label_ = computed(reset_action_, (action) =>
+    action.submitting ? "重置中…" : "强制重置",
+  );
+  const reset_button_disabled_ = computed(reset_action_, (action) =>
+    Boolean(action.submitting),
+  );
+  const reset_error_ = computed(reset_action_, (action) =>
+    String(action.error || ""),
+  );
   const methods_ = computed(device_, (device) => device.methods);
   const test_visible_ = computed(device_, (device) =>
     device.methods.includes("wxchannels.fetch"),
@@ -2283,6 +2349,42 @@ function DeviceView(props) {
           ),
         ],
       ),
+      Show({
+        when: computed(status_, (status) => status === "busy"),
+        ok() {
+          return View(
+            {
+              class: "device-reset-actions",
+              attributes: { n: "device-reset-actions" },
+            },
+            [
+              Button(
+                {
+                  class: "danger-button",
+                  attributes: { n: "reset-device-button" },
+                  disabled: reset_button_disabled_,
+                  onClick() {
+                    return vm$.methods.resetDevice(device_id);
+                  },
+                },
+                [reset_button_label_],
+              ),
+              Show({
+                when: computed(reset_error_, Boolean),
+                ok() {
+                  return View(
+                    {
+                      class: "device-reset-error",
+                      attributes: { n: "device-reset-error", role: "alert" },
+                    },
+                    [reset_error_],
+                  );
+                },
+              }),
+            ],
+          );
+        },
+      }),
       View(
         {
           class: "device-method-section",
