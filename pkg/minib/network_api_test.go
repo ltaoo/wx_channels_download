@@ -117,6 +117,48 @@ request.send();
 	}
 }
 
+func TestRequestHeaderModifierReceivesSessionCookies(t *testing.T) {
+	received_headers := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/data" {
+			received_headers <- request.Header.Clone()
+			_, _ = response_writer.Write([]byte("ready"))
+			return
+		}
+		http.SetCookie(response_writer, &http.Cookie{Name: "session", Value: "created", Path: "/"})
+		_, _ = response_writer.Write([]byte(`<html><body><script>console.error({message:'expected'}); document.createElement('input').select(); Object.defineProperty(HTMLCollection.prototype, Symbol.toStringTag, {value:'HTMLCollection'}); if (Object.prototype.toString.call([]) !== '[object Array]') throw new Error('Array prototype was changed by HTMLCollection'); fetch('/data')</script></body></html>`))
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil, NavigateOptions{
+		RequestHeaderModifier: func(request *http.Request) error {
+			if request.URL.Path == "/data" {
+				cookie, cookie_err := request.Cookie("session")
+				if cookie_err != nil {
+					return cookie_err
+				}
+				request.Header.Set("X-Session", cookie.Value)
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.ScriptFailures) != 0 {
+		t.Fatalf("script failures: %+v", page.ScriptFailures)
+	}
+	received := <-received_headers
+	if received.Get("Cookie") != "session=created" || received.Get("X-Session") != "created" {
+		t.Fatalf("modifier received incomplete headers: %v", received)
+	}
+}
+
 func TestWebSocketLifecycleAndEvents(t *testing.T) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin:  func(*http.Request) bool { return true },
@@ -218,7 +260,11 @@ document.body.setAttribute('data-dom-parser', parsedDocument.querySelector('b').
 		t.Fatal(err)
 	}
 	defer browser.Close()
-	page, err := browser.Navigate(context.Background(), server.URL+"/", nil)
+	navigation_headers := http.Header{
+		"Sec-Ch-Ua":  {`"Chromium";v="151", "Google Chrome";v="151"`},
+		"User-Agent": {"Chrome/151"},
+	}
+	page, err := browser.Navigate(context.Background(), server.URL+"/", navigation_headers)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,6 +294,15 @@ document.body.setAttribute('data-dom-parser', parsedDocument.querySelector('b').
 	}
 	if fetch_headers.Get("X-App-Za") != "OS=webplayer" || fetch_headers.Get("X-Zse-96") != "2.0_test" {
 		t.Fatalf("unexpected fetch headers: %v", fetch_headers)
+	}
+	if fetch_headers.Get("Sec-Ch-Ua") != navigation_headers.Get("Sec-Ch-Ua") {
+		t.Fatalf("fetch client hints = %q, want %q", fetch_headers.Get("Sec-Ch-Ua"), navigation_headers.Get("Sec-Ch-Ua"))
+	}
+	if fetch_headers.Get("Accept") != "*/*" {
+		t.Fatalf("fetch accept = %q, want */*", fetch_headers.Get("Accept"))
+	}
+	if fetch_headers.Get("Priority") != "u=1, i" {
+		t.Fatalf("fetch priority = %q, want u=1, i", fetch_headers.Get("Priority"))
 	}
 	if fetch_headers.Get("0") != "" || fetch_headers.Get("1") != "" {
 		t.Fatalf("iterable headers leaked numeric names: %v", fetch_headers)

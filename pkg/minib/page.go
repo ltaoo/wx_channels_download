@@ -83,6 +83,9 @@ type NavigateOptions struct {
 	// HARMaxBodyBytes caps the total raw request/response bytes retained in the
 	// HAR. Zero is unlimited. Entries beyond the budget retain metadata only.
 	HARMaxBodyBytes int64
+	// RequestHeaderModifier may update final request headers after session
+	// cookies are merged. It applies only to this navigation.
+	RequestHeaderModifier func(*http.Request) error
 	// RuntimeInitializer installs site-specific JavaScript compatibility hooks
 	// before page scripts. The standard window and DOM already exist unless
 	// UseCustomRuntime is enabled.
@@ -288,6 +291,7 @@ type page_runtime struct {
 	current_script_url    string
 	ready_state           string
 	user_agent            string
+	request_headers       http.Header
 	disable_css           bool
 	javascript_timeout    time.Duration
 	wait_until            NavigationWaitUntil
@@ -328,6 +332,9 @@ func (b *MiniBrowser) Navigate(ctx context.Context, raw_url string, headers http
 	}
 	if navigate_options.WaitUntil == "" {
 		navigate_options.WaitUntil = WaitUntilLoad
+	}
+	if navigate_options.RequestHeaderModifier != nil {
+		ctx = with_request_header_modifier(ctx, navigate_options.RequestHeaderModifier)
 	}
 	var har_recorder *har_recorder
 	if navigate_options.CaptureHAR {
@@ -443,12 +450,12 @@ func (b *MiniBrowser) navigate(ctx context.Context, raw_url string, headers http
 	var jobs []script_job
 	if !page.wait_condition_met() {
 		jobs = discover_page_resources(page, base_url, navigate_options)
-		b.download_resources(ctx, page, page_url, navigate_options.DisableCache, navigate_options.ResourceTimeout)
+		b.download_resources(ctx, page, page_url, document_headers, navigate_options.DisableCache, navigate_options.ResourceTimeout)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := b.execute_page(ctx, page, page_url, jobs, document_headers.Get("User-Agent")); err != nil {
+	if err := b.execute_page(ctx, page, page_url, jobs, document_headers); err != nil {
 		return nil, err
 	}
 	page.RenderedHTML = render_node(document)
@@ -731,7 +738,7 @@ func resolve_resource_url(base_url *url.URL, raw_url string) (string, bool) {
 	return resolved_url.String(), true
 }
 
-func (b *MiniBrowser) download_resources(ctx context.Context, page *Page, page_url *url.URL, disable_cache bool, resource_timeout time.Duration) {
+func (b *MiniBrowser) download_resources(ctx context.Context, page *Page, page_url *url.URL, request_headers http.Header, disable_cache bool, resource_timeout time.Duration) {
 	resource_indexes := make([]int, len(page.Resources))
 	host_semaphores := make(map[string]chan struct{})
 	for index := range page.Resources {
@@ -777,7 +784,7 @@ func (b *MiniBrowser) download_resources(ctx context.Context, page *Page, page_u
 					}
 				}
 				resource_ctx, cancel := context_with_optional_timeout(ctx, resource_timeout)
-				resource = b.download_resource(resource_ctx, page_url, resource, disable_cache)
+				resource = b.download_resource(resource_ctx, page_url, request_headers, resource, disable_cache)
 				cancel()
 				if host_semaphore != nil {
 					<-host_semaphore
@@ -799,9 +806,9 @@ func (b *MiniBrowser) download_resources(ctx context.Context, page *Page, page_u
 	wait_group.Wait()
 }
 
-func (b *MiniBrowser) download_resource(ctx context.Context, page_url *url.URL, resource Resource, disable_cache bool) Resource {
+func (b *MiniBrowser) download_resource(ctx context.Context, page_url *url.URL, request_headers http.Header, resource Resource, disable_cache bool) Resource {
 	ctx = with_har_resource_type(ctx, string(resource.Kind))
-	headers := resource_headers(page_url, resource.URL, resource.Kind)
+	headers := resource_headers(page_url, request_headers, resource.URL, resource.Kind)
 	headers.Set("Priority", resource_priority_header(resource.fetch_priority))
 	if disable_cache {
 		disable_cache_headers(headers)
@@ -883,8 +890,11 @@ func disable_cache_headers(headers http.Header) {
 	headers.Set("Pragma", "no-cache")
 }
 
-func resource_headers(page_url *url.URL, resource_url string, kind ResourceKind) http.Header {
-	headers := clawreq.DefaultHeaders(clawreq.ProfileChrome)
+func resource_headers(page_url *url.URL, request_headers http.Header, resource_url string, kind ResourceKind) http.Header {
+	headers := request_headers.Clone()
+	if headers == nil {
+		headers = clawreq.DefaultHeaders(clawreq.ProfileChrome)
+	}
 	headers.Set("Referer", page_url.String())
 	headers.Set("Sec-Fetch-Mode", "no-cors")
 	headers.Del("Sec-Fetch-User")
@@ -915,7 +925,7 @@ func resource_headers(page_url *url.URL, resource_url string, kind ResourceKind)
 	return headers
 }
 
-func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *url.URL, jobs []script_job, user_agent string) error {
+func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *url.URL, jobs []script_job, request_headers http.Header) error {
 	b.js_mutex.Lock()
 	defer b.js_mutex.Unlock()
 	if b.page_runtime != nil {
@@ -964,7 +974,8 @@ func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *ur
 		websockets:           make(map[*browser_websocket]bool),
 		blob_urls:            make(map[string]string),
 		ready_state:          "loading",
-		user_agent:           user_agent,
+		user_agent:           request_headers.Get("User-Agent"),
+		request_headers:      request_headers.Clone(),
 		disable_css:          page.disable_css,
 		javascript_timeout:   page.javascript_timeout,
 		wait_until:           page.wait_until,
@@ -1445,6 +1456,17 @@ function __minibMethod(name) { return function() { var own = this['__minib_' + n
 Node.prototype.hasChildNodes = function() { return this.firstChild !== null; };
 Node.prototype.getRootNode = function() { var node = this; while (node.parentNode) node = node.parentNode; return node; };
 Node.prototype.isSameNode = function(other) { return this === other; };
+Node.prototype.isEqualNode = function(other) {
+  if (other == null || this.nodeType !== other.nodeType || this.nodeName !== other.nodeName || this.nodeValue !== other.nodeValue) return false;
+  if (this.nodeType === Node.ELEMENT_NODE) {
+    var names = this.getAttributeNames(), otherNames = other.getAttributeNames();
+    if (names.length !== otherNames.length) return false;
+    for (var index = 0; index < names.length; index++) if (!other.hasAttribute(names[index]) || this.getAttribute(names[index]) !== other.getAttribute(names[index])) return false;
+  }
+  var child = this.firstChild, otherChild = other.firstChild;
+  while (child && otherChild) { if (!child.isEqualNode(otherChild)) return false; child = child.nextSibling; otherChild = otherChild.nextSibling; }
+  return child === null && otherChild === null;
+};
 Node.prototype.normalize = function() {
   var child = this.firstChild;
   while (child) {
@@ -1459,6 +1481,7 @@ Node.prototype.normalize = function() {
 ['insertAdjacentElement', 'getAttribute', 'setAttribute', 'getAttributeNS', 'setAttributeNS', 'removeAttribute', 'removeAttributeNS', 'hasAttribute', 'hasAttributeNS', 'hasAttributes', 'getAttributeNames', 'querySelector', 'querySelectorAll', 'getElementsByTagName', 'getElementsByClassName', 'matches', 'closest', 'attachShadow', 'getBoundingClientRect', 'getClientRects', 'focus', 'blur', 'click', 'getContext', 'toDataURL'].forEach(function(name) { Element.prototype[name] = __minibMethod(name); });
 function HTMLElement() { if (typeof __minib_construct_html_element === 'function') return __minib_construct_html_element(this); }
 HTMLElement.prototype = Object.create(Element.prototype);
+HTMLElement.prototype.select = function() {};
 function CustomElementRegistry() {}
 function HTMLBodyElement() {}
 HTMLBodyElement.prototype = Object.create(HTMLElement.prototype);
@@ -1561,9 +1584,9 @@ Element.prototype.insertAdjacentText = function(position, data) { var text = thi
 Element.prototype.insertAdjacentHTML = function(position, markup) { var range = this.ownerDocument.createRange(); range.selectNode(this); var fragment = range.createContextualFragment(String(markup)), normalized = String(position).toLowerCase(); if (normalized === 'beforebegin') { if (!this.parentNode) return; this.parentNode.insertBefore(fragment, this); } else if (normalized === 'afterbegin') this.insertBefore(fragment, this.firstChild); else if (normalized === 'beforeend') this.appendChild(fragment); else if (normalized === 'afterend') { if (!this.parentNode) return; this.parentNode.insertBefore(fragment, this.nextSibling); } else throw new DOMException('Invalid insertion position', 'SyntaxError'); };
 function Range() {}
 function NodeList() {}
-NodeList.prototype = Array.prototype;
+NodeList.prototype = Object.create(Array.prototype);
 function HTMLCollection() {}
-HTMLCollection.prototype = Array.prototype;
+HTMLCollection.prototype = Object.create(Array.prototype);
 function Location() {}
 Object.defineProperty(Location.prototype, Symbol.toStringTag, { value: 'Location' });
 function FormData() { this._entries = []; }
@@ -2312,11 +2335,15 @@ func (request *xml_http_request) prepare_network_request(body []byte) (xhr_netwo
 	if err != nil {
 		return xhr_network_request{}, err
 	}
-	headers := clawreq.DefaultHeaders(clawreq.ProfileChrome)
+	headers := request.runtime.request_headers.Clone()
+	if headers == nil {
+		headers = clawreq.DefaultHeaders(clawreq.ProfileChrome)
+	}
 	if request.runtime.user_agent != "" {
 		headers.Set("User-Agent", request.runtime.user_agent)
 	}
-	headers.Set("Accept", "application/json, text/plain, */*")
+	headers.Set("Accept", "*/*")
+	headers.Set("Priority", "u=1, i")
 	headers.Set("Referer", request.runtime.page.URL)
 	headers.Set("Sec-Fetch-Dest", "empty")
 	headers.Set("Sec-Fetch-Mode", "cors")
@@ -2478,7 +2505,7 @@ func (runtime *page_runtime) console_object() *goja.Object {
 			for _, argument := range call.Arguments {
 				part := argument.String()
 				if argument_object, ok := argument.(*goja.Object); ok {
-					if stack := argument_object.Get("stack"); !goja.IsUndefined(stack) && !goja.IsNull(stack) && !strings.Contains(part, stack.String()) {
+					if stack := argument_object.Get("stack"); stack != nil && !goja.IsUndefined(stack) && !goja.IsNull(stack) && !strings.Contains(part, stack.String()) {
 						part += "\n" + stack.String()
 					}
 				}
@@ -3962,7 +3989,7 @@ func (runtime *page_runtime) find_or_download_resource(ctx context.Context, reso
 	}
 	resource_ctx, cancel := context_with_optional_timeout(ctx, runtime.page.resource_timeout)
 	defer cancel()
-	resource := runtime.browser.download_resource(resource_ctx, runtime.page_url, Resource{URL: resource_url, Kind: kind, fetch_priority: default_resource_priority(kind)}, runtime.page.disable_cache)
+	resource := runtime.browser.download_resource(resource_ctx, runtime.page_url, runtime.request_headers, Resource{URL: resource_url, Kind: kind, fetch_priority: default_resource_priority(kind)}, runtime.page.disable_cache)
 	runtime.page.Resources = append(runtime.page.Resources, resource)
 	return len(runtime.page.Resources) - 1
 }

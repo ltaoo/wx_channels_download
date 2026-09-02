@@ -675,6 +675,8 @@ window.mixinState = {
   childNodes: mixinHost.childNodes.length,
   root: mixinHost.getRootNode() === document,
   same: mixinHost.isSameNode(mixinHost),
+  equal: mixinHost.isEqualNode(mixinHost.cloneNode(true)),
+  unequal: mixinHost.isEqualNode(document.createElement('div')),
   hasChildren: mixinHost.hasChildNodes(),
   selectorGroup: document.querySelectorAll('body,div').length,
   matchesGroup: mixinHost.matches('span,div'),
@@ -701,7 +703,7 @@ window.mixinState = {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := `{"before":"start-middle-before--replacement--after-<b>html</b>-text","toggles":[true,false,true],"text":"abc!?XY","wholeText":"abc!?XY","childNodes":1,"root":true,"same":true,"hasChildren":true,"selectorGroup":2,"matchesGroup":true,"closestGroup":true,"positionConstant":16}`
+	expected := `{"before":"start-middle-before--replacement--after-<b>html</b>-text","toggles":[true,false,true],"text":"abc!?XY","wholeText":"abc!?XY","childNodes":1,"root":true,"same":true,"equal":true,"unequal":false,"hasChildren":true,"selectorGroup":2,"matchesGroup":true,"closestGroup":true,"positionConstant":16}`
 	if value.String() != expected {
 		t.Fatalf("DOM mixin state = %s, want %s", value.String(), expected)
 	}

@@ -17,6 +17,7 @@ func TestPageResourceSchedulerHonorsPriorityConcurrencyAndScriptSemantics(t *tes
 	var active_requests atomic.Int32
 	var max_active_requests atomic.Int32
 	priorities := make(map[string]string)
+	client_hints := make(map[string]string)
 	var priority_mutex sync.Mutex
 	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/" {
@@ -40,6 +41,7 @@ func TestPageResourceSchedulerHonorsPriorityConcurrencyAndScriptSemantics(t *tes
 		}
 		priority_mutex.Lock()
 		priorities[request.URL.Path] = request.Header.Get("Priority")
+		client_hints[request.URL.Path] = request.Header.Get("Sec-Ch-Ua")
 		priority_mutex.Unlock()
 		switch request.URL.Path {
 		case "/blocking.js":
@@ -73,7 +75,8 @@ func TestPageResourceSchedulerHonorsPriorityConcurrencyAndScriptSemantics(t *tes
 		t.Fatal(err)
 	}
 	defer browser.Close()
-	page, err := browser.Navigate(context.Background(), server.URL+"/", nil)
+	navigation_headers := http.Header{"Sec-Ch-Ua": {`"Chromium";v="151"`}}
+	page, err := browser.Navigate(context.Background(), server.URL+"/", navigation_headers)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,5 +93,8 @@ func TestPageResourceSchedulerHonorsPriorityConcurrencyAndScriptSemantics(t *tes
 	defer priority_mutex.Unlock()
 	if priorities["/blocking.js"] != "u=0" || priorities["/async-fast.js"] != "u=1" || priorities["/defer.js"] != "u=2" || priorities["/image-0.png"] != "u=5, i" {
 		t.Fatalf("resource priority headers = %+v", priorities)
+	}
+	if client_hints["/blocking.js"] != navigation_headers.Get("Sec-Ch-Ua") || client_hints["/image-0.png"] != navigation_headers.Get("Sec-Ch-Ua") {
+		t.Fatalf("resource client hints = %+v", client_hints)
 	}
 }

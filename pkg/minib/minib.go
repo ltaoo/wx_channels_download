@@ -23,6 +23,17 @@ import (
 
 const default_timeout = 30 * time.Second
 
+type request_header_modifier_context_key struct{}
+
+func with_request_header_modifier(ctx context.Context, modifier func(*http.Request) error) context.Context {
+	return context.WithValue(ctx, request_header_modifier_context_key{}, modifier)
+}
+
+func request_header_modifier_from_context(ctx context.Context) func(*http.Request) error {
+	modifier, _ := ctx.Value(request_header_modifier_context_key{}).(func(*http.Request) error)
+	return modifier
+}
+
 // MiniBrowser keeps cookies and JavaScript state across requests.
 type MiniBrowser struct {
 	http_client       *clawreq.Client
@@ -94,6 +105,17 @@ func (b *MiniBrowser) Request(ctx context.Context, method, raw_url string, body 
 	if err != nil {
 		return nil, err
 	}
+	request_url, err := url.Parse(raw_url)
+	if err != nil {
+		return nil, err
+	}
+	if modifier := request_header_modifier_from_context(ctx); modifier != nil {
+		request := &http.Request{Method: method, URL: request_url, Header: prepared_headers}
+		if err := modifier(request); err != nil {
+			return nil, fmt.Errorf("minib: modify request headers: %w", err)
+		}
+		prepared_headers = request.Header
+	}
 	request_headers := make(map[string]string, len(prepared_headers))
 	for name, values := range prepared_headers {
 		request_headers[http.CanonicalHeaderKey(name)] = strings.Join(values, ", ")
@@ -107,7 +129,6 @@ func (b *MiniBrowser) Request(ctx context.Context, method, raw_url string, body 
 		}
 		body = bytes.NewReader(request_body)
 	}
-	request_url, _ := url.Parse(raw_url)
 	started_at := time.Now()
 	response, err := b.http_client.Do(ctx, method, raw_url, body, clawreq.WithOnlyHeaders(request_headers))
 	if recorder != nil {
