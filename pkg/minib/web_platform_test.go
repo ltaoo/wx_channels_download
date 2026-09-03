@@ -20,16 +20,28 @@ func TestWebPlatformCryptoBase64AndWebAssembly(t *testing.T) {
 const wasmBytes = new Uint8Array([0,97,115,109,1,0,0,0,1,7,1,96,2,127,127,1,127,3,2,1,0,7,7,1,3,97,100,100,0,0,10,9,1,7,0,32,0,32,1,106,11]);
 globalThis.platformState = {
   base64: [atob("AP+A").charCodeAt(0), atob("AP+A").charCodeAt(1), atob("AP+A").charCodeAt(2)].join(","),
+	typedFrom: Array.from(Uint8Array.from(atob("AP+A"), character => character.charCodeAt(0))).join(","),
   wasmValid: WebAssembly.validate(wasmBytes),
   uuid: crypto.randomUUID(),
   randomLength: crypto.getRandomValues(new Uint8Array(16)).length,
   wasmResult: 0,
   digestLength: 0,
+	cryptoPublicLength: 0,
+	cryptoDerivedLength: 0,
+	cryptoEncryptedLength: 0,
   wasmRejected: false,
 };
 WebAssembly.instantiate(wasmBytes).then(result => { platformState.wasmResult = result.instance.exports.add(20, 22); });
 WebAssembly.instantiate(new Uint8Array([0])).catch(() => { platformState.wasmRejected = true; });
 crypto.subtle.digest("SHA-256", new TextEncoder().encode("abc")).then(result => { platformState.digestLength = result.byteLength; });
+crypto.subtle.generateKey({name: "ECDH", namedCurve: "P-256"}, true, ["deriveBits"]).then(keys => Promise.all([
+  crypto.subtle.exportKey("raw", keys.publicKey),
+  crypto.subtle.deriveBits({name: "ECDH", public: keys.publicKey}, keys.privateKey, 256),
+])).then(values => {
+  platformState.cryptoPublicLength = values[0].byteLength;
+  platformState.cryptoDerivedLength = values[1].byteLength;
+  return crypto.subtle.importKey("raw", new Uint8Array(values[1]).slice(0, 16), {name: "AES-CBC"}, false, ["encrypt"]);
+}).then(key => crypto.subtle.encrypt({name: "AES-CBC", iv: new Uint8Array(16)}, key, new TextEncoder().encode("abc"))).then(result => { platformState.cryptoEncryptedLength = result.byteLength; });
 </script></body></html>`))
 	}))
 	defer server.Close()
@@ -51,7 +63,7 @@ crypto.subtle.digest("SHA-256", new TextEncoder().encode("abc")).then(result => 
 		t.Fatal(err)
 	}
 	state := value.String()
-	for _, expected := range []string{`"base64":"0,255,128"`, `"wasmValid":true`, `"randomLength":16`, `"wasmResult":42`, `"digestLength":32`, `"wasmRejected":true`} {
+	for _, expected := range []string{`"base64":"0,255,128"`, `"typedFrom":"0,255,128"`, `"wasmValid":true`, `"randomLength":16`, `"wasmResult":42`, `"digestLength":32`, `"cryptoPublicLength":65`, `"cryptoDerivedLength":32`, `"cryptoEncryptedLength":16`, `"wasmRejected":true`} {
 		if !regexp.MustCompile(regexp.QuoteMeta(expected)).MatchString(state) {
 			t.Fatalf("platform state %s missing %s", state, expected)
 		}
@@ -63,7 +75,7 @@ crypto.subtle.digest("SHA-256", new TextEncoder().encode("abc")).then(result => 
 
 func TestMissingDOMQueriesReturnNull(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		_, _ = writer.Write([]byte(`<html><head></head><body data-present="yes"><script>document.body.setAttribute('data-ok', String(document.querySelector('#missing') === null && document.head.querySelector('#missing') === null && document.body.getAttributeNames().includes('data-present') && typeof ShadowRoot === 'function'))</script></body></html>`))
+		_, _ = writer.Write([]byte(`<html><head></head><body data-present="yes"><script>var probe = document.createElement('div'); probe.setAttribute('data-n', 'writable-element-properties'); var propertiesWork = probe.dir === '' && (probe.dir = 'rtl') === 'rtl' && probe.dir === 'rtl' && (probe.scrollTop = 12) === 12 && probe.scrollTop === 12; document.body.setAttribute('data-ok', String(propertiesWork && document.querySelector('#missing') === null && document.head.querySelector('#missing') === null && document.body.getAttributeNames().includes('data-present') && typeof ShadowRoot === 'function'))</script></body></html>`))
 	}))
 	defer server.Close()
 

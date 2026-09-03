@@ -347,13 +347,14 @@ type atom_entry struct {
 }
 
 type atom_feed struct {
-	XMLName xml.Name     `xml:"http://www.w3.org/2005/Atom feed"`
-	Title   string       `xml:"title"`
-	ID      string       `xml:"id"`
-	Updated string       `xml:"updated"`
-	Link    []atom_link  `xml:"link"`
-	Author  atom_author  `xml:"author"`
-	Entry   []atom_entry `xml:"entry"`
+	XMLName   xml.Name     `xml:"http://www.w3.org/2005/Atom feed"`
+	Title     string       `xml:"title"`
+	ID        string       `xml:"id"`
+	Updated   string       `xml:"updated"`
+	Generator string       `xml:"generator"`
+	Link      []atom_link  `xml:"link"`
+	Author    atom_author  `xml:"author"`
+	Entry     []atom_entry `xml:"entry"`
 }
 
 // HandleFetchFeedListOfContactRSS returns an RSS feed for Channels videos.
@@ -368,9 +369,10 @@ func (r *WebsocketRoutes) HandleFetchFeedListOfContactRSS(ctx *gin.Context) {
 	}
 
 	atom := atom_feed{
-		Title:   "WeChat Channels",
-		ID:      username,
-		Updated: time.Now().Format(time.RFC3339),
+		Title:     "WeChat Channels",
+		ID:        username,
+		Updated:   time.Now().Format(time.RFC3339),
+		Generator: "FindRSS",
 		Link: []atom_link{
 			{Rel: "self", Href: "http://" + ctx.Request.Host + ctx.Request.RequestURI},
 			{Rel: "alternate", Href: "https://channels.weixin.qq.com"},

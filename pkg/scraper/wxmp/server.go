@@ -356,6 +356,12 @@ func (c *OfficialAccountServer) FetchBizMsgList(username, offset string) (json.R
 			errors.New("missing username"),
 		)
 	}
+	cache_key := fmt.Sprintf("mpbiz:%q:%q", username, offset)
+	if cached, found := c.cache.Get(cache_key); found {
+		if raw_data, ok := cached.(string); ok {
+			return json.RawMessage(raw_data), nil
+		}
+	}
 	response, err := c.RequestFrontend(
 		"key:mp:bizmsglist",
 		map[string]string{"username": username, "offset": offset},
@@ -363,6 +369,12 @@ func (c *OfficialAccountServer) FetchBizMsgList(username, offset string) (json.R
 	)
 	if err != nil {
 		return nil, err
+	}
+	var response_status struct {
+		ErrCode *int `json:"errCode"`
+	}
+	if json.Unmarshal(response.Data, &response_status) == nil && response_status.ErrCode == nil {
+		c.cache.Set(cache_key, string(response.Data), 5*time.Minute)
 	}
 	return response.Data, nil
 }
@@ -999,7 +1011,7 @@ func (c *OfficialAccountServer) BuildRSS(params RSSParams) (*AtomFeed, error) {
 		ID:        params.Biz,
 		Title:     feed_title,
 		Updated:   time.Now().Format(time.RFC3339),
-		Generator: "wx_channels_download",
+		Generator: "FindRSS",
 		Icon:      acct.AvatarURL,
 		Category:  []AtomCategory{{Term: "微信公众号"}},
 		Link:      links,

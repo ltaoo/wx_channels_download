@@ -143,7 +143,7 @@ function generateRSS(officialAccount, messages, options = {}) {
     }
     <language>zh-CN</language>
     <lastBuildDate>${now}</lastBuildDate>
-    <generator>wx_channels_download</generator>`;
+    <generator>FindRSS</generator>`;
 
   if (messages && messages.length > 0) {
     messages.forEach((msg) => {

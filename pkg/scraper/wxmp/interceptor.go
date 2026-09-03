@@ -137,7 +137,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 				url_build("/inject/download/model.js", version_query),
 				url_build("/inject/download/view.js", version_query),
 				asset_url(asset_base_url, "/inject/mp.utils.js", version_query),
-				asset_url(asset_base_url, "/inject/mp.ws.js", version_query),
+				// asset_url(asset_base_url, "/inject/mp.ws.js", version_query),
 				asset_url(asset_base_url, "/inject/mp.components.js", version_query),
 				asset_url(asset_base_url, "/inject/mp.main.js", version_query),
 			)

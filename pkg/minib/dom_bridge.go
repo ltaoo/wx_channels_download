@@ -24,6 +24,17 @@ func (runtime *page_runtime) install_shared_dom_bridge(window *goja.Object) {
 		node := runtime.object_node(call.Argument(0))
 		return runtime.call_shared_node_method(node, call.Argument(1).String(), shared_bridge_arguments(call.Argument(2)))
 	})
+	browser_click := runtime.vm.ToValue(func(selector string) bool {
+		node := query_first(runtime.page.Document, selector)
+		if node == nil {
+			return false
+		}
+		if err := runtime.click_node(node, true); err != nil {
+			panic(runtime.vm.NewGoError(err))
+		}
+		return true
+	})
+	_ = window.DefineDataProperty("__minib_browser_click", browser_click, goja.FLAG_FALSE, goja.FLAG_FALSE, goja.FLAG_FALSE)
 }
 
 func shared_bridge_arguments(value goja.Value) []goja.Value {
@@ -132,7 +143,7 @@ func (runtime *page_runtime) shared_node_property(node *html.Node, name string) 
 		return attribute(node, "id")
 	case "className":
 		return attribute(node, "class")
-	case "src", "value", "name", "type", "rel", "charset":
+	case "src", "value", "name", "type", "rel", "charset", "dir":
 		return attribute(node, name)
 	case "href":
 		if strings.EqualFold(node.Data, "a") {
@@ -242,7 +253,7 @@ func (runtime *page_runtime) set_shared_node_property(node *html.Node, name stri
 		runtime.set_element_attribute(node, "id", value.String())
 	case "className":
 		runtime.set_element_attribute(node, "class", value.String())
-	case "src", "href", "value", "name", "type", "rel", "charset":
+	case "src", "href", "value", "name", "type", "rel", "charset", "dir":
 		runtime.set_element_attribute(node, name, value.String())
 		runtime.queue_dynamic_resource(node)
 	case "content":
@@ -403,7 +414,9 @@ func (runtime *page_runtime) call_shared_node_method(node *html.Node, name strin
 	case "focus", "blur":
 		return goja.Undefined()
 	case "click":
-		runtime.fire_node_event(node, "click")
+		if err := runtime.click_node(node, false); err != nil {
+			panic(runtime.vm.NewGoError(err))
+		}
 		return goja.Undefined()
 	case "getContext":
 		if strings.EqualFold(node.Data, "canvas") && strings.EqualFold(argument(0).String(), "2d") {

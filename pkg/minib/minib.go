@@ -5,6 +5,7 @@ package minib
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/andybalholm/cascadia"
 	"github.com/dop251/goja"
 
 	"wx_channel/pkg/clawreq"
@@ -308,6 +310,58 @@ func (b *MiniBrowser) ExecuteJS(ctx context.Context, expression string) (value g
 		}
 	}
 	return value, nil
+}
+
+// Click dispatches a browser-generated click event to the first element that
+// matches selector. It does not perform layout, hit testing, or default actions.
+func (b *MiniBrowser) Click(ctx context.Context, selector string) error {
+	if b == nil || b.js_runtime == nil {
+		return fmt.Errorf("minib: browser is closed")
+	}
+	selector = strings.TrimSpace(selector)
+	if selector == "" {
+		return fmt.Errorf("minib: click selector cannot be empty")
+	}
+	if _, err := cascadia.ParseGroup(selector); err != nil {
+		return fmt.Errorf("minib: invalid click selector %q: %w", selector, err)
+	}
+	if b.page_runtime == nil || b.page_runtime.page == nil {
+		return fmt.Errorf("minib: click requires a loaded page")
+	}
+	if b.page_runtime.use_custom_runtime {
+		return fmt.Errorf("minib: click is unavailable with a custom runtime")
+	}
+	current_page := b.page_runtime.page
+	current_navigation_history := append([]string(nil), current_page.NavigationHistory...)
+	navigation_headers := b.page_runtime.request_headers.Clone()
+	encoded_selector, err := json.Marshal(selector)
+	if err != nil {
+		return fmt.Errorf("minib: encode click selector: %w", err)
+	}
+	clicked, err := b.ExecuteJS(ctx, "__minib_browser_click("+string(encoded_selector)+")")
+	if err != nil {
+		return fmt.Errorf("minib: click %q: %w", selector, err)
+	}
+	if !clicked.ToBoolean() {
+		return fmt.Errorf("minib: no element matches click selector %q", selector)
+	}
+	if current_page.navigation_url == "" {
+		return nil
+	}
+	current_navigation_requests := append([]string(nil), current_page.NavigationRequests...)
+	navigation_headers.Set("Referer", current_page.URL)
+	click_navigation_options := current_page.navigate_options
+	click_navigation_options.WaitForSelector = ""
+	click_navigation_options.WaitForContent = ""
+	navigated_page, err := b.Navigate(ctx, current_page.navigation_url, navigation_headers, click_navigation_options)
+	if err != nil {
+		return fmt.Errorf("minib: follow click navigation to %q: %w", current_page.navigation_url, err)
+	}
+	navigated_page.NavigationHistory = append(current_navigation_history, navigated_page.NavigationHistory...)
+	navigated_page.NavigationRequests = append(current_navigation_requests, navigated_page.NavigationRequests...)
+	*current_page = *navigated_page
+	b.page_runtime.page = current_page
+	return nil
 }
 
 // Close releases the HTTP client and JavaScript context.

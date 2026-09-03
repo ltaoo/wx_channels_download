@@ -155,6 +155,8 @@ func (r *Routes) RegisterRoutes(registrar adapter.RouteRegistrar) {
 	registrar.RegisterPOST("/api/mp/delete", r.handle_delete)
 	registrar.RegisterPOST("/api/mp/refresh", r.handle_refresh_event)
 	registrar.RegisterGET("/rss/mp", r.handle_official_account_rss)
+	registrar.RegisterGET("/rss/mpbiz", r.handle_mpbiz_feed)
+	registrar.RegisterGET("/rss/mpbiz/:format", r.handle_mpbiz_feed)
 	registrar.RegisterGET("/mp/proxy", r.handle_official_account_proxy)
 }
 

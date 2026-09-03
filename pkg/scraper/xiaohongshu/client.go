@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -21,6 +22,22 @@ const (
 	max_redirect_count      = 10
 	default_user_agent      = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
 )
+
+var http_url_pattern = regexp.MustCompile(`https?://[a-zA-Z0-9._~:/?#\[\]@!$&'()*+,;=%-]+`)
+
+const trailing_url_punctuation = `.,!?;:)]}"'`
+
+// ExtractURL extracts the first Xiaohongshu URL from a URL or copied share text.
+func ExtractURL(content string) (string, error) {
+	for _, candidate_url := range http_url_pattern.FindAllString(strings.TrimSpace(content), -1) {
+		candidate_url = strings.TrimRight(candidate_url, trailing_url_punctuation)
+		parsed_url, err := url.Parse(candidate_url)
+		if err == nil && validate_request_url(parsed_url) == nil {
+			return candidate_url, nil
+		}
+	}
+	return "", errors.New("xiaohongshu URL not found")
+}
 
 // Client fetches the server-rendered HTML of Xiaohongshu note pages. It accepts
 // both xhslink.cn share links and direct xiaohongshu.com links.

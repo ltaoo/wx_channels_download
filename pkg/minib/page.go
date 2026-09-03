@@ -21,6 +21,7 @@ import (
 	"github.com/evanw/esbuild/pkg/api"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
+	"golang.org/x/net/publicsuffix"
 
 	"wx_channel/pkg/clawreq"
 )
@@ -36,7 +37,7 @@ const (
 	max_host_callbacks    = 256
 	max_dynamic_scripts   = 64
 	max_dynamic_resources = 256
-	max_event_loop_rounds = 8
+	max_event_loop_rounds = 32
 	max_call_stack_depth  = 1024
 	max_timer_time_ms     = 1000
 )
@@ -146,6 +147,8 @@ type ScriptFailure struct {
 // Page is the result of a browser-like navigation.
 type Page struct {
 	URL                  string
+	NavigationHistory    []string
+	NavigationRequests   []string
 	StatusCode           int
 	Headers              http.Header
 	ContentType          string
@@ -176,6 +179,7 @@ type Page struct {
 	use_custom_runtime   bool
 	har_data             []byte
 	navigation_url       string
+	navigate_options     NavigateOptions
 }
 
 type script_job struct {
@@ -422,6 +426,7 @@ func (b *MiniBrowser) navigate(ctx context.Context, raw_url string, headers http
 	}
 	page := &Page{
 		URL:                  final_url,
+		NavigationHistory:    []string{final_url},
 		StatusCode:           response.StatusCode,
 		Headers:              response.Header.Clone(),
 		ContentType:          response.ContentType(),
@@ -442,6 +447,7 @@ func (b *MiniBrowser) navigate(ctx context.Context, raw_url string, headers http
 		runtime_finalizer:    navigate_options.RuntimeFinalizer,
 		runtime_cleanup:      navigate_options.RuntimeCleanup,
 		use_custom_runtime:   navigate_options.UseCustomRuntime,
+		navigate_options:     navigate_options,
 	}
 	if page.wait_for_selector != "" {
 		page.wait_for_matcher, _ = cascadia.ParseGroup(page.wait_for_selector)
@@ -468,7 +474,13 @@ func (b *MiniBrowser) navigate(ctx context.Context, raw_url string, headers http
 			next_headers = make(http.Header)
 		}
 		next_headers.Set("Referer", page.URL)
-		return b.navigate(ctx, page.navigation_url, next_headers, navigate_options, navigation_count+1)
+		navigated_page, navigate_err := b.navigate(ctx, page.navigation_url, next_headers, navigate_options, navigation_count+1)
+		if navigate_err != nil {
+			return nil, navigate_err
+		}
+		navigated_page.NavigationHistory = append([]string{page.URL}, navigated_page.NavigationHistory...)
+		navigated_page.NavigationRequests = append(append([]string(nil), page.NavigationRequests...), navigated_page.NavigationRequests...)
+		return navigated_page, nil
 	}
 	if page.has_wait_condition() && !page.wait_condition_met() {
 		return nil, fmt.Errorf("minib: navigation completed before wait condition matched")
@@ -520,6 +532,18 @@ func is_redirect(status_code int) bool {
 
 func same_origin(first *url.URL, second *url.URL) bool {
 	return first != nil && second != nil && strings.EqualFold(first.Scheme, second.Scheme) && strings.EqualFold(first.Host, second.Host)
+}
+
+func same_site(first *url.URL, second *url.URL) bool {
+	if first == nil || second == nil || !strings.EqualFold(first.Scheme, second.Scheme) {
+		return false
+	}
+	first_site, first_err := publicsuffix.EffectiveTLDPlusOne(first.Hostname())
+	second_site, second_err := publicsuffix.EffectiveTLDPlusOne(second.Hostname())
+	if first_err != nil || second_err != nil {
+		return strings.EqualFold(first.Hostname(), second.Hostname())
+	}
+	return strings.EqualFold(first_site, second_site)
 }
 
 func document_base_url(document *html.Node, page_url *url.URL) *url.URL {
@@ -1449,8 +1473,8 @@ function DocumentType() {}
 DocumentType.prototype = Object.create(Node.prototype);
 function Element() {}
 Element.prototype = Object.create(Node.prototype);
-['children', 'tagName', 'localName', 'style', 'sheet', 'classList', 'dataset', 'attributes', 'contentWindow', 'contentDocument', 'content', 'shadowRoot', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash', 'origin', 'clientWidth', 'clientHeight', 'offsetWidth', 'offsetHeight', 'scrollWidth', 'scrollHeight', 'scrollTop', 'scrollLeft'].forEach(function(name) { Object.defineProperty(Element.prototype, name, __minibNodeAccessor(name, false)); });
-['id', 'className', 'src', 'href', 'value', 'name', 'type', 'rel', 'content', 'charset', 'innerHTML'].forEach(function(name) { Object.defineProperty(Element.prototype, name, __minibNodeAccessor(name, true)); });
+['children', 'tagName', 'localName', 'style', 'sheet', 'classList', 'dataset', 'attributes', 'contentWindow', 'contentDocument', 'content', 'shadowRoot', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash', 'origin', 'clientWidth', 'clientHeight', 'offsetWidth', 'offsetHeight', 'scrollWidth', 'scrollHeight'].forEach(function(name) { Object.defineProperty(Element.prototype, name, __minibNodeAccessor(name, false)); });
+['id', 'className', 'src', 'href', 'value', 'name', 'type', 'rel', 'content', 'charset', 'dir', 'innerHTML', 'scrollTop', 'scrollLeft'].forEach(function(name) { Object.defineProperty(Element.prototype, name, __minibNodeAccessor(name, true)); });
 function __minibMethod(name) { return function() { var own = this['__minib_' + name]; if (typeof own === 'function') return own.apply(this, arguments); return __minib_node_call(this, name, Array.prototype.slice.call(arguments)); }; }
 ['appendChild', 'removeChild', 'replaceChild', 'insertBefore', 'cloneNode', 'contains'].forEach(function(name) { Node.prototype[name] = __minibMethod(name); });
 Node.prototype.hasChildNodes = function() { return this.firstChild !== null; };
@@ -1530,11 +1554,11 @@ DOMTokenList.prototype.entries = function() { return Array.prototype.slice.call(
 DOMTokenList.prototype.keys = function() { return Array.prototype.keys.call(Array.prototype.slice.call(this)); };
 DOMTokenList.prototype.values = function() { return Array.prototype.values.call(Array.prototype.slice.call(this)); };
 DOMTokenList.prototype[Symbol.iterator] = DOMTokenList.prototype.values;
-Object.defineProperty(DOMTokenList.prototype, Symbol.toStringTag, { value: 'DOMTokenList' });
+Object.defineProperty(DOMTokenList.prototype, Symbol.toStringTag, { configurable: true, value: 'DOMTokenList' });
 function Document() {}
 Document.prototype = Object.create(Node.prototype);
 Object.defineProperty(Document.prototype, 'adoptedStyleSheets', __minibNodeAccessor('adoptedStyleSheets', true));
-['createElement', 'createElementNS', 'createTextNode', 'createDocumentFragment', 'createComment', 'createEvent', 'createRange', 'importNode', 'getElementById', 'getElementsByName', 'getElementsByTagName', 'getElementsByClassName', 'querySelector', 'querySelectorAll'].forEach(function(name) { Document.prototype[name] = __minibMethod(name); });
+['createElement', 'createElementNS', 'createTextNode', 'createDocumentFragment', 'createComment', 'createEvent', 'createRange', 'importNode', 'getElementById', 'getElementsByName', 'getElementsByTagName', 'getElementsByClassName', 'querySelector', 'querySelectorAll', 'elementFromPoint', 'elementsFromPoint'].forEach(function(name) { Document.prototype[name] = __minibMethod(name); });
 Document.prototype.createTreeWalker = function(root, whatToShow, filter) { return new TreeWalker(root, whatToShow, filter); };
 function DOMParser() {}
 DOMParser.prototype.parseFromString = function(markup, mimeType) {
@@ -1721,6 +1745,13 @@ Blob.prototype.arrayBuffer = function() { return Promise.resolve(new TextEncoder
 Blob.prototype.slice = function(start, end, type) { return new Blob([this._text.slice(start || 0, end == null ? this._text.length : end)], { type: type || '' }); };
 function File(parts, name, options) { Blob.call(this, parts, options); this.name = String(name || ''); this.lastModified = options && options.lastModified || Date.now(); }
 File.prototype = Object.create(Blob.prototype);
+var __minib_uint8_array_from = Uint8Array.from;
+Uint8Array.from = function(source, map_function, this_argument) {
+  if (typeof source !== 'string') return __minib_uint8_array_from.call(this, source, map_function, this_argument);
+  var result = new Uint8Array(source.length);
+  for (var index = 0; index < source.length; index++) result[index] = map_function ? map_function.call(this_argument, source.charAt(index), index) : source.charCodeAt(index);
+  return result;
+};
 function TextEncoder() { this.encoding = 'utf-8'; }
 TextEncoder.prototype.encode = function(input) {
   var text = unescape(encodeURIComponent(String(input === undefined ? '' : input))), bytes = new Uint8Array(text.length);
@@ -1986,6 +2017,7 @@ if (!Date.prototype.toGMTString) Date.prototype.toGMTString = Date.prototype.toU
 	runtime.install_cssom(window)
 	_ = window.Set("location", runtime.location_object(runtime.page_url))
 	navigator := runtime.vm.NewObject()
+	_ = navigator.Set("appName", "Netscape")
 	_ = navigator.Set("userAgent", runtime.user_agent)
 	_ = navigator.Set("platform", "MacIntel")
 	_ = navigator.Set("language", "zh-CN")
@@ -2064,7 +2096,43 @@ if (!Date.prototype.toGMTString) Date.prototype.toGMTString = Date.prototype.toU
 	_ = performance.Set("clearMeasures", func() { performance_entries = nil })
 	_ = performance.Set("toJSON", func() map[string]any { return map[string]any{"timeOrigin": performance_time} })
 	_ = window.Set("performance", performance)
-	_ = window.Set("history", map[string]any{"length": 1, "pushState": func(...any) {}, "replaceState": func(...any) {}, "back": func() {}, "forward": func() {}, "go": func(...any) {}})
+	history := runtime.vm.NewObject()
+	history_length := 1
+	_ = history.Set("length", history_length)
+	_ = history.Set("state", goja.Null())
+	_ = history.Set("scrollRestoration", "auto")
+	update_history := func(call goja.FunctionCall, replace bool) {
+		state := call.Argument(0)
+		url_value := call.Argument(2)
+		if !goja.IsUndefined(url_value) {
+			next_url, err := runtime.page_url.Parse(url_value.String())
+			if err != nil || !same_origin(runtime.page_url, next_url) {
+				panic(runtime.vm.NewGoError(fmt.Errorf("SecurityError: history URL must be same-origin")))
+			}
+			*runtime.page_url = *next_url
+			runtime.page.URL = next_url.String()
+			runtime.page.NavigationRequests = append(runtime.page.NavigationRequests, next_url.String())
+			runtime.base_url = document_base_url(runtime.page.Document, runtime.page_url)
+			set_location_components(window.Get("location").ToObject(runtime.vm), runtime.page_url)
+		}
+		_ = history.Set("state", state)
+		if !replace {
+			history_length++
+			_ = history.Set("length", history_length)
+		}
+	}
+	_ = history.Set("pushState", func(call goja.FunctionCall) goja.Value {
+		update_history(call, false)
+		return goja.Undefined()
+	})
+	_ = history.Set("replaceState", func(call goja.FunctionCall) goja.Value {
+		update_history(call, true)
+		return goja.Undefined()
+	})
+	_ = history.Set("back", func() {})
+	_ = history.Set("forward", func() {})
+	_ = history.Set("go", func(...any) {})
+	_ = window.Set("history", history)
 	_ = window.Set("localStorage", runtime.storage_object())
 	_ = window.Set("sessionStorage", runtime.storage_object())
 	_ = window.Set("getComputedStyle", func(call goja.FunctionCall) goja.Value {
@@ -2218,6 +2286,7 @@ func (runtime *page_runtime) xml_http_request_constructor(call goja.ConstructorC
 		request.request_version++
 		request.method = strings.ToUpper(open_call.Argument(0).String())
 		request.raw_url = open_call.Argument(1).String()
+		request.request_headers = make(http.Header)
 		request.async_request = goja.IsUndefined(open_call.Argument(2)) || open_call.Argument(2).ToBoolean()
 		request.status = 0
 		request.status_text = ""
@@ -2227,7 +2296,7 @@ func (runtime *page_runtime) xml_http_request_constructor(call goja.ConstructorC
 		request.fire("readystatechange")
 		return goja.Undefined()
 	})
-	_ = object.Set("__minib_setRequestHeader", func(name string, value string) { request.request_headers.Add(name, value) })
+	_ = object.Set("__minib_setRequestHeader", func(name string, value string) { request.request_headers.Set(name, value) })
 	_ = object.Set("__minib_getResponseHeader", func(name string) any {
 		value := request.response_headers.Get(name)
 		if value == "" {
@@ -2262,7 +2331,27 @@ func (runtime *page_runtime) xml_http_request_constructor(call goja.ConstructorC
 	_ = object.Set("__minib_send", func(send_call goja.FunctionCall) goja.Value {
 		var body []byte
 		if value := send_call.Argument(0); !goja.IsNull(value) && !goja.IsUndefined(value) {
-			body = []byte(value.String())
+			if data, data_err := javascript_bytes(value); data_err == nil {
+				body = append([]byte(nil), data...)
+			} else if blob, ok := value.(*goja.Object); ok && blob.Get("_text") != nil && !goja.IsUndefined(blob.Get("_text")) {
+				text, text_ok := blob.Get("_text").ToString().(goja.String)
+				if text_ok {
+					body = make([]byte, text.Length())
+					for index := range body {
+						body[index] = byte(text.CharAt(index))
+					}
+				} else {
+					body = []byte(blob.Get("_text").String())
+				}
+				if request.request_headers.Get("Content-Type") == "" && blob.Get("type") != nil && blob.Get("type").String() != "" {
+					request.request_headers.Set("Content-Type", blob.Get("type").String())
+				}
+			} else {
+				body = []byte(value.String())
+				if request.request_headers.Get("Content-Type") == "" {
+					request.request_headers.Set("Content-Type", "text/plain;charset=UTF-8")
+				}
+			}
 		}
 		request.send(body)
 		return goja.Undefined()
@@ -2344,13 +2433,21 @@ func (request *xml_http_request) prepare_network_request(body []byte) (xhr_netwo
 	}
 	headers.Set("Accept", "*/*")
 	headers.Set("Priority", "u=1, i")
-	headers.Set("Referer", request.runtime.page.URL)
+	cross_origin := !same_origin(request.runtime.page_url, request_url)
+	if cross_origin {
+		headers.Set("Origin", request.runtime.page_url.Scheme+"://"+request.runtime.page_url.Host)
+		headers.Set("Referer", request.runtime.page_url.Scheme+"://"+request.runtime.page_url.Host+"/")
+	} else {
+		headers.Set("Referer", request.runtime.page.URL)
+	}
 	headers.Set("Sec-Fetch-Dest", "empty")
 	headers.Set("Sec-Fetch-Mode", "cors")
 	headers.Del("Sec-Fetch-User")
 	headers.Del("Upgrade-Insecure-Requests")
-	if same_origin(request.runtime.page_url, request_url) {
+	if !cross_origin {
 		headers.Set("Sec-Fetch-Site", "same-origin")
+	} else if same_site(request.runtime.page_url, request_url) {
+		headers.Set("Sec-Fetch-Site", "same-site")
 	} else {
 		headers.Set("Sec-Fetch-Site", "cross-site")
 	}
@@ -2373,8 +2470,21 @@ func (request *xml_http_request) prepare_network_request(body []byte) (xhr_netwo
 			request_timeout = time.Duration(timeout_ms) * time.Millisecond
 		}
 	}
+	network_ctx := with_har_resource_type(request.runtime.network_ctx, resource_type)
+	if cross_origin && !request.object.Get("withCredentials").ToBoolean() {
+		user_modifier := request_header_modifier_from_context(network_ctx)
+		network_ctx = with_request_header_modifier(network_ctx, func(http_request *http.Request) error {
+			if user_modifier != nil {
+				if modifier_err := user_modifier(http_request); modifier_err != nil {
+					return modifier_err
+				}
+			}
+			http_request.Header.Del("Cookie")
+			return nil
+		})
+	}
 	return xhr_network_request{
-		ctx:           with_har_resource_type(request.runtime.network_ctx, resource_type),
+		ctx:           network_ctx,
 		method:        request.method,
 		raw_url:       request_url.String(),
 		body:          append([]byte(nil), body...),
@@ -2564,6 +2674,7 @@ func (runtime *page_runtime) request_navigation(raw_url string) {
 	next_url, err := runtime.page_url.Parse(strings.TrimSpace(raw_url))
 	if err == nil && (next_url.Scheme == "http" || next_url.Scheme == "https") {
 		runtime.page.navigation_url = next_url.String()
+		runtime.page.NavigationRequests = append(runtime.page.NavigationRequests, next_url.String())
 	}
 }
 
@@ -2584,6 +2695,10 @@ func (runtime *page_runtime) text_decoder_constructor(call goja.ConstructorCall)
 
 func set_location_fields(object *goja.Object, parsed_url *url.URL) {
 	_ = object.Set("href", parsed_url.String())
+	set_location_components(object, parsed_url)
+}
+
+func set_location_components(object *goja.Object, parsed_url *url.URL) {
 	_ = object.Set("protocol", parsed_url.Scheme+":")
 	_ = object.Set("host", parsed_url.Host)
 	_ = object.Set("hostname", parsed_url.Hostname())
@@ -2957,6 +3072,12 @@ func (runtime *page_runtime) bind_node_object(node *html.Node, object *goja.Obje
 	runtime.object_nodes[object] = node
 	if set_prototype {
 		runtime.set_node_prototype(object, node)
+	}
+	if node.Type == html.ElementNode {
+		var scroll_top float64
+		var scroll_left float64
+		define_accessor(runtime.vm, object, "scrollTop", func() any { return scroll_top }, func(value goja.Value) { scroll_top = value.ToFloat() })
+		define_accessor(runtime.vm, object, "scrollLeft", func() any { return scroll_left }, func(value goja.Value) { scroll_left = value.ToFloat() })
 	}
 	runtime.install_node_events(object, node)
 	if node.Type == html.DocumentNode && !runtime.fragments[node] {
@@ -3462,6 +3583,13 @@ func (runtime *page_runtime) install_document(object *goja.Object, node *html.No
 	_ = object.Set("querySelector", func(selector string) any { return runtime.nullable_node_value(query_first(node, selector)) })
 	_ = object.Set("querySelectorAll", func(selector string) any { return runtime.node_array(query_all(node, selector)) })
 	_ = object.Set("elementFromPoint", func(float64, float64) any { return runtime.node_object(find_element(node, "body")) })
+	_ = object.Set("elementsFromPoint", func(float64, float64) any {
+		body := find_element(node, "body")
+		if body == nil {
+			return runtime.node_array(nil)
+		}
+		return runtime.node_array([]*html.Node{body})
+	})
 	_ = object.Set("write", func(markup string) {
 		target := find_element(node, "body")
 		if target != nil {
@@ -3478,7 +3606,7 @@ func (runtime *page_runtime) install_document(object *goja.Object, node *html.No
 			}
 		}
 	})
-	for _, name := range []string{"createElement", "createElementNS", "createTextNode", "createDocumentFragment", "createComment", "createEvent", "createRange", "importNode", "getElementById", "getElementsByName", "getElementsByTagName", "getElementsByClassName", "querySelector", "querySelectorAll"} {
+	for _, name := range []string{"createElement", "createElementNS", "createTextNode", "createDocumentFragment", "createComment", "createEvent", "createRange", "importNode", "getElementById", "getElementsByName", "getElementsByTagName", "getElementsByClassName", "querySelector", "querySelectorAll", "elementFromPoint", "elementsFromPoint"} {
 		_ = object.Set("__minib_"+name, object.Get(name))
 	}
 }
@@ -3601,7 +3729,11 @@ func (runtime *page_runtime) install_element(object *goja.Object, node *html.Nod
 	})
 	_ = object.Set("focus", func() {})
 	_ = object.Set("blur", func() {})
-	_ = object.Set("click", func() { runtime.fire_node_event(node, "click") })
+	_ = object.Set("click", func() {
+		if err := runtime.click_node(node, false); err != nil {
+			panic(runtime.vm.NewGoError(err))
+		}
+	})
 	_ = object.Set("getContext", func(context_type string) any {
 		if strings.EqualFold(node.Data, "canvas") && strings.EqualFold(context_type, "2d") {
 			return runtime.canvas_context_object()

@@ -7,6 +7,8 @@ import (
 
 	douyin_scraper "wx_channel/pkg/scraper/douyin"
 	weibo_scraper "wx_channel/pkg/scraper/weibo"
+	x_scraper "wx_channel/pkg/scraper/x"
+	xiaohongshu_scraper "wx_channel/pkg/scraper/xiaohongshu"
 	youtube_scraper "wx_channel/pkg/scraper/youtube"
 )
 
@@ -21,6 +23,7 @@ const (
 	scraper_platform_cctv        = "cctv"
 	scraper_platform_ttk         = "ttk"
 	scraper_platform_weibo       = "weibo"
+	scraper_platform_x           = "x"
 	scraper_platform_ucdrive     = "ucdrive"
 	scraper_platform_webpage     = "webpage"
 )
@@ -60,6 +63,20 @@ var scraper_raw_url_rules = []scraper_raw_url_rule{
 	{
 		platform_id: scraper_platform_weibo,
 		match:       weibo_scraper.IsDetailURL,
+	},
+	{
+		platform_id: scraper_platform_x,
+		match: func(raw_url string) bool {
+			_, err := x_scraper.ExtractStatusID(raw_url)
+			return err == nil
+		},
+	},
+	{
+		platform_id: scraper_platform_xiaohongshu,
+		match: func(raw_url string) bool {
+			_, err := xiaohongshu_scraper.ExtractURL(raw_url)
+			return err == nil
+		},
 	},
 	{
 		platform_id: scraper_platform_youtube,

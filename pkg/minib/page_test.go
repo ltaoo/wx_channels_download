@@ -456,6 +456,88 @@ document.body.setAttribute('data-event-target', JSON.stringify({
 	}
 }
 
+func TestMiniBrowserClickDispatchesDOMEvent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if request.URL.Path == "/detail" {
+			_, _ = fmt.Fprint(response_writer, `<!doctype html><html><body data-n="click-navigation-result">Detail</body></html>`)
+			return
+		}
+		_, _ = fmt.Fprint(response_writer, `<!doctype html><html><body><main id="parent"><button id="target">Click</button><button id="spa" data-n="spa-navigation-trigger">SPA</button><button id="navigate">Navigate</button></main><script>
+var clickOrder = [];
+var parent = document.getElementById('parent');
+var target = document.getElementById('target');
+parent.addEventListener('click', function() { clickOrder.push('capture'); }, true);
+target.addEventListener('click', function(event) {
+  clickOrder.push('target');
+  document.body.setAttribute('data-click-event', [event instanceof MouseEvent, event.bubbles, event.cancelable, event.composed, event.isTrusted, event.button, event.buttons, event.detail].join(':'));
+  event.preventDefault();
+  Promise.resolve().then(function() { document.body.setAttribute('data-click-promise', 'done'); });
+  setTimeout(function() { document.body.setAttribute('data-click-timer', 'done'); }, 0);
+});
+parent.addEventListener('click', function(event) {
+  clickOrder.push('bubble');
+  document.body.setAttribute('data-click-result', clickOrder.join(',') + ':' + event.defaultPrevented);
+});
+document.getElementById('navigate').addEventListener('click', function() { location.href = '/detail'; });
+document.getElementById('spa').addEventListener('click', function() { history.pushState({ shop: 1 }, '', '/spa?shop=1#menu'); });
+</script></body></html>`)
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := browser.Click(context.Background(), "#target"); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{
+		`data-click-event="true:true:true:true:true:0:0:1"`,
+		`data-click-result="capture,target,bubble:true"`,
+		`data-click-promise="done"`,
+		`data-click-timer="done"`,
+	} {
+		if !strings.Contains(page.RenderedHTML, expected) {
+			t.Fatalf("click result missing %q: %s", expected, page.RenderedHTML)
+		}
+	}
+	if err := browser.Click(context.Background(), "#spa"); err != nil {
+		t.Fatal(err)
+	}
+	spa_state, err := browser.ExecuteJS(context.Background(), `[location.href, location.pathname, location.search, location.hash, document.URL, history.length, history.state.shop].join('|')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spa_url := server.URL + "/spa?shop=1#menu"
+	if page.URL != spa_url || spa_state.String() != spa_url+"|/spa|?shop=1|#menu|"+spa_url+"|2|1" {
+		t.Fatalf("SPA navigation state: page=%q state=%q", page.URL, spa_state.String())
+	}
+	if err := browser.Click(context.Background(), "#missing"); err == nil || !strings.Contains(err.Error(), "no element matches") {
+		t.Fatalf("missing selector error = %v", err)
+	}
+	if err := browser.Click(context.Background(), "["); err == nil || !strings.Contains(err.Error(), "invalid click selector") {
+		t.Fatalf("invalid selector error = %v", err)
+	}
+	if err := browser.Click(context.Background(), "#navigate"); err != nil {
+		t.Fatal(err)
+	}
+	if page.URL != server.URL+"/detail" || !strings.Contains(page.RenderedHTML, `data-n="click-navigation-result"`) {
+		t.Fatalf("click navigation did not update page: url=%q html=%s", page.URL, page.RenderedHTML)
+	}
+	if strings.Join(page.NavigationHistory, ",") != server.URL+","+server.URL+"/detail" {
+		t.Fatalf("click navigation history = %#v", page.NavigationHistory)
+	}
+	if strings.Join(page.NavigationRequests, ",") != spa_url+","+server.URL+"/detail" {
+		t.Fatalf("click navigation requests = %#v", page.NavigationRequests)
+	}
+}
+
 func TestKeyboardEventInitializationAndExecuteJSRefreshesHTML(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
 		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
