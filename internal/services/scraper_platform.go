@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	douyin_scraper "wx_channel/pkg/scraper/douyin"
+	kuaishou_scraper "wx_channel/pkg/scraper/kuaishou"
 	weibo_scraper "wx_channel/pkg/scraper/weibo"
 	x_scraper "wx_channel/pkg/scraper/x"
 	xiaohongshu_scraper "wx_channel/pkg/scraper/xiaohongshu"
@@ -16,6 +17,7 @@ const (
 	scraper_platform_wxchannels  = "wxchannels"
 	scraper_platform_wxmp        = "wxmp"
 	scraper_platform_douyin      = "douyin"
+	scraper_platform_kuaishou    = "kuaishou"
 	scraper_platform_bilibili    = "bilibili"
 	scraper_platform_youtube     = "youtube"
 	scraper_platform_xiaohongshu = "xiaohongshu"
@@ -51,6 +53,13 @@ var scraper_raw_url_rules = []scraper_raw_url_rule{
 		platform_id: scraper_platform_douyin,
 		match: func(raw_url string) bool {
 			_, err := douyin_scraper.ExtractURL(raw_url)
+			return err == nil
+		},
+	},
+	{
+		platform_id: scraper_platform_kuaishou,
+		match: func(raw_url string) bool {
+			_, err := kuaishou_scraper.ExtractURL(raw_url)
 			return err == nil
 		},
 	},
@@ -107,6 +116,10 @@ var scraper_http_url_rules = []scraper_http_url_rule{
 	{
 		platform_id:  scraper_platform_douyin,
 		domain_hosts: []string{"douyin.com", "iesdouyin.com"},
+	},
+	{
+		platform_id:  scraper_platform_kuaishou,
+		domain_hosts: []string{"kuaishou.com", "kuaishou.cn"},
 	},
 	{
 		platform_id:  scraper_platform_bilibili,

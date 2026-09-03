@@ -85,6 +85,17 @@ import { DurableObject } from "cloudflare:workers";
  */
 
 /**
+ * @typedef {Object} DeviceLogOptions
+ * @property {string} [connection_id]
+ * @property {string} [direction]
+ * @property {string} [level]
+ * @property {string} [task_id]
+ * @property {string} [method]
+ * @property {unknown} [metadata]
+ * @property {number} [created_at]
+ */
+
+/**
  * @typedef {Object} InvokeWaiter
  * @property {(row: CallRow | null) => void} resolve
  * @property {number} timeout_id
@@ -158,6 +169,22 @@ import { DurableObject } from "cloudflare:workers";
  * @property {"online" | "busy" | "offline"} status
  */
 
+/**
+ * @typedef {Object} DeviceLogRow
+ * @property {number} id
+ * @property {string} device_id
+ * @property {string | null} connection_id
+ * @property {string} category
+ * @property {string} event_type
+ * @property {string} direction
+ * @property {string} level
+ * @property {string | null} task_id
+ * @property {string | null} method
+ * @property {string} message
+ * @property {string} metadata_json
+ * @property {number} created_at
+ */
+
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_ATTEMPTS = 10;
 const LEASE_MILLISECONDS = 120_000;
@@ -172,6 +199,21 @@ const INVOKE_TIMEOUT_MILLISECONDS = 10_000;
 const DEFAULT_CALL_CREDIT_COST = 1;
 const MAX_CREDIT_BALANCE = 1_000_000_000;
 const MAX_CREDIT_ADJUSTMENT = 10_000_000;
+const DEFAULT_DEVICE_LOG_LIMIT = 100;
+const MAX_DEVICE_LOG_LIMIT = 500;
+const MAX_DEVICE_LOG_MESSAGE_LENGTH = 2000;
+const MAX_DEVICE_LOG_METADATA_LENGTH = 64 * 1024;
+const DEVICE_LOG_CATEGORIES = new Set([
+  "connection",
+  "heartbeat",
+  "call",
+  "response",
+  "system",
+]);
+const DEVICE_LOG_LEVELS = new Set(["info", "warn", "error"]);
+const DEVICE_LOG_DIRECTIONS = new Set(["inbound", "outbound", "internal"]);
+const SENSITIVE_LOG_FIELD_PATTERN =
+  /(^|[-_])(authorization|cookie|password|passwd|secret|token)([-_]|$)/i;
 
 /**
  * @param {unknown} value
@@ -202,6 +244,19 @@ function error_response(error, status, headers = {}) {
  */
 function valid_identifier(value) {
   return /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(value);
+}
+
+/**
+ * @param {string} value
+ * @returns {string | null}
+ */
+function decode_identifier(value) {
+  try {
+    const decoded = decodeURIComponent(value);
+    return valid_identifier(decoded) ? decoded : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -522,6 +577,22 @@ async function admin_reset_device(env, request, device_id) {
 }
 
 /**
+ * @param {Env} env
+ * @param {Request} request
+ * @param {string} device_id
+ * @returns {Promise<Response>}
+ */
+async function admin_device_logs(env, request, device_id) {
+  const object = env.BRIDGES.getByName(BRIDGE_OBJECT_NAME);
+  const source_url = new URL(request.url);
+  const internal_url = new URL(
+    "https://internal/_admin/devices/" + device_id + "/logs",
+  );
+  internal_url.search = source_url.search;
+  return object.fetch(new Request(internal_url, request));
+}
+
+/**
  * @param {CallRow} row
  * @returns {Record<string, unknown>}
  */
@@ -589,6 +660,80 @@ function parse_methods(value) {
   }
 }
 
+/**
+ * @param {unknown} value
+ * @param {number} [depth]
+ * @returns {unknown}
+ */
+function redact_log_value(value, depth = 0) {
+  if (depth >= 12) return "[max depth]";
+  if (Array.isArray(value)) {
+    return value.map((item) => redact_log_value(item, depth + 1));
+  }
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+  /** @type {Record<string, unknown>} */
+  const result = {};
+  for (const [key, item] of Object.entries(value)) {
+    const normalized_key = key.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
+    result[key] = SENSITIVE_LOG_FIELD_PATTERN.test(normalized_key)
+      ? "[redacted]"
+      : redact_log_value(item, depth + 1);
+  }
+  return result;
+}
+
+/**
+ * @param {unknown} metadata
+ * @returns {string}
+ */
+function serialize_log_metadata(metadata) {
+  let value;
+  try {
+    value = JSON.stringify(redact_log_value(metadata ?? {}));
+  } catch (error) {
+    value = JSON.stringify({
+      serialization_error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  if (value.length <= MAX_DEVICE_LOG_METADATA_LENGTH) {
+    return value;
+  }
+  return JSON.stringify({
+    truncated: true,
+    original_length: value.length,
+    preview: value.slice(0, MAX_DEVICE_LOG_METADATA_LENGTH - 200),
+  });
+}
+
+/**
+ * @param {DeviceLogRow} row
+ * @returns {Record<string, unknown>}
+ */
+function device_log_value(row) {
+  let metadata = {};
+  try {
+    metadata = JSON.parse(row.metadata_json);
+  } catch {
+    metadata = { serialization_error: "invalid stored metadata" };
+  }
+  return {
+    id: Number(row.id),
+    device_id: row.device_id,
+    connection_id: row.connection_id,
+    category: row.category,
+    event_type: row.event_type,
+    direction: row.direction,
+    level: row.level,
+    task_id: row.task_id,
+    method: row.method,
+    message: row.message,
+    metadata,
+    created_at: row.created_at,
+  };
+}
+
 export class BridgeDurableObject extends DurableObject {
   /**
    * @param {DurableObjectState} ctx
@@ -639,6 +784,24 @@ export class BridgeDurableObject extends DurableObject {
       );
       CREATE INDEX IF NOT EXISTS devices_status
         ON devices(status, last_seen_at);
+      CREATE TABLE IF NOT EXISTS device_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        device_id TEXT NOT NULL,
+        connection_id TEXT,
+        category TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        level TEXT NOT NULL,
+        task_id TEXT,
+        method TEXT,
+        message TEXT NOT NULL,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS device_logs_device_time
+        ON device_logs(device_id, created_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS device_logs_retention
+        ON device_logs(created_at);
       CREATE TABLE IF NOT EXISTS access_tokens (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -807,11 +970,35 @@ export class BridgeDurableObject extends DurableObject {
     if (url.pathname === "/_internal/access-tokens/verify" && request.method === "POST") {
       return this.verify_access_token(request);
     }
-    const device_reset_match = url.pathname.match(
-      /^\/_admin\/devices\/([A-Za-z0-9][A-Za-z0-9_.:-]{0,127})\/reset$/,
+    const rejected_connection_match = url.pathname.match(
+      /^\/_internal\/devices\/([^/]+)\/connection-rejected$/,
     );
-    if (device_reset_match && request.method === "POST") {
-      return this.reset_device(device_reset_match[1]);
+    const rejected_connection_device_id = rejected_connection_match
+      ? decode_identifier(rejected_connection_match[1])
+      : null;
+    if (rejected_connection_device_id !== null && request.method === "POST") {
+      this.record_device_log(
+        rejected_connection_device_id,
+        "connection",
+        "connection.auth_rejected",
+        "设备连接鉴权失败",
+        { direction: "inbound", level: "warn" },
+      );
+      return json_response({ recorded: true });
+    }
+    const device_reset_match = url.pathname.match(/^\/_admin\/devices\/([^/]+)\/reset$/);
+    const reset_device_id = device_reset_match
+      ? decode_identifier(device_reset_match[1])
+      : null;
+    if (reset_device_id !== null && request.method === "POST") {
+      return this.reset_device(reset_device_id);
+    }
+    const device_logs_match = url.pathname.match(/^\/_admin\/devices\/([^/]+)\/logs$/);
+    const logs_device_id = device_logs_match
+      ? decode_identifier(device_logs_match[1])
+      : null;
+    if (logs_device_id !== null && request.method === "GET") {
+      return this.list_device_logs(url, logs_device_id);
     }
     return error_response("not found", 404);
   }
@@ -1302,6 +1489,18 @@ export class BridgeDurableObject extends DurableObject {
     const text = typeof message === "string" ? message : new TextDecoder().decode(message);
     if (text.length > MAX_BODY_BYTES) {
       socket.send(JSON.stringify({ type: "error", error: "message is too large" }));
+      this.record_device_log(
+        attachment.device_id,
+        "system",
+        "protocol.message_rejected",
+        "拒绝过大的设备消息",
+        {
+          connection_id: attachment.connection_id,
+          direction: "inbound",
+          level: "warn",
+          metadata: { message_length: text.length, reason: "message is too large" },
+        },
+      );
       return;
     }
 
@@ -1311,12 +1510,35 @@ export class BridgeDurableObject extends DurableObject {
       value = JSON.parse(text);
     } catch {
       socket.send(JSON.stringify({ type: "error", error: "invalid JSON" }));
+      this.record_device_log(
+        attachment.device_id,
+        "system",
+        "protocol.message_rejected",
+        "拒绝无法解析的设备消息",
+        {
+          connection_id: attachment.connection_id,
+          direction: "inbound",
+          level: "warn",
+          metadata: { message_length: text.length, reason: "invalid JSON" },
+        },
+      );
       return;
     }
 
     switch (value.type) {
       case "client.heartbeat":
         socket.send(JSON.stringify({ type: "client.heartbeat.ack", at: Date.now() }));
+        this.record_device_log(
+          attachment.device_id,
+          "heartbeat",
+          "heartbeat.connection",
+          "收到连接心跳并已响应",
+          {
+            connection_id: attachment.connection_id,
+            direction: "inbound",
+            metadata: { request: value, response_type: "client.heartbeat.ack" },
+          },
+        );
         return;
       case "task.accept":
         await this.accept_task(socket, attachment, value);
@@ -1332,6 +1554,19 @@ export class BridgeDurableObject extends DurableObject {
         return;
       default:
         socket.send(JSON.stringify({ type: "error", error: "unknown message type" }));
+        this.record_device_log(
+          attachment.device_id,
+          "system",
+          "protocol.message_rejected",
+          "拒绝未知类型的设备消息",
+          {
+            connection_id: attachment.connection_id,
+            direction: "inbound",
+            level: "warn",
+            task_id: value.task_id,
+            metadata: { request: value, reason: "unknown message type" },
+          },
+        );
     }
   }
 
@@ -1343,7 +1578,11 @@ export class BridgeDurableObject extends DurableObject {
    * @returns {Promise<void>}
    */
   async webSocketClose(socket, code, reason, was_clean) {
-    this.mark_device_offline(socket);
+    this.mark_device_offline(socket, "connection.closed", "设备连接已关闭", {
+      code,
+      reason,
+      was_clean,
+    });
     socket.close(code, reason || (was_clean ? "closed" : "connection lost"));
   }
 
@@ -1352,7 +1591,7 @@ export class BridgeDurableObject extends DurableObject {
    * @returns {Promise<void>}
    */
   async webSocketError(socket) {
-    this.mark_device_offline(socket);
+    this.mark_device_offline(socket, "connection.error", "设备连接发生错误", {});
     socket.close(1011, "websocket error");
   }
 
@@ -1360,15 +1599,15 @@ export class BridgeDurableObject extends DurableObject {
   async alarm() {
     const now = Date.now();
     /** @type {CallRow[]} */
-    const exhausted = this.ctx.storage.sql
+    const expired = this.ctx.storage.sql
       .exec(
         `SELECT * FROM calls
          WHERE status IN ('assigned', 'running')
-           AND lease_expires_at <= ? AND attempt_count >= ?`,
+           AND lease_expires_at <= ?`,
         now,
-        MAX_ATTEMPTS,
       )
       .toArray();
+    const exhausted = expired.filter((row) => row.attempt_count >= MAX_ATTEMPTS);
 
     this.ctx.storage.sql.exec(
       `UPDATE calls
@@ -1396,6 +1635,35 @@ export class BridgeDurableObject extends DurableObject {
        WHERE status IN ('completed', 'failed') AND completed_at < ?`,
       now - RETENTION_MILLISECONDS,
     );
+    this.ctx.storage.sql.exec(
+      "DELETE FROM device_logs WHERE created_at < ?",
+      now - RETENTION_MILLISECONDS,
+    );
+
+    for (const row of expired) {
+      if (!row.assigned_device_id) continue;
+      const task_failed = row.attempt_count >= MAX_ATTEMPTS;
+      this.record_device_log(
+        row.assigned_device_id,
+        task_failed ? "response" : "call",
+        task_failed ? "response.lease_exhausted" : "call.lease_expired",
+        task_failed
+          ? "调用租约反复过期，任务已失败"
+          : "调用租约已过期，任务重新排队",
+        {
+          direction: "internal",
+          level: task_failed ? "error" : "warn",
+          task_id: row.id,
+          method: row.method,
+          metadata: {
+            attempt_count: row.attempt_count,
+            max_attempts: MAX_ATTEMPTS,
+            lease_expires_at: row.lease_expires_at,
+          },
+          created_at: now,
+        },
+      );
+    }
 
     for (const row of exhausted) {
       const failed_row = this.find_task(row.id);
@@ -1428,9 +1696,12 @@ export class BridgeDurableObject extends DurableObject {
 
   /**
    * @param {WebSocket} socket
+   * @param {string} event_type
+   * @param {string} message
+   * @param {unknown} metadata
    * @returns {void}
    */
-  mark_device_offline(socket) {
+  mark_device_offline(socket, event_type, message, metadata) {
     const attachment = socket_attachment(socket);
     if (attachment === null) {
       return;
@@ -1445,6 +1716,13 @@ export class BridgeDurableObject extends DurableObject {
       attachment.device_id,
       attachment.connection_id,
     );
+    this.record_device_log(attachment.device_id, "connection", event_type, message, {
+      connection_id: attachment.connection_id,
+      direction: "internal",
+      level: event_type === "connection.error" ? "error" : "info",
+      metadata,
+      created_at: now,
+    });
   }
 
   /**
@@ -1452,9 +1730,6 @@ export class BridgeDurableObject extends DurableObject {
    * @returns {Promise<Response>}
    */
   async accept_connection(request) {
-    if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
-      return error_response("websocket upgrade required", 426);
-    }
     const device_id = (
       request.headers.get("X-Bridge-Device-ID") ??
       request.headers.get("X-Bridge-Client-ID") ??
@@ -1462,6 +1737,16 @@ export class BridgeDurableObject extends DurableObject {
     ).trim();
     if (!valid_identifier(device_id)) {
       return error_response("invalid X-Bridge-Device-ID", 400);
+    }
+    if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+      this.record_device_log(
+        device_id,
+        "connection",
+        "connection.upgrade_rejected",
+        "连接请求不是 WebSocket Upgrade，已拒绝",
+        { direction: "inbound", level: "warn" },
+      );
+      return error_response("websocket upgrade required", 426);
     }
     const device_name = (request.headers.get("X-Bridge-Device-Name") ?? device_id)
       .trim()
@@ -1480,15 +1765,30 @@ export class BridgeDurableObject extends DurableObject {
       .filter((item, index, values) => valid_identifier(item) && values.indexOf(item) === index)
       .slice(0, 64);
 
+    const connection_id = crypto.randomUUID();
+    const connected_at = Date.now();
+
     for (const old_socket of this.ctx.getWebSockets(`client:${device_id}`)) {
+      const old_attachment = socket_attachment(old_socket);
+      this.record_device_log(
+        device_id,
+        "connection",
+        "connection.replaced",
+        "旧连接被新连接替换",
+        {
+          connection_id: old_attachment?.connection_id,
+          direction: "internal",
+          level: "warn",
+          metadata: { replacement_connection_id: connection_id },
+          created_at: connected_at,
+        },
+      );
       old_socket.close(1000, "replaced by a newer connection");
     }
 
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
-    const connection_id = crypto.randomUUID();
-    const connected_at = Date.now();
     const tags = [`client:${device_id}`, ...methods.map((value) => `method:${value}`)];
     server.serializeAttachment({
       device_id,
@@ -1530,6 +1830,18 @@ export class BridgeDurableObject extends DurableObject {
         methods,
         at: Date.now(),
       }),
+    );
+    this.record_device_log(
+      device_id,
+      "connection",
+      "connection.connected",
+      "设备已连接并完成注册",
+      {
+        connection_id,
+        direction: "inbound",
+        metadata: { device_name, device_os, methods },
+        created_at: connected_at,
+      },
     );
     await this.dispatch_pending();
     await this.schedule_alarm();
@@ -1578,6 +1890,18 @@ export class BridgeDurableObject extends DurableObject {
           row.device_id,
           row.connection_id,
         );
+        this.record_device_log(
+          row.device_id,
+          "connection",
+          "connection.stale",
+          "连接已不存在，设备状态已修正为离线",
+          {
+            connection_id: row.connection_id,
+            direction: "internal",
+            level: "warn",
+            created_at: now,
+          },
+        );
       }
       return {
         device_id: row.device_id,
@@ -1598,6 +1922,134 @@ export class BridgeDurableObject extends DurableObject {
       ),
     ].sort();
     return json_response({ devices, methods, task_counts });
+  }
+
+  /**
+   * @param {string} device_id
+   * @param {string} category
+   * @param {string} event_type
+   * @param {string} message
+   * @param {DeviceLogOptions} [options]
+   * @returns {void}
+   */
+  record_device_log(device_id, category, event_type, message, options = {}) {
+    if (!valid_identifier(device_id)) return;
+    const normalized_category = DEVICE_LOG_CATEGORIES.has(category) ? category : "system";
+    const direction = DEVICE_LOG_DIRECTIONS.has(options.direction ?? "")
+      ? options.direction
+      : "internal";
+    const level = DEVICE_LOG_LEVELS.has(options.level ?? "") ? options.level : "info";
+    try {
+      this.ctx.storage.sql.exec(
+        `INSERT INTO device_logs (
+          device_id, connection_id, category, event_type, direction, level,
+          task_id, method, message, metadata_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        device_id,
+        options.connection_id || null,
+        normalized_category,
+        String(event_type || "system.event").slice(0, 128),
+        direction,
+        level,
+        options.task_id || null,
+        options.method || null,
+        String(message || event_type || "设备事件").slice(0, MAX_DEVICE_LOG_MESSAGE_LENGTH),
+        serialize_log_metadata(options.metadata),
+        options.created_at ?? Date.now(),
+      );
+    } catch (error) {
+      console.error("failed to persist device log", {
+        device_id,
+        event_type,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * @param {URL} url
+   * @param {string} device_id
+   * @returns {Response}
+   */
+  list_device_logs(url, device_id) {
+    /** @type {DeviceRegistryRow | undefined} */
+    const device = this.ctx.storage.sql
+      .exec("SELECT * FROM devices WHERE device_id = ? LIMIT 1", device_id)
+      .toArray()[0];
+    if (device === undefined) {
+      return error_response("device not found", 404);
+    }
+    const limit_value = Number(url.searchParams.get("limit") ?? DEFAULT_DEVICE_LOG_LIMIT);
+    const limit = Number.isFinite(limit_value)
+      ? Math.max(1, Math.min(MAX_DEVICE_LOG_LIMIT, Math.floor(limit_value)))
+      : DEFAULT_DEVICE_LOG_LIMIT;
+    const before_value = url.searchParams.get("before_id");
+    const before_id = before_value === null || before_value === "" ? null : Number(before_value);
+    if (before_id !== null && (!Number.isSafeInteger(before_id) || before_id <= 0)) {
+      return error_response("invalid before_id", 400);
+    }
+    const category = (url.searchParams.get("category") ?? "").trim();
+    if (category !== "" && !DEVICE_LOG_CATEGORIES.has(category)) {
+      return error_response("invalid category", 400);
+    }
+
+    /** @type {DeviceLogRow[]} */
+    let rows;
+    if (before_id !== null && category !== "") {
+      rows = this.ctx.storage.sql
+        .exec(
+          `SELECT * FROM device_logs
+           WHERE device_id = ? AND category = ? AND id < ?
+           ORDER BY id DESC LIMIT ?`,
+          device_id,
+          category,
+          before_id,
+          limit + 1,
+        )
+        .toArray();
+    } else if (before_id !== null) {
+      rows = this.ctx.storage.sql
+        .exec(
+          `SELECT * FROM device_logs WHERE device_id = ? AND id < ?
+           ORDER BY id DESC LIMIT ?`,
+          device_id,
+          before_id,
+          limit + 1,
+        )
+        .toArray();
+    } else if (category !== "") {
+      rows = this.ctx.storage.sql
+        .exec(
+          `SELECT * FROM device_logs WHERE device_id = ? AND category = ?
+           ORDER BY id DESC LIMIT ?`,
+          device_id,
+          category,
+          limit + 1,
+        )
+        .toArray();
+    } else {
+      rows = this.ctx.storage.sql
+        .exec(
+          `SELECT * FROM device_logs WHERE device_id = ?
+           ORDER BY id DESC LIMIT ?`,
+          device_id,
+          limit + 1,
+        )
+        .toArray();
+    }
+    const has_more = rows.length > limit;
+    const page = has_more ? rows.slice(0, limit) : rows;
+    return json_response({
+      device: {
+        device_id: device.device_id,
+        device_name: device.device_name || device.device_id,
+        device_os: device.device_os || "unknown",
+      },
+      logs: page.map(device_log_value),
+      has_more,
+      next_before_id: has_more && page.length > 0 ? page[page.length - 1].id : null,
+      retention_milliseconds: RETENTION_MILLISECONDS,
+    });
   }
 
   /**
@@ -1686,6 +2138,18 @@ export class BridgeDurableObject extends DurableObject {
         return error_response("target device is not registered", 404);
       }
       if (!parse_methods(target_device.methods_json).includes(method)) {
+        this.record_device_log(
+          target_device_id,
+          "call",
+          "call.rejected",
+          "设备不支持请求的方法，调用已拒绝",
+          {
+            direction: "internal",
+            level: "warn",
+            method,
+            metadata: { publisher_device_id, args, reason: "unsupported method" },
+          },
+        );
         return error_response("target device does not provide method " + method, 409);
       }
     }
@@ -1784,6 +2248,24 @@ export class BridgeDurableObject extends DurableObject {
       return error_response("unauthorized", 401);
     }
     if (creation.error === "insufficient_credits") {
+      if (target_device_id !== "") {
+        this.record_device_log(
+          target_device_id,
+          "call",
+          "call.rejected",
+          "调用方积分不足，调用未创建",
+          {
+            direction: "internal",
+            level: "warn",
+            method,
+            metadata: {
+              publisher_device_id,
+              required_credits: credit_cost,
+              balance: creation.balance,
+            },
+          },
+        );
+      }
       return json_response(
         {
           error: "insufficient credits",
@@ -1795,6 +2277,46 @@ export class BridgeDurableObject extends DurableObject {
       );
     }
     if (creation.replay) {
+      const replay_device_id = creation.row.assigned_device_id ?? target_device_id;
+      if (replay_device_id !== "") {
+        this.record_device_log(
+          replay_device_id,
+          "call",
+          "call.idempotent_replay",
+          "返回已有调用，未重复创建任务",
+          {
+            direction: "internal",
+            task_id: creation.row.id,
+            method: creation.row.method,
+            metadata: {
+              publisher_device_id,
+              idempotency_key,
+              status: creation.row.status,
+            },
+          },
+        );
+      }
+      const replay_publisher_is_device = this.ctx.storage.sql
+        .exec("SELECT 1 FROM devices WHERE device_id = ? LIMIT 1", publisher_device_id)
+        .toArray().length > 0;
+      if (replay_publisher_is_device && replay_device_id !== publisher_device_id) {
+        this.record_device_log(
+          publisher_device_id,
+          "call",
+          "call.idempotent_replay",
+          "设备发布的调用命中已有任务",
+          {
+            direction: "outbound",
+            task_id: creation.row.id,
+            method: creation.row.method,
+            metadata: {
+              target_device_id: creation.row.target_device_id,
+              idempotency_key,
+              status: creation.row.status,
+            },
+          },
+        );
+      }
       return json_response(
         {
           task: task_value(creation.row),
@@ -1803,6 +2325,45 @@ export class BridgeDurableObject extends DurableObject {
         },
         200,
         credit_headers(creation.balance),
+      );
+    }
+    const publisher_is_device = this.ctx.storage.sql
+      .exec("SELECT 1 FROM devices WHERE device_id = ? LIMIT 1", publisher_device_id)
+      .toArray().length > 0;
+    if (publisher_is_device) {
+      this.record_device_log(
+        publisher_device_id,
+        "call",
+        "call.published",
+        "设备已发布调用",
+        {
+          direction: "outbound",
+          task_id,
+          method,
+          metadata: {
+            target_device_id: target_device_id || null,
+            idempotency_key: idempotency_key || null,
+            args,
+          },
+        },
+      );
+    }
+    if (target_device_id !== "") {
+      this.record_device_log(
+        target_device_id,
+        "call",
+        "call.queued",
+        "收到定向调用并进入等待队列",
+        {
+          direction: "inbound",
+          task_id: task_id,
+          method,
+          metadata: {
+            publisher_device_id,
+            idempotency_key: idempotency_key || null,
+            args,
+          },
+        },
       );
     }
     await this.dispatch_pending();
@@ -1925,12 +2486,38 @@ export class BridgeDurableObject extends DurableObject {
       const failed = this.find_task(row.id);
       if (failed === null) continue;
       tasks.push(task_value(failed));
+      this.record_device_log(
+        device_id,
+        "response",
+        "response.admin_reset",
+        "管理员强制终止了设备上的调用",
+        {
+          direction: "internal",
+          level: "error",
+          task_id: failed.id,
+          method: failed.method,
+          metadata: { error: failed.error_message },
+          created_at: now,
+        },
+      );
       this.resolve_invoke_waiter(failed.id, failed);
       this.send_to_device(failed.publisher_device_id, {
         type: "task.failed",
         task: task_value(failed),
       });
     }
+    this.record_device_log(
+      device_id,
+      "system",
+      "system.admin_reset",
+      "管理员执行了设备强制重置",
+      {
+        direction: "internal",
+        level: rows.length > 0 ? "warn" : "info",
+        metadata: { reset_count: tasks.length },
+        created_at: now,
+      },
+    );
     await this.schedule_alarm();
     return json_response({ device_id, reset_count: tasks.length, tasks });
   }
@@ -1957,6 +2544,19 @@ export class BridgeDurableObject extends DurableObject {
     const row = this.owned_task(attachment.device_id, message);
     if (row === null) {
       socket.send(JSON.stringify({ type: "task.rejected", task_id: message.task_id }));
+      this.record_device_log(
+        attachment.device_id,
+        "call",
+        "call.accept_rejected",
+        "设备确认的调用不属于当前连接，已拒绝",
+        {
+          connection_id: attachment.connection_id,
+          direction: "inbound",
+          level: "warn",
+          task_id: message.task_id,
+          metadata: { request_type: message.type },
+        },
+      );
       return;
     }
     const now = Date.now();
@@ -1967,6 +2567,23 @@ export class BridgeDurableObject extends DurableObject {
       row.id,
     );
     socket.send(JSON.stringify({ type: "task.accepted", task_id: row.id }));
+    this.record_device_log(
+      attachment.device_id,
+      "call",
+      "call.accepted",
+      "设备已接收调用并开始执行",
+      {
+        connection_id: attachment.connection_id,
+        direction: "inbound",
+        task_id: row.id,
+        method: row.method,
+        metadata: {
+          attempt_count: row.attempt_count,
+          lease_expires_at: now + LEASE_MILLISECONDS,
+        },
+        created_at: now,
+      },
+    );
     await this.schedule_alarm();
   }
 
@@ -1980,6 +2597,18 @@ export class BridgeDurableObject extends DurableObject {
     const row = this.owned_task(attachment.device_id, message);
     if (row === null) {
       socket.send(JSON.stringify({ type: "task.rejected", task_id: message.task_id }));
+      this.record_device_log(
+        attachment.device_id,
+        "heartbeat",
+        "heartbeat.task_rejected",
+        "调用心跳与当前租约不匹配，已拒绝",
+        {
+          connection_id: attachment.connection_id,
+          direction: "inbound",
+          level: "warn",
+          task_id: message.task_id,
+        },
+      );
       return;
     }
     const now = Date.now();
@@ -1990,6 +2619,20 @@ export class BridgeDurableObject extends DurableObject {
       row.id,
     );
     socket.send(JSON.stringify({ type: "task.heartbeat.ack", task_id: row.id }));
+    this.record_device_log(
+      attachment.device_id,
+      "heartbeat",
+      "heartbeat.task",
+      "收到调用心跳并续期租约",
+      {
+        connection_id: attachment.connection_id,
+        direction: "inbound",
+        task_id: row.id,
+        method: row.method,
+        metadata: { lease_expires_at: now + LEASE_MILLISECONDS },
+        created_at: now,
+      },
+    );
     await this.schedule_alarm();
   }
 
@@ -2008,16 +2651,55 @@ export class BridgeDurableObject extends DurableObject {
       existing.lease_token === message.lease_token
     ) {
       socket.send(JSON.stringify({ type: "task.ack", task_id: existing.id }));
+      this.record_device_log(
+        attachment.device_id,
+        "response",
+        "response.duplicate",
+        "收到重复的成功响应并再次确认",
+        {
+          connection_id: attachment.connection_id,
+          direction: "inbound",
+          level: "warn",
+          task_id: existing.id,
+          method: existing.method,
+        },
+      );
       return;
     }
     const row = this.owned_task(attachment.device_id, message);
     if (row === null) {
       socket.send(JSON.stringify({ type: "task.rejected", task_id: message.task_id }));
+      this.record_device_log(
+        attachment.device_id,
+        "response",
+        "response.rejected",
+        "调用响应与当前租约不匹配，已拒绝",
+        {
+          connection_id: attachment.connection_id,
+          direction: "inbound",
+          level: "warn",
+          task_id: message.task_id,
+        },
+      );
       return;
     }
     const result_json = JSON.stringify(message.result ?? null);
     if (result_json.length > MAX_BODY_BYTES) {
       socket.send(JSON.stringify({ type: "task.rejected", task_id: row.id, error: "result is too large" }));
+      this.record_device_log(
+        attachment.device_id,
+        "response",
+        "response.rejected",
+        "设备响应过大，已拒绝",
+        {
+          connection_id: attachment.connection_id,
+          direction: "inbound",
+          level: "error",
+          task_id: row.id,
+          method: row.method,
+          metadata: { result_length: result_json.length, reason: "result is too large" },
+        },
+      );
       return;
     }
     const now = Date.now();
@@ -2032,6 +2714,24 @@ export class BridgeDurableObject extends DurableObject {
     const completed = /** @type {CallRow} */ (this.find_task(row.id));
     this.resolve_invoke_waiter(completed.id, completed);
     socket.send(JSON.stringify({ type: "task.ack", task_id: row.id }));
+    this.record_device_log(
+      attachment.device_id,
+      "response",
+      "response.completed",
+      "设备已返回成功响应",
+      {
+        connection_id: attachment.connection_id,
+        direction: "inbound",
+        task_id: completed.id,
+        method: completed.method,
+        metadata: {
+          result: message.result ?? null,
+          attempt_count: completed.attempt_count,
+          elapsed_milliseconds: now - completed.created_at,
+        },
+        created_at: now,
+      },
+    );
     this.send_to_device(completed.publisher_device_id, {
       type: "task.completed",
       task: task_value(completed),
@@ -2050,6 +2750,18 @@ export class BridgeDurableObject extends DurableObject {
     const row = this.owned_task(attachment.device_id, message);
     if (row === null) {
       socket.send(JSON.stringify({ type: "task.rejected", task_id: message.task_id }));
+      this.record_device_log(
+        attachment.device_id,
+        "response",
+        "response.rejected",
+        "调用失败响应与当前租约不匹配，已拒绝",
+        {
+          connection_id: attachment.connection_id,
+          direction: "inbound",
+          level: "warn",
+          task_id: message.task_id,
+        },
+      );
       return;
     }
     const now = Date.now();
@@ -2063,6 +2775,25 @@ export class BridgeDurableObject extends DurableObject {
         row.id,
       );
       socket.send(JSON.stringify({ type: "task.ack", task_id: row.id, requeued: true }));
+      this.record_device_log(
+        attachment.device_id,
+        "response",
+        "response.failed_retryable",
+        "设备返回可重试失败，调用已重新排队",
+        {
+          connection_id: attachment.connection_id,
+          direction: "inbound",
+          level: "warn",
+          task_id: row.id,
+          method: row.method,
+          metadata: {
+            error: message.error ?? "task failed",
+            retryable: true,
+            attempt_count: row.attempt_count,
+          },
+          created_at: now,
+        },
+      );
     } else {
       this.ctx.storage.sql.exec(
         `UPDATE calls SET status = 'failed', error_message = ?, lease_expires_at = NULL,
@@ -2075,6 +2806,25 @@ export class BridgeDurableObject extends DurableObject {
       const failed = /** @type {CallRow} */ (this.find_task(row.id));
       this.resolve_invoke_waiter(failed.id, failed);
       socket.send(JSON.stringify({ type: "task.ack", task_id: row.id }));
+      this.record_device_log(
+        attachment.device_id,
+        "response",
+        "response.failed",
+        "设备返回失败响应，调用已终止",
+        {
+          connection_id: attachment.connection_id,
+          direction: "inbound",
+          level: "error",
+          task_id: failed.id,
+          method: failed.method,
+          metadata: {
+            error: failed.error_message,
+            retryable: message.retryable === true,
+            attempt_count: failed.attempt_count,
+          },
+          created_at: now,
+        },
+      );
       this.send_to_device(failed.publisher_device_id, {
         type: "task.failed",
         task: task_value(failed),
@@ -2161,13 +2911,49 @@ export class BridgeDurableObject extends DurableObject {
             lease_milliseconds: LEASE_MILLISECONDS,
           }),
         );
+        this.record_device_log(
+          attachment.device_id,
+          "call",
+          "call.assigned",
+          "调用已下发到设备",
+          {
+            connection_id: attachment.connection_id,
+            direction: "outbound",
+            task_id: assigned.id,
+            method: assigned.method,
+            metadata: {
+              publisher_device_id: assigned.publisher_device_id,
+              target_device_id: assigned.target_device_id,
+              args: JSON.parse(assigned.args_json),
+              attempt_count: assigned.attempt_count,
+              lease_expires_at: assigned.lease_expires_at,
+            },
+            created_at: now,
+          },
+        );
         busy_devices.add(attachment.device_id);
-      } catch {
+      } catch (error) {
         this.ctx.storage.sql.exec(
           `UPDATE calls SET status = 'queued', assigned_device_id = NULL, lease_token = NULL,
            lease_expires_at = NULL, updated_at = ? WHERE id = ?`,
           Date.now(),
           row.id,
+        );
+        this.record_device_log(
+          attachment.device_id,
+          "call",
+          "call.delivery_failed",
+          "调用下发失败，任务已重新排队",
+          {
+            connection_id: attachment.connection_id,
+            direction: "outbound",
+            level: "error",
+            task_id: row.id,
+            method: row.method,
+            metadata: {
+              error: error instanceof Error ? error.message : String(error),
+            },
+          },
         );
       }
     }
@@ -2181,10 +2967,41 @@ export class BridgeDurableObject extends DurableObject {
   send_to_device(device_id, value) {
     const message = JSON.stringify(value);
     for (const socket of this.ctx.getWebSockets(`client:${device_id}`)) {
+      const attachment = socket_attachment(socket);
       try {
         socket.send(message);
-      } catch {
+        this.record_device_log(
+          device_id,
+          "response",
+          "response.notification_sent",
+          "调用状态通知已发送到发布设备",
+          {
+            connection_id: attachment?.connection_id,
+            direction: "outbound",
+            task_id: value?.task?.id,
+            method: value?.task?.method,
+            metadata: { notification: value },
+          },
+        );
+      } catch (error) {
         // Persisted task state remains available for polling after reconnect.
+        this.record_device_log(
+          device_id,
+          "response",
+          "response.notification_failed",
+          "调用状态通知发送失败，发布设备可通过查询恢复",
+          {
+            connection_id: attachment?.connection_id,
+            direction: "outbound",
+            level: "error",
+            task_id: value?.task?.id,
+            method: value?.task?.method,
+            metadata: {
+              error: error instanceof Error ? error.message : String(error),
+              notification_type: value?.type,
+            },
+          },
+        );
       }
     }
   }
@@ -2267,10 +3084,22 @@ export default {
         );
       }
       const admin_device_reset_match = url.pathname.match(
-        /^\/admin\/api\/devices\/([A-Za-z0-9][A-Za-z0-9_.:-]{0,127})\/reset$/,
+        /^\/admin\/api\/devices\/([^/]+)\/reset$/,
       );
-      if (admin_device_reset_match !== null && request.method === "POST") {
-        return admin_reset_device(env, request, admin_device_reset_match[1]);
+      const reset_device_id = admin_device_reset_match
+        ? decode_identifier(admin_device_reset_match[1])
+        : null;
+      if (reset_device_id !== null && request.method === "POST") {
+        return admin_reset_device(env, request, reset_device_id);
+      }
+      const admin_device_logs_match = url.pathname.match(
+        /^\/admin\/api\/devices\/([^/]+)\/logs$/,
+      );
+      const logs_device_id = admin_device_logs_match
+        ? decode_identifier(admin_device_logs_match[1])
+        : null;
+      if (logs_device_id !== null && request.method === "GET") {
+        return admin_device_logs(env, request, logs_device_id);
       }
       return error_response("not found", 404);
     }
@@ -2303,6 +3132,12 @@ export default {
       safe_equal(token, env.BRIDGE_TOKEN) &&
       valid_identifier(device_id);
     if (forwarded_path === "/connect" && !device_authorized) {
+      if (valid_identifier(device_id)) {
+        await object.fetch(
+          "https://internal/_internal/devices/" + device_id + "/connection-rejected",
+          { method: "POST" },
+        );
+      }
       return error_response("unauthorized", 401);
     }
     if (device_authorized) {
