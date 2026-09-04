@@ -1,8 +1,10 @@
 package minib
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +14,95 @@ import (
 
 	"github.com/gorilla/websocket"
 )
+
+func TestXHRBinaryBodyAndCrossOriginHeaders(t *testing.T) {
+	type received_request struct {
+		body    []byte
+		headers http.Header
+	}
+	received := make(chan received_request, 1)
+	target_server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		request_body, _ := io.ReadAll(request.Body)
+		received <- received_request{body: request_body, headers: request.Header.Clone()}
+		response_writer.Header().Set("Access-Control-Allow-Origin", "*")
+		_, _ = fmt.Fprint(response_writer, "ok")
+	}))
+	defer target_server.Close()
+	origin_server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, _ *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprintf(response_writer, `<!doctype html><html data-n="xhr-page"><body data-n="xhr-body"><script data-n="xhr-script">
+var request = new XMLHttpRequest();
+request.open('POST', %q);
+request.onload = function() { document.body.setAttribute('data-result', request.responseText); };
+request.send(new Blob([new Uint8Array([31, 139, 8, 255])], {type: 'application/octet-stream'}));
+</script></body></html>`, target_server.URL)
+	}))
+	defer origin_server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	if err = browser.SetCookie(target_server.URL, &http.Cookie{Name: "private", Value: "cookie", Path: "/"}); err != nil {
+		t.Fatal(err)
+	}
+	page, err := browser.Navigate(context.Background(), origin_server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-result="ok"`) {
+		t.Fatalf("XHR did not complete: %s", page.RenderedHTML)
+	}
+	request := <-received
+	if !bytes.Equal(request.body, []byte{31, 139, 8, 255}) {
+		t.Fatalf("binary body = %v", request.body)
+	}
+	if request.headers.Get("Origin") != origin_server.URL || request.headers.Get("Referer") != origin_server.URL+"/" || request.headers.Get("Sec-Fetch-Site") != "same-site" {
+		t.Fatalf("cross-origin headers = %v", request.headers)
+	}
+	if request.headers.Get("Cookie") != "" || request.headers.Get("Content-Type") != "application/octet-stream" {
+		t.Fatalf("cross-origin credentials/body headers = %v", request.headers)
+	}
+}
+
+func TestNavigationDrainsXHRChain(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/step" {
+			time.Sleep(2 * time.Millisecond)
+			_, _ = fmt.Fprint(response_writer, "ok")
+			return
+		}
+		_, _ = fmt.Fprint(response_writer, `<!doctype html><html data-n="xhr-chain-page"><body data-n="xhr-chain-body"><script data-n="xhr-chain-script">
+var completed = 0;
+function advance() {
+  var request = new XMLHttpRequest();
+  request.open('GET', '/step');
+  request.onload = function() {
+    completed++;
+    if (completed === 12) document.body.setAttribute('data-chain', 'done');
+    else advance();
+  };
+  request.send();
+}
+advance();
+</script></body></html>`)
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-chain="done"`) {
+		t.Fatalf("XHR chain did not complete: %s", page.RenderedHTML)
+	}
+}
 
 func TestAsyncXHRFetchAbortAndNetworkConcurrency(t *testing.T) {
 	var active_requests atomic.Int32
@@ -83,6 +174,79 @@ Promise.all([fetch('/fetch-one').then(function(response) { return response.text(
 	}
 	if max_active_requests.Load() < 2 {
 		t.Fatalf("XHR/fetch requests did not overlap; max active = %d", max_active_requests.Load())
+	}
+}
+
+func TestNavigateWaitsForXHRWhenIntervalIsPending(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/data" {
+			time.Sleep(20 * time.Millisecond)
+			_, _ = response_writer.Write([]byte("ready"))
+			return
+		}
+		_, _ = response_writer.Write([]byte(`<html><body><script>
+setInterval(function() {}, 1000);
+var request = new XMLHttpRequest();
+request.open('GET', '/data');
+request.onload = function() { document.body.setAttribute('data-result', request.responseText); };
+request.send();
+</script></body></html>`))
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(10 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-result="ready"`) {
+		t.Fatalf("HTML missing XHR result: %s", page.RenderedHTML)
+	}
+}
+
+func TestRequestHeaderModifierReceivesSessionCookies(t *testing.T) {
+	received_headers := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/data" {
+			received_headers <- request.Header.Clone()
+			_, _ = response_writer.Write([]byte("ready"))
+			return
+		}
+		http.SetCookie(response_writer, &http.Cookie{Name: "session", Value: "created", Path: "/"})
+		_, _ = response_writer.Write([]byte(`<html><body><script>console.error({message:'expected'}); document.createElement('input').select(); Object.defineProperty(HTMLCollection.prototype, Symbol.toStringTag, {value:'HTMLCollection'}); if (Object.prototype.toString.call([]) !== '[object Array]') throw new Error('Array prototype was changed by HTMLCollection'); fetch('/data')</script></body></html>`))
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil, NavigateOptions{
+		RequestHeaderModifier: func(request *http.Request) error {
+			if request.URL.Path == "/data" {
+				cookie, cookie_err := request.Cookie("session")
+				if cookie_err != nil {
+					return cookie_err
+				}
+				request.Header.Set("X-Session", cookie.Value)
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.ScriptFailures) != 0 {
+		t.Fatalf("script failures: %+v", page.ScriptFailures)
+	}
+	received := <-received_headers
+	if received.Get("Cookie") != "session=created" || received.Get("X-Session") != "created" {
+		t.Fatalf("modifier received incomplete headers: %v", received)
 	}
 }
 
@@ -187,7 +351,11 @@ document.body.setAttribute('data-dom-parser', parsedDocument.querySelector('b').
 		t.Fatal(err)
 	}
 	defer browser.Close()
-	page, err := browser.Navigate(context.Background(), server.URL+"/", nil)
+	navigation_headers := http.Header{
+		"Sec-Ch-Ua":  {`"Chromium";v="151", "Google Chrome";v="151"`},
+		"User-Agent": {"Chrome/151"},
+	}
+	page, err := browser.Navigate(context.Background(), server.URL+"/", navigation_headers)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,6 +385,15 @@ document.body.setAttribute('data-dom-parser', parsedDocument.querySelector('b').
 	}
 	if fetch_headers.Get("X-App-Za") != "OS=webplayer" || fetch_headers.Get("X-Zse-96") != "2.0_test" {
 		t.Fatalf("unexpected fetch headers: %v", fetch_headers)
+	}
+	if fetch_headers.Get("Sec-Ch-Ua") != navigation_headers.Get("Sec-Ch-Ua") {
+		t.Fatalf("fetch client hints = %q, want %q", fetch_headers.Get("Sec-Ch-Ua"), navigation_headers.Get("Sec-Ch-Ua"))
+	}
+	if fetch_headers.Get("Accept") != "*/*" {
+		t.Fatalf("fetch accept = %q, want */*", fetch_headers.Get("Accept"))
+	}
+	if fetch_headers.Get("Priority") != "u=1, i" {
+		t.Fatalf("fetch priority = %q, want u=1, i", fetch_headers.Get("Priority"))
 	}
 	if fetch_headers.Get("0") != "" || fetch_headers.Get("1") != "" {
 		t.Fatalf("iterable headers leaked numeric names: %v", fetch_headers)

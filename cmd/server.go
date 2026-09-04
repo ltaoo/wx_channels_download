@@ -35,6 +35,7 @@ var server_status_cmd = &cobra.Command{
 	Use:   "status",
 	Short: "查看服务器状态",
 	Run: func(cmd *cobra.Command, args []string) {
+		apply_server_config_defaults()
 		if ok := status_command(); !ok {
 			os.Exit(1)
 		}
@@ -70,15 +71,6 @@ func init() {
 	server_status_cmd.Flags().BoolVarP(&status_quiet, "quiet", "q", false, "仅返回退出码")
 	server_cmd.AddCommand(server_status_cmd, server_stop_cmd, server_restart_cmd)
 	root_cmd.AddCommand(server_cmd)
-}
-
-func is_server_command(cmd *cobra.Command) bool {
-	for c := cmd; c != nil; c = c.Parent() {
-		if c.Name() == "server" {
-			return true
-		}
-	}
-	return false
 }
 
 func apply_server_config_defaults() {

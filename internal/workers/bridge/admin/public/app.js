@@ -57,15 +57,35 @@ function DashboardViewModel() {
     closeable: true,
     footer: false,
   });
+  const device_logs_ = refarr([]);
+  const device_log_state_ = refobj({
+    device_id: "",
+    device_name: "",
+    device_os: "unknown",
+    category: "",
+    loading: false,
+    loading_more: false,
+    error: "",
+    has_more: false,
+    refreshed_at: 0,
+    retention_milliseconds: 0,
+  });
+  const device_log_drawer$ = new vm.DialogCore({
+    title: "设备日志",
+    closeable: true,
+    footer: false,
+  });
   const test_drafts_ = refobj({});
   const download_drafts_ = refobj({});
   const tests_ = refobj({});
+  const device_reset_actions_ = refobj({});
   const device_sources = new Map();
   const access_token_sources = new Map();
   const test_poll_timers = new Map();
   const download_poll_timers = new Map();
   let refresh_promise = null;
   let refresh_timer = null;
+  let device_log_refresh_timer = null;
   let started = false;
 
   function normalize_access_token(access_token) {
@@ -165,6 +185,232 @@ function DashboardViewModel() {
   function open_access_token_drawer() {
     access_token_drawer$.show();
   }
+
+  function normalize_device_log(log) {
+    return {
+      id: Number(log.id || 0),
+      device_id: String(log.device_id || ""),
+      connection_id: String(log.connection_id || ""),
+      category: String(log.category || "system"),
+      event_type: String(log.event_type || "system.event"),
+      direction: String(log.direction || "internal"),
+      level: ["info", "warn", "error"].includes(log.level)
+        ? log.level
+        : "info",
+      task_id: String(log.task_id || ""),
+      method: String(log.method || ""),
+      message: String(log.message || "设备事件"),
+      metadata:
+        log.metadata && typeof log.metadata === "object" ? log.metadata : {},
+      created_at: Number(log.created_at || 0),
+    };
+  }
+
+  function set_device_log_state(next_state) {
+    device_log_state_.as(
+      Object.assign({}, device_log_state_.value, next_state),
+    );
+  }
+
+  function stop_device_log_refresh() {
+    if (device_log_refresh_timer !== null) {
+      clearInterval(device_log_refresh_timer);
+      device_log_refresh_timer = null;
+    }
+  }
+
+  function start_device_log_refresh() {
+    stop_device_log_refresh();
+    device_log_refresh_timer = setInterval(
+      () => refresh_device_logs(true),
+      5000,
+    );
+  }
+
+  async function refresh_device_logs(merge = false) {
+    const current_state = device_log_state_.value;
+    const device_id = current_state.device_id;
+    const category = current_state.category;
+    if (device_id === "" || current_state.loading || current_state.loading_more) return;
+    set_device_log_state({ loading: true, error: "" });
+    const query = new URLSearchParams({ limit: "100" });
+    if (category !== "") query.set("category", category);
+    try {
+      const response = await fetch(
+        "/admin/api/devices/" +
+          encodeURIComponent(device_id) +
+          "/logs?" +
+          query.toString(),
+        { credentials: "same-origin", cache: "no-store" },
+      );
+      const value = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(value.error || "加载设备日志失败：HTTP " + response.status);
+      }
+      if (!Array.isArray(value.logs)) {
+        throw new Error("设备日志接口返回格式不正确");
+      }
+      if (
+        device_log_state_.value.device_id !== device_id ||
+        device_log_state_.value.category !== category
+      ) {
+        return;
+      }
+      const incoming_logs = value.logs.map(normalize_device_log);
+      if (merge && device_logs_.value.length > 0) {
+        const logs_by_id = new Map(
+          device_logs_.value.map((log) => [Number(log.id), log]),
+        );
+        for (const log of incoming_logs) logs_by_id.set(log.id, log);
+        device_logs_.assign(
+          [...logs_by_id.values()].sort((left, right) => right.id - left.id),
+        );
+      } else {
+        device_logs_.assign(incoming_logs);
+      }
+      set_device_log_state({
+        device_name: String(value.device?.device_name || current_state.device_name),
+        device_os: String(value.device?.device_os || current_state.device_os),
+        loading: false,
+        error: "",
+        has_more: merge
+          ? device_log_state_.value.has_more || Boolean(value.has_more)
+          : Boolean(value.has_more),
+        refreshed_at: Date.now(),
+        retention_milliseconds: Number(value.retention_milliseconds || 0),
+      });
+    } catch (error) {
+      if (
+        device_log_state_.value.device_id === device_id &&
+        device_log_state_.value.category === category
+      ) {
+        set_device_log_state({
+          loading: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
+  async function load_older_device_logs() {
+    const current_state = device_log_state_.value;
+    if (
+      current_state.device_id === "" ||
+      current_state.loading ||
+      current_state.loading_more ||
+      !current_state.has_more ||
+      device_logs_.value.length === 0
+    ) {
+      return;
+    }
+    const device_id = current_state.device_id;
+    const category = current_state.category;
+    const before_id = Math.min(...device_logs_.value.map((log) => Number(log.id)));
+    set_device_log_state({ loading_more: true, error: "" });
+    const query = new URLSearchParams({
+      limit: "100",
+      before_id: String(before_id),
+    });
+    if (category !== "") query.set("category", category);
+    try {
+      const response = await fetch(
+        "/admin/api/devices/" +
+          encodeURIComponent(device_id) +
+          "/logs?" +
+          query.toString(),
+        { credentials: "same-origin", cache: "no-store" },
+      );
+      const value = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(value.error || "加载更早日志失败：HTTP " + response.status);
+      }
+      if (!Array.isArray(value.logs)) {
+        throw new Error("设备日志接口返回格式不正确");
+      }
+      if (
+        device_log_state_.value.device_id !== device_id ||
+        device_log_state_.value.category !== category
+      ) {
+        return;
+      }
+      const logs_by_id = new Map(
+        device_logs_.value.map((log) => [Number(log.id), log]),
+      );
+      for (const log of value.logs.map(normalize_device_log)) {
+        logs_by_id.set(log.id, log);
+      }
+      device_logs_.assign(
+        [...logs_by_id.values()].sort((left, right) => right.id - left.id),
+      );
+      set_device_log_state({
+        loading_more: false,
+        has_more: Boolean(value.has_more),
+        error: "",
+      });
+    } catch (error) {
+      if (
+        device_log_state_.value.device_id === device_id &&
+        device_log_state_.value.category === category
+      ) {
+        set_device_log_state({
+          loading_more: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
+  function set_device_log_category(category) {
+    const normalized_category = [
+      "",
+      "connection",
+      "heartbeat",
+      "call",
+      "response",
+      "system",
+    ].includes(category)
+      ? category
+      : "";
+    set_device_log_state({
+      category: normalized_category,
+      loading: false,
+      loading_more: false,
+      has_more: false,
+      error: "",
+    });
+    device_logs_.assign([]);
+    refresh_device_logs(false);
+  }
+
+  function open_device_log_drawer(device_id) {
+    const device = devices_.value.find(
+      (candidate) => candidate.device_id === device_id,
+    );
+    if (!device) return;
+    stop_device_log_refresh();
+    device_logs_.assign([]);
+    const category = device_log_state_.value.category;
+    device_log_state_.as({
+      device_id,
+      device_name: device.device_name,
+      device_os: device.device_os,
+      category,
+      loading: false,
+      loading_more: false,
+      error: "",
+      has_more: false,
+      refreshed_at: 0,
+      retention_milliseconds: 0,
+    });
+    device_log_drawer$.setTitle("设备日志 · " + device.device_name);
+    device_log_drawer$.show();
+    refresh_device_logs(false);
+    start_device_log_refresh();
+  }
+
+  const device_log_drawer_unlisten = device_log_drawer$.onHidden(() => {
+    stop_device_log_refresh();
+  });
 
   async function create_access_token() {
     const draft = access_token_draft_.value;
@@ -509,6 +755,56 @@ function DashboardViewModel() {
     );
   }
 
+  function set_device_reset_action(device_id, next_action) {
+    device_reset_actions_.as(
+      Object.assign({}, device_reset_actions_.value, {
+        [device_id]: Object.assign(
+          {},
+          device_reset_actions_.value[device_id] || {},
+          next_action,
+        ),
+      }),
+    );
+  }
+
+  async function reset_device(device_id) {
+    const device = devices_.value.find(
+      (candidate) => candidate.device_id === device_id,
+    );
+    if (!device || device.status !== "busy") return;
+    if (
+      !window.confirm(
+        "强制重置设备“" +
+          device.device_name +
+          "”？当前未完成调用会被标记为失败。",
+      )
+    ) {
+      return;
+    }
+    set_device_reset_action(device_id, { submitting: true, error: "" });
+    try {
+      const response = await fetch(
+        "/admin/api/devices/" + encodeURIComponent(device_id) + "/reset",
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+        },
+      );
+      const value = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(value.error || "强制重置设备失败：HTTP " + response.status);
+      }
+      set_device_reset_action(device_id, { submitting: false, error: "" });
+      await refresh(false);
+    } catch (error) {
+      set_device_reset_action(device_id, {
+        submitting: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   async function run_test(device_id) {
     const draft = test_drafts_.value[device_id] || { url: "" };
     if (!draft.url.trim()) {
@@ -782,7 +1078,12 @@ function DashboardViewModel() {
     for (const timer of download_poll_timers.values()) clearTimeout(timer);
     test_poll_timers.clear();
     download_poll_timers.clear();
+    stop_device_log_refresh();
+    if (typeof device_log_drawer_unlisten === "function") {
+      device_log_drawer_unlisten();
+    }
     access_token_drawer$.destroy();
+    device_log_drawer$.destroy();
   }
 
   const refresh_status_ = combine(
@@ -809,9 +1110,12 @@ function DashboardViewModel() {
     access_tokens: access_tokens_,
     access_token_draft: access_token_draft_,
     access_token_action: access_token_action_,
+    device_logs: device_logs_,
+    device_log_state: device_log_state_,
     test_drafts: test_drafts_,
     download_drafts: download_drafts_,
     tests: tests_,
+    device_reset_actions: device_reset_actions_,
   };
 
   const methods = {
@@ -820,6 +1124,7 @@ function DashboardViewModel() {
     refresh,
     runTest: run_test,
     runDownloadTest: run_download_test,
+    resetDevice: reset_device,
     setTestDraft: set_test_draft,
     setDownloadDraft: set_download_draft,
     setAccessTokenDraft: set_access_token_draft,
@@ -830,12 +1135,17 @@ function DashboardViewModel() {
     copyCreatedAccessToken: copy_created_access_token,
     dismissCreatedAccessToken: dismiss_created_access_token,
     openAccessTokenDrawer: open_access_token_drawer,
+    openDeviceLogDrawer: open_device_log_drawer,
+    refreshDeviceLogs: refresh_device_logs,
+    loadOlderDeviceLogs: load_older_device_logs,
+    setDeviceLogCategory: set_device_log_category,
     deviceSource: device_source,
     accessTokenSource: access_token_source,
   };
 
   const ui_stores = {
     access_token_drawer: access_token_drawer$,
+    device_log_drawer: device_log_drawer$,
   };
 
   return { state, methods, ui: ui_stores };
@@ -985,6 +1295,8 @@ function access_token_expiration_text(access_token) {
 
 function DrawerView(props, children = []) {
   const store = props.store;
+  const drawer_name = String(props.name || "access-token");
+  const drawer_class = drawer_name + "-drawer";
   const state_ = refobj(store.state);
   const presence_state_ = refobj(store.presence.state);
   const was_exiting_ = ref(false);
@@ -1004,7 +1316,7 @@ function DrawerView(props, children = []) {
   return ui.DialogPrimitive.Root(
     {
       store,
-      attributes: { n: "access-token-drawer-root" },
+      attributes: { n: drawer_class + "-root" },
       onUnmounted() {
         for (const unlisten of unlistens) {
           if (typeof unlisten === "function") unlisten();
@@ -1018,7 +1330,7 @@ function DrawerView(props, children = []) {
         ui.DialogPrimitive.Overlay({
           store,
           zIndex: z_index,
-          attributes: { n: "access-token-drawer-overlay" },
+          attributes: { n: drawer_class + "-overlay" },
           onClick(event) {
             if (event.target === event.currentTarget && state_.value.closeable) {
               store.hide();
@@ -1026,7 +1338,7 @@ function DrawerView(props, children = []) {
           },
           class: computed(presence_state_, (state) =>
             [
-              "access-token-drawer-overlay",
+              drawer_class + "-overlay",
               state.enter ? "is-entering" : "",
               state.exit || (!state.mounted && was_exiting_.value)
                 ? "is-exiting"
@@ -1038,24 +1350,24 @@ function DrawerView(props, children = []) {
         }),
         View(
           {
-            class: "access-token-drawer-positioner",
+            class: drawer_class + "-positioner",
             style: { "z-index": z_index + 1 },
-            attributes: { n: "access-token-drawer-positioner" },
+            attributes: { n: drawer_class + "-positioner" },
           },
           [
             ui.DialogPrimitive.Content(
               {
                 store,
                 zIndex: z_index + 1,
-                style: { width: "min(760px, 100vw)" },
+                style: { width: props.width || "min(760px, 100vw)" },
                 attributes: {
-                  n: "access-token-drawer-content",
+                  n: drawer_class + "-content",
                   role: "dialog",
                   "aria-modal": "true",
                 },
                 class: computed(presence_state_, (state) =>
                   [
-                    "access-token-drawer-content",
+                    drawer_class + "-content",
                     state.enter ? "is-entering" : "",
                     state.exit || (!state.mounted && was_exiting_.value)
                       ? "is-exiting"
@@ -1072,15 +1384,15 @@ function DrawerView(props, children = []) {
                     return ui.DialogPrimitive.Header(
                       {
                         store,
-                        class: "access-token-drawer-header",
-                        attributes: { n: "access-token-drawer-header" },
+                        class: drawer_class + "-header",
+                        attributes: { n: drawer_class + "-header" },
                       },
                       [
                         ui.DialogPrimitive.Title(
                           {
                             store,
-                            class: "access-token-drawer-title",
-                            attributes: { n: "access-token-drawer-title" },
+                            class: drawer_class + "-title",
+                            attributes: { n: drawer_class + "-title" },
                           },
                           [computed(state_, (state) => state.title || "")],
                         ),
@@ -1092,10 +1404,10 @@ function DrawerView(props, children = []) {
                 ui.DialogPrimitive.Close(
                   {
                     store,
-                    class: "access-token-drawer-close",
+                    class: drawer_class + "-close",
                     attributes: {
-                      n: "access-token-drawer-close",
-                      "aria-label": "关闭调用 Token 抽屉",
+                      n: drawer_class + "-close",
+                      "aria-label": props.close_label || "关闭抽屉",
                       role: "button",
                       tabindex: "0",
                     },
@@ -1638,6 +1950,377 @@ function AccessTokenDrawerView(props) {
           attributes: { n: "access-token-drawer-body" },
         },
         [AccessTokenManagementView({ store: props.store })],
+      ),
+    ],
+  );
+}
+
+function device_log_category_label(category) {
+  const labels = {
+    connection: "连接",
+    heartbeat: "心跳",
+    call: "调用",
+    response: "响应",
+    system: "系统",
+  };
+  return labels[category] || "系统";
+}
+
+function device_log_direction_label(direction) {
+  const labels = {
+    inbound: "设备 → Bridge",
+    outbound: "Bridge → 设备",
+    internal: "Bridge 内部",
+  };
+  return labels[direction] || "Bridge 内部";
+}
+
+function DeviceLogEntryView(props) {
+  const log_ = props.log;
+  const log_id = String(source_value(log_).id);
+  const entry_class_ = computed(
+    log_,
+    (log) =>
+      "device-log-entry " + String(log.level) + " " + String(log.category),
+  );
+  const created_at_ = computed(log_, (log) => format_time(log.created_at));
+  const category_ = computed(log_, (log) =>
+    device_log_category_label(log.category),
+  );
+  const direction_ = computed(log_, (log) =>
+    device_log_direction_label(log.direction),
+  );
+  const message_ = computed(log_, (log) => log.message);
+  const event_type_ = computed(log_, (log) => log.event_type);
+  const context_ = computed(log_, (log) => {
+    const parts = [];
+    if (log.method) parts.push("方法 " + log.method);
+    if (log.task_id) parts.push("调用 " + log.task_id);
+    if (log.connection_id) parts.push("连接 " + log.connection_id);
+    return parts.join(" · ");
+  });
+  const metadata_visible_ = computed(log_, (log) =>
+    Boolean(log.metadata && Object.keys(log.metadata).length > 0),
+  );
+  const metadata_ = computed(log_, (log) => format_json(log.metadata));
+
+  return View(
+    {
+      class: entry_class_,
+      attributes: {
+        n: "device-log-entry",
+        "data-log-id": log_id,
+      },
+    },
+    [
+      View(
+        {
+          class: "device-log-entry-header",
+          attributes: { n: "device-log-entry-header" },
+        },
+        [
+          View(
+            {
+              class: "device-log-badges",
+              attributes: { n: "device-log-badges" },
+            },
+            [
+              View(
+                {
+                  class: "device-log-category",
+                  attributes: { n: "device-log-category" },
+                },
+                [category_],
+              ),
+              View(
+                {
+                  class: "device-log-direction",
+                  attributes: { n: "device-log-direction" },
+                },
+                [direction_],
+              ),
+            ],
+          ),
+          View(
+            {
+              class: "device-log-time",
+              attributes: { n: "device-log-time" },
+            },
+            [created_at_],
+          ),
+        ],
+      ),
+      View(
+        {
+          class: "device-log-message",
+          attributes: { n: "device-log-message" },
+        },
+        [message_],
+      ),
+      View(
+        {
+          class: "device-log-event-type",
+          attributes: { n: "device-log-event-type" },
+        },
+        [event_type_],
+      ),
+      Show({
+        when: computed(context_, Boolean),
+        ok() {
+          return View(
+            {
+              class: "device-log-context",
+              attributes: { n: "device-log-context" },
+            },
+            [context_],
+          );
+        },
+      }),
+      Show({
+        when: metadata_visible_,
+        ok() {
+          return View(
+            {
+              as: "details",
+              class: "device-log-details",
+              attributes: { n: "device-log-details" },
+            },
+            [
+              View(
+                {
+                  as: "summary",
+                  class: "device-log-details-summary",
+                  attributes: { n: "device-log-details-summary" },
+                },
+                ["查看参数 / 响应数据"],
+              ),
+              View(
+                {
+                  as: "pre",
+                  class: "device-log-metadata",
+                  attributes: { n: "device-log-metadata" },
+                },
+                [metadata_],
+              ),
+            ],
+          );
+        },
+      }),
+    ],
+  );
+}
+
+function DeviceLogDrawerView(props) {
+  const vm$ = props.store;
+  const category_ = computed(
+    vm$.state.device_log_state,
+    (state) => String(state.category || ""),
+  );
+  const loading_ = computed(
+    vm$.state.device_log_state,
+    (state) => Boolean(state.loading),
+  );
+  const loading_more_ = computed(
+    vm$.state.device_log_state,
+    (state) => Boolean(state.loading_more),
+  );
+  const error_ = computed(
+    vm$.state.device_log_state,
+    (state) => String(state.error || ""),
+  );
+  const has_more_ = computed(
+    vm$.state.device_log_state,
+    (state) => Boolean(state.has_more),
+  );
+  const refresh_label_ = computed(loading_, (loading) =>
+    loading ? "刷新中…" : "立即刷新",
+  );
+  const load_more_label_ = computed(loading_more_, (loading) =>
+    loading ? "加载中…" : "加载更早日志",
+  );
+  const description_ = computed(vm$.state.device_log_state, (state) => {
+    const retention_days = state.retention_milliseconds
+      ? Math.round(state.retention_milliseconds / (24 * 60 * 60 * 1000))
+      : 7;
+    return (
+      String(state.device_os || "unknown") +
+      " · " +
+      String(state.device_id || "") +
+      " · 保留最近 " +
+      String(retention_days) +
+      " 天 · 每 5 秒自动刷新"
+    );
+  });
+  const refreshed_text_ = computed(vm$.state.device_log_state, (state) =>
+    state.refreshed_at ? "更新于 " + format_time(state.refreshed_at) : "等待加载",
+  );
+  const empty_visible_ = combine(
+    { loading: loading_, logs: vm$.state.device_logs },
+    ({ loading, logs }) => !loading && logs.length === 0,
+  );
+  const initial_loading_ = combine(
+    { loading: loading_, logs: vm$.state.device_logs },
+    ({ loading, logs }) => loading && logs.length === 0,
+  );
+  const category_options = [
+    { value: "", label: "全部日志" },
+    { value: "connection", label: "连接" },
+    { value: "heartbeat", label: "心跳" },
+    { value: "call", label: "调用" },
+    { value: "response", label: "响应" },
+    { value: "system", label: "系统" },
+  ];
+
+  return DrawerView(
+    {
+      store: vm$.ui.device_log_drawer,
+      name: "device-log",
+      width: "min(860px, 100vw)",
+      close_label: "关闭设备日志抽屉",
+    },
+    () => [
+      View(
+        {
+          class: "device-log-drawer-body",
+          attributes: { n: "device-log-drawer-body" },
+        },
+        [
+          View(
+            {
+              class: "device-log-toolbar",
+              attributes: { n: "device-log-toolbar" },
+            },
+            [
+              View(
+                {
+                  attributes: { n: "device-log-description-group" },
+                },
+                [
+                  View(
+                    {
+                      class: "device-log-description",
+                      attributes: { n: "device-log-description" },
+                    },
+                    [description_],
+                  ),
+                  View(
+                    {
+                      class: "device-log-refreshed-at",
+                      attributes: { n: "device-log-refreshed-at" },
+                    },
+                    [refreshed_text_],
+                  ),
+                ],
+              ),
+              View(
+                {
+                  class: "device-log-toolbar-actions",
+                  attributes: { n: "device-log-toolbar-actions" },
+                },
+                [
+                  Select({
+                    class: "test-control device-log-category-select",
+                    value: category_.value,
+                    options: category_options,
+                    attributes: {
+                      n: "device-log-category-select",
+                      "aria-label": "筛选设备日志类型",
+                    },
+                    onChange(event) {
+                      vm$.methods.setDeviceLogCategory(String(event.target.value));
+                    },
+                  }),
+                  Button(
+                    {
+                      class: "secondary-button",
+                      attributes: { n: "refresh-device-logs-button" },
+                      disabled: loading_,
+                      onClick() {
+                        return vm$.methods.refreshDeviceLogs(false);
+                      },
+                    },
+                    [refresh_label_],
+                  ),
+                ],
+              ),
+            ],
+          ),
+          Show({
+            when: computed(error_, Boolean),
+            ok() {
+              return View(
+                {
+                  class: "device-log-error",
+                  attributes: { n: "device-log-error", role: "alert" },
+                },
+                [error_],
+              );
+            },
+          }),
+          Show({
+            when: initial_loading_,
+            ok() {
+              return View(
+                {
+                  class: "empty device-log-loading",
+                  attributes: { n: "device-log-loading" },
+                },
+                ["正在加载设备日志…"],
+              );
+            },
+          }),
+          Show({
+            when: empty_visible_,
+            ok() {
+              return View(
+                {
+                  class: "empty device-log-empty",
+                  attributes: { n: "empty-device-logs" },
+                },
+                ["当前筛选条件下还没有日志。新连接和设备行为会自动记录。"],
+              );
+            },
+          }),
+          View(
+            {
+              class: "device-log-list",
+              attributes: { n: "device-log-list" },
+            },
+            [
+              For({
+                key: "id",
+                each: vm$.state.device_logs,
+                render(log_value) {
+                  return DeviceLogEntryView({ log: log_value });
+                },
+              }),
+            ],
+          ),
+          Show({
+            when: has_more_,
+            ok() {
+              return View(
+                {
+                  class: "device-log-load-more",
+                  attributes: { n: "device-log-load-more" },
+                },
+                [
+                  Button(
+                    {
+                      class: "secondary-button",
+                      attributes: { n: "load-older-device-logs-button" },
+                      disabled: loading_more_,
+                      onClick() {
+                        return vm$.methods.loadOlderDeviceLogs();
+                      },
+                    },
+                    [load_more_label_],
+                  ),
+                ],
+              );
+            },
+          }),
+        ],
       ),
     ],
   );
@@ -2212,6 +2895,19 @@ function DeviceView(props) {
         " · 最近活跃 " +
         format_time(device.last_seen_at),
   );
+  const reset_action_ = computed(
+    vm$.state.device_reset_actions,
+    (actions) => actions[device_id] || {},
+  );
+  const reset_button_label_ = computed(reset_action_, (action) =>
+    action.submitting ? "重置中…" : "强制重置",
+  );
+  const reset_button_disabled_ = computed(reset_action_, (action) =>
+    Boolean(action.submitting),
+  );
+  const reset_error_ = computed(reset_action_, (action) =>
+    String(action.error || ""),
+  );
   const methods_ = computed(device_, (device) => device.methods);
   const test_visible_ = computed(device_, (device) =>
     device.methods.includes("wxchannels.fetch"),
@@ -2276,13 +2972,70 @@ function DeviceView(props) {
           ),
           View(
             {
-              class: status_class_,
-              attributes: { n: "device-connection-status" },
+              class: "device-header-actions",
+              attributes: { n: "device-header-actions" },
             },
-            [status_label_],
+            [
+              View(
+                {
+                  class: status_class_,
+                  attributes: { n: "device-connection-status" },
+                },
+                [status_label_],
+              ),
+              Button(
+                {
+                  class: "secondary-button device-log-button",
+                  attributes: {
+                    n: "open-device-log-drawer-button",
+                    "aria-label": "查看设备日志",
+                  },
+                  onClick() {
+                    vm$.methods.openDeviceLogDrawer(device_id);
+                  },
+                },
+                ["日志"],
+              ),
+            ],
           ),
         ],
       ),
+      Show({
+        when: computed(status_, (status) => status === "busy"),
+        ok() {
+          return View(
+            {
+              class: "device-reset-actions",
+              attributes: { n: "device-reset-actions" },
+            },
+            [
+              Button(
+                {
+                  class: "danger-button",
+                  attributes: { n: "reset-device-button" },
+                  disabled: reset_button_disabled_,
+                  onClick() {
+                    return vm$.methods.resetDevice(device_id);
+                  },
+                },
+                [reset_button_label_],
+              ),
+              Show({
+                when: computed(reset_error_, Boolean),
+                ok() {
+                  return View(
+                    {
+                      class: "device-reset-error",
+                      attributes: { n: "device-reset-error", role: "alert" },
+                    },
+                    [reset_error_],
+                  );
+                },
+              }),
+            ],
+          );
+        },
+      }),
       View(
         {
           class: "device-method-section",
@@ -2513,6 +3266,7 @@ function ApplicationView() {
       }),
       DeviceListView({ store: vm$ }),
       AccessTokenDrawerView({ store: vm$ }),
+      DeviceLogDrawerView({ store: vm$ }),
       View(
         {
           class: "dashboard-footer",

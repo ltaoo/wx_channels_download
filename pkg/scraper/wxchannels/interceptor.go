@@ -21,6 +21,7 @@ import (
 // proxy interception rules.
 type InterceptorConfig struct {
 	Version               string
+	Mode                  string
 	DebugShowError        bool
 	DisableLocationToHome bool
 	GlobalScriptPath      string
@@ -83,6 +84,11 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 		asset_version = "static"
 	}
 	version_query := url.Values{"v": []string{asset_version}}
+	inline_assets := cfg.Mode == "release" || cfg.Mode == "prod"
+	inline_asset_options := frontend.StaticAssetMockOptions{
+		PlatformPrefix: InjectAssetsPath + "/",
+		PlatformFS:     InjectAssets(),
+	}
 	variables := cfg.FrontendVariables
 	if variables == nil {
 		variables = map[string]any{}
@@ -177,19 +183,27 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 
 				var injected strings.Builder
 				crossorigin_attr := ` crossorigin="anonymous"`
+				append_scripts := func(srcs ...string) {
+					if err := frontend.AppendRegisteredScripts(&injected, crossorigin_attr, inline_assets, inline_asset_options, srcs...); err != nil {
+						logger.Warn().Err(err).Msg("failed to inline registered scripts; using external assets")
+					}
+				}
+				append_stylesheets := func(hrefs ...string) {
+					if err := frontend.AppendRegisteredStylesheets(&injected, "", inline_assets, inline_asset_options, hrefs...); err != nil {
+						logger.Warn().Err(err).Msg("failed to inline registered stylesheets; using external assets")
+					}
+				}
 				if cfg.DebugShowError {
 					/** Global error capture and show dialog */
-					frontend.AppendScripts(&injected, crossorigin_attr, url_build("/inject/error.js", version_query))
+					append_scripts(url_build("/inject/error.js", version_query))
 				}
-				frontend.AppendStylesheets(&injected, "", url_build("/inject/components.css", version_query))
-				frontend.AppendStylesheets(&injected, "", url_build("/public/timeless/0.32.0/timeless.weui.css"))
-				frontend.AppendScripts(
-					&injected,
-					crossorigin_attr,
-					url_build("/public/timeless/0.32.0/timeless.umd.min.js"),
-					url_build("/public/timeless/0.32.0/timeless.weui.umd.min.js"),
-					url_build("/public/timeless/0.32.0/timeless.dom.umd.min.js"),
-					url_build("/public/timeless/0.32.0/timeless.web.umd.min.js"),
+				append_stylesheets(url_build("/inject/components.css", version_query))
+				append_stylesheets(url_build("/public/timeless/0.33.0/timeless.weui.css"))
+				append_scripts(
+					url_build("/public/timeless/0.33.0/timeless.umd.min.js"),
+					url_build("/public/timeless/0.33.0/timeless.weui.umd.min.js"),
+					url_build("/public/timeless/0.33.0/timeless.dom.umd.min.js"),
+					url_build("/public/timeless/0.33.0/timeless.web.umd.min.js"),
 				)
 				frontend_config := make(map[string]any, len(variables)+2)
 				for key, value := range variables {
@@ -208,9 +222,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 					"",
 					fmt.Sprintf(`window.__d_config = %s;`, frontend_config_byte),
 				)
-				frontend.AppendScripts(
-					&injected,
-					crossorigin_attr,
+				append_scripts(
 					url_build("/inject/eventbus.js", version_query),
 					url_build("/public/dl.utils.js", version_query),
 					url_build("/public/dl.sdk.js", version_query),
@@ -219,16 +231,12 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 					url_build("/inject/components.js", version_query),
 					url_build("/public/virtual-list-view.js", version_query),
 				)
-				frontend.AppendScripts(
-					&injected,
-					crossorigin_attr,
+				append_scripts(
 					url_build("/inject/download/model.js", version_query),
 					url_build("/inject/download/view.js", version_query),
 					url_build("/inject/download/panel.js", version_query),
 				)
-				frontend.AppendScripts(
-					&injected,
-					crossorigin_attr,
+				append_scripts(
 					asset_url(asset_base_url, "/inject/channels.events.js", version_query),
 					asset_url(asset_base_url, "/inject/channels.env.js", version_query),
 					asset_url(asset_base_url, "/inject/channels.utils.js", version_query),
@@ -246,16 +254,16 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 					frontend.AppendInlineScript(&injected, "", cfg.InjectContentScript)
 				}
 				if pathname == "/web/pages/home" {
-					frontend.AppendScripts(&injected, crossorigin_attr, asset_url(asset_base_url, "/inject/channels.home.js", version_query))
+					append_scripts(asset_url(asset_base_url, "/inject/channels.home.js", version_query))
 				}
 				if pathname == "/web/pages/feed" {
-					frontend.AppendScripts(&injected, crossorigin_attr, asset_url(asset_base_url, "/inject/channels.feed.js", version_query))
+					append_scripts(asset_url(asset_base_url, "/inject/channels.feed.js", version_query))
 				}
 				if pathname == "/web/pages/live" {
-					frontend.AppendScripts(&injected, crossorigin_attr, asset_url(asset_base_url, "/inject/channels.live.js", version_query))
+					append_scripts(asset_url(asset_base_url, "/inject/channels.live.js", version_query))
 				}
 				if pathname == "/web/pages/profile" {
-					frontend.AppendScripts(&injected, crossorigin_attr, asset_url(asset_base_url, "/inject/channels.profile.js", version_query))
+					append_scripts(asset_url(asset_base_url, "/inject/channels.profile.js", version_query))
 				}
 				html = strings.Replace(html, "<head>", "<head>\n"+injected.String(), 1)
 				ctx.SetResponseBody(html)
@@ -323,7 +331,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 						$1;
 					})();
 					var data = result.data;
-					// console.log("before Init", data);
+					console.log("finderInit result", result);
 					typeof WXU !== "undefined" && WXU.emit("channels:Init", data);
 					return result;
 				}async`
@@ -335,7 +343,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 						$2;
 					})();
 					var feeds = result.data.object;
-					// console.log("before PCFlowLoaded", result.data);
+					console.log("finderPcFlow result", result, $1);
 					typeof WXU !== "undefined" && WXU.emit("channels:PCFlowLoaded", feeds);
 					return result;
 				}async`
@@ -347,7 +355,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 						$1;
 					})();
 					var feeds = result.data ? result.data.object : [];
-					// console.log("before RecommendFeedsLoaded", result.data);
+					console.log("getRecommendTabsFromService", result);
 					typeof WXU !== "undefined" && WXU.emit("channels:RecommendFeedsLoaded", feeds);
 					return result;
 				}async`
@@ -359,7 +367,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 						$2;
 					})();
 					var feeds = result.data.object;
-					// console.log("before RecommendFeedsLoaded", result.data);
+					console.log("finderGetRecommend result", result, $1);
 					typeof WXU !== "undefined" && WXU.emit("channels:RecommendFeedsLoaded", feeds);
 					return result;
 				}async`
@@ -371,7 +379,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 						$2;
 					})();
 					var feed = result.data.object;
-					// console.log("before FeedProfileLoaded", result.data);
+					console.log("finderGetCommentDetail", result.data, $1);
 					typeof WXU !== "undefined" && WXU.emit("channels:OnFeedProfileLoaded", feed);
 					return result;
 				}async`
@@ -382,7 +390,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 					var result = await (async () => {
 						$2;
 					})();
-					// console.log("before CommentListLoaded", result.data, $1);
+					console.log("finderGetCommentList result", result, $1);
 					typeof WXU !== "undefined" && WXU.emit("channels:FeedCommentListLoaded", result.data);
 					return result;
 				}async`
@@ -393,7 +401,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 					var result = await (async () => {
 						$2;
 					})();
-					// console.log("before finderPCSearch", result, $1);
+					console.log("finderPCSearch result", result, $1);
 					return result;
 				}async`
 						js_script = js_finder_pc_search_reg.ReplaceAllString(js_script, js_finder_pc_search)
@@ -403,7 +411,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 					var result = await (async () => {
 						$2;
 					})();
-					// console.log("before finderSearch", result, $1);
+					console.log("finderSearch result", result, $1);
 					return result;
 				}async`
 						js_script = js_finder_search_reg.ReplaceAllString(js_script, js_finder_search)
@@ -411,11 +419,10 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 
 					{
 						js_finder_get_follow_list := `async finderGetFollowList($1) {
-						console.log("finderGetFollowList payload", $1);
 						var result = await (async () => {
 							$2;
 						})();
-						console.log("finderGetFollowList result", result);
+						console.log("finderGetFollowList result", result, $1);
 						return result;
 					}async`
 						js_script = js_finder_get_follow_list_reg.ReplaceAllString(js_script, js_finder_get_follow_list)
@@ -426,7 +433,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 						var result = await (async () => {
 							$2;
 						})();
-						console.log("finderGetPlayHistory result", $1, result);
+						console.log("finderGetPlayHistory result", result, $1);
 						return result;
 					}async`
 						js_script = js_finder_get_play_history_reg.ReplaceAllString(js_script, js_finder_get_play_history)
@@ -437,7 +444,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 							$2;
 						})();
 						var feeds = result.data.object;
-						// console.log("before finderGetInteractionedFeedList", result, $1);
+						console.log("finderGetInteractionedFeedList result", result, $1);
 						typeof WXU !== "undefined" && WXU.emit("channels:InteractionedFeedsLoaded", feeds);
 						return result;
 					}}const`
@@ -449,7 +456,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 							$2;
 						})();
 						var data = result.data.object;
-						// console.log("before finderGetFeedH5Url", result, $1);
+						console.log("finderGetFeedH5Url result", result, $1);
 						typeof WXU !== "undefined" && WXU.emit("channels:GetFeedH5Url", data);
 						return result;
 					}}const`
@@ -461,7 +468,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 						$2;
 					})();
 					var feeds = result.data.object;
-					// console.log("before UserFeedsLoaded", result.data, $1);
+					console.log("finderUserPage", result, $1);
 					typeof WXU !== "undefined" && WXU.emit("channels:UserFeedsLoaded", feeds);
 					return result;
 				}async`
@@ -473,7 +480,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 							$2;
 						})();
 						var feeds = result.data.object;
-						// console.log("before LiveUserFeedsLoaded", result.data, $1);
+						console.log("finderLiveUserPage", result, $1);
 						typeof WXU !== "undefined" && WXU.emit("channels:LiveUserFeedsLoaded", feeds);
 						return result;
 					}async`
@@ -485,7 +492,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 						$2;
 					})();
 					var live = result.data;
-					// console.log("before LiveProfileLoaded", result.data);
+					console.log("finderGetLiveInfo result", result, $1);
 					typeof WXU !== "undefined" && WXU.emit("channels:OnLiveProfileLoaded", live);
 					return result;
 				}async`
@@ -497,7 +504,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 						$2;
 					})();
 					var data = result.data;
-					// console.log("before JoinLive", data);
+					console.log("JoinLive result", result, $1);
 					typeof WXU !== "undefined" && WXU.emit("channels:JoinLive", data);
 					return result;
 				}async`

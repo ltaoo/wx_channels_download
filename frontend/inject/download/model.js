@@ -6,7 +6,6 @@
 var APIOrigin = WXEnv.get("apiOrigin");
 var DownloaderOrigin = WXEnv.get("downloaderOrigin");
 var DownloaderWSURL = WXEnv.get("downloaderWSURL");
-var MaxRunning = WXEnv.get("maxRunning");
 var RemoteServerEnabled = WXEnv.get("remoteServerEnabled");
 var InDocker = WXEnv.get("inDocker");
 var DownloadFilenameTemplate = WXEnv.get("downloadFilenameTemplate");
@@ -707,11 +706,6 @@ function DownloaderPanelViewModel(props = {}) {
   const websocket_connected_ = ref(false);
   const websocket_connecting_ = ref(false);
   const selected_task_ids_ = refarr([]);
-  const running_count_ = computed(tasks_, (t) => {
-    return t.filter(
-      (v) => normalize_download_status(v && v.status) === "running",
-    ).length;
-  });
   const status_counts_ = ref(empty_download_status_counts());
   const active_status_ = ref(initial_status);
   const overwrite_ = refobj({ value: "overwrite" });
@@ -2322,15 +2316,6 @@ function DownloaderPanelViewModel(props = {}) {
       }
     },
     async startAllTasks() {
-      if (running_count_.value >= MaxRunning) {
-        WXU.warning({
-          msg:
-            "已达到最大同时下载任务数（" +
-            MaxRunning +
-            "），请等待当前任务完成",
-        });
-        return;
-      }
       const r = await reqs.task.startAll.run({
         status: getActiveStatusFilter(),
       });
@@ -3578,8 +3563,6 @@ function DownloaderPanelViewModel(props = {}) {
       /** Total number of download tasks */
       task_count: task_count_,
       list_render_enabled: list_render_enabled_,
-      /** Total number of currently downloading tasks */
-      running_count: running_count_,
       delete_task: delete_task_,
       delete_task_ids: delete_task_ids_,
       pending_delete_task_count: pending_delete_task_count_,

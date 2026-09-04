@@ -16,6 +16,7 @@ import (
 // injection rule.
 type InterceptorConfig struct {
 	Version           string
+	Mode              string
 	GlobalScriptPath  string
 	FrontendVariables map[string]any
 }
@@ -37,6 +38,21 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 		asset_version = "static"
 	}
 	version_query := url.Values{"v": []string{asset_version}}
+	inline_assets := cfg.Mode == "release" || cfg.Mode == "prod"
+	inline_asset_options := frontend.StaticAssetMockOptions{
+		PlatformPrefix: InjectAssetsPath + "/",
+		PlatformFS:     InjectAssets(),
+	}
+	append_scripts := func(b *strings.Builder, srcs ...string) {
+		if err := frontend.AppendRegisteredScripts(b, "", inline_assets, inline_asset_options, srcs...); err != nil {
+			logger.Warn().Err(err).Msg("failed to inline registered scripts; using external assets")
+		}
+	}
+	append_stylesheets := func(b *strings.Builder, hrefs ...string) {
+		if err := frontend.AppendRegisteredStylesheets(b, "", inline_assets, inline_asset_options, hrefs...); err != nil {
+			logger.Warn().Err(err).Msg("failed to inline registered stylesheets; using external assets")
+		}
+	}
 
 	plugin := &echo.Plugin{
 		Match: "zhihu.com",
@@ -65,12 +81,12 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 			html := response_body
 
 			var early_injected strings.Builder
-			frontend.AppendScripts(&early_injected, "", url_build("/inject/fetch.js", version_query))
-			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.32.0/timeless.umd.min.js", version_query))
-			frontend.AppendStylesheets(&early_injected, "", url_build("/public/timeless/0.32.0/timeless.weui.css", version_query))
-			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.32.0/timeless.weui.umd.min.js", version_query))
-			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.32.0/timeless.dom.umd.min.js", version_query))
-			frontend.AppendScripts(&early_injected, "", url_build("/public/timeless/0.32.0/timeless.web.umd.min.js", version_query))
+			append_scripts(&early_injected, url_build("/inject/fetch.js", version_query))
+			append_scripts(&early_injected, url_build("/public/timeless/0.33.0/timeless.umd.min.js", version_query))
+			append_stylesheets(&early_injected, url_build("/public/timeless/0.33.0/timeless.weui.css", version_query))
+			append_scripts(&early_injected, url_build("/public/timeless/0.33.0/timeless.weui.umd.min.js", version_query))
+			append_scripts(&early_injected, url_build("/public/timeless/0.33.0/timeless.dom.umd.min.js", version_query))
+			append_scripts(&early_injected, url_build("/public/timeless/0.33.0/timeless.web.umd.min.js", version_query))
 			html = strings.Replace(html, "<head>", "<head>"+early_injected.String(), 1)
 
 			var injected strings.Builder
@@ -82,18 +98,16 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 			frontend_config["assets_base_url"] = asset_base_url
 			frontend_config_byte, _ := json.Marshal(frontend_config)
 			frontend.AppendInlineScript(&injected, "", fmt.Sprintf(`window.__d_config = %s;`, frontend_config_byte))
-			frontend.AppendScripts(
+			append_scripts(
 				&injected,
-				"",
 				url_build("/inject/eventbus.js", version_query),
 				url_build("/public/dl.utils.js", version_query),
 				url_build("/public/dl.sdk.js", version_query),
 				url_build("/inject/env.js", version_query),
 				url_build("/inject/utils.js", version_query),
 			)
-			frontend.AppendScripts(
+			append_scripts(
 				&injected,
-				"",
 				url_build("/inject/download/model.js", version_query),
 				asset_url(asset_base_url, "/inject/zhihu.main.js", version_query),
 			)

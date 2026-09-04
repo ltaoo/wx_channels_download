@@ -4,7 +4,7 @@ if (!Runtime) {
   throw new Error("组件库无法启动：Timeless 运行时未加载");
 }
 
-const { Fragment, For, Match, Show, View, combine, computed, ref, refobj } = Runtime;
+const { Fragment, For, Match, Show, View, Img, combine, computed, ref, refobj } = Runtime;
 const { ui, vm } = Runtime;
 
 function class_names(values) {
@@ -68,29 +68,6 @@ function dispose_owned_store(store) {
   }
 }
 
-function lazy_img_dom_element(event) {
-  let target = event && event.target ? event.target : event;
-  for (let depth = 0; depth < 4; depth += 1) {
-    if (
-      target &&
-      target.nodeType === 1 &&
-      typeof target.addEventListener === "function"
-    ) {
-      return target;
-    }
-    if (target && typeof target.get$elm === "function") {
-      target = target.get$elm();
-      continue;
-    }
-    if (target && target.$elm) {
-      target = target.$elm;
-      continue;
-    }
-    break;
-  }
-  return null;
-}
-
 function lazy_img_source(value) {
   const resolved = source_value(value, "");
   if (resolved === null || resolved === undefined) {
@@ -100,95 +77,79 @@ function lazy_img_source(value) {
 }
 
 function create_lazy_img_model(props) {
-  let image = null;
-  let settled = false;
-  let current_src = lazy_img_source(props.src);
-  let current_srcset = lazy_img_source(props.srcset);
+  const eager = props.loading === "eager";
   const failed_ = ref(false);
+  const exposed_ = ref(eager);
+  const loaded_ = ref(false);
+  const src_ = ref(eager ? lazy_img_source(props.src) : "");
+  const srcset_ = ref(eager ? lazy_img_source(props.srcset) : "");
   const unlistens = [];
+  let exposed = eager;
 
   function handle_load(event) {
-    settled = true;
-    image?.setAttribute("data-lazy-img-state", "loaded");
     failed_.as(false);
+    loaded_.as(true);
     if (typeof props.onLoad === "function") {
       props.onLoad(event);
     }
   }
 
   function handle_error(event) {
-    settled = true;
-    image?.setAttribute("data-lazy-img-state", "error");
+    console.log('handle error', event);
     failed_.as(true);
+    loaded_.as(false);
     if (typeof props.onError === "function") {
       props.onError(event);
     }
   }
 
   function reset_failure() {
-    settled = false;
     failed_.as(false);
+    loaded_.as(false);
   }
 
-  function detach_image() {
-    if (!image) return;
-    image.removeEventListener("load", handle_load);
-    image.removeEventListener("error", handle_error);
-    image = null;
-    settled = false;
+  function expose() {
+    if (exposed) return;
+    exposed = true;
+    srcset_.as(lazy_img_source(props.srcset));
+    src_.as(lazy_img_source(props.src));
+    exposed_.as(true);
   }
 
-  const src_unlisten = subscribe_source(props.src, (value) => {
-    current_src = lazy_img_source(value);
+  function sync_source() {
     reset_failure();
-  });
-  const srcset_unlisten = subscribe_source(props.srcset, (value) => {
-    current_srcset = lazy_img_source(value);
-    reset_failure();
-  });
+    if (!exposed) return;
+    srcset_.as(lazy_img_source(props.srcset));
+    src_.as(lazy_img_source(props.src));
+  }
+
+  const src_unlisten = subscribe_source(props.src, sync_source);
+  const srcset_unlisten = subscribe_source(props.srcset, sync_source);
   if (src_unlisten) unlistens.push(src_unlisten);
   if (srcset_unlisten) unlistens.push(srcset_unlisten);
 
   return {
     state: {
       failed: failed_,
+      exposed: exposed_,
+      loaded: loaded_,
+      src: src_,
+      srcset: srcset_,
     },
     methods: {
-      mount(event) {
-        image = lazy_img_dom_element(event);
-        if (image) {
-          image.setAttribute("data-lazy-img-state", "loading");
-          image.addEventListener("load", handle_load);
-          image.addEventListener("error", handle_error);
-          if (image.complete && (current_src || current_srcset)) {
-            const mounted_image = image;
-            queueMicrotask(() => {
-              if (image !== mounted_image || settled) return;
-              if (mounted_image.naturalWidth > 0) {
-                handle_load({ target: mounted_image });
-              } else {
-                handle_error({ target: mounted_image });
-              }
-            });
-          }
-        }
-        if (typeof props.onMounted === "function") {
-          props.onMounted(event);
-        }
-      },
+      expose,
       load: handle_load,
       error: handle_error,
-      unmount_image: detach_image,
       destroy() {
-        detach_image();
         while (unlistens.length > 0) {
           const unlisten = unlistens.pop();
           if (typeof unlisten === "function") unlisten();
         }
         failed_.destroy?.();
-        if (typeof props.onUnmounted === "function") {
-          props.onUnmounted();
-        }
+        exposed_.destroy?.();
+        loaded_.destroy?.();
+        src_.destroy?.();
+        srcset_.destroy?.();
       },
     },
   };
@@ -209,8 +170,10 @@ function lazy_img_attributes(props) {
     height: props.height,
     loading: props.loading || "lazy",
     decoding: props.decoding,
+    srcset: props.srcset,
     crossorigin: props.crossOrigin,
     sizes: props.sizes,
+    "data-lazy-img-state": props.loaded,
     referrerpolicy: props.referrerPolicy,
     fetchpriority: props.fetchPriority,
     usemap: props.useMap,
@@ -241,12 +204,35 @@ function lazy_img_failure_attributes(props) {
     "ismap",
   ].forEach((name) => delete attributes[name]);
   attributes["data-lazy-img-state"] = "error";
+  attributes.n = attributes.n || "lazy-img-error";
   attributes.role = attributes.role || "img";
   attributes["aria-label"] =
     attributes["aria-label"] ||
     (alt ? `${alt}（图片加载失败）` : "图片加载失败");
   attributes.title = attributes.title || "图片加载失败";
   return attributes;
+}
+
+function lazy_img_failure_mark() {
+  return View({
+    class: "dm-lazy-img-error-symbol",
+    attributes: {
+      n: "lazy-img-error-symbol",
+      "aria-hidden": "true",
+    },
+  });
+}
+
+function lazy_img_placeholder(props) {
+  return View({
+    class: static_classes([props.class, "dm-lazy-img-placeholder"]),
+    style: props.style,
+    attributes: {
+      n: "lazy-img-placeholder",
+      "aria-hidden": "true",
+    },
+    onExpose: props.onExpose,
+  });
 }
 
 export function LazyImg(props = {}) {
@@ -266,6 +252,7 @@ export function LazyImg(props = {}) {
     isMap,
     onLoad,
     onError,
+    onExpose,
     onMounted,
     onUnmounted,
     attributes,
@@ -277,16 +264,16 @@ export function LazyImg(props = {}) {
   const model = create_lazy_img_model({
     src: image_src,
     srcset: image_srcset,
+    loading,
     onLoad,
     onError,
-    onMounted,
-    onUnmounted,
   });
 
   return Fragment(
     {
       onUnmounted() {
         model.methods.destroy();
+        if (typeof onUnmounted === "function") onUnmounted();
       },
     },
     [
@@ -299,35 +286,60 @@ export function LazyImg(props = {}) {
               class: static_classes([rest.class, "dm-lazy-img-error"]),
               attributes: lazy_img_failure_attributes({ attributes, alt }),
             },
-            [Runtime.Icon({ name: "file", size: 18 })],
+            [lazy_img_failure_mark()],
           );
         },
         else() {
-          return Runtime.Img({
-            ...rest,
-            src: image_src,
-            srcset: image_srcset,
-            attributes: lazy_img_attributes({
-              attributes,
-              alt,
-              width,
-              height,
-              loading,
-              decoding,
-              crossOrigin,
-              sizes,
-              referrerPolicy,
-              fetchPriority,
-              useMap,
-              isMap,
-            }),
-            onMounted(event) {
-              model.methods.mount(event);
+          return View(
+            {
+              class: static_classes([rest.class, "dm-lazy-img-frame"]),
+              style: rest.style,
+              attributes: { n: "lazy-img-frame" },
             },
-            onUnmounted() {
-              model.methods.unmount_image();
-            },
-          });
+            [
+              lazy_img_placeholder({
+                onExpose(event) {
+                  model.methods.expose(event);
+                },
+              }),
+              Show({
+                when: model.state.exposed,
+                ok() {
+                  return Img({
+                    ...rest,
+                    class: static_classes([rest.class, "dm-lazy-img-image"]),
+                    src: model.state.src,
+                    attributes: lazy_img_attributes({
+                      attributes,
+                      alt,
+                      width,
+                      height,
+                      loading,
+                      decoding,
+                      srcset: model.state.srcset,
+                      loaded: model.state.loaded,
+                      crossOrigin,
+                      sizes,
+                      referrerPolicy,
+                      fetchPriority,
+                      useMap,
+                      isMap,
+                    }),
+                    onLoad: model.methods.load,
+                    onError: model.methods.error,
+                    onExpose(event) {
+                      model.methods.expose();
+                      if (typeof onExpose === "function") onExpose(event);
+                    },
+                    onMounted,
+                  });
+                },
+                else() {
+                  return null;
+                },
+              }),
+            ],
+          );
         },
       }),
     ],

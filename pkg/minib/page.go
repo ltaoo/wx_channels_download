@@ -21,6 +21,7 @@ import (
 	"github.com/evanw/esbuild/pkg/api"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
+	"golang.org/x/net/publicsuffix"
 
 	"wx_channel/pkg/clawreq"
 )
@@ -36,7 +37,7 @@ const (
 	max_host_callbacks    = 256
 	max_dynamic_scripts   = 64
 	max_dynamic_resources = 256
-	max_event_loop_rounds = 8
+	max_event_loop_rounds = 32
 	max_call_stack_depth  = 1024
 	max_timer_time_ms     = 1000
 )
@@ -69,6 +70,12 @@ type NavigateOptions struct {
 	// WaitUntil controls which lifecycle milestone completes navigation. The
 	// zero value is WaitUntilLoad for backward compatibility.
 	WaitUntil NavigationWaitUntil
+	// WaitForSelector returns as soon as the DOM matches this CSS selector.
+	// If WaitForContent is also set, both conditions must match.
+	WaitForSelector string
+	// WaitForContent returns as soon as the DOM text contains this literal
+	// string. Script, style, and template source text is ignored.
+	WaitForContent string
 	// CaptureHAR records request and response bodies for later HAR export.
 	CaptureHAR bool
 	// HAROmitBodies records request/response metadata without retaining body
@@ -77,6 +84,9 @@ type NavigateOptions struct {
 	// HARMaxBodyBytes caps the total raw request/response bytes retained in the
 	// HAR. Zero is unlimited. Entries beyond the budget retain metadata only.
 	HARMaxBodyBytes int64
+	// RequestHeaderModifier may update final request headers after session
+	// cookies are merged. It applies only to this navigation.
+	RequestHeaderModifier func(*http.Request) error
 	// RuntimeInitializer installs site-specific JavaScript compatibility hooks
 	// before page scripts. The standard window and DOM already exist unless
 	// UseCustomRuntime is enabled.
@@ -137,6 +147,8 @@ type ScriptFailure struct {
 // Page is the result of a browser-like navigation.
 type Page struct {
 	URL                  string
+	NavigationHistory    []string
+	NavigationRequests   []string
 	StatusCode           int
 	Headers              http.Header
 	ContentType          string
@@ -158,12 +170,16 @@ type Page struct {
 	javascript_timeout   time.Duration
 	resource_timeout     time.Duration
 	wait_until           NavigationWaitUntil
+	wait_for_selector    string
+	wait_for_content     string
+	wait_for_matcher     cascadia.SelectorGroup
 	runtime_initializer  func(*goja.Runtime, *Page) error
 	runtime_finalizer    func(*goja.Runtime, *Page) error
 	runtime_cleanup      func()
 	use_custom_runtime   bool
 	har_data             []byte
 	navigation_url       string
+	navigate_options     NavigateOptions
 }
 
 type script_job struct {
@@ -244,6 +260,10 @@ type page_runtime struct {
 	nodes                 map[*html.Node]*goja.Object
 	object_nodes          map[*goja.Object]*html.Node
 	fragments             map[*html.Node]bool
+	shadow_roots          map[*html.Node]*html.Node
+	shadow_hosts          map[*html.Node]*html.Node
+	shadow_modes          map[*html.Node]string
+	adopted_style_sheets  map[*html.Node]goja.Value
 	template_contents     map[*html.Node]*html.Node
 	styles                map[*html.Node]*goja.Object
 	style_blocks          map[*html.Node]*css_declaration_block
@@ -259,6 +279,7 @@ type page_runtime struct {
 	dynamic_styles        []*html.Node
 	dynamic_resources     []*html.Node
 	dynamic_seen          map[*html.Node]bool
+	created_scripts       map[*html.Node]bool
 	custom_elements       map[string]*custom_element_definition
 	custom_waiters        map[string][]func(interface{}) error
 	custom_constructed    map[*html.Node]bool
@@ -275,6 +296,7 @@ type page_runtime struct {
 	current_script_url    string
 	ready_state           string
 	user_agent            string
+	request_headers       http.Header
 	disable_css           bool
 	javascript_timeout    time.Duration
 	wait_until            NavigationWaitUntil
@@ -287,6 +309,8 @@ type page_runtime struct {
 	blob_urls             map[string]string
 	next_blob_id          int64
 	use_custom_runtime    bool
+	wait_active           bool
+	wait_matched          bool
 }
 
 // Navigate fetches an HTML document, builds its DOM, downloads HTML-discovered
@@ -307,18 +331,24 @@ func (b *MiniBrowser) Navigate(ctx context.Context, raw_url string, headers http
 	if len(options) > 0 {
 		navigate_options = options[len(options)-1]
 	}
+	navigate_options.WaitForSelector = strings.TrimSpace(navigate_options.WaitForSelector)
 	if err := validate_navigate_options(navigate_options); err != nil {
 		return nil, err
 	}
 	if navigate_options.WaitUntil == "" {
 		navigate_options.WaitUntil = WaitUntilLoad
 	}
+	if navigate_options.RequestHeaderModifier != nil {
+		ctx = with_request_header_modifier(ctx, navigate_options.RequestHeaderModifier)
+	}
 	var har_recorder *har_recorder
 	if navigate_options.CaptureHAR {
 		har_recorder = new_har_recorder(time.Now(), navigate_options.HAROmitBodies, navigate_options.HARMaxBodyBytes)
 		ctx = with_har_recorder(ctx, har_recorder)
 	}
-	page, err := b.navigate(ctx, raw_url, headers, navigate_options, 0)
+	navigation_ctx, cancel_navigation := context.WithCancel(ctx)
+	defer cancel_navigation()
+	page, err := b.navigate(navigation_ctx, raw_url, headers, navigate_options, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -344,12 +374,31 @@ func validate_navigate_options(options NavigateOptions) error {
 	if options.HARMaxBodyBytes < 0 {
 		return fmt.Errorf("minib: HARMaxBodyBytes cannot be negative")
 	}
+	if options.WaitForSelector != "" {
+		if _, err := cascadia.ParseGroup(options.WaitForSelector); err != nil {
+			return fmt.Errorf("minib: invalid WaitForSelector %q: %w", options.WaitForSelector, err)
+		}
+	}
 	switch options.WaitUntil {
 	case "", WaitUntilLoad, WaitUntilDOMContentLoaded:
 		return nil
 	default:
 		return fmt.Errorf("minib: unsupported WaitUntil value %q", options.WaitUntil)
 	}
+}
+
+func (page *Page) has_wait_condition() bool {
+	return page != nil && (page.wait_for_selector != "" || page.wait_for_content != "")
+}
+
+func (page *Page) wait_condition_met() bool {
+	if !page.has_wait_condition() || page.Document == nil {
+		return false
+	}
+	if page.wait_for_selector != "" && cascadia.Query(page.Document, page.wait_for_matcher) == nil {
+		return false
+	}
+	return page.wait_for_content == "" || strings.Contains(rendered_text_content(page.Document), page.wait_for_content)
 }
 
 func (b *MiniBrowser) navigate(ctx context.Context, raw_url string, headers http.Header, navigate_options NavigateOptions, navigation_count int) (*Page, error) {
@@ -378,6 +427,7 @@ func (b *MiniBrowser) navigate(ctx context.Context, raw_url string, headers http
 	}
 	page := &Page{
 		URL:                  final_url,
+		NavigationHistory:    []string{final_url},
 		StatusCode:           response.StatusCode,
 		Headers:              response.Header.Clone(),
 		ContentType:          response.ContentType(),
@@ -392,18 +442,27 @@ func (b *MiniBrowser) navigate(ctx context.Context, raw_url string, headers http
 		javascript_timeout:   navigate_options.JavaScriptTimeout,
 		resource_timeout:     navigate_options.ResourceTimeout,
 		wait_until:           navigate_options.WaitUntil,
+		wait_for_selector:    navigate_options.WaitForSelector,
+		wait_for_content:     navigate_options.WaitForContent,
 		runtime_initializer:  navigate_options.RuntimeInitializer,
 		runtime_finalizer:    navigate_options.RuntimeFinalizer,
 		runtime_cleanup:      navigate_options.RuntimeCleanup,
 		use_custom_runtime:   navigate_options.UseCustomRuntime,
+		navigate_options:     navigate_options,
+	}
+	if page.wait_for_selector != "" {
+		page.wait_for_matcher, _ = cascadia.ParseGroup(page.wait_for_selector)
 	}
 	base_url := document_base_url(document, page_url)
-	jobs := discover_page_resources(page, base_url, navigate_options)
-	b.download_resources(ctx, page, page_url, navigate_options.DisableCache, navigate_options.ResourceTimeout)
+	var jobs []script_job
+	if !page.wait_condition_met() {
+		jobs = discover_page_resources(page, base_url, navigate_options)
+		b.download_resources(ctx, page, page_url, document_headers, navigate_options.DisableCache, navigate_options.ResourceTimeout)
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := b.execute_page(ctx, page, page_url, jobs, document_headers.Get("User-Agent")); err != nil {
+	if err := b.execute_page(ctx, page, page_url, jobs, document_headers); err != nil {
 		return nil, err
 	}
 	page.RenderedHTML = render_node(document)
@@ -416,7 +475,16 @@ func (b *MiniBrowser) navigate(ctx context.Context, raw_url string, headers http
 			next_headers = make(http.Header)
 		}
 		next_headers.Set("Referer", page.URL)
-		return b.navigate(ctx, page.navigation_url, next_headers, navigate_options, navigation_count+1)
+		navigated_page, navigate_err := b.navigate(ctx, page.navigation_url, next_headers, navigate_options, navigation_count+1)
+		if navigate_err != nil {
+			return nil, navigate_err
+		}
+		navigated_page.NavigationHistory = append([]string{page.URL}, navigated_page.NavigationHistory...)
+		navigated_page.NavigationRequests = append(append([]string(nil), page.NavigationRequests...), navigated_page.NavigationRequests...)
+		return navigated_page, nil
+	}
+	if page.has_wait_condition() && !page.wait_condition_met() {
+		return nil, fmt.Errorf("minib: navigation completed before wait condition matched")
 	}
 	return page, nil
 }
@@ -465,6 +533,18 @@ func is_redirect(status_code int) bool {
 
 func same_origin(first *url.URL, second *url.URL) bool {
 	return first != nil && second != nil && strings.EqualFold(first.Scheme, second.Scheme) && strings.EqualFold(first.Host, second.Host)
+}
+
+func same_site(first *url.URL, second *url.URL) bool {
+	if first == nil || second == nil || !strings.EqualFold(first.Scheme, second.Scheme) {
+		return false
+	}
+	first_site, first_err := publicsuffix.EffectiveTLDPlusOne(first.Hostname())
+	second_site, second_err := publicsuffix.EffectiveTLDPlusOne(second.Hostname())
+	if first_err != nil || second_err != nil {
+		return strings.EqualFold(first.Hostname(), second.Hostname())
+	}
+	return strings.EqualFold(first_site, second_site)
 }
 
 func document_base_url(document *html.Node, page_url *url.URL) *url.URL {
@@ -683,7 +763,7 @@ func resolve_resource_url(base_url *url.URL, raw_url string) (string, bool) {
 	return resolved_url.String(), true
 }
 
-func (b *MiniBrowser) download_resources(ctx context.Context, page *Page, page_url *url.URL, disable_cache bool, resource_timeout time.Duration) {
+func (b *MiniBrowser) download_resources(ctx context.Context, page *Page, page_url *url.URL, request_headers http.Header, disable_cache bool, resource_timeout time.Duration) {
 	resource_indexes := make([]int, len(page.Resources))
 	host_semaphores := make(map[string]chan struct{})
 	for index := range page.Resources {
@@ -729,7 +809,7 @@ func (b *MiniBrowser) download_resources(ctx context.Context, page *Page, page_u
 					}
 				}
 				resource_ctx, cancel := context_with_optional_timeout(ctx, resource_timeout)
-				resource = b.download_resource(resource_ctx, page_url, resource, disable_cache)
+				resource = b.download_resource(resource_ctx, page_url, request_headers, resource, disable_cache)
 				cancel()
 				if host_semaphore != nil {
 					<-host_semaphore
@@ -751,9 +831,9 @@ func (b *MiniBrowser) download_resources(ctx context.Context, page *Page, page_u
 	wait_group.Wait()
 }
 
-func (b *MiniBrowser) download_resource(ctx context.Context, page_url *url.URL, resource Resource, disable_cache bool) Resource {
+func (b *MiniBrowser) download_resource(ctx context.Context, page_url *url.URL, request_headers http.Header, resource Resource, disable_cache bool) Resource {
 	ctx = with_har_resource_type(ctx, string(resource.Kind))
-	headers := resource_headers(page_url, resource.URL, resource.Kind)
+	headers := resource_headers(page_url, request_headers, resource.URL, resource.Kind)
 	headers.Set("Priority", resource_priority_header(resource.fetch_priority))
 	if disable_cache {
 		disable_cache_headers(headers)
@@ -835,8 +915,11 @@ func disable_cache_headers(headers http.Header) {
 	headers.Set("Pragma", "no-cache")
 }
 
-func resource_headers(page_url *url.URL, resource_url string, kind ResourceKind) http.Header {
-	headers := clawreq.DefaultHeaders(clawreq.ProfileChrome)
+func resource_headers(page_url *url.URL, request_headers http.Header, resource_url string, kind ResourceKind) http.Header {
+	headers := request_headers.Clone()
+	if headers == nil {
+		headers = clawreq.DefaultHeaders(clawreq.ProfileChrome)
+	}
 	headers.Set("Referer", page_url.String())
 	headers.Set("Sec-Fetch-Mode", "no-cors")
 	headers.Del("Sec-Fetch-User")
@@ -867,7 +950,7 @@ func resource_headers(page_url *url.URL, resource_url string, kind ResourceKind)
 	return headers
 }
 
-func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *url.URL, jobs []script_job, user_agent string) error {
+func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *url.URL, jobs []script_job, request_headers http.Header) error {
 	b.js_mutex.Lock()
 	defer b.js_mutex.Unlock()
 	if b.page_runtime != nil {
@@ -879,49 +962,57 @@ func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *ur
 	}
 	b.js_runtime.SetMaxCallStackSize(max_call_stack_depth)
 	runtime := &page_runtime{
-		browser:             b,
-		ctx:                 ctx,
-		lifecycle_ctx:       b.lifecycle_ctx,
-		network_ctx:         ctx,
-		page:                page,
-		page_url:            page_url,
-		base_url:            document_base_url(page.Document, page_url),
-		vm:                  b.js_runtime,
-		nodes:               make(map[*html.Node]*goja.Object),
-		object_nodes:        make(map[*goja.Object]*html.Node),
-		fragments:           make(map[*html.Node]bool),
-		template_contents:   make(map[*html.Node]*html.Node),
-		styles:              make(map[*html.Node]*goja.Object),
-		style_blocks:        make(map[*html.Node]*css_declaration_block),
-		style_sheet_by_node: make(map[*html.Node]*css_style_sheet),
-		computed_styles:     make(map[*html.Node]map[string]css_property),
-		styles_dirty:        true,
-		dirty_style_roots:   make(map[*html.Node]bool),
-		listeners:           make(map[*html.Node]map[string][]*event_listener),
-		window_listeners:    make(map[string][]*event_listener),
-		dispatching_events:  make(map[*goja.Object]bool),
-		timer_by_id:         make(map[int64]*timer_job),
-		dynamic_seen:        make(map[*html.Node]bool),
-		custom_elements:     make(map[string]*custom_element_definition),
-		custom_waiters:      make(map[string][]func(interface{}) error),
-		custom_constructed:  make(map[*html.Node]bool),
-		custom_connected:    make(map[*html.Node]bool),
-		modules:             make(map[string]*module_record),
-		import_map:          parse_document_import_map(page.Document, document_base_url(page.Document, page_url)),
-		external_jobs:       make(chan func(), max_host_callbacks),
-		websockets:          make(map[*browser_websocket]bool),
-		blob_urls:           make(map[string]string),
-		ready_state:         "loading",
-		user_agent:          user_agent,
-		disable_css:         page.disable_css,
-		javascript_timeout:  page.javascript_timeout,
-		wait_until:          page.wait_until,
-		use_custom_runtime:  page.use_custom_runtime,
+		browser:              b,
+		ctx:                  ctx,
+		lifecycle_ctx:        b.lifecycle_ctx,
+		network_ctx:          ctx,
+		page:                 page,
+		page_url:             page_url,
+		base_url:             document_base_url(page.Document, page_url),
+		vm:                   b.js_runtime,
+		nodes:                make(map[*html.Node]*goja.Object),
+		object_nodes:         make(map[*goja.Object]*html.Node),
+		fragments:            make(map[*html.Node]bool),
+		shadow_roots:         make(map[*html.Node]*html.Node),
+		shadow_hosts:         make(map[*html.Node]*html.Node),
+		shadow_modes:         make(map[*html.Node]string),
+		adopted_style_sheets: make(map[*html.Node]goja.Value),
+		template_contents:    make(map[*html.Node]*html.Node),
+		styles:               make(map[*html.Node]*goja.Object),
+		style_blocks:         make(map[*html.Node]*css_declaration_block),
+		style_sheet_by_node:  make(map[*html.Node]*css_style_sheet),
+		computed_styles:      make(map[*html.Node]map[string]css_property),
+		styles_dirty:         true,
+		dirty_style_roots:    make(map[*html.Node]bool),
+		listeners:            make(map[*html.Node]map[string][]*event_listener),
+		window_listeners:     make(map[string][]*event_listener),
+		dispatching_events:   make(map[*goja.Object]bool),
+		timer_by_id:          make(map[int64]*timer_job),
+		dynamic_seen:         make(map[*html.Node]bool),
+		created_scripts:      make(map[*html.Node]bool),
+		custom_elements:      make(map[string]*custom_element_definition),
+		custom_waiters:       make(map[string][]func(interface{}) error),
+		custom_constructed:   make(map[*html.Node]bool),
+		custom_connected:     make(map[*html.Node]bool),
+		modules:              make(map[string]*module_record),
+		import_map:           parse_document_import_map(page.Document, document_base_url(page.Document, page_url)),
+		external_jobs:        make(chan func(), max_host_callbacks),
+		websockets:           make(map[*browser_websocket]bool),
+		blob_urls:            make(map[string]string),
+		ready_state:          "loading",
+		user_agent:           request_headers.Get("User-Agent"),
+		request_headers:      request_headers.Clone(),
+		disable_css:          page.disable_css,
+		javascript_timeout:   page.javascript_timeout,
+		wait_until:           page.wait_until,
+		use_custom_runtime:   page.use_custom_runtime,
+		wait_active:          page.has_wait_condition(),
 	}
 	b.page_runtime = runtime
 	defer func() {
 		runtime.ctx = b.lifecycle_ctx
 		runtime.network_ctx = b.lifecycle_ctx
+		runtime.wait_active = false
 	}()
 	b.js_runtime.SetPromiseRejectionTracker(func(promise *goja.Promise, operation goja.PromiseRejectionOperation) {
 		if operation == goja.PromiseRejectionReject {
@@ -942,10 +1033,16 @@ func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *ur
 	} else if err := runtime.install(); err != nil {
 		return fmt.Errorf("minib: initialize page runtime: %w", err)
 	}
+	if runtime.wait_condition_met() {
+		return nil
+	}
 	if page.runtime_initializer != nil {
 		if err := page.runtime_initializer(runtime.vm, page); err != nil {
 			return fmt.Errorf("minib: initialize site runtime: %w", err)
 		}
+	}
+	if runtime.wait_condition_met() {
+		return nil
 	}
 	if !runtime.use_custom_runtime {
 		runtime.refresh_style_sheets()
@@ -978,12 +1075,18 @@ func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *ur
 	ordered_jobs := append(blocking_jobs, async_jobs...)
 	ordered_jobs = append(ordered_jobs, deferred_jobs...)
 	for _, job := range ordered_jobs {
+		if runtime.wait_condition_met() {
+			return nil
+		}
 		if err := ctx.Err(); err != nil {
 			page.ScriptFailures = append(page.ScriptFailures, ScriptFailure{URL: job.source_url, Err: err})
 			break
 		}
 		failure_count := len(page.ScriptFailures)
 		runtime.execute_job(ctx, job)
+		if runtime.wait_condition_met() {
+			return nil
+		}
 		if job.resource_index >= 0 && !runtime.use_custom_runtime {
 			if len(page.ScriptFailures) == failure_count {
 				runtime.fire_node_event(job.node, "load")
@@ -991,13 +1094,22 @@ func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *ur
 				runtime.fire_node_event(job.node, "error")
 			}
 		}
+		if runtime.wait_condition_met() {
+			return nil
+		}
 		runtime.run_host_jobs(ctx)
+		if runtime.wait_condition_met() {
+			return nil
+		}
 		if !runtime.use_custom_runtime {
 			runtime.drain_dynamic_styles(ctx)
-			runtime.drain_dynamic_scripts(ctx)
+			runtime.drain_dynamic_scripts(ctx, false)
 			runtime.drain_dynamic_resources(ctx)
 		}
 		runtime.run_host_jobs(ctx)
+		if runtime.wait_condition_met() {
+			return nil
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -1007,6 +1119,9 @@ func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *ur
 			return fmt.Errorf("minib: finalize site runtime: %w", err)
 		}
 	}
+	if runtime.wait_condition_met() {
+		return nil
+	}
 	if runtime.use_custom_runtime {
 		runtime.pump_event_loop(ctx)
 		return nil
@@ -1014,16 +1129,33 @@ func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *ur
 	runtime.ready_state = "interactive"
 	runtime.fire_document_event("DOMContentLoaded")
 	har_recorder_from_context(ctx).mark_content_loaded()
-	if runtime.wait_until == WaitUntilDOMContentLoaded {
+	if runtime.wait_condition_met() {
 		return nil
 	}
+	if runtime.wait_until == WaitUntilDOMContentLoaded && !runtime.wait_active {
+		return nil
+	}
+	runtime.drain_dynamic_scripts(ctx, true)
 	runtime.pump_event_loop(ctx)
+	if runtime.wait_condition_met() {
+		return nil
+	}
 	runtime.ready_state = "complete"
 	runtime.fire_document_event("readystatechange")
 	runtime.fire_window_event("load")
 	har_recorder_from_context(ctx).mark_loaded()
 	runtime.pump_event_loop(ctx)
 	return nil
+}
+
+func (runtime *page_runtime) wait_condition_met() bool {
+	if runtime == nil || !runtime.wait_active {
+		return false
+	}
+	if !runtime.wait_matched {
+		runtime.wait_matched = runtime.page.wait_condition_met()
+	}
+	return runtime.wait_matched
 }
 
 func (runtime *page_runtime) execute_job(ctx context.Context, job script_job) {
@@ -1281,6 +1413,8 @@ EventTarget.prototype.dispatchEvent = function(event) {
 };
 function Window() {}
 Window.prototype = Object.create(EventTarget.prototype);
+function Navigator() {}
+Object.defineProperty(Navigator.prototype, Symbol.toStringTag, { value: 'Navigator' });
 function Node() {}
 Node.prototype = Object.create(EventTarget.prototype);
 Object.assign(Node, {
@@ -1344,13 +1478,24 @@ function DocumentType() {}
 DocumentType.prototype = Object.create(Node.prototype);
 function Element() {}
 Element.prototype = Object.create(Node.prototype);
-['children', 'tagName', 'localName', 'style', 'sheet', 'classList', 'dataset', 'attributes', 'contentWindow', 'contentDocument', 'content', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash', 'origin', 'clientWidth', 'clientHeight', 'offsetWidth', 'offsetHeight', 'scrollWidth', 'scrollHeight', 'scrollTop', 'scrollLeft'].forEach(function(name) { Object.defineProperty(Element.prototype, name, __minibNodeAccessor(name, false)); });
-['id', 'className', 'src', 'href', 'value', 'name', 'type', 'rel', 'content', 'charset', 'innerHTML'].forEach(function(name) { Object.defineProperty(Element.prototype, name, __minibNodeAccessor(name, true)); });
+['children', 'tagName', 'localName', 'style', 'sheet', 'classList', 'dataset', 'attributes', 'contentWindow', 'contentDocument', 'content', 'shadowRoot', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash', 'origin', 'clientWidth', 'clientHeight', 'offsetWidth', 'offsetHeight', 'scrollWidth', 'scrollHeight'].forEach(function(name) { Object.defineProperty(Element.prototype, name, __minibNodeAccessor(name, false)); });
+['id', 'className', 'src', 'href', 'value', 'name', 'type', 'rel', 'content', 'charset', 'dir', 'innerHTML', 'scrollTop', 'scrollLeft'].forEach(function(name) { Object.defineProperty(Element.prototype, name, __minibNodeAccessor(name, true)); });
 function __minibMethod(name) { return function() { var own = this['__minib_' + name]; if (typeof own === 'function') return own.apply(this, arguments); return __minib_node_call(this, name, Array.prototype.slice.call(arguments)); }; }
 ['appendChild', 'removeChild', 'replaceChild', 'insertBefore', 'cloneNode', 'contains'].forEach(function(name) { Node.prototype[name] = __minibMethod(name); });
 Node.prototype.hasChildNodes = function() { return this.firstChild !== null; };
 Node.prototype.getRootNode = function() { var node = this; while (node.parentNode) node = node.parentNode; return node; };
 Node.prototype.isSameNode = function(other) { return this === other; };
+Node.prototype.isEqualNode = function(other) {
+  if (other == null || this.nodeType !== other.nodeType || this.nodeName !== other.nodeName || this.nodeValue !== other.nodeValue) return false;
+  if (this.nodeType === Node.ELEMENT_NODE) {
+    var names = this.getAttributeNames(), otherNames = other.getAttributeNames();
+    if (names.length !== otherNames.length) return false;
+    for (var index = 0; index < names.length; index++) if (!other.hasAttribute(names[index]) || this.getAttribute(names[index]) !== other.getAttribute(names[index])) return false;
+  }
+  var child = this.firstChild, otherChild = other.firstChild;
+  while (child && otherChild) { if (!child.isEqualNode(otherChild)) return false; child = child.nextSibling; otherChild = otherChild.nextSibling; }
+  return child === null && otherChild === null;
+};
 Node.prototype.normalize = function() {
   var child = this.firstChild;
   while (child) {
@@ -1362,9 +1507,10 @@ Node.prototype.normalize = function() {
     child = next;
   }
 };
-['insertAdjacentElement', 'getAttribute', 'setAttribute', 'getAttributeNS', 'setAttributeNS', 'removeAttribute', 'removeAttributeNS', 'hasAttribute', 'hasAttributeNS', 'hasAttributes', 'querySelector', 'querySelectorAll', 'getElementsByTagName', 'getElementsByClassName', 'matches', 'closest', 'getBoundingClientRect', 'getClientRects', 'focus', 'blur', 'click', 'getContext', 'toDataURL'].forEach(function(name) { Element.prototype[name] = __minibMethod(name); });
+['insertAdjacentElement', 'getAttribute', 'setAttribute', 'getAttributeNS', 'setAttributeNS', 'removeAttribute', 'removeAttributeNS', 'hasAttribute', 'hasAttributeNS', 'hasAttributes', 'getAttributeNames', 'querySelector', 'querySelectorAll', 'getElementsByTagName', 'getElementsByClassName', 'matches', 'closest', 'attachShadow', 'getBoundingClientRect', 'getClientRects', 'focus', 'blur', 'click', 'getContext', 'toDataURL'].forEach(function(name) { Element.prototype[name] = __minibMethod(name); });
 function HTMLElement() { if (typeof __minib_construct_html_element === 'function') return __minib_construct_html_element(this); }
 HTMLElement.prototype = Object.create(Element.prototype);
+HTMLElement.prototype.select = function() {};
 function CustomElementRegistry() {}
 function HTMLBodyElement() {}
 HTMLBodyElement.prototype = Object.create(HTMLElement.prototype);
@@ -1413,10 +1559,11 @@ DOMTokenList.prototype.entries = function() { return Array.prototype.slice.call(
 DOMTokenList.prototype.keys = function() { return Array.prototype.keys.call(Array.prototype.slice.call(this)); };
 DOMTokenList.prototype.values = function() { return Array.prototype.values.call(Array.prototype.slice.call(this)); };
 DOMTokenList.prototype[Symbol.iterator] = DOMTokenList.prototype.values;
-Object.defineProperty(DOMTokenList.prototype, Symbol.toStringTag, { value: 'DOMTokenList' });
+Object.defineProperty(DOMTokenList.prototype, Symbol.toStringTag, { configurable: true, value: 'DOMTokenList' });
 function Document() {}
 Document.prototype = Object.create(Node.prototype);
-['createElement', 'createElementNS', 'createTextNode', 'createDocumentFragment', 'createComment', 'createEvent', 'createRange', 'importNode', 'getElementById', 'getElementsByTagName', 'getElementsByClassName', 'querySelector', 'querySelectorAll'].forEach(function(name) { Document.prototype[name] = __minibMethod(name); });
+Object.defineProperty(Document.prototype, 'adoptedStyleSheets', __minibNodeAccessor('adoptedStyleSheets', true));
+['createElement', 'createElementNS', 'createTextNode', 'createDocumentFragment', 'createComment', 'createEvent', 'createRange', 'importNode', 'getElementById', 'getElementsByName', 'getElementsByTagName', 'getElementsByClassName', 'querySelector', 'querySelectorAll', 'elementFromPoint', 'elementsFromPoint'].forEach(function(name) { Document.prototype[name] = __minibMethod(name); });
 Document.prototype.createTreeWalker = function(root, whatToShow, filter) { return new TreeWalker(root, whatToShow, filter); };
 function DOMParser() {}
 DOMParser.prototype.parseFromString = function(markup, mimeType) {
@@ -1431,11 +1578,17 @@ function DocumentFragment() {}
 DocumentFragment.prototype = Object.create(Node.prototype);
 Object.defineProperty(DocumentFragment.prototype, 'children', __minibNodeAccessor('children', false));
 ['querySelector', 'querySelectorAll'].forEach(function(name) { DocumentFragment.prototype[name] = __minibMethod(name); });
+function ShadowRoot() {}
+ShadowRoot.prototype = Object.create(DocumentFragment.prototype);
+Object.defineProperty(ShadowRoot.prototype, 'host', __minibNodeAccessor('host', false));
+Object.defineProperty(ShadowRoot.prototype, 'mode', __minibNodeAccessor('mode', false));
+Object.defineProperty(ShadowRoot.prototype, 'adoptedStyleSheets', __minibNodeAccessor('adoptedStyleSheets', true));
 function __minibConvertNodes(owner, values) {
   var documentForNodes = owner.nodeType === Node.DOCUMENT_NODE ? owner : owner.ownerDocument;
   return Array.prototype.map.call(values, function(value) { return value instanceof Node ? value : documentForNodes.createTextNode(String(value)); });
 }
 function __minibInstallParentNode(prototype) {
+  Object.defineProperty(prototype, 'firstElementChild', __minibNodeAccessor('firstElementChild', false));
   prototype.append = function() { __minibConvertNodes(this, arguments).forEach(function(node) { this.appendChild(node); }, this); };
   prototype.prepend = function() { var mark = this.firstChild; __minibConvertNodes(this, arguments).forEach(function(node) { this.insertBefore(node, mark); }, this); };
   prototype.replaceChildren = function() { var nodes = __minibConvertNodes(this, arguments); while (this.firstChild) this.removeChild(this.firstChild); nodes.forEach(function(node) { this.appendChild(node); }, this); };
@@ -1461,9 +1614,9 @@ Element.prototype.insertAdjacentText = function(position, data) { var text = thi
 Element.prototype.insertAdjacentHTML = function(position, markup) { var range = this.ownerDocument.createRange(); range.selectNode(this); var fragment = range.createContextualFragment(String(markup)), normalized = String(position).toLowerCase(); if (normalized === 'beforebegin') { if (!this.parentNode) return; this.parentNode.insertBefore(fragment, this); } else if (normalized === 'afterbegin') this.insertBefore(fragment, this.firstChild); else if (normalized === 'beforeend') this.appendChild(fragment); else if (normalized === 'afterend') { if (!this.parentNode) return; this.parentNode.insertBefore(fragment, this.nextSibling); } else throw new DOMException('Invalid insertion position', 'SyntaxError'); };
 function Range() {}
 function NodeList() {}
-NodeList.prototype = Array.prototype;
+NodeList.prototype = Object.create(Array.prototype);
 function HTMLCollection() {}
-HTMLCollection.prototype = Array.prototype;
+HTMLCollection.prototype = Object.create(Array.prototype);
 function Location() {}
 Object.defineProperty(Location.prototype, Symbol.toStringTag, { value: 'Location' });
 function FormData() { this._entries = []; }
@@ -1574,6 +1727,11 @@ function ResizeObserver(callback) { if (typeof callback !== 'function') throw ne
 ResizeObserver.prototype.observe = function(target) { if (!target || typeof target.getBoundingClientRect !== 'function') throw new TypeError('ResizeObserver target must be an Element'); if (this.targets.indexOf(target) < 0) this.targets.push(target); var self = this; setTimeout(function() { if (self.targets.indexOf(target) >= 0) self.callback([new ResizeObserverEntry(target)], self); }, 0); };
 ResizeObserver.prototype.unobserve = function(target) { this.targets = this.targets.filter(function(item) { return item !== target; }); };
 ResizeObserver.prototype.disconnect = function() { this.targets = []; };
+function PerformanceObserver(callback) { if (typeof callback !== 'function') throw new TypeError('PerformanceObserver callback must be a function'); this.callback = callback; }
+PerformanceObserver.supportedEntryTypes = [];
+PerformanceObserver.prototype.observe = function() {};
+PerformanceObserver.prototype.disconnect = function() {};
+PerformanceObserver.prototype.takeRecords = function() { return []; };
 function Blob(parts, options) {
   var chunks = Array.from(parts || [], function(part) {
     if (part instanceof Blob) return part._text;
@@ -1593,6 +1751,13 @@ Blob.prototype.arrayBuffer = function() { return Promise.resolve(new TextEncoder
 Blob.prototype.slice = function(start, end, type) { return new Blob([this._text.slice(start || 0, end == null ? this._text.length : end)], { type: type || '' }); };
 function File(parts, name, options) { Blob.call(this, parts, options); this.name = String(name || ''); this.lastModified = options && options.lastModified || Date.now(); }
 File.prototype = Object.create(Blob.prototype);
+var __minib_uint8_array_from = Uint8Array.from;
+Uint8Array.from = function(source, map_function, this_argument) {
+  if (typeof source !== 'string') return __minib_uint8_array_from.call(this, source, map_function, this_argument);
+  var result = new Uint8Array(source.length);
+  for (var index = 0; index < source.length; index++) result[index] = map_function ? map_function.call(this_argument, source.charAt(index), index) : source.charCodeAt(index);
+  return result;
+};
 function TextEncoder() { this.encoding = 'utf-8'; }
 TextEncoder.prototype.encode = function(input) {
   var text = unescape(encodeURIComponent(String(input === undefined ? '' : input))), bytes = new Uint8Array(text.length);
@@ -1691,7 +1856,7 @@ URLSearchParams.prototype.values = function() { return this._pairs.map(function(
 URLSearchParams.prototype.toString = function() { function encode(value) { return encodeURIComponent(value).replace(/%20/g, '+').replace(/[!'()~]/g, function(character) { return '%' + character.charCodeAt(0).toString(16).toUpperCase(); }); } return this._pairs.map(function(pair) { return encode(pair[0]) + '=' + encode(pair[1]); }).join('&'); };
 URLSearchParams.prototype[Symbol.iterator] = URLSearchParams.prototype.entries;
 Object.defineProperty(URLSearchParams.prototype, 'size', { configurable: true, enumerable: true, get: function() { return this._pairs.length; } });
-[Window, Node, CharacterData, Text, Comment, CDATASection, ProcessingInstruction, DocumentType, Element, HTMLElement, HTMLBodyElement, HTMLHtmlElement, HTMLImageElement, HTMLIFrameElement, HTMLTemplateElement, HTMLMediaElement, HTMLAudioElement, HTMLVideoElement, SVGElement, Document, DOMParser, HTMLDocument, DocumentFragment, UIEvent, MouseEvent, KeyboardEvent, FocusEvent, InputEvent, WheelEvent, PointerEvent, CustomEvent, MessageEvent, PromiseRejectionEvent, StyleSheet, CSSStyleSheet, MediaList, StyleSheetList, CSSRuleList, CSSRule, CSSStyleRule, CSSMediaRule, CSSStyleDeclaration, File, TextEncoder, ReadableStream, ReadableStreamDefaultController, ReadableStreamDefaultReader, ResizeObserver, ResizeObserverEntry, AbortSignal, AbortController, URLSearchParams].forEach(function(constructor) {
+[Window, Node, CharacterData, Text, Comment, CDATASection, ProcessingInstruction, DocumentType, Element, HTMLElement, HTMLBodyElement, HTMLHtmlElement, HTMLImageElement, HTMLIFrameElement, HTMLTemplateElement, HTMLMediaElement, HTMLAudioElement, HTMLVideoElement, SVGElement, Document, DOMParser, HTMLDocument, DocumentFragment, ShadowRoot, UIEvent, MouseEvent, KeyboardEvent, FocusEvent, InputEvent, WheelEvent, PointerEvent, CustomEvent, MessageEvent, PromiseRejectionEvent, StyleSheet, CSSStyleSheet, MediaList, StyleSheetList, CSSRuleList, CSSRule, CSSStyleRule, CSSMediaRule, CSSStyleDeclaration, File, TextEncoder, ReadableStream, ReadableStreamDefaultController, ReadableStreamDefaultReader, ResizeObserver, ResizeObserverEntry, PerformanceObserver, AbortSignal, AbortController, URLSearchParams].forEach(function(constructor) {
   Object.defineProperty(constructor.prototype, 'constructor', { configurable: true, writable: true, value: constructor });
 });
 function Headers(init) {
@@ -1858,6 +2023,8 @@ if (!Date.prototype.toGMTString) Date.prototype.toGMTString = Date.prototype.toU
 	runtime.install_cssom(window)
 	_ = window.Set("location", runtime.location_object(runtime.page_url))
 	navigator := runtime.vm.NewObject()
+	_ = navigator.SetPrototype(window.Get("Navigator").ToObject(runtime.vm).Get("prototype").ToObject(runtime.vm))
+	_ = navigator.Set("appName", "Netscape")
 	_ = navigator.Set("userAgent", runtime.user_agent)
 	_ = navigator.Set("platform", "MacIntel")
 	_ = navigator.Set("language", "zh-CN")
@@ -1936,7 +2103,43 @@ if (!Date.prototype.toGMTString) Date.prototype.toGMTString = Date.prototype.toU
 	_ = performance.Set("clearMeasures", func() { performance_entries = nil })
 	_ = performance.Set("toJSON", func() map[string]any { return map[string]any{"timeOrigin": performance_time} })
 	_ = window.Set("performance", performance)
-	_ = window.Set("history", map[string]any{"length": 1, "pushState": func(...any) {}, "replaceState": func(...any) {}, "back": func() {}, "forward": func() {}, "go": func(...any) {}})
+	history := runtime.vm.NewObject()
+	history_length := 1
+	_ = history.Set("length", history_length)
+	_ = history.Set("state", goja.Null())
+	_ = history.Set("scrollRestoration", "auto")
+	update_history := func(call goja.FunctionCall, replace bool) {
+		state := call.Argument(0)
+		url_value := call.Argument(2)
+		if !goja.IsUndefined(url_value) {
+			next_url, err := runtime.page_url.Parse(url_value.String())
+			if err != nil || !same_origin(runtime.page_url, next_url) {
+				panic(runtime.vm.NewGoError(fmt.Errorf("SecurityError: history URL must be same-origin")))
+			}
+			*runtime.page_url = *next_url
+			runtime.page.URL = next_url.String()
+			runtime.page.NavigationRequests = append(runtime.page.NavigationRequests, next_url.String())
+			runtime.base_url = document_base_url(runtime.page.Document, runtime.page_url)
+			set_location_components(window.Get("location").ToObject(runtime.vm), runtime.page_url)
+		}
+		_ = history.Set("state", state)
+		if !replace {
+			history_length++
+			_ = history.Set("length", history_length)
+		}
+	}
+	_ = history.Set("pushState", func(call goja.FunctionCall) goja.Value {
+		update_history(call, false)
+		return goja.Undefined()
+	})
+	_ = history.Set("replaceState", func(call goja.FunctionCall) goja.Value {
+		update_history(call, true)
+		return goja.Undefined()
+	})
+	_ = history.Set("back", func() {})
+	_ = history.Set("forward", func() {})
+	_ = history.Set("go", func(...any) {})
+	_ = window.Set("history", history)
 	_ = window.Set("localStorage", runtime.storage_object())
 	_ = window.Set("sessionStorage", runtime.storage_object())
 	_ = window.Set("getComputedStyle", func(call goja.FunctionCall) goja.Value {
@@ -2090,6 +2293,7 @@ func (runtime *page_runtime) xml_http_request_constructor(call goja.ConstructorC
 		request.request_version++
 		request.method = strings.ToUpper(open_call.Argument(0).String())
 		request.raw_url = open_call.Argument(1).String()
+		request.request_headers = make(http.Header)
 		request.async_request = goja.IsUndefined(open_call.Argument(2)) || open_call.Argument(2).ToBoolean()
 		request.status = 0
 		request.status_text = ""
@@ -2099,7 +2303,7 @@ func (runtime *page_runtime) xml_http_request_constructor(call goja.ConstructorC
 		request.fire("readystatechange")
 		return goja.Undefined()
 	})
-	_ = object.Set("__minib_setRequestHeader", func(name string, value string) { request.request_headers.Add(name, value) })
+	_ = object.Set("__minib_setRequestHeader", func(name string, value string) { request.request_headers.Set(name, value) })
 	_ = object.Set("__minib_getResponseHeader", func(name string) any {
 		value := request.response_headers.Get(name)
 		if value == "" {
@@ -2134,7 +2338,27 @@ func (runtime *page_runtime) xml_http_request_constructor(call goja.ConstructorC
 	_ = object.Set("__minib_send", func(send_call goja.FunctionCall) goja.Value {
 		var body []byte
 		if value := send_call.Argument(0); !goja.IsNull(value) && !goja.IsUndefined(value) {
-			body = []byte(value.String())
+			if data, data_err := javascript_bytes(value); data_err == nil {
+				body = append([]byte(nil), data...)
+			} else if blob, ok := value.(*goja.Object); ok && blob.Get("_text") != nil && !goja.IsUndefined(blob.Get("_text")) {
+				text, text_ok := blob.Get("_text").ToString().(goja.String)
+				if text_ok {
+					body = make([]byte, text.Length())
+					for index := range body {
+						body[index] = byte(text.CharAt(index))
+					}
+				} else {
+					body = []byte(blob.Get("_text").String())
+				}
+				if request.request_headers.Get("Content-Type") == "" && blob.Get("type") != nil && blob.Get("type").String() != "" {
+					request.request_headers.Set("Content-Type", blob.Get("type").String())
+				}
+			} else {
+				body = []byte(value.String())
+				if request.request_headers.Get("Content-Type") == "" {
+					request.request_headers.Set("Content-Type", "text/plain;charset=UTF-8")
+				}
+			}
 		}
 		request.send(body)
 		return goja.Undefined()
@@ -2207,15 +2431,30 @@ func (request *xml_http_request) prepare_network_request(body []byte) (xhr_netwo
 	if err != nil {
 		return xhr_network_request{}, err
 	}
-	headers := clawreq.DefaultHeaders(clawreq.ProfileChrome)
-	headers.Set("Accept", "application/json, text/plain, */*")
-	headers.Set("Referer", request.runtime.page.URL)
+	headers := request.runtime.request_headers.Clone()
+	if headers == nil {
+		headers = clawreq.DefaultHeaders(clawreq.ProfileChrome)
+	}
+	if request.runtime.user_agent != "" {
+		headers.Set("User-Agent", request.runtime.user_agent)
+	}
+	headers.Set("Accept", "*/*")
+	headers.Set("Priority", "u=1, i")
+	cross_origin := !same_origin(request.runtime.page_url, request_url)
+	if cross_origin {
+		headers.Set("Origin", request.runtime.page_url.Scheme+"://"+request.runtime.page_url.Host)
+		headers.Set("Referer", request.runtime.page_url.Scheme+"://"+request.runtime.page_url.Host+"/")
+	} else {
+		headers.Set("Referer", request.runtime.page.URL)
+	}
 	headers.Set("Sec-Fetch-Dest", "empty")
 	headers.Set("Sec-Fetch-Mode", "cors")
 	headers.Del("Sec-Fetch-User")
 	headers.Del("Upgrade-Insecure-Requests")
-	if same_origin(request.runtime.page_url, request_url) {
+	if !cross_origin {
 		headers.Set("Sec-Fetch-Site", "same-origin")
+	} else if same_site(request.runtime.page_url, request_url) {
+		headers.Set("Sec-Fetch-Site", "same-site")
 	} else {
 		headers.Set("Sec-Fetch-Site", "cross-site")
 	}
@@ -2238,8 +2477,21 @@ func (request *xml_http_request) prepare_network_request(body []byte) (xhr_netwo
 			request_timeout = time.Duration(timeout_ms) * time.Millisecond
 		}
 	}
+	network_ctx := with_har_resource_type(request.runtime.network_ctx, resource_type)
+	if cross_origin && !request.object.Get("withCredentials").ToBoolean() {
+		user_modifier := request_header_modifier_from_context(network_ctx)
+		network_ctx = with_request_header_modifier(network_ctx, func(http_request *http.Request) error {
+			if user_modifier != nil {
+				if modifier_err := user_modifier(http_request); modifier_err != nil {
+					return modifier_err
+				}
+			}
+			http_request.Header.Del("Cookie")
+			return nil
+		})
+	}
 	return xhr_network_request{
-		ctx:           with_har_resource_type(request.runtime.network_ctx, resource_type),
+		ctx:           network_ctx,
 		method:        request.method,
 		raw_url:       request_url.String(),
 		body:          append([]byte(nil), body...),
@@ -2370,7 +2622,7 @@ func (runtime *page_runtime) console_object() *goja.Object {
 			for _, argument := range call.Arguments {
 				part := argument.String()
 				if argument_object, ok := argument.(*goja.Object); ok {
-					if stack := argument_object.Get("stack"); !goja.IsUndefined(stack) && !goja.IsNull(stack) && !strings.Contains(part, stack.String()) {
+					if stack := argument_object.Get("stack"); stack != nil && !goja.IsUndefined(stack) && !goja.IsNull(stack) && !strings.Contains(part, stack.String()) {
 						part += "\n" + stack.String()
 					}
 				}
@@ -2429,6 +2681,7 @@ func (runtime *page_runtime) request_navigation(raw_url string) {
 	next_url, err := runtime.page_url.Parse(strings.TrimSpace(raw_url))
 	if err == nil && (next_url.Scheme == "http" || next_url.Scheme == "https") {
 		runtime.page.navigation_url = next_url.String()
+		runtime.page.NavigationRequests = append(runtime.page.NavigationRequests, next_url.String())
 	}
 }
 
@@ -2449,6 +2702,10 @@ func (runtime *page_runtime) text_decoder_constructor(call goja.ConstructorCall)
 
 func set_location_fields(object *goja.Object, parsed_url *url.URL) {
 	_ = object.Set("href", parsed_url.String())
+	set_location_components(object, parsed_url)
+}
+
+func set_location_components(object *goja.Object, parsed_url *url.URL) {
 	_ = object.Set("protocol", parsed_url.Scheme+":")
 	_ = object.Set("host", parsed_url.Host)
 	_ = object.Set("hostname", parsed_url.Hostname())
@@ -2610,6 +2867,9 @@ func (runtime *page_runtime) install_timers(window *goja.Object) {
 func (runtime *page_runtime) run_timers(ctx context.Context, timer_deadline_ms int64) bool {
 	ran_callback := false
 	for callback_count := 0; callback_count < max_timer_callbacks && len(runtime.timers) > 0 && ctx.Err() == nil; callback_count++ {
+		if runtime.wait_condition_met() {
+			return ran_callback
+		}
 		sort.SliceStable(runtime.timers, func(left int, right int) bool {
 			if runtime.timers[left].due_at_ms == runtime.timers[right].due_at_ms {
 				return runtime.timers[left].id < runtime.timers[right].id
@@ -2632,13 +2892,16 @@ func (runtime *page_runtime) run_timers(ctx context.Context, timer_deadline_ms i
 		if _, err := runtime.call_javascript(ctx, timer.callback, runtime.vm.GlobalObject(), timer.args...); err != nil {
 			runtime.fail_script(runtime.page.URL+"#timer", err)
 		}
+		if runtime.wait_condition_met() {
+			return ran_callback
+		}
 		if timer.repeating && !timer.canceled {
 			timer.due_at_ms += timer.interval_ms
 			runtime.timers = append(runtime.timers, timer)
 		}
 		runtime.run_host_jobs(ctx)
 		runtime.drain_dynamic_styles(ctx)
-		runtime.drain_dynamic_scripts(ctx)
+		runtime.drain_dynamic_scripts(ctx, true)
 		runtime.drain_dynamic_resources(ctx)
 	}
 	return ran_callback
@@ -2653,9 +2916,15 @@ func (runtime *page_runtime) queue_host_job(job func()) {
 func (runtime *page_runtime) run_host_jobs(ctx context.Context) {
 	runtime.run_external_jobs(ctx)
 	for callback_count := 0; len(runtime.host_jobs) > 0 && callback_count < max_host_callbacks && ctx.Err() == nil; callback_count++ {
+		if runtime.wait_condition_met() {
+			return
+		}
 		job := runtime.host_jobs[0]
 		runtime.host_jobs = runtime.host_jobs[1:]
 		job()
+		if runtime.wait_condition_met() {
+			return
+		}
 		runtime.run_external_jobs(ctx)
 	}
 }
@@ -2663,7 +2932,13 @@ func (runtime *page_runtime) run_host_jobs(ctx context.Context) {
 func (runtime *page_runtime) pump_event_loop(ctx context.Context) {
 	timer_deadline_ms := runtime.timer_time_ms + max_timer_time_ms
 	for round := 0; round < max_event_loop_rounds && ctx.Err() == nil; round++ {
+		if runtime.wait_condition_met() {
+			return
+		}
 		runtime.run_external_jobs(ctx)
+		if runtime.wait_condition_met() {
+			return
+		}
 		if len(runtime.host_jobs) == 0 && len(runtime.timers) == 0 && len(runtime.dynamic_styles) == 0 && len(runtime.dynamic_scripts) == 0 && len(runtime.dynamic_resources) == 0 && len(runtime.external_jobs) == 0 {
 			if runtime.pending_network_tasks.Load() > 0 && runtime.wait_for_external_job(ctx) {
 				continue
@@ -2674,10 +2949,19 @@ func (runtime *page_runtime) pump_event_loop(ctx context.Context) {
 		runtime.run_host_jobs(ctx)
 		ran_timer := runtime.run_timers(ctx, timer_deadline_ms)
 		runtime.run_host_jobs(ctx)
+		if runtime.wait_condition_met() {
+			return
+		}
 		runtime.drain_dynamic_styles(ctx)
-		runtime.drain_dynamic_scripts(ctx)
+		runtime.drain_dynamic_scripts(ctx, true)
 		runtime.drain_dynamic_resources(ctx)
+		if runtime.wait_condition_met() {
+			return
+		}
 		if !had_immediate_work && !ran_timer {
+			if runtime.pending_network_tasks.Load() > 0 && runtime.wait_for_external_job(ctx) {
+				continue
+			}
 			return
 		}
 	}
@@ -2780,6 +3064,13 @@ func (runtime *page_runtime) node_object(node *html.Node) *goja.Object {
 	return object
 }
 
+func (runtime *page_runtime) nullable_node_value(node *html.Node) goja.Value {
+	if node == nil {
+		return goja.Null()
+	}
+	return runtime.node_object(node)
+}
+
 func (runtime *page_runtime) bind_node_object(node *html.Node, object *goja.Object, set_prototype bool) {
 	if node == nil || object == nil || runtime.nodes[node] == object {
 		return
@@ -2788,6 +3079,12 @@ func (runtime *page_runtime) bind_node_object(node *html.Node, object *goja.Obje
 	runtime.object_nodes[object] = node
 	if set_prototype {
 		runtime.set_node_prototype(object, node)
+	}
+	if node.Type == html.ElementNode {
+		var scroll_top float64
+		var scroll_left float64
+		define_accessor(runtime.vm, object, "scrollTop", func() any { return scroll_top }, func(value goja.Value) { scroll_top = value.ToFloat() })
+		define_accessor(runtime.vm, object, "scrollLeft", func() any { return scroll_left }, func(value goja.Value) { scroll_left = value.ToFloat() })
 	}
 	runtime.install_node_events(object, node)
 	if node.Type == html.DocumentNode && !runtime.fragments[node] {
@@ -2851,6 +3148,9 @@ func (runtime *page_runtime) install_custom_elements(window *goja.Object) {
 
 func (runtime *page_runtime) create_element_object(name string) *goja.Object {
 	node := new_element(name)
+	if strings.EqualFold(name, "script") {
+		runtime.created_scripts[node] = true
+	}
 	if runtime.custom_elements[strings.ToLower(name)] != nil {
 		if object, err := runtime.construct_custom_element(node); err == nil {
 			return object
@@ -2999,6 +3299,8 @@ func (runtime *page_runtime) set_node_prototype(object *goja.Object, node *html.
 		constructor_name = "Comment"
 	} else if node.Type == html.DoctypeNode {
 		constructor_name = "DocumentType"
+	} else if runtime.shadow_hosts[node] != nil {
+		constructor_name = "ShadowRoot"
 	} else if runtime.fragments[node] {
 		constructor_name = "DocumentFragment"
 	} else if node.Type == html.DocumentNode {
@@ -3284,12 +3586,20 @@ func (runtime *page_runtime) install_document(object *goja.Object, node *html.No
 		clone := runtime.clone_node(node, call.Argument(1).ToBoolean())
 		return runtime.node_object(clone)
 	})
-	_ = object.Set("getElementById", func(id string) any { return runtime.node_object(find_by_attribute(node, "id", id)) })
+	_ = object.Set("getElementById", func(id string) any { return runtime.nullable_node_value(find_by_attribute(node, "id", id)) })
+	_ = object.Set("getElementsByName", func(name string) any { return runtime.node_array(find_all_by_attribute(node, "name", name)) })
 	_ = object.Set("getElementsByTagName", func(name string) any { return runtime.node_array(find_by_tag(node, name)) })
 	_ = object.Set("getElementsByClassName", func(name string) any { return runtime.node_array(find_by_class(node, name)) })
-	_ = object.Set("querySelector", func(selector string) any { return runtime.node_object(query_first(node, selector)) })
+	_ = object.Set("querySelector", func(selector string) any { return runtime.nullable_node_value(query_first(node, selector)) })
 	_ = object.Set("querySelectorAll", func(selector string) any { return runtime.node_array(query_all(node, selector)) })
 	_ = object.Set("elementFromPoint", func(float64, float64) any { return runtime.node_object(find_element(node, "body")) })
+	_ = object.Set("elementsFromPoint", func(float64, float64) any {
+		body := find_element(node, "body")
+		if body == nil {
+			return runtime.node_array(nil)
+		}
+		return runtime.node_array([]*html.Node{body})
+	})
 	_ = object.Set("write", func(markup string) {
 		target := find_element(node, "body")
 		if target != nil {
@@ -3306,7 +3616,7 @@ func (runtime *page_runtime) install_document(object *goja.Object, node *html.No
 			}
 		}
 	})
-	for _, name := range []string{"createElement", "createElementNS", "createTextNode", "createDocumentFragment", "createComment", "createEvent", "createRange", "importNode", "getElementById", "getElementsByTagName", "getElementsByClassName", "querySelector", "querySelectorAll"} {
+	for _, name := range []string{"createElement", "createElementNS", "createTextNode", "createDocumentFragment", "createComment", "createEvent", "createRange", "importNode", "getElementById", "getElementsByName", "getElementsByTagName", "getElementsByClassName", "querySelector", "querySelectorAll", "elementFromPoint", "elementsFromPoint"} {
 		_ = object.Set("__minib_"+name, object.Get(name))
 	}
 }
@@ -3391,7 +3701,8 @@ func (runtime *page_runtime) install_element(object *goja.Object, node *html.Nod
 	_ = object.Set("hasAttribute", func(name string) bool { _, ok := find_attribute(node, name); return ok })
 	_ = object.Set("hasAttributeNS", func(_ string, name string) bool { _, ok := find_attribute(node, name); return ok })
 	_ = object.Set("hasAttributes", func() bool { return len(node.Attr) > 0 })
-	_ = object.Set("querySelector", func(selector string) any { return runtime.node_object(query_first(node, selector)) })
+	_ = object.Set("getAttributeNames", func() []string { return element_attribute_names(node) })
+	_ = object.Set("querySelector", func(selector string) any { return runtime.nullable_node_value(query_first(node, selector)) })
 	_ = object.Set("querySelectorAll", func(selector string) any { return runtime.node_array(query_all(node, selector)) })
 	_ = object.Set("getElementsByTagName", func(name string) any { return runtime.node_array(find_by_tag(node, name)) })
 	_ = object.Set("getElementsByClassName", func(name string) any { return runtime.node_array(find_by_class(node, name)) })
@@ -3428,7 +3739,11 @@ func (runtime *page_runtime) install_element(object *goja.Object, node *html.Nod
 	})
 	_ = object.Set("focus", func() {})
 	_ = object.Set("blur", func() {})
-	_ = object.Set("click", func() { runtime.fire_node_event(node, "click") })
+	_ = object.Set("click", func() {
+		if err := runtime.click_node(node, false); err != nil {
+			panic(runtime.vm.NewGoError(err))
+		}
+	})
 	_ = object.Set("getContext", func(context_type string) any {
 		if strings.EqualFold(node.Data, "canvas") && strings.EqualFold(context_type, "2d") {
 			return runtime.canvas_context_object()
@@ -3436,9 +3751,17 @@ func (runtime *page_runtime) install_element(object *goja.Object, node *html.Nod
 		return nil
 	})
 	_ = object.Set("toDataURL", func() string { return "data:image/png;base64," })
-	for _, name := range []string{"insertAdjacentElement", "getAttribute", "setAttribute", "getAttributeNS", "setAttributeNS", "removeAttribute", "removeAttributeNS", "hasAttribute", "hasAttributeNS", "hasAttributes", "querySelector", "querySelectorAll", "getElementsByTagName", "getElementsByClassName", "matches", "closest", "getBoundingClientRect", "getClientRects"} {
+	for _, name := range []string{"insertAdjacentElement", "getAttribute", "setAttribute", "getAttributeNS", "setAttributeNS", "removeAttribute", "removeAttributeNS", "hasAttribute", "hasAttributeNS", "hasAttributes", "getAttributeNames", "querySelector", "querySelectorAll", "getElementsByTagName", "getElementsByClassName", "matches", "closest", "getBoundingClientRect", "getClientRects"} {
 		_ = object.Set("__minib_"+name, object.Get(name))
 	}
+}
+
+func element_attribute_names(node *html.Node) []string {
+	attribute_names := make([]string, len(node.Attr))
+	for attribute_index, attribute := range node.Attr {
+		attribute_names[attribute_index] = attribute.Key
+	}
+	return attribute_names
 }
 
 func (runtime *page_runtime) document_implementation() *goja.Object {
@@ -3673,6 +3996,8 @@ func (runtime *page_runtime) queue_dynamic_resource(node *html.Node) {
 		return
 	}
 	switch {
+	case strings.EqualFold(node.Data, "script") && !is_javascript_type(attribute(node, "type")):
+		runtime.dynamic_seen[node] = true
 	case runtime.page.disable_subresources && strings.EqualFold(node.Data, "script") && attribute(node, "src") != "":
 		runtime.dynamic_seen[node] = true
 		runtime.queue_host_job(func() { runtime.fire_node_event(node, "load") })
@@ -3711,6 +4036,9 @@ func (runtime *page_runtime) drain_dynamic_styles(ctx context.Context) {
 		return
 	}
 	for loaded := 0; len(runtime.dynamic_styles) > 0 && loaded < max_dynamic_scripts && ctx.Err() == nil; loaded++ {
+		if runtime.wait_condition_met() {
+			return
+		}
 		node := runtime.dynamic_styles[0]
 		runtime.dynamic_styles = runtime.dynamic_styles[1:]
 		resource_url, ok := resolve_resource_url(runtime.base_url, attribute(node, "href"))
@@ -3724,13 +4052,29 @@ func (runtime *page_runtime) drain_dynamic_styles(ctx context.Context) {
 		} else {
 			runtime.fire_node_event(node, "load")
 		}
+		if runtime.wait_condition_met() {
+			return
+		}
 	}
 }
 
-func (runtime *page_runtime) drain_dynamic_scripts(ctx context.Context) {
+func (runtime *page_runtime) drain_dynamic_scripts(ctx context.Context, include_async bool) {
 	for loaded := 0; len(runtime.dynamic_scripts) > 0 && loaded < max_dynamic_scripts && ctx.Err() == nil; loaded++ {
-		node := runtime.dynamic_scripts[0]
-		runtime.dynamic_scripts = runtime.dynamic_scripts[1:]
+		if runtime.wait_condition_met() {
+			return
+		}
+		dynamic_index := -1
+		for node_index, node := range runtime.dynamic_scripts {
+			if include_async || !runtime.dynamic_script_is_async(node) {
+				dynamic_index = node_index
+				break
+			}
+		}
+		if dynamic_index < 0 {
+			return
+		}
+		node := runtime.dynamic_scripts[dynamic_index]
+		runtime.dynamic_scripts = append(runtime.dynamic_scripts[:dynamic_index], runtime.dynamic_scripts[dynamic_index+1:]...)
 		source_url := attribute(node, "src")
 		job := script_job{
 			node:           node,
@@ -3753,16 +4097,39 @@ func (runtime *page_runtime) drain_dynamic_scripts(ctx context.Context) {
 			continue
 		}
 		runtime.execute_job(ctx, job)
+		if runtime.wait_condition_met() {
+			return
+		}
 		if len(runtime.page.ScriptFailures) == 0 || runtime.page.ScriptFailures[len(runtime.page.ScriptFailures)-1].URL != job.source_url {
 			runtime.fire_node_event(node, "load")
 		} else {
 			runtime.fire_node_event(node, "error")
 		}
+		if runtime.wait_condition_met() {
+			return
+		}
 	}
+}
+
+func (runtime *page_runtime) dynamic_script_is_async(node *html.Node) bool {
+	if attribute(node, "src") == "" {
+		return false
+	}
+	if object := runtime.nodes[node]; object != nil {
+		for _, name := range object.GetOwnPropertyNames() {
+			if name == "async" {
+				return object.Get(name).ToBoolean()
+			}
+		}
+	}
+	return runtime.created_scripts[node] || has_attribute(node, "async")
 }
 
 func (runtime *page_runtime) drain_dynamic_resources(ctx context.Context) {
 	for loaded := 0; len(runtime.dynamic_resources) > 0 && loaded < max_dynamic_resources && ctx.Err() == nil; loaded++ {
+		if runtime.wait_condition_met() {
+			return
+		}
 		node := runtime.dynamic_resources[0]
 		runtime.dynamic_resources = runtime.dynamic_resources[1:]
 		resource_url, ok := resolve_resource_url(runtime.base_url, attribute(node, "src"))
@@ -3776,6 +4143,9 @@ func (runtime *page_runtime) drain_dynamic_resources(ctx context.Context) {
 		} else {
 			runtime.fire_node_event(node, "load")
 		}
+		if runtime.wait_condition_met() {
+			return
+		}
 	}
 }
 
@@ -3787,7 +4157,7 @@ func (runtime *page_runtime) find_or_download_resource(ctx context.Context, reso
 	}
 	resource_ctx, cancel := context_with_optional_timeout(ctx, runtime.page.resource_timeout)
 	defer cancel()
-	resource := runtime.browser.download_resource(resource_ctx, runtime.page_url, Resource{URL: resource_url, Kind: kind, fetch_priority: default_resource_priority(kind)}, runtime.page.disable_cache)
+	resource := runtime.browser.download_resource(resource_ctx, runtime.page_url, runtime.request_headers, Resource{URL: resource_url, Kind: kind, fetch_priority: default_resource_priority(kind)}, runtime.page.disable_cache)
 	runtime.page.Resources = append(runtime.page.Resources, resource)
 	return len(runtime.page.Resources) - 1
 }
@@ -3876,6 +4246,27 @@ func text_content(node *html.Node) string {
 	var builder strings.Builder
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
 		builder.WriteString(text_content(child))
+	}
+	return builder.String()
+}
+
+func rendered_text_content(node *html.Node) string {
+	if node == nil {
+		return ""
+	}
+	if node.Type == html.TextNode {
+		return node.Data
+	}
+	if node.Type == html.ElementNode {
+		switch strings.ToLower(node.Data) {
+		case "script", "style", "template":
+			return ""
+		}
+	}
+	// ponytail: full DOM scans keep waits simple; add mutation versions if large-page profiling requires it.
+	var builder strings.Builder
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		builder.WriteString(rendered_text_content(child))
 	}
 	return builder.String()
 }
@@ -4004,6 +4395,23 @@ func find_by_attribute(node *html.Node, name string, value string) *html.Node {
 		}
 	}
 	return nil
+}
+
+func find_all_by_attribute(node *html.Node, name string, value string) []*html.Node {
+	result := make([]*html.Node, 0)
+	var walk func(*html.Node)
+	walk = func(current *html.Node) {
+		if current.Type == html.ElementNode {
+			if found, ok := find_attribute(current, name); ok && found == value {
+				result = append(result, current)
+			}
+		}
+		for child := current.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(node)
+	return result
 }
 
 func find_by_tag(node *html.Node, name string) []*html.Node {

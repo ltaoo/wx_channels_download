@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 )
 
@@ -45,12 +46,17 @@ func (d *HermesEngine) process_resources(
 					if !ok {
 						return
 					}
+					resource := &resources[resource_index]
+					if strings.EqualFold(resource.Type, ResourceTypeStream) {
+						process(resource_index, resource)
+						continue
+					}
 					if err := d.acquire_resource(ctx); err != nil {
 						return
 					}
 					func() {
 						defer d.release_resource()
-						process(resource_index, &resources[resource_index])
+						process(resource_index, resource)
 					}()
 				}
 			}

@@ -79,6 +79,12 @@ type FetchDownloadTaskBuilder interface {
 	BuildDownloadTaskFromFetch(data any, config_json json.RawMessage) (*DownloadTaskResult, error)
 }
 
+// HomeContentsBuilder fetches one account home and returns normalized content
+// records without persisting them.
+type HomeContentsBuilder interface {
+	BuildHomeContents(account *model.Account) ([]model.Content, error)
+}
+
 // FetchOptions controls a context-aware scraper fetch.
 type FetchOptions struct {
 	RequestID       string

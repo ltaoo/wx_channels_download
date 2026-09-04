@@ -111,6 +111,7 @@ type OfficialAccountServer struct {
 	requests_mu               sync.RWMutex
 	cache                     *cache.Cache
 	req_seq                   uint64
+	selection_seq             uint64
 	wait_chan_map             map[string]chan *OfficialAccount
 	wait_mu                   sync.Mutex
 	refresh_mu                sync.Mutex
@@ -355,6 +356,12 @@ func (c *OfficialAccountServer) FetchBizMsgList(username, offset string) (json.R
 			errors.New("missing username"),
 		)
 	}
+	cache_key := fmt.Sprintf("mpbiz:%q:%q", username, offset)
+	if cached, found := c.cache.Get(cache_key); found {
+		if raw_data, ok := cached.(string); ok {
+			return json.RawMessage(raw_data), nil
+		}
+	}
 	response, err := c.RequestFrontend(
 		"key:mp:bizmsglist",
 		map[string]string{"username": username, "offset": offset},
@@ -362,6 +369,12 @@ func (c *OfficialAccountServer) FetchBizMsgList(username, offset string) (json.R
 	)
 	if err != nil {
 		return nil, err
+	}
+	var response_status struct {
+		ErrCode *int `json:"errCode"`
+	}
+	if json.Unmarshal(response.Data, &response_status) == nil && response_status.ErrCode == nil {
+		c.cache.Set(cache_key, string(response.Data), 5*time.Minute)
 	}
 	return response.Data, nil
 }
@@ -998,7 +1011,7 @@ func (c *OfficialAccountServer) BuildRSS(params RSSParams) (*AtomFeed, error) {
 		ID:        params.Biz,
 		Title:     feed_title,
 		Updated:   time.Now().Format(time.RFC3339),
-		Generator: "wx_channels_download",
+		Generator: "FindRSS",
 		Icon:      acct.AvatarURL,
 		Category:  []AtomCategory{{Term: "微信公众号"}},
 		Link:      links,
@@ -1089,6 +1102,11 @@ func (c *OfficialAccountServer) RequestFrontend(endpoint string, body interface{
 	if err := c.EnsureFrontendReady(3 * time.Second); err != nil {
 		return nil, err
 	}
+	client, err := c.select_client_by_load()
+	if err != nil {
+		return nil, err
+	}
+	defer c.release_client_load(client)
 	id := strconv.FormatUint(atomic.AddUint64(&c.req_seq, 1), 10)
 	req := ClientWebsocketRequestBody{
 		ID:   id,
@@ -1108,16 +1126,6 @@ func (c *OfficialAccountServer) RequestFrontend(endpoint string, body interface{
 		delete(c.requests, id)
 		c.requests_mu.Unlock()
 	}()
-	c.ws_mu.RLock()
-	var client *WebsocketClient
-	for cl := range c.ws_clients {
-		client = cl
-		break
-	}
-	c.ws_mu.RUnlock()
-	if client == nil {
-		return nil, new_scraper_error(ErrorKindClientNotReady, ErrorMessage(ErrorKindClientNotReady), nil)
-	}
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return nil, err
@@ -1302,6 +1310,67 @@ func (c *OfficialAccountServer) ListClients() []*WebsocketClient {
 	return clients
 }
 
+func client_load_less(candidate, current *WebsocketClient) bool {
+	if current == nil {
+		return true
+	}
+	if candidate.in_flight != current.in_flight {
+		return candidate.in_flight < current.in_flight
+	}
+	return candidate.last_selected < current.last_selected
+}
+
+func (c *OfficialAccountServer) select_client_by_load() (*WebsocketClient, error) {
+	now := time.Now().Unix()
+	c.ws_mu.Lock()
+	defer c.ws_mu.Unlock()
+
+	var best *WebsocketClient
+	var healthy_best *WebsocketClient
+	for client := range c.ws_clients {
+		if client == nil {
+			continue
+		}
+		if client_load_less(client, best) {
+			best = client
+		}
+		if client.last_ping > 0 && now-client.last_ping <= 60 && client_load_less(client, healthy_best) {
+			healthy_best = client
+		}
+	}
+	selected := healthy_best
+	if selected == nil {
+		selected = best
+	}
+	if selected == nil {
+		return nil, new_scraper_error(ErrorKindClientNotReady, ErrorMessage(ErrorKindClientNotReady), nil)
+	}
+	c.selection_seq++
+	selected.last_selected = c.selection_seq
+	selected.in_flight++
+	return selected, nil
+}
+
+func (c *OfficialAccountServer) reserve_client_load(client *WebsocketClient) bool {
+	c.ws_mu.Lock()
+	defer c.ws_mu.Unlock()
+	if _, ok := c.ws_clients[client]; !ok {
+		return false
+	}
+	c.selection_seq++
+	client.last_selected = c.selection_seq
+	client.in_flight++
+	return true
+}
+
+func (c *OfficialAccountServer) release_client_load(client *WebsocketClient) {
+	c.ws_mu.Lock()
+	if client.in_flight > 0 {
+		client.in_flight--
+	}
+	c.ws_mu.Unlock()
+}
+
 func (c *OfficialAccountServer) first_client() (*WebsocketClient, error) {
 	c.ws_mu.RLock()
 	defer c.ws_mu.RUnlock()
@@ -1316,6 +1385,10 @@ func (c *OfficialAccountServer) RequestFrontendOn(ws *WebsocketClient, endpoint 
 	if err := c.EnsureFrontendReady(3 * time.Second); err != nil {
 		return nil, err
 	}
+	if !c.reserve_client_load(ws) {
+		return nil, errors.New("没有可用的客户端")
+	}
+	defer c.release_client_load(ws)
 	id := strconv.FormatUint(atomic.AddUint64(&c.req_seq, 1), 10)
 	req := ClientWebsocketRequestBody{
 		ID:   id,
@@ -1335,12 +1408,6 @@ func (c *OfficialAccountServer) RequestFrontendOn(ws *WebsocketClient, endpoint 
 		delete(c.requests, id)
 		c.requests_mu.Unlock()
 	}()
-	c.ws_mu.RLock()
-	_, ok := c.ws_clients[ws]
-	c.ws_mu.RUnlock()
-	if !ok {
-		return nil, errors.New("没有可用的客户端")
-	}
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return nil, err

@@ -237,12 +237,13 @@ func (c *Client) run(run_context context.Context) {
 		if run_context.Err() != nil {
 			return
 		}
-		connection, _, err := websocket.DefaultDialer.DialContext(
+		connection, response, err := websocket.DefaultDialer.DialContext(
 			run_context,
 			c.websocket_url(),
 			c.request_headers(),
 		)
 		if err != nil {
+			err = websocket_handshake_error(err, response)
 			c.set_disconnected(nil, err)
 			if !wait_context(run_context, backoff) {
 				return
@@ -266,6 +267,27 @@ func (c *Client) run(run_context context.Context) {
 			return
 		}
 	}
+}
+
+func websocket_handshake_error(err error, response *http.Response) error {
+	if err == nil || response == nil {
+		return err
+	}
+	defer response.Body.Close()
+
+	data, read_err := io.ReadAll(io.LimitReader(response.Body, max_message_bytes))
+	if read_err != nil {
+		return fmt.Errorf("bridge websocket handshake failed (%s): %w", response.Status, err)
+	}
+	detail := strings.TrimSpace(string(data))
+	var bridge_error error_response
+	if json.Unmarshal(data, &bridge_error) == nil && strings.TrimSpace(bridge_error.Error) != "" {
+		detail = strings.TrimSpace(bridge_error.Error)
+	}
+	if detail == "" {
+		return fmt.Errorf("bridge websocket handshake failed (%s): %w", response.Status, err)
+	}
+	return fmt.Errorf("bridge websocket handshake failed (%s): %s: %w", response.Status, detail, err)
 }
 
 func (c *Client) read_messages(run_context context.Context, connection *websocket.Conn) error {

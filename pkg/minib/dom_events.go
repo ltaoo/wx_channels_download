@@ -139,12 +139,16 @@ func event_option_enabled(value goja.Value) bool {
 
 func (runtime *page_runtime) dispatch_window_event(event *goja.Object, event_name string) bool {
 	window := runtime.vm.GlobalObject()
-	return runtime.dispatch_event(event, event_name, []goja.Value{window}, func(index int) map[string][]*event_listener {
+	return runtime.dispatch_event(event, event_name, []goja.Value{window}, false, func(index int) map[string][]*event_listener {
 		return runtime.window_listeners
 	})
 }
 
 func (runtime *page_runtime) dispatch_node_event(node *html.Node, event *goja.Object, event_name string) bool {
+	return runtime.dispatch_node_event_with_trust(node, event, event_name, false)
+}
+
+func (runtime *page_runtime) dispatch_node_event_with_trust(node *html.Node, event *goja.Object, event_name string, trusted bool) bool {
 	path := make([]goja.Value, 0)
 	nodes := make([]*html.Node, 0)
 	for current := node; current != nil; current = current.Parent {
@@ -152,7 +156,7 @@ func (runtime *page_runtime) dispatch_node_event(node *html.Node, event *goja.Ob
 		nodes = append(nodes, current)
 	}
 	path = append(path, runtime.vm.GlobalObject())
-	return runtime.dispatch_event(event, event_name, path, func(index int) map[string][]*event_listener {
+	return runtime.dispatch_event(event, event_name, path, trusted, func(index int) map[string][]*event_listener {
 		if index == len(path)-1 {
 			return runtime.window_listeners
 		}
@@ -160,7 +164,7 @@ func (runtime *page_runtime) dispatch_node_event(node *html.Node, event *goja.Ob
 	})
 }
 
-func (runtime *page_runtime) dispatch_event(event *goja.Object, event_name string, path []goja.Value, listeners_at func(int) map[string][]*event_listener) bool {
+func (runtime *page_runtime) dispatch_event(event *goja.Object, event_name string, path []goja.Value, trusted bool, listeners_at func(int) map[string][]*event_listener) bool {
 	if event_name == "" || runtime.dispatching_events[event] {
 		panic(runtime.vm.NewTypeError("event is already being dispatched or has an empty type"))
 	}
@@ -176,7 +180,7 @@ func (runtime *page_runtime) dispatch_event(event *goja.Object, event_name strin
 	_ = event.Set("target", path[0])
 	_ = event.Set("currentTarget", nil)
 	_ = event.Set("eventPhase", event_phase_none)
-	_ = event.Set("isTrusted", false)
+	_ = event.Set("isTrusted", trusted)
 	_ = event.Set("__composedPath", composed_path)
 	_ = event.Set("composedPath", func() *goja.Object { return runtime.vm.NewArray(path_values...) })
 	_ = event.Set("stopPropagation", func() { state.stopped = true })
@@ -220,6 +224,23 @@ func (runtime *page_runtime) dispatch_event(event *goja.Object, event_name strin
 	_ = event.Set("currentTarget", nil)
 	_ = event.Set("eventPhase", event_phase_none)
 	return !event_option_enabled(event.Get("defaultPrevented"))
+}
+
+func (runtime *page_runtime) click_node(node *html.Node, trusted bool) error {
+	event_init := runtime.vm.NewObject()
+	_ = event_init.Set("bubbles", true)
+	_ = event_init.Set("cancelable", true)
+	_ = event_init.Set("composed", true)
+	_ = event_init.Set("view", runtime.vm.GlobalObject())
+	_ = event_init.Set("detail", 1)
+	_ = event_init.Set("button", 0)
+	_ = event_init.Set("buttons", 0)
+	event, err := runtime.vm.New(runtime.vm.Get("MouseEvent"), runtime.vm.ToValue("click"), event_init)
+	if err != nil {
+		return err
+	}
+	runtime.dispatch_node_event_with_trust(node, event, "click", trusted)
+	return nil
 }
 
 func (runtime *page_runtime) invoke_event_listeners(event *goja.Object, event_name string, current_target goja.Value, listeners map[string][]*event_listener, capture bool, phase int, state *event_dispatch_state) {

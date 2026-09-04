@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -19,16 +20,28 @@ func TestWebPlatformCryptoBase64AndWebAssembly(t *testing.T) {
 const wasmBytes = new Uint8Array([0,97,115,109,1,0,0,0,1,7,1,96,2,127,127,1,127,3,2,1,0,7,7,1,3,97,100,100,0,0,10,9,1,7,0,32,0,32,1,106,11]);
 globalThis.platformState = {
   base64: [atob("AP+A").charCodeAt(0), atob("AP+A").charCodeAt(1), atob("AP+A").charCodeAt(2)].join(","),
+	typedFrom: Array.from(Uint8Array.from(atob("AP+A"), character => character.charCodeAt(0))).join(","),
   wasmValid: WebAssembly.validate(wasmBytes),
   uuid: crypto.randomUUID(),
   randomLength: crypto.getRandomValues(new Uint8Array(16)).length,
   wasmResult: 0,
   digestLength: 0,
+	cryptoPublicLength: 0,
+	cryptoDerivedLength: 0,
+	cryptoEncryptedLength: 0,
   wasmRejected: false,
 };
 WebAssembly.instantiate(wasmBytes).then(result => { platformState.wasmResult = result.instance.exports.add(20, 22); });
 WebAssembly.instantiate(new Uint8Array([0])).catch(() => { platformState.wasmRejected = true; });
 crypto.subtle.digest("SHA-256", new TextEncoder().encode("abc")).then(result => { platformState.digestLength = result.byteLength; });
+crypto.subtle.generateKey({name: "ECDH", namedCurve: "P-256"}, true, ["deriveBits"]).then(keys => Promise.all([
+  crypto.subtle.exportKey("raw", keys.publicKey),
+  crypto.subtle.deriveBits({name: "ECDH", public: keys.publicKey}, keys.privateKey, 256),
+])).then(values => {
+  platformState.cryptoPublicLength = values[0].byteLength;
+  platformState.cryptoDerivedLength = values[1].byteLength;
+  return crypto.subtle.importKey("raw", new Uint8Array(values[1]).slice(0, 16), {name: "AES-CBC"}, false, ["encrypt"]);
+}).then(key => crypto.subtle.encrypt({name: "AES-CBC", iv: new Uint8Array(16)}, key, new TextEncoder().encode("abc"))).then(result => { platformState.cryptoEncryptedLength = result.byteLength; });
 </script></body></html>`))
 	}))
 	defer server.Close()
@@ -50,13 +63,61 @@ crypto.subtle.digest("SHA-256", new TextEncoder().encode("abc")).then(result => 
 		t.Fatal(err)
 	}
 	state := value.String()
-	for _, expected := range []string{`"base64":"0,255,128"`, `"wasmValid":true`, `"randomLength":16`, `"wasmResult":42`, `"digestLength":32`, `"wasmRejected":true`} {
+	for _, expected := range []string{`"base64":"0,255,128"`, `"typedFrom":"0,255,128"`, `"wasmValid":true`, `"randomLength":16`, `"wasmResult":42`, `"digestLength":32`, `"cryptoPublicLength":65`, `"cryptoDerivedLength":32`, `"cryptoEncryptedLength":16`, `"wasmRejected":true`} {
 		if !regexp.MustCompile(regexp.QuoteMeta(expected)).MatchString(state) {
 			t.Fatalf("platform state %s missing %s", state, expected)
 		}
 	}
 	if !regexp.MustCompile(`"uuid":"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"`).MatchString(state) {
 		t.Fatalf("invalid randomUUID in %s", state)
+	}
+}
+
+func TestMissingDOMQueriesReturnNull(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write([]byte(`<html><head></head><body data-present="yes"><script>var probe = document.createElement('div'); probe.setAttribute('data-n', 'writable-element-properties'); var propertiesWork = probe.dir === '' && (probe.dir = 'rtl') === 'rtl' && probe.dir === 'rtl' && (probe.scrollTop = 12) === 12 && probe.scrollTop === 12; document.body.setAttribute('data-ok', String(propertiesWork && document.querySelector('#missing') === null && document.head.querySelector('#missing') === null && document.body.getAttributeNames().includes('data-present') && typeof ShadowRoot === 'function'))</script></body></html>`))
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(10 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.ScriptFailures) != 0 || !strings.Contains(page.RenderedHTML, `data-ok="true"`) {
+		t.Fatalf("html=%s failures=%+v", page.RenderedHTML, page.ScriptFailures)
+	}
+}
+
+func TestShadowDOMCSSAndNamedElements(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write([]byte(`<!doctype html><html data-n="platform-page"><head data-n="platform-head"></head><body data-n="platform-body"><input data-n="first-account" name="account"><input data-n="second-account" name="account"><script data-n="platform-check">
+var host = document.createElement('section'); host.setAttribute('data-n', 'open-shadow-host'); document.body.appendChild(host);
+var root = host.attachShadow({mode: 'open'}), child = document.createElement('span'); child.setAttribute('data-n', 'shadow-child'); child.textContent = 'inside'; root.appendChild(child); var sheet = new CSSStyleSheet(); root.adoptedStyleSheets = [sheet]; document.adoptedStyleSheets = [sheet];
+var closedHost = document.createElement('section'); closedHost.setAttribute('data-n', 'closed-shadow-host'); document.body.appendChild(closedHost); var closedRoot = closedHost.attachShadow({mode: 'closed'});
+document.body.setAttribute('data-platform', [root instanceof ShadowRoot, root instanceof DocumentFragment, root.host === host, root.mode, host.shadowRoot === root, root.querySelector('[data-n="shadow-child"]').textContent, closedHost.shadowRoot === null, closedRoot.host === closedHost, root.adoptedStyleSheets.length, document.adoptedStyleSheets.length, document.getElementsByName('account').length, CSS.escape('0a b'), CSS.supports('display', 'block'), CSS.supports(''), typeof PerformanceObserver].join('|'));
+</script></body></html>`))
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(10 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.ScriptFailures) != 0 {
+		t.Fatalf("script failures: %+v", page.ScriptFailures)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-platform="true|true|true|open|true|inside|true|true|1|1|2|\30 a\ b|true|false|function"`) {
+		t.Fatalf("platform APIs are unavailable: %s", page.RenderedHTML)
 	}
 }
 

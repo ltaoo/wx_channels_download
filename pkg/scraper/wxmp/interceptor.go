@@ -21,6 +21,7 @@ var csp_nonce_reg = regexp.MustCompile(`'nonce-([^']+)'`)
 // official-account injection rule.
 type InterceptorConfig struct {
 	Version  string
+	Mode     string
 	Settings OfficialAccountConfig
 }
 
@@ -42,6 +43,11 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 		asset_version = "static"
 	}
 	version_query := url.Values{"v": []string{asset_version}}
+	inline_assets := cfg.Mode == "release" || cfg.Mode == "prod"
+	inline_asset_options := frontend.StaticAssetMockOptions{
+		PlatformPrefix: InjectAssetsPath + "/",
+		PlatformFS:     InjectAssets(),
+	}
 	plugin := &echo.Plugin{
 		Match: "qq.com",
 		OnRequest: func(ctx *echo.Context) {
@@ -79,15 +85,25 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 				style_attr = fmt.Sprintf(` nonce="%s"`, match[1])
 			}
 			var injected strings.Builder
-			if settings.DebugShowError {
-				frontend.AppendScripts(&injected, script_attr, url_build("/inject/error.js", version_query))
+			append_scripts := func(srcs ...string) {
+				if err := frontend.AppendRegisteredScripts(&injected, script_attr, inline_assets, inline_asset_options, srcs...); err != nil {
+					logger.Warn().Err(err).Msg("failed to inline registered scripts; using external assets")
+				}
 			}
-			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.32.0/timeless.umd.min.js", version_query))
-			frontend.AppendStylesheets(&injected, style_attr, url_build("/public/timeless/0.32.0/timeless.weui.css", version_query))
-			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.32.0/timeless.weui.umd.min.js", version_query))
-			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.32.0/timeless.dom.umd.min.js", version_query))
-			frontend.AppendScripts(&injected, script_attr, url_build("/public/timeless/0.32.0/timeless.web.umd.min.js", version_query))
-			frontend.AppendStylesheets(&injected, style_attr, url_build("/inject/components.css"))
+			append_stylesheets := func(hrefs ...string) {
+				if err := frontend.AppendRegisteredStylesheets(&injected, style_attr, inline_assets, inline_asset_options, hrefs...); err != nil {
+					logger.Warn().Err(err).Msg("failed to inline registered stylesheets; using external assets")
+				}
+			}
+			if settings.DebugShowError {
+				append_scripts(url_build("/inject/error.js", version_query))
+			}
+			append_scripts(url_build("/public/timeless/0.33.0/timeless.umd.min.js", version_query))
+			append_stylesheets(url_build("/public/timeless/0.33.0/timeless.weui.css", version_query))
+			append_scripts(url_build("/public/timeless/0.33.0/timeless.weui.umd.min.js", version_query))
+			append_scripts(url_build("/public/timeless/0.33.0/timeless.dom.umd.min.js", version_query))
+			append_scripts(url_build("/public/timeless/0.33.0/timeless.web.umd.min.js", version_query))
+			append_stylesheets(url_build("/inject/components.css"))
 			frontend_config := make(map[string]any, len(variables)+2)
 			cfg_byte, _ := json.Marshal(settings)
 			_ = json.Unmarshal(cfg_byte, &frontend_config)
@@ -110,9 +126,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 			frontend_config["mpWSURL"] = mp_websocket_url
 			frontend_config_byte, _ := json.Marshal(frontend_config)
 			frontend.AppendInlineScript(&injected, script_attr, fmt.Sprintf(`window.__d_config = %s;`, frontend_config_byte))
-			frontend.AppendScripts(
-				&injected,
-				script_attr,
+			append_scripts(
 				url_build("/inject/eventbus.js", version_query),
 				url_build("/public/dl.utils.js", version_query),
 				url_build("/public/dl.sdk.js", version_query),
@@ -123,7 +137,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 				url_build("/inject/download/model.js", version_query),
 				url_build("/inject/download/view.js", version_query),
 				asset_url(asset_base_url, "/inject/mp.utils.js", version_query),
-				asset_url(asset_base_url, "/inject/mp.ws.js", version_query),
+				// asset_url(asset_base_url, "/inject/mp.ws.js", version_query),
 				asset_url(asset_base_url, "/inject/mp.components.js", version_query),
 				asset_url(asset_base_url, "/inject/mp.main.js", version_query),
 			)

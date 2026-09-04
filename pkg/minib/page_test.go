@@ -120,6 +120,70 @@ window.addEventListener('load', function() { document.body.setAttribute('data-lo
 	}
 }
 
+func TestNavigateWaitsForSelectorAndContent(t *testing.T) {
+	request_counts := make(map[string]int)
+	var request_mutex sync.Mutex
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		request_mutex.Lock()
+		request_counts[request.URL.Path]++
+		request_mutex.Unlock()
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		switch request.URL.Path {
+		case "/initial":
+			_, _ = fmt.Fprint(response_writer, `<!doctype html><html data-n="initial-page"><head data-n="initial-head"><script data-n="late-resource" src="/late.js"></script></head><body data-n="initial-body"><main class="ready" data-n="initial-content">initial ready</main></body></html>`)
+		case "/dynamic":
+			_, _ = fmt.Fprint(response_writer, `<!doctype html><html data-n="dynamic-page"><head data-n="dynamic-head"></head><body data-n="dynamic-body"><script data-n="render-script">var node = document.createElement('main'); node.className = 'ready'; node.setAttribute('data-n', 'dynamic-content'); node.textContent = 'dynamic ready'; document.body.appendChild(node);</script><script data-n="late-script">document.body.setAttribute('data-late', 'ran');</script></body></html>`)
+		case "/missing":
+			_, _ = fmt.Fprint(response_writer, `<!doctype html><html data-n="missing-page"><head data-n="missing-head"></head><body data-n="missing-body">not ready</body></html>`)
+		case "/late.js":
+			response_writer.Header().Set("Content-Type", "application/javascript")
+			_, _ = fmt.Fprint(response_writer, `document.body.setAttribute('data-late-resource', 'ran')`)
+		default:
+			http.NotFound(response_writer, request)
+		}
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+
+	initial_page, err := browser.Navigate(context.Background(), server.URL+"/initial", nil, NavigateOptions{
+		WaitForSelector: ".ready",
+		WaitForContent:  "initial ready",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request_mutex.Lock()
+	late_requests := request_counts["/late.js"]
+	request_mutex.Unlock()
+	if initial_page.ExecutedScripts != 0 || len(initial_page.Resources) != 0 || late_requests != 0 {
+		t.Fatalf("initial wait did extra work: scripts=%d resources=%d late_requests=%d", initial_page.ExecutedScripts, len(initial_page.Resources), late_requests)
+	}
+	selector_value, err := browser.ExecuteJS(context.Background(), `document.querySelector('.ready').textContent`)
+	if err != nil || selector_value.String() != "initial ready" {
+		t.Fatalf("initial wait runtime value=%v error=%v", selector_value, err)
+	}
+
+	dynamic_page, err := browser.Navigate(context.Background(), server.URL+"/dynamic", nil, NavigateOptions{
+		WaitForSelector: ".ready",
+		WaitForContent:  "dynamic ready",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dynamic_page.ExecutedScripts != 1 || !strings.Contains(dynamic_page.RenderedHTML, `data-n="dynamic-content"`) || strings.Contains(dynamic_page.RenderedHTML, `data-late="ran"`) {
+		t.Fatalf("dynamic wait did not stop at the first match: scripts=%d html=%s", dynamic_page.ExecutedScripts, dynamic_page.RenderedHTML)
+	}
+
+	if _, err := browser.Navigate(context.Background(), server.URL+"/missing", nil, NavigateOptions{WaitForContent: "never rendered"}); err == nil || !strings.Contains(err.Error(), "wait condition") {
+		t.Fatalf("missing wait condition error = %v", err)
+	}
+}
+
 func TestNavigateCanDisableJavaScriptForSSRExtraction(t *testing.T) {
 	var script_requests int
 	var asset_requests int
@@ -197,6 +261,9 @@ func TestNavigateRejectsInvalidExecutionOptions(t *testing.T) {
 	}
 	if _, err := browser.Navigate(context.Background(), "https://example.invalid", nil, NavigateOptions{WaitUntil: "networkidle"}); err == nil {
 		t.Fatal("unsupported lifecycle milestone was accepted")
+	}
+	if _, err := browser.Navigate(context.Background(), "https://example.invalid", nil, NavigateOptions{WaitForSelector: "["}); err == nil {
+		t.Fatal("invalid wait selector was accepted")
 	}
 }
 
@@ -386,6 +453,88 @@ document.body.setAttribute('data-event-target', JSON.stringify({
 	expected := `{&#34;order&#34;:[&#34;window-capture:1:true&#34;,&#34;document-capture:1:true&#34;,&#34;parent-capture:1:true&#34;,&#34;child-capture:2:true&#34;,&#34;child-bubble:2:true&#34;,&#34;parent-bubble:3:true&#34;,&#34;document-bubble:3:true&#34;,&#34;window-bubble:3:true&#34;],&#34;duplicateCount&#34;:1,&#34;onceCount&#34;:1,&#34;objectCount&#34;:1,&#34;objectSelf&#34;:true,&#34;passiveResult&#34;:true,&#34;passiveDefault&#34;:false,&#34;cancelResult&#34;:false,&#34;cancelDefault&#34;:true,&#34;stopped&#34;:[&#34;first&#34;]}`
 	if !strings.Contains(page.RenderedHTML, `data-event-target="`+expected+`"`) {
 		t.Fatalf("event semantics mismatch: %s", page.RenderedHTML)
+	}
+}
+
+func TestMiniBrowserClickDispatchesDOMEvent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if request.URL.Path == "/detail" {
+			_, _ = fmt.Fprint(response_writer, `<!doctype html><html><body data-n="click-navigation-result">Detail</body></html>`)
+			return
+		}
+		_, _ = fmt.Fprint(response_writer, `<!doctype html><html><body><main id="parent"><button id="target">Click</button><button id="spa" data-n="spa-navigation-trigger">SPA</button><button id="navigate">Navigate</button></main><script>
+var clickOrder = [];
+var parent = document.getElementById('parent');
+var target = document.getElementById('target');
+parent.addEventListener('click', function() { clickOrder.push('capture'); }, true);
+target.addEventListener('click', function(event) {
+  clickOrder.push('target');
+  document.body.setAttribute('data-click-event', [event instanceof MouseEvent, event.bubbles, event.cancelable, event.composed, event.isTrusted, event.button, event.buttons, event.detail].join(':'));
+  event.preventDefault();
+  Promise.resolve().then(function() { document.body.setAttribute('data-click-promise', 'done'); });
+  setTimeout(function() { document.body.setAttribute('data-click-timer', 'done'); }, 0);
+});
+parent.addEventListener('click', function(event) {
+  clickOrder.push('bubble');
+  document.body.setAttribute('data-click-result', clickOrder.join(',') + ':' + event.defaultPrevented);
+});
+document.getElementById('navigate').addEventListener('click', function() { location.href = '/detail'; });
+document.getElementById('spa').addEventListener('click', function() { history.pushState({ shop: 1 }, '', '/spa?shop=1#menu'); });
+</script></body></html>`)
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := browser.Click(context.Background(), "#target"); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{
+		`data-click-event="true:true:true:true:true:0:0:1"`,
+		`data-click-result="capture,target,bubble:true"`,
+		`data-click-promise="done"`,
+		`data-click-timer="done"`,
+	} {
+		if !strings.Contains(page.RenderedHTML, expected) {
+			t.Fatalf("click result missing %q: %s", expected, page.RenderedHTML)
+		}
+	}
+	if err := browser.Click(context.Background(), "#spa"); err != nil {
+		t.Fatal(err)
+	}
+	spa_state, err := browser.ExecuteJS(context.Background(), `[location.href, location.pathname, location.search, location.hash, document.URL, history.length, history.state.shop].join('|')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spa_url := server.URL + "/spa?shop=1#menu"
+	if page.URL != spa_url || spa_state.String() != spa_url+"|/spa|?shop=1|#menu|"+spa_url+"|2|1" {
+		t.Fatalf("SPA navigation state: page=%q state=%q", page.URL, spa_state.String())
+	}
+	if err := browser.Click(context.Background(), "#missing"); err == nil || !strings.Contains(err.Error(), "no element matches") {
+		t.Fatalf("missing selector error = %v", err)
+	}
+	if err := browser.Click(context.Background(), "["); err == nil || !strings.Contains(err.Error(), "invalid click selector") {
+		t.Fatalf("invalid selector error = %v", err)
+	}
+	if err := browser.Click(context.Background(), "#navigate"); err != nil {
+		t.Fatal(err)
+	}
+	if page.URL != server.URL+"/detail" || !strings.Contains(page.RenderedHTML, `data-n="click-navigation-result"`) {
+		t.Fatalf("click navigation did not update page: url=%q html=%s", page.URL, page.RenderedHTML)
+	}
+	if strings.Join(page.NavigationHistory, ",") != server.URL+","+server.URL+"/detail" {
+		t.Fatalf("click navigation history = %#v", page.NavigationHistory)
+	}
+	if strings.Join(page.NavigationRequests, ",") != spa_url+","+server.URL+"/detail" {
+		t.Fatalf("click navigation requests = %#v", page.NavigationRequests)
 	}
 }
 
@@ -608,6 +757,8 @@ window.mixinState = {
   childNodes: mixinHost.childNodes.length,
   root: mixinHost.getRootNode() === document,
   same: mixinHost.isSameNode(mixinHost),
+  equal: mixinHost.isEqualNode(mixinHost.cloneNode(true)),
+  unequal: mixinHost.isEqualNode(document.createElement('div')),
   hasChildren: mixinHost.hasChildNodes(),
   selectorGroup: document.querySelectorAll('body,div').length,
   matchesGroup: mixinHost.matches('span,div'),
@@ -634,7 +785,7 @@ window.mixinState = {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := `{"before":"start-middle-before--replacement--after-<b>html</b>-text","toggles":[true,false,true],"text":"abc!?XY","wholeText":"abc!?XY","childNodes":1,"root":true,"same":true,"hasChildren":true,"selectorGroup":2,"matchesGroup":true,"closestGroup":true,"positionConstant":16}`
+	expected := `{"before":"start-middle-before--replacement--after-<b>html</b>-text","toggles":[true,false,true],"text":"abc!?XY","wholeText":"abc!?XY","childNodes":1,"root":true,"same":true,"equal":true,"unequal":false,"hasChildren":true,"selectorGroup":2,"matchesGroup":true,"closestGroup":true,"positionConstant":16}`
 	if value.String() != expected {
 		t.Fatalf("DOM mixin state = %s, want %s", value.String(), expected)
 	}
@@ -864,7 +1015,8 @@ try { document.body.dispatchEvent({}); } catch (error) { document.body.setAttrib
 var eventParent = document.createElement('div'); eventParent.setAttribute('data-n', 'event-parent'); var eventChild = document.createElement('button'); eventChild.setAttribute('data-n', 'event-child'); eventParent.appendChild(eventChild); document.body.appendChild(eventParent); eventParent.addEventListener('minib-event', function(event) { var path = event.composedPath(); document.body.setAttribute('data-event-dispatch', [event.detail.value, event.target === eventChild, event.currentTarget === eventParent, path[0] === eventChild, path[1] === eventParent].join(':')); event.preventDefault(); }); document.body.setAttribute('data-event-result', eventChild.dispatchEvent(new CustomEvent('minib-event', { detail: { value: 'ready' }, bubbles: true, cancelable: true })));
 var svgNode = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svgNode.setAttributeNS(null, 'viewBox', '0 0 1 1');
 var cyclicArray = []; cyclicArray.push(cyclicArray);
-var templateNode = document.createElement('template'); templateNode.innerHTML = '<strong data-n="template-clone">template</strong>'; document.body.appendChild(document.importNode(templateNode.content, true));
+Object.getPrototypeOf(navigator).vendorSubs = 'ready'; document.body.setAttribute('data-navigator-prototype', [navigator instanceof Navigator, ({}).vendorSubs === undefined].join(':')); delete Object.getPrototypeOf(navigator).vendorSubs;
+var templateNode = document.createElement('template'); templateNode.innerHTML = 'text<strong data-n="template-clone">template</strong>'; document.body.setAttribute('data-template-first-element', templateNode.content.firstElementChild.tagName); document.body.appendChild(document.importNode(templateNode.content, true));
 var nestedTemplate = document.createElement('template'); nestedTemplate.setAttribute('data-n', 'nested-template'); nestedTemplate.innerHTML = '<b data-n="nested-template-content">nested</b>'; document.body.setAttribute('data-fragment-query', nestedTemplate.content.querySelector('b').textContent + ':' + nestedTemplate.content.querySelectorAll('b').length); document.body.appendChild(nestedTemplate.cloneNode(true).content);
 var fragmentInsertTarget = document.createElement('div'); fragmentInsertTarget.setAttribute('data-n', 'fragment-insert-target'); var fragmentInsertMark = document.createElement('span'); fragmentInsertMark.setAttribute('data-n', 'fragment-insert-mark'); fragmentInsertTarget.appendChild(fragmentInsertMark); var fragmentInsert = document.createDocumentFragment(); fragmentInsert.appendChild(document.createElement('em')).setAttribute('data-n', 'fragment-insert-child'); fragmentInsertTarget.insertBefore(fragmentInsert, fragmentInsertMark); var fragmentReplace = document.createDocumentFragment(); fragmentReplace.appendChild(document.createElement('b')).setAttribute('data-n', 'fragment-replace-child'); fragmentInsertTarget.replaceChild(fragmentReplace, fragmentInsertMark); document.body.appendChild(fragmentInsertTarget);
 document.body.setAttribute('data-wrapped-import', document.importNode({ node: document.body }, false).tagName);
@@ -1039,6 +1191,12 @@ fetch('/fetch-api?source=fetch', { method: 'POST', headers: { 'Content-Type': 'a
 	if page.ExecutedScripts != 7 {
 		t.Fatalf("executed %d scripts, want 7; failures=%+v", page.ExecutedScripts, page.ScriptFailures)
 	}
+	if !strings.Contains(page.RenderedHTML, `data-template-first-element="STRONG"`) {
+		t.Fatalf("template firstElementChild missing from rendered HTML: %s", page.RenderedHTML)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-navigator-prototype="true:true"`) {
+		t.Fatalf("navigator prototype semantics missing from rendered HTML: %s", page.RenderedHTML)
+	}
 	if !strings.Contains(page.RenderedHTML, `external-inline`) || !strings.Contains(page.RenderedHTML, `data-initial-script-load="done"`) || !strings.Contains(page.RenderedHTML, `data-written="done"`) || !strings.Contains(page.RenderedHTML, `data-apply-null="0"`) || !strings.Contains(page.RenderedHTML, `data-single-argument-timer="done"`) || !strings.Contains(page.RenderedHTML, `data-dynamic="done"`) || !strings.Contains(page.RenderedHTML, `data-dynamic-style="loaded"`) || !strings.Contains(page.RenderedHTML, `data-dynamic-image="loaded"`) || !strings.Contains(page.RenderedHTML, `data-defer-saw-body="yes"`) || !strings.Contains(page.RenderedHTML, `data-anchor="/jobs?q=go#details"`) || !strings.Contains(page.RenderedHTML, `data-attribute="test"`) || !strings.Contains(page.RenderedHTML, `data-has-attributes="true:false"`) || !strings.Contains(page.RenderedHTML, `data-class-list="one,two"`) || !strings.Contains(page.RenderedHTML, `data-event-prototype="ready"`) || !strings.Contains(page.RenderedHTML, `data-wrapped-event="wrapped"`) || !strings.Contains(page.RenderedHTML, `data-invalid-event="true"`) || !strings.Contains(page.RenderedHTML, `data-adjacent="done"`) || !strings.Contains(page.RenderedHTML, `data-module="done"`) || !strings.Contains(page.RenderedHTML, `data-named-global="done"`) || !strings.Contains(page.RenderedHTML, `data-browser-api="detached:function"`) || !strings.Contains(page.RenderedHTML, `data-youtube-apis="true:en-US:en-US:click:Enter:detail:0 0 1 1:true:false:true:true:true:16px:true"`) || !strings.Contains(page.RenderedHTML, `data-custom-elements="true:upgraded:yes:true:yes:on&gt;null:true:true:true"`) || !strings.Contains(page.RenderedHTML, `data-template-inert="0:1"`) || !strings.Contains(page.RenderedHTML, `data-upgraded="yes"`) || !strings.Contains(page.RenderedHTML, `data-connect-order="parent,child"`) || !strings.Contains(page.RenderedHTML, `data-wrapped-import="BODY"`) || !strings.Contains(page.RenderedHTML, `data-message-channel="ready"`) || !strings.Contains(page.RenderedHTML, `<strong data-n="template-clone">template</strong>`) || !strings.Contains(page.RenderedHTML, `data-fragment-query="nested:1"`) || !strings.Contains(page.RenderedHTML, `<b data-n="nested-template-content">nested</b>`) || !strings.Contains(page.RenderedHTML, `<em data-n="fragment-insert-child"></em><b data-n="fragment-replace-child"></b>`) || !strings.Contains(page.RenderedHTML, `<i data-n="range-fragment">range</i>`) || !strings.Contains(page.RenderedHTML, `data-canvas-api="true:true"`) || !strings.Contains(page.RenderedHTML, `data-native-dom="ok:true:true:true:true:true:true:true:probably:true:probably:true:true:true:true:true:false:true:true:true:true:true:true:true"`) || !strings.Contains(page.RenderedHTML, `data-layout="100:20:0:1:0"`) || !strings.Contains(page.RenderedHTML, `data-intersection="true:BODY"`) || !strings.Contains(page.RenderedHTML, `data-mutation="sync,after,observer"`) || !strings.Contains(page.RenderedHTML, `data-xhr="200:{&#34;ok&#34;:true}"`) || !strings.Contains(page.RenderedHTML, `data-promise-xhr="200"`) || !strings.Contains(page.RenderedHTML, `data-axios-xhr="200:{&#34;axios&#34;:true}"`) || !strings.Contains(page.RenderedHTML, `data-async-finally="mounted"`) || !strings.Contains(page.RenderedHTML, `data-delayed-xhr="done"`) || !strings.Contains(page.RenderedHTML, `data-kv-xhr="ready"`) || !strings.Contains(page.RenderedHTML, `data-fetch="true"`) || !strings.Contains(page.RenderedHTML, `<span>fragment</span>`) {
 		t.Fatalf("script DOM changes missing from rendered HTML: %s", page.RenderedHTML)
 	}
@@ -1049,7 +1207,7 @@ fetch('/fetch-api?source=fetch', { method: 'POST', headers: { 'Content-Type': 'a
 	if err != nil {
 		t.Fatal(err)
 	}
-	if value.String() != "external,inline,written,dynamic,defer" {
+	if value.String() != "external,inline,written,defer,dynamic" {
 		t.Fatalf("script order = %q", value.String())
 	}
 	for _, path := range []string{"/", "/style.css", "/dynamic.css", "/app.js", "/defer.js", "/dynamic.js", "/written.js", "/pixel.png", "/dynamic.png", "/api", "/promise-api", "/axios-api", "/async-axios-api", "/delayed-api", "/kv-api", "/fetch-api"} {
@@ -1070,6 +1228,40 @@ fetch('/fetch-api?source=fetch', { method: 'POST', headers: { 'Content-Type': 'a
 	}
 	if len(page.FetchRequests) != 1 || !strings.Contains(page.FetchRequests[0], "/fetch-api?source=fetch") {
 		t.Fatalf("fetch requests = %q", page.FetchRequests)
+	}
+}
+
+func TestDynamicNonJavaScriptScriptIsInert(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(response_writer, `<!doctype html><html><head data-n="dynamic-script-head"></head><body data-n="dynamic-script-body"><script data-n="dynamic-script-loader">
+var dataScript = document.createElement('script');
+dataScript.type = 'application/json';
+dataScript.setAttribute('data-n', 'dynamic-json-data');
+dataScript.textContent = '%7B%22ready%22%3Atrue%7D';
+document.head.appendChild(dataScript);
+var executableScript = document.createElement('script');
+executableScript.setAttribute('data-n', 'dynamic-executable-script');
+executableScript.textContent = "document.body.setAttribute('data-dynamic-script', 'ran')";
+document.head.appendChild(executableScript);
+</script></body></html>`)
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.ScriptFailures) != 0 {
+		t.Fatalf("non-JavaScript data block executed: %+v", page.ScriptFailures)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-dynamic-script="ran"`) {
+		t.Fatalf("JavaScript sibling did not execute: %s", page.RenderedHTML)
 	}
 }
 

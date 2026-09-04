@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="14 21 76 58" aria-hidden="true" focusable="false">
+  <defs>
+    <clipPath id="watermark-break-top">
+      <path d="M14 21h76v22L54 51 14 56z"/>
+    </clipPath>
+    <clipPath id="watermark-break-bottom">
+      <path d="M14 56l40-5 36-8v36H14z"/>
+    </clipPath>
+  </defs>
+  <g fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round">
+    <g clip-path="url(#watermark-break-top)" transform="translate(-1.5 -1.25)">
+      <path d="M22 31v29M22 31h6c10 0 16 5 16 14.5S38 60 28 60h-6" stroke-width="8"/>
+      <path d="M53 60V37c0-5 2-8 6-8s6 4 7 13c.5 4 2.5 4 3 0 1-9 3-13 7-13s6 3 6 8v23" stroke-width="8"/>
+      <path d="M29 68q21 12 43 0" stroke-width="6"/>
+    </g>
+    <g clip-path="url(#watermark-break-bottom)" opacity=".58" transform="translate(2.25 2)">
+      <path d="M22 31v29M22 31h6c10 0 16 5 16 14.5S38 60 28 60h-6" stroke-width="8"/>
+      <path d="M53 60V37c0-5 2-8 6-8s6 4 7 13c.5 4 2.5 4 3 0 1-9 3-13 7-13s6 3 6 8v23" stroke-width="8"/>
+      <path d="M29 68q21 12 43 0" stroke-width="6"/>
+    </g>
+  </g>
+</svg>

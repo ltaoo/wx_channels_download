@@ -287,13 +287,17 @@ func validate_fetch_result(result *fetch_result) (*fetch_result, error) {
 	if strings.TrimSpace(result.Note.NoteID) == "" {
 		return nil, fmt.Errorf("小红书笔记 ID 为空")
 	}
-	if !strings.EqualFold(strings.TrimSpace(result.Note.Type), "video") {
-		return nil, fmt.Errorf("小红书笔记 %s 不是视频笔记", result.Note.NoteID)
-	}
-	if len(note_streams(result.Note)) == 0 {
+	if is_video_note(result.Note) && len(note_streams(result.Note)) == 0 {
 		return nil, fmt.Errorf("小红书视频 %s 没有可用视频流", result.Note.NoteID)
 	}
+	if !is_video_note(result.Note) && len(note_images(result.Note)) == 0 {
+		return nil, fmt.Errorf("小红书图文笔记 %s 没有可用图片", result.Note.NoteID)
+	}
 	return result, nil
+}
+
+func is_video_note(note *note_data) bool {
+	return note != nil && strings.EqualFold(strings.TrimSpace(note.Type), "video")
 }
 
 func fetch_result_from_data(data any) (*fetch_result, error) {
@@ -413,11 +417,47 @@ func note_cover(note *note_data) (string, int, int) {
 	return normalize_media_url(cover_url), image.Width, image.Height
 }
 
+func note_image_url(image note_image) string {
+	image_url := first_non_empty(image.URL, image.URLDefault, image.URLPreview)
+	if image_url == "" {
+		for _, image_info := range image.InfoList {
+			if image_url = strings.TrimSpace(image_info.URL); image_url != "" {
+				break
+			}
+		}
+	}
+	return normalize_media_url(image_url)
+}
+
+func note_images(note *note_data) []model.ContentImage {
+	if note == nil {
+		return nil
+	}
+	content_id := BuildContentID(note.NoteID)
+	images := make([]model.ContentImage, 0, len(note.ImageList))
+	for image_index, image := range note.ImageList {
+		image_url := note_image_url(image)
+		if image_url == "" {
+			continue
+		}
+		images = append(images, model.ContentImage{
+			AlbumId:   content_id,
+			ImageKey:  model.BuildContentAlbumImageKey(image.FileID, image_url, image_index),
+			SortOrder: image_index,
+			URL:       image_url,
+			Width:     image.Width,
+			Height:    image.Height,
+			ImageType: model.ContentImageTypeStill,
+		})
+	}
+	return images
+}
+
 func note_title(note *note_data) string {
 	if note == nil {
-		return "小红书视频"
+		return "小红书笔记"
 	}
-	return first_non_empty(note.Description, note.Title, "小红书视频_"+note.NoteID)
+	return first_non_empty(note.Description, note.Title, "小红书笔记_"+note.NoteID)
 }
 
 func canonical_note_url(note *note_data) string {
@@ -472,9 +512,17 @@ func to_content(result *fetch_result) (*model.Content, error) {
 		return nil, err
 	}
 	note := result.Note
-	stream, err := preferred_stream(note)
-	if err != nil {
-		return nil, err
+	content_type := model.ContentTypeAlbum
+	content_subtype := model.ContentSubtypePhotoAlbum
+	content_url := canonical_note_url(note)
+	if is_video_note(note) {
+		stream, stream_err := preferred_stream(note)
+		if stream_err != nil {
+			return nil, stream_err
+		}
+		content_type = model.ContentTypeVideo
+		content_subtype = model.ContentSubtypeShortVideo
+		content_url = stream.MasterURL
 	}
 	cover_url, cover_width, cover_height := note_cover(note)
 	tag_names := make([]string, 0, len(note.TagList))
@@ -487,6 +535,7 @@ func to_content(result *fetch_result) (*model.Content, error) {
 	metadata_json, _ := json.Marshal(map[string]any{
 		"note_type":        note.Type,
 		"last_update_time": note.LastUpdateTime,
+		"image_count":      len(note_images(note)),
 		"video_biz_id":     note.Video.Media.Video.BizID,
 		"video_md5":        note.Video.Media.Video.MD5,
 		"stream_count":     len(note_streams(note)),
@@ -504,13 +553,13 @@ func to_content(result *fetch_result) (*model.Content, error) {
 	return &model.Content{
 		Id:           BuildContentID(note.NoteID),
 		PlatformId:   PlatformID,
-		Type:         model.ContentTypeVideo,
-		Subtype:      model.ContentSubtypeShortVideo,
+		Type:         content_type,
+		Subtype:      content_subtype,
 		ExternalId:   strings.TrimSpace(note.NoteID),
 		ExternalId2:  strings.TrimSpace(note.Video.Media.Video.BizID),
 		Title:        note_title(note),
 		Description:  strings.TrimSpace(note.Description),
-		URL:          stream.MasterURL,
+		URL:          content_url,
 		SourceURL:    source_url,
 		CoverURL:     cover_url,
 		CoverWidth:   positive_int_string(cover_width),
@@ -524,6 +573,25 @@ func to_content(result *fetch_result) (*model.Content, error) {
 		Metadata:     string(metadata_json),
 		Timestamps:   model.Timestamps{CreatedAt: now, UpdatedAt: now},
 	}, nil
+}
+
+func to_content_album(result *fetch_result) (*model.ContentAlbum, error) {
+	result, err := validate_fetch_result(result)
+	if err != nil {
+		return nil, err
+	}
+	images := note_images(result.Note)
+	album := &model.ContentAlbum{
+		Id:          BuildContentID(result.Note.NoteID),
+		ImageCount:  len(images),
+		Description: strings.TrimSpace(result.Note.Description),
+		Images:      images,
+	}
+	if len(images) > 0 {
+		album.CoverWidth = images[0].Width
+		album.CoverHeight = images[0].Height
+	}
+	return album, nil
 }
 
 func to_account(result *fetch_result) (*model.Account, error) {
@@ -623,19 +691,24 @@ func to_content_details(result *fetch_result) ([]adapter.ContentDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	video, err := to_content_video(result)
-	if err != nil {
-		return nil, err
-	}
 	account, err := to_account(result)
 	if err != nil {
 		return nil, err
 	}
+	var detail any
+	if is_video_note(result.Note) {
+		detail, err = to_content_video(result)
+	} else {
+		detail, err = to_content_album(result)
+	}
+	if err != nil {
+		return nil, err
+	}
 	return []adapter.ContentDetail{{
-		Type:    model.ContentTypeVideo,
+		Type:    content.Type,
 		Key:     content.Id,
 		Content: content,
-		Data:    video,
+		Data:    detail,
 		Accounts: []adapter.ContentAccountReference{{
 			Account: account,
 			Role:    "owner",

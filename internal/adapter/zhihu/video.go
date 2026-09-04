@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 
@@ -104,9 +105,14 @@ func fetch_zhihu_embedded_video_infos(client *zhihu.Client, page_data any, root_
 	scene_code := zhihu_video_scene_code(content_type)
 	video_infos := make([]zhihu_embedded_video_info, 0, len(video_ids))
 	for _, video_id := range video_ids {
-		info, err := client.FetchVideoPlayInfo(content_id, content_type, video_id, scene_code, referer)
-		if err != nil {
-			return nil, fmt.Errorf("获取知乎视频 %s 播放信息失败: %w", video_id, err)
+		info := zhihu_page_video_play_info(page_data, video_id)
+		if info == nil {
+			var err error
+			info, err = client.FetchVideoPlayInfo(content_id, content_type, video_id, scene_code, referer)
+			if err != nil {
+				return nil, fmt.Errorf("获取知乎视频 %s 播放信息失败: %w", video_id, err)
+			}
+			set_zhihu_page_video_play_info(page_data, video_id, info)
 		}
 		if info.VideoPlay.ID != video_id {
 			return nil, fmt.Errorf("知乎视频播放信息 ID 不匹配: want %s, got %s", video_id, info.VideoPlay.ID)
@@ -117,6 +123,82 @@ func fetch_zhihu_embedded_video_infos(client *zhihu.Client, page_data any, root_
 		video_infos = append(video_infos, zhihu_embedded_video_info{video_id: video_id, info: info})
 	}
 	return video_infos, nil
+}
+
+func zhihu_page_video_play_info(page_data any, video_id string) *zhihu.VideoPlayInfo {
+	switch page := page_data.(type) {
+	case *zhihu.AnswerPage:
+		if page != nil {
+			info, ok := page.VideoPlayInfos[video_id]
+			if ok && zhihu_video_play_info_is_current(&info) {
+				return &info
+			}
+		}
+	case *zhihu.QuestionPage:
+		if page != nil {
+			info, ok := page.VideoPlayInfos[video_id]
+			if ok && zhihu_video_play_info_is_current(&info) {
+				return &info
+			}
+		}
+	case *zhihu.ArticlePage:
+		if page != nil {
+			info, ok := page.VideoPlayInfos[video_id]
+			if ok && zhihu_video_play_info_is_current(&info) {
+				return &info
+			}
+		}
+	}
+	return nil
+}
+
+func zhihu_video_play_info_is_current(info *zhihu.VideoPlayInfo) bool {
+	if info == nil {
+		return false
+	}
+	now := time.Now().UnixMilli()
+	for variant_index := range info.VideoPlay.Playlist.MP4 {
+		for url_index := range info.VideoPlay.Playlist.MP4[variant_index].URL {
+			video_url := strings.TrimSpace(info.VideoPlay.Playlist.MP4[variant_index].URL[url_index])
+			if video_url == "" {
+				continue
+			}
+			expires_at := zhihu_video_url_expires_at(video_url)
+			if expires_at == nil || *expires_at > now {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func set_zhihu_page_video_play_info(page_data any, video_id string, info *zhihu.VideoPlayInfo) {
+	if info == nil {
+		return
+	}
+	switch page := page_data.(type) {
+	case *zhihu.AnswerPage:
+		if page != nil {
+			if page.VideoPlayInfos == nil {
+				page.VideoPlayInfos = make(map[string]zhihu.VideoPlayInfo)
+			}
+			page.VideoPlayInfos[video_id] = *info
+		}
+	case *zhihu.QuestionPage:
+		if page != nil {
+			if page.VideoPlayInfos == nil {
+				page.VideoPlayInfos = make(map[string]zhihu.VideoPlayInfo)
+			}
+			page.VideoPlayInfos[video_id] = *info
+		}
+	case *zhihu.ArticlePage:
+		if page != nil {
+			if page.VideoPlayInfos == nil {
+				page.VideoPlayInfos = make(map[string]zhihu.VideoPlayInfo)
+			}
+			page.VideoPlayInfos[video_id] = *info
+		}
+	}
 }
 
 func has_playable_zhihu_mp4(info *zhihu.VideoPlayInfo) bool {

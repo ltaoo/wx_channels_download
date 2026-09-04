@@ -62,7 +62,6 @@ func (h *handler) set_runtime(cookie_reader *cookies.Reader, logger *zerolog.Log
 	h.cookie_reader = cookie_reader
 	h.logger = logger
 	h.runtime_mu.Unlock()
-
 	h.status_mu.Lock()
 	h.status_bus = bus
 	h.status_mu.Unlock()
@@ -218,9 +217,9 @@ func ToAccount(user *zhihu.User) (*model.Account, error) {
 		return nil, fmt.Errorf("zhihu user is empty")
 	}
 
-	external_id := first_non_empty_str(user.URLToken, user.URLTokenSnake)
+	external_id := first_non_empty_str(user.URLToken, user.URLTokenSnake, user.ID)
 	if external_id == "" {
-		return nil, fmt.Errorf("zhihu user has no URL token")
+		return nil, fmt.Errorf("zhihu user has no identifier")
 	}
 
 	now := util.NowMillis()
@@ -596,12 +595,16 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 		page_data = fetched_page
 	}
 
+	return h.build_download_task(page_data, config, input.Title, input.URL)
+}
+
+func (h *handler) build_download_task(page_data any, config map[string]any, title_override string, source_url_override string) (*adapter.DownloadTaskResult, error) {
 	content, err := h.ToContent(page_data)
 	if err != nil {
 		return nil, fmt.Errorf("转换知乎内容失败: %w", err)
 	}
-	if strings.TrimSpace(input.Title) != "" {
-		content.Title = strings.TrimSpace(input.Title)
+	if strings.TrimSpace(title_override) != "" {
+		content.Title = strings.TrimSpace(title_override)
 	}
 	title := strings.TrimSpace(content.Title)
 	if title == "" {
@@ -616,7 +619,7 @@ func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_raw jso
 	// but use a Windows-safe separator for resource files.
 	resource_key := strings.ReplaceAll(content_key, ":", "_")
 	cover_url := content.CoverURL
-	source_url := first_non_empty_str(content.SourceURL, content.URL, input.URL)
+	source_url := first_non_empty_str(content.SourceURL, content.URL, source_url_override)
 
 	account, account_err := h.ToAccount(page_data)
 	if account_err != nil {

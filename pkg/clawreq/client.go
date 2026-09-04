@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Danny-Dasilva/CycleTLS/cycletls"
+	"github.com/klauspost/compress/zstd"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/transform"
 )
@@ -405,7 +406,7 @@ func DefaultHeaders(profile Profile) http.Header {
 			"Sec-Fetch-Mode":            {"navigate"},
 			"Sec-Fetch-User":            {"?1"},
 			"Sec-Fetch-Dest":            {"document"},
-			"Accept-Encoding":           {"gzip, deflate, br"},
+			"Accept-Encoding":           {"gzip, deflate, br, zstd"},
 			"Accept-Language":           {"en-US,en;q=0.9"},
 		}
 	}
@@ -501,18 +502,27 @@ func resolveBrowserSpec(profile Profile) browserSpec {
 			ja3:       chrome112JA3,
 			userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36",
 			headerOrder: []string{
+				"accept",
+				"accept-encoding",
+				"accept-language",
+				"cache-control",
+				"pragma",
+				"priority",
+				"referer",
+				"origin",
 				"sec-ch-ua",
 				"sec-ch-ua-mobile",
 				"sec-ch-ua-platform",
+				"sec-fetch-dest",
+				"sec-fetch-mode",
+				"sec-fetch-site",
+				"sec-fetch-user",
 				"upgrade-insecure-requests",
 				"user-agent",
-				"accept",
-				"sec-fetch-site",
-				"sec-fetch-mode",
-				"sec-fetch-user",
-				"sec-fetch-dest",
-				"accept-encoding",
-				"accept-language",
+				"x-api-version",
+				"x-requested-with",
+				"x-zse-93",
+				"x-zse-96",
 				"cookie",
 			},
 		}
@@ -550,6 +560,16 @@ func responseHeaders(headers map[string]string) http.Header {
 func decodeBody(body string, headers http.Header) []byte {
 	if body == "" {
 		return nil
+	}
+	if strings.EqualFold(strings.TrimSpace(headers.Get("Content-Encoding")), "zstd") {
+		decoder, err := zstd.NewReader(nil)
+		if err == nil {
+			decompressed, decode_err := decoder.DecodeAll([]byte(body), nil)
+			decoder.Close()
+			if decode_err == nil {
+				return decompressed
+			}
+		}
 	}
 	contentType := headers.Get("Content-Type")
 	if !isBinaryContentType(contentType) {

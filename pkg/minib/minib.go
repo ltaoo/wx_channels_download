@@ -5,6 +5,7 @@ package minib
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/andybalholm/cascadia"
 	"github.com/dop251/goja"
 
 	"wx_channel/pkg/clawreq"
@@ -22,6 +24,17 @@ import (
 )
 
 const default_timeout = 30 * time.Second
+
+type request_header_modifier_context_key struct{}
+
+func with_request_header_modifier(ctx context.Context, modifier func(*http.Request) error) context.Context {
+	return context.WithValue(ctx, request_header_modifier_context_key{}, modifier)
+}
+
+func request_header_modifier_from_context(ctx context.Context) func(*http.Request) error {
+	modifier, _ := ctx.Value(request_header_modifier_context_key{}).(func(*http.Request) error)
+	return modifier
+}
 
 // MiniBrowser keeps cookies and JavaScript state across requests.
 type MiniBrowser struct {
@@ -94,6 +107,17 @@ func (b *MiniBrowser) Request(ctx context.Context, method, raw_url string, body 
 	if err != nil {
 		return nil, err
 	}
+	request_url, err := url.Parse(raw_url)
+	if err != nil {
+		return nil, err
+	}
+	if modifier := request_header_modifier_from_context(ctx); modifier != nil {
+		request := &http.Request{Method: method, URL: request_url, Header: prepared_headers}
+		if err := modifier(request); err != nil {
+			return nil, fmt.Errorf("minib: modify request headers: %w", err)
+		}
+		prepared_headers = request.Header
+	}
 	request_headers := make(map[string]string, len(prepared_headers))
 	for name, values := range prepared_headers {
 		request_headers[http.CanonicalHeaderKey(name)] = strings.Join(values, ", ")
@@ -107,7 +131,6 @@ func (b *MiniBrowser) Request(ctx context.Context, method, raw_url string, body 
 		}
 		body = bytes.NewReader(request_body)
 	}
-	request_url, _ := url.Parse(raw_url)
 	started_at := time.Now()
 	response, err := b.http_client.Do(ctx, method, raw_url, body, clawreq.WithOnlyHeaders(request_headers))
 	if recorder != nil {
@@ -287,6 +310,58 @@ func (b *MiniBrowser) ExecuteJS(ctx context.Context, expression string) (value g
 		}
 	}
 	return value, nil
+}
+
+// Click dispatches a browser-generated click event to the first element that
+// matches selector. It does not perform layout, hit testing, or default actions.
+func (b *MiniBrowser) Click(ctx context.Context, selector string) error {
+	if b == nil || b.js_runtime == nil {
+		return fmt.Errorf("minib: browser is closed")
+	}
+	selector = strings.TrimSpace(selector)
+	if selector == "" {
+		return fmt.Errorf("minib: click selector cannot be empty")
+	}
+	if _, err := cascadia.ParseGroup(selector); err != nil {
+		return fmt.Errorf("minib: invalid click selector %q: %w", selector, err)
+	}
+	if b.page_runtime == nil || b.page_runtime.page == nil {
+		return fmt.Errorf("minib: click requires a loaded page")
+	}
+	if b.page_runtime.use_custom_runtime {
+		return fmt.Errorf("minib: click is unavailable with a custom runtime")
+	}
+	current_page := b.page_runtime.page
+	current_navigation_history := append([]string(nil), current_page.NavigationHistory...)
+	navigation_headers := b.page_runtime.request_headers.Clone()
+	encoded_selector, err := json.Marshal(selector)
+	if err != nil {
+		return fmt.Errorf("minib: encode click selector: %w", err)
+	}
+	clicked, err := b.ExecuteJS(ctx, "__minib_browser_click("+string(encoded_selector)+")")
+	if err != nil {
+		return fmt.Errorf("minib: click %q: %w", selector, err)
+	}
+	if !clicked.ToBoolean() {
+		return fmt.Errorf("minib: no element matches click selector %q", selector)
+	}
+	if current_page.navigation_url == "" {
+		return nil
+	}
+	current_navigation_requests := append([]string(nil), current_page.NavigationRequests...)
+	navigation_headers.Set("Referer", current_page.URL)
+	click_navigation_options := current_page.navigate_options
+	click_navigation_options.WaitForSelector = ""
+	click_navigation_options.WaitForContent = ""
+	navigated_page, err := b.Navigate(ctx, current_page.navigation_url, navigation_headers, click_navigation_options)
+	if err != nil {
+		return fmt.Errorf("minib: follow click navigation to %q: %w", current_page.navigation_url, err)
+	}
+	navigated_page.NavigationHistory = append(current_navigation_history, navigated_page.NavigationHistory...)
+	navigated_page.NavigationRequests = append(current_navigation_requests, navigated_page.NavigationRequests...)
+	*current_page = *navigated_page
+	b.page_runtime.page = current_page
+	return nil
 }
 
 // Close releases the HTTP client and JavaScript context.

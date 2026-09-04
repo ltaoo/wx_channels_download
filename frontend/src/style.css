@@ -351,11 +351,6 @@ body {
   height: var(--dm-control-height-lg);
 }
 
-.content-row-cover-fallback {
-  color: var(--dm-color-primary);
-  background: var(--dm-color-primary-soft);
-}
-
 .content-row-cover-wrap {
   position: relative;
 }
@@ -366,7 +361,7 @@ body {
   place-items: center;
   object-fit: cover;
   color: var(--dm-content-muted);
-  background: var(--dm-content-panel-soft);
+  /* background: var(--dm-content-panel-soft); */
   border: var(--dm-border-width) solid var(--dm-content-border);
   border-radius: var(--dm-radius-md);
 }

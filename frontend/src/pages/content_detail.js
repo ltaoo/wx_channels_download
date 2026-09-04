@@ -1,4 +1,5 @@
 import { ContentDetailViewModel } from "./content_detail.model.js";
+import { PlatformIcon } from "../components.js";
 
 function ContentDetailAction(props) {
   const semantic_name = props.name || "content-detail-action";
@@ -77,14 +78,11 @@ function ContentDetailAccount(props) {
       Show({
         when: account.avatar_url,
         ok() {
-          return Img({
+          return LazyImg({
             class: "content-avatar",
             src: account.avatar_url,
             alt: name,
             attributes: { loading: "lazy", referrerpolicy: "no-referrer" },
-            onError(event) {
-              event.target.style.display = "none";
-            },
           });
         },
         else() {
@@ -128,17 +126,10 @@ function ContentDetailPlatform(props) {
     Show({
       when: favicon,
       ok() {
-        return Img({
+        return PlatformIcon({
           class: "content-platform-icon",
-          src: favicon,
-          alt: "",
-          attributes: {
-            loading: "lazy",
-            referrerpolicy: "no-referrer",
-          },
-          onError(event) {
-            event.target.style.display = "none";
-          },
+          favicon,
+          name: "content-platform-icon",
         });
       },
       else() {
@@ -639,14 +630,11 @@ function ContentDetailMediaStage(props) {
     }, [
       cover_url
         ? View({ class: "content-detail-media-artwork" }, [
-            Img({
+            LazyImg({
               class: "content-detail-media-artwork-image",
               src: cover_url,
               alt: "",
               attributes: { referrerpolicy: "no-referrer" },
-              onError(event) {
-                event.target.style.display = "none";
-              },
             }),
             View({ class: "content-detail-media-artwork-fallback" }, [
               Timeless.Icon({ name: "file-volume", size: 42 }),

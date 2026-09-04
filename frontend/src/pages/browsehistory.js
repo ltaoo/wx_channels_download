@@ -128,19 +128,13 @@ function BrowseHistoryRowCover(props) {
   const cover_url = browse_history_cover_url(history);
   if (!cover_url) return null;
   return View({ class: "content-row-cover-wrap" }, [
-    View({ class: "content-row-cover content-row-cover-fallback" }, [
-      Timeless.Icon({ name: "file", size: 18 }),
-    ]),
-    Img({
+    LazyImg({
       class: "content-row-cover",
       src: cover_url,
       alt: history.title,
       attributes: {
         loading: "lazy",
         referrerpolicy: "no-referrer",
-      },
-      onError(event) {
-        event.target.style.display = "none";
       },
     }),
   ]);
@@ -236,7 +230,7 @@ function BrowseHistoryRowAccounts(props) {
             Show({
               when: acc.avatar_url,
               ok() {
-                return Img({
+                return LazyImg({
                   class: "content-row-author-avatar",
                   src: acc.avatar_url,
                   attributes: {
@@ -244,9 +238,6 @@ function BrowseHistoryRowAccounts(props) {
                     alt: acc.nickname || acc.external_id || "",
                     loading: "lazy",
                     referrerpolicy: "no-referrer",
-                  },
-                  onError(event) {
-                    event.target.style.display = "none";
                   },
                 });
               },

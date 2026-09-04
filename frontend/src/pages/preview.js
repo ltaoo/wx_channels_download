@@ -1,4 +1,5 @@
 import { PreviewViewModel } from "./preview.model.js";
+import { PlatformIcon } from "../components.js";
 
 function PreviewStateView(props) {
   return View(
@@ -36,14 +37,11 @@ function PreviewHeaderView(props) {
     account
       ? View({ class: "preview-account" }, [
           account.avatar_url
-            ? Timeless.Img({
+            ? LazyImg({
                 class: "preview-account-avatar",
                 src: account.avatar_url,
                 alt: "",
                 attributes: { referrerpolicy: "no-referrer" },
-                onError(event) {
-                  event.target.style.display = "none";
-                },
               })
             : null,
           View({ class: "preview-account-name" }, [
@@ -59,14 +57,10 @@ function PreviewHeaderView(props) {
       task.platform_id
         ? View({ class: "preview-platform" }, [
             task.platform_favicon
-              ? Timeless.Img({
+              ? PlatformIcon({
                   class: "preview-platform-icon",
-                  src: task.platform_favicon,
-                  alt: "",
-                  attributes: { referrerpolicy: "no-referrer" },
-                  onError(event) {
-                    event.target.style.display = "none";
-                  },
+                  favicon: task.platform_favicon,
+                  name: "preview-platform-icon",
                 })
               : null,
             task.platform_name,
@@ -92,6 +86,9 @@ function PreviewSingleFileView(props) {
   const vm$ = props.store;
   const file = props.file;
   const url = vm$.methods.fileURL(file);
+  if (vm$.methods.isTextFile(file)) {
+    return PreviewTextFileView({ store: vm$, file });
+  }
   if (file.file_type === "video") {
     return View({ class: "preview-video-container" }, [
       PreviewVideoPlayerView({
@@ -104,7 +101,7 @@ function PreviewSingleFileView(props) {
     ]);
   }
   return View({ class: "preview-image-container" }, [
-    Timeless.Img({
+    LazyImg({
       class: "preview-image",
       src: url,
       alt: file.name,
@@ -113,10 +110,173 @@ function PreviewSingleFileView(props) {
   ]);
 }
 
+function PreviewTextFileView(props) {
+  const vm$ = props.store;
+  const file = props.file;
+  const render_text_line = (line_) => {
+    const line =
+      line_ && line_.value !== undefined ? line_.value : line_;
+    return View(
+      {
+        class: "preview-text-line",
+        attributes: {
+          n: "preview-text-line",
+          "data-line": String(line.number),
+        },
+      },
+      [
+        View(
+          {
+            class: "preview-text-line-number",
+            attributes: {
+              n: "preview-text-line-number",
+              "aria-hidden": "true",
+            },
+          },
+          [String(line.number)],
+        ),
+        View(
+          {
+            class: "preview-text-line-content",
+            attributes: { n: "preview-text-line-content" },
+          },
+          [line.text],
+        ),
+      ],
+    );
+  };
+  return View(
+    {
+      class: ["preview-text-reader", props.class].filter(Boolean).join(" "),
+      attributes: {
+        n: props.nodeName || "preview-text-reader",
+        role: "region",
+        "aria-label": `文本预览：${file.name}`,
+      },
+    },
+    [
+      View(
+        {
+          class: "preview-text-toolbar",
+          attributes: { n: "preview-text-toolbar" },
+        },
+        [
+          View(
+            {
+              class: "preview-text-title",
+              attributes: { n: "preview-text-title", title: file.name },
+            },
+            [file.name],
+          ),
+          View(
+            {
+              class: "preview-text-count",
+              attributes: { n: "preview-text-count", "aria-live": "polite" },
+            },
+            [computed(vm$.state.text_lines, (lines) => `${lines.length} 行`)],
+          ),
+        ],
+      ),
+      Timeless.ui.ScrollViewPrimitive.Root(
+        {
+          store: vm$.methods.textScrollView(),
+          class: "preview-text-lines",
+          attributes: {
+            n: "preview-text-lines",
+            tabindex: "0",
+            "aria-label": "文本内容",
+          },
+          onMounted(event) {
+            vm$.methods.mountTextReader(event, file);
+          },
+          onUnmounted() {
+            vm$.methods.unmountTextReader();
+          },
+        },
+        [
+          VirtualListView({
+            class: "preview-text-list",
+            attributes: { n: "preview-text-list" },
+            style: { "min-height": "100%" },
+            each: vm$.state.text_lines,
+            key: "number",
+            size: 32,
+            buffer: 8,
+            itemHeight: 24,
+            externalScroll: true,
+            scrollTop: vm$.state.text_scroll_top,
+            viewportHeight: vm$.state.text_viewport_height,
+            render: render_text_line,
+          }),
+        ],
+      ),
+      Show({
+        when: vm$.state.text_loading,
+        ok() {
+          return View(
+            {
+              class: "preview-text-status",
+              attributes: { n: "preview-text-loading", role: "status" },
+            },
+            ["正在加载更多内容…"],
+          );
+        },
+      }),
+      Show({
+        when: computed(vm$.state.text_error, (error) => Boolean(error)),
+        ok() {
+          return View(
+            {
+              class: "preview-text-status preview-text-error",
+              attributes: { n: "preview-text-error", role: "alert" },
+            },
+            [
+              vm$.state.text_error,
+              View(
+                {
+                  as: "button",
+                  class: "preview-text-retry dm-button dm-focus-ring",
+                  attributes: {
+                    n: "preview-text-retry",
+                    type: "button",
+                  },
+                  onClick() {
+                    vm$.methods.retryText();
+                  },
+                },
+                ["重试"],
+              ),
+            ],
+          );
+        },
+      }),
+      Show({
+        when: computed(
+          vm$.state.text_has_more,
+          (has_more) =>
+            !has_more &&
+            vm$.state.text_lines.value.length > 0 &&
+            !vm$.state.text_error.value,
+        ),
+        ok() {
+          return View(
+            {
+              class: "preview-text-status preview-text-end",
+              attributes: { n: "preview-text-end", role: "status" },
+            },
+            ["已加载全部内容"],
+          );
+        },
+      }),
+    ],
+  );
+}
+
 function PreviewVideoPlayerView(props) {
   const vm$ = props.store;
   const file = props.file;
   const is_live_playback = vm$.methods.isLivePlayback(file);
+  let hls_session = null;
   return View(
     {
       class: [
@@ -137,12 +297,15 @@ function PreviewVideoPlayerView(props) {
         preload: is_live_playback ? "none" : "metadata",
         attributes: { n: "preview-video-media" },
         onMounted(event) {
-          vm$.methods.mountVideo(event, file, {
+          hls_session = vm$.methods.mountVideo(event, file, {
             autoplay: Boolean(props.autoplay),
           });
         },
         onUnmounted() {
-          vm$.methods.unmountVideo(file);
+          if (hls_session !== null) {
+            vm$.methods.unmountVideo(hls_session);
+            hls_session = null;
+          }
         },
       }),
       is_live_playback
@@ -195,14 +358,11 @@ function PreviewFileThumbnail(props) {
         }),
       ],
     ),
-    Timeless.Img({
+    LazyImg({
       class: "preview-file-thumbnail",
       src: vm$.methods.fileURL(file),
       alt: file.name,
       attributes: { loading: "lazy" },
-      onError(event) {
-        event.target.style.display = "none";
-      },
     }),
   ]);
 }
@@ -320,6 +480,14 @@ function PreviewGalleryMediaView(props) {
   const url = vm$.methods.fileURL(file);
   if (!vm$.methods.filePlayable(file)) {
     return PreviewGalleryPlaceholderView({ store: vm$, file });
+  }
+  if (vm$.methods.isTextFile(file)) {
+    return PreviewTextFileView({
+      store: vm$,
+      file,
+      class: "preview-gallery-text-reader",
+      nodeName: "gallery-text-reader",
+    });
   }
   if (file.file_type === "image") {
     return Timeless.Img({
@@ -574,7 +742,9 @@ function PreviewTaskBodyView(props) {
   const single_file = existing_files.length === 1 ? existing_files[0] : null;
   return [
     PreviewHeaderView({ task }),
-    single_file && ["video", "image"].includes(single_file.file_type)
+    single_file && vm$.methods.isTextFile(single_file)
+      ? PreviewTextFileView({ store: vm$, file: single_file })
+      : single_file && ["video", "image"].includes(single_file.file_type)
       ? PreviewSingleFileView({ store: vm$, file: single_file })
       : PreviewFileGridView({ store: vm$, files: task.files }),
   ];
@@ -674,6 +844,14 @@ function PreviewOverlayMediaView(props) {
   const vm$ = props.store;
   const file = props.file;
   const url = vm$.methods.fileURL(file);
+  if (vm$.methods.isTextFile(file)) {
+    return PreviewTextFileView({
+      store: vm$,
+      file,
+      class: "preview-overlay-text-reader",
+      nodeName: "overlay-text-reader",
+    });
+  }
   if (file.file_type === "image") {
     return Timeless.Img({
       class: "preview-overlay-image",
@@ -760,12 +938,7 @@ function PreviewOverlayView(props) {
 function PreviewPageView(props) {
   const vm$ = PreviewViewModel(props);
   let unsubscribe_task_id = null;
-
-  function handle_keydown(event) {
-    if (event.key === "Escape") {
-      vm$.methods.closePreview();
-    }
-  }
+  let unsubscribe_escape = null;
 
   return View(
     {
@@ -773,7 +946,9 @@ function PreviewPageView(props) {
         .filter(Boolean)
         .join(" "),
       onMounted() {
-        window.document.addEventListener("keydown", handle_keydown);
+        unsubscribe_escape = props.app.onEscapeKeyDown(
+          vm$.methods.closePreview,
+        );
         if (props.taskId && typeof props.taskId.subscribe === "function") {
           unsubscribe_task_id = props.taskId.subscribe({
             onChange(task_id) {
@@ -784,7 +959,10 @@ function PreviewPageView(props) {
         vm$.methods.ready();
       },
       onUnmounted() {
-        window.document.removeEventListener("keydown", handle_keydown);
+        if (typeof unsubscribe_escape === "function") {
+          unsubscribe_escape();
+          unsubscribe_escape = null;
+        }
         if (typeof unsubscribe_task_id === "function") {
           unsubscribe_task_id();
           unsubscribe_task_id = null;

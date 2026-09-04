@@ -14,10 +14,11 @@ import (
 // Fetch prefers the browser-free PC-compatible detail flow and falls back to
 // the legacy mobile router data and structured web API.
 type Client struct {
-	pc     *DouyinPCClient
-	mobile *DouyinMobileClient
-	web    *DouyinWebClient
-	logger zerolog.Logger
+	pc            *DouyinPCClient
+	mobile        *DouyinMobileClient
+	web           *DouyinWebClient
+	cookie_reader *cookies.Reader
+	logger        zerolog.Logger
 }
 
 // NewClient creates a new Douyin client.
@@ -46,10 +47,11 @@ func NewClientWithLoggerAndCookieReader(cookie string, cookie_reader *cookies.Re
 func new_client(cookie string, cookie_reader *cookies.Reader, parent_logger *zerolog.Logger) *Client {
 	logger := new_component_logger(parent_logger, "douyin_scraper")
 	return &Client{
-		pc:     NewDouyinPCClientWithCookieReader(cookie_reader, parent_logger),
-		mobile: NewDouyinMobileClientWithLogger(parent_logger),
-		web:    NewDouyinWebClientWithLogger(cookie, parent_logger),
-		logger: logger,
+		pc:            NewDouyinPCClientWithCookieReader(cookie_reader, parent_logger),
+		mobile:        NewDouyinMobileClientWithLogger(parent_logger),
+		web:           NewDouyinWebClientWithLogger(cookie, parent_logger),
+		cookie_reader: cookie_reader,
+		logger:        logger,
 	}
 }
 

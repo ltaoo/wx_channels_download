@@ -157,6 +157,7 @@ export default function SiderLayoutView(props) {
             app: props.app,
             client: props.client,
             history: props.history,
+            hlsPlayer: props.hlsPlayer,
             storage: props.storage,
             view: props.view,
             views: props.views,

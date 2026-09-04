@@ -692,6 +692,7 @@ func (d *HermesEngine) find_job(task_id int) *TaskJob {
 
 func (d *HermesEngine) schedule(task_job *TaskJob) {
 	task_id := task_job.ID
+	uses_slot := d.task_uses_concurrency_slot(task_id)
 	acquired := false
 	defer func() {
 		if acquired {
@@ -705,18 +706,20 @@ func (d *HermesEngine) schedule(task_job *TaskJob) {
 		close(task_job.done)
 	}()
 
-	if task_job.cancellation_reason() == cancel_stop {
-		// A stop-only job may be recovering durable chunks after a restart, so
-		// it still needs to run even though its recording context is cancelled.
-		d.sem <- struct{}{}
-		acquired = true
-	} else {
-		select {
-		case d.sem <- struct{}{}:
+	if uses_slot {
+		if task_job.cancellation_reason() == cancel_stop {
+			// A stop-only job may be recovering durable chunks after a restart, so
+			// it still needs to run even though its recording context is cancelled.
+			d.sem <- struct{}{}
 			acquired = true
-		case <-task_job.ctx.Done():
-			d.handle_cancellation(task_id, task_job)
-			return
+		} else {
+			select {
+			case d.sem <- struct{}{}:
+				acquired = true
+			case <-task_job.ctx.Done():
+				d.handle_cancellation(task_id, task_job)
+				return
+			}
 		}
 	}
 
@@ -743,6 +746,19 @@ func (d *HermesEngine) schedule(task_job *TaskJob) {
 	if run_err != nil {
 		d.fail_task(task_job, run_err.Error())
 	}
+}
+
+func (d *HermesEngine) task_uses_concurrency_slot(task_id int) bool {
+	task, err := d.store.LoadTask(task_id)
+	if err != nil || task == nil {
+		return true
+	}
+	for _, resource := range task.Resources {
+		if strings.EqualFold(resource.Type, ResourceTypeStream) {
+			return false
+		}
+	}
+	return true
 }
 
 func (d *HermesEngine) handle_cancellation(task_id int, task_job *TaskJob) {

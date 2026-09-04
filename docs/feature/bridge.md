@@ -323,9 +323,24 @@ curl -sS \
 | `wxchannels.feed.profile` | `oid`、`nid`、`url`、`eid` | 调用 `FetchChannelsFeedProfile`；`oid`、`url`、`eid` 至少提供一个 |
 | `wxchannels.feed.comment.list` | `oid`，`nid` 或 `comment_id`，可选 `next_marker` | 调用 `FetchChannelsFeedCommentList` 获取评论 |
 | `wxchannels.feed.share_url` | `oid` | 调用 `FetchChannelsFeedShareUrl` 获取分享链接 |
+| `wxmp.biz.msg.list` | `username`，可选 `offset` | 调用 `FetchBizMsgList` 获取公众号消息列表 |
 | `download.create` | `request` 或 `url_request` | 在执行设备上创建并启动下载任务 |
 
 账号搜索继续翻页时，把上一页 `data.lastBuff` 作为 `next_marker`；其他视频号列表把上一页 `data.lastBuffer` 作为 `next_marker`。游标应原样传递，不要自行解码。
+
+### 获取公众号消息列表
+
+该方法依赖执行设备上的公众号页面 WebSocket 连接。由于设备端请求最长可等待 20 秒，建议通过异步 `/v1/call` 调用。
+
+```json
+{
+  "method": "wxmp.biz.msg.list",
+  "args": {
+    "username": "公众号用户名",
+    "offset": "0"
+  }
+}
+```
 
 ### 搜索视频号账号
 

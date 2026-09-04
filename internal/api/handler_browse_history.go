@@ -171,7 +171,7 @@ func (c *APIClient) handle_fetch_browse_history_list(ctx *gin.Context) {
 		platform_ids = []string{body.PlatformId}
 	}
 	if len(platform_ids) == 0 {
-		platform_ids = []string{"wxchannels", "wxmp", "zhihu", "xiaohongshu", "bilibili", "youtube", "weibo"}
+		platform_ids = []string{"wxchannels", "wxmp", "zhihu", "kuaishou", "xiaohongshu", "bilibili", "youtube", "weibo"}
 	}
 	if c.logger != nil {
 		c.logger.Info().

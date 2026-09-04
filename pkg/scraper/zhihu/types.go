@@ -170,6 +170,7 @@ type AnswerPage struct {
 	Comments        []Comment
 	InitialData     *InitialData
 	InitialDataJSON json.RawMessage
+	VideoPlayInfos  map[string]VideoPlayInfo `json:"video_play_infos,omitempty"`
 }
 
 type QuestionPage struct {
@@ -179,6 +180,7 @@ type QuestionPage struct {
 	Question        Question
 	InitialData     *InitialData
 	InitialDataJSON json.RawMessage
+	VideoPlayInfos  map[string]VideoPlayInfo `json:"video_play_infos,omitempty"`
 }
 
 type ArticlePage struct {
@@ -188,6 +190,7 @@ type ArticlePage struct {
 	Article         Article
 	InitialData     *InitialData
 	InitialDataJSON json.RawMessage
+	VideoPlayInfos  map[string]VideoPlayInfo `json:"video_play_infos,omitempty"`
 }
 
 type comment_payload struct {

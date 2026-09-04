@@ -70,27 +70,27 @@ func (a *XiaohongshuAdapter) RegisterRuntime(adapter_options *adapter.AdapterOpt
 // Stop releases the stateless adapter runtime.
 func (a *XiaohongshuAdapter) Stop() {}
 
-// Fetch retrieves and parses a Xiaohongshu video note page.
+// Fetch retrieves and parses a Xiaohongshu note page.
 func (a *XiaohongshuAdapter) Fetch(raw_url string) (any, error) {
 	return a.FetchWithProgressContext(context.Background(), raw_url, adapter.FetchOptions{})
 }
 
 // FetchWithProgressContext retrieves a note with cancellation support.
 func (a *XiaohongshuAdapter) FetchWithProgressContext(fetch_context context.Context, raw_url string, _ adapter.FetchOptions) (any, error) {
-	raw_url = strings.TrimSpace(raw_url)
-	if raw_url == "" {
-		return nil, fmt.Errorf("小红书 URL 不能为空")
+	source_url, err := xiaohongshu.ExtractURL(raw_url)
+	if err != nil {
+		return nil, fmt.Errorf("解析小红书 URL 失败: %w", err)
 	}
 	client := xiaohongshu.NewClient()
 	defer client.Close()
-	html_text, err := client.FetchContext(fetch_context, raw_url)
+	html_text, err := client.FetchContext(fetch_context, source_url)
 	if err != nil {
 		return nil, err
 	}
-	return parse_fetch_result(raw_url, html_text)
+	return parse_fetch_result(source_url, html_text)
 }
 
-// ToContent converts a parsed Xiaohongshu video note to shared content.
+// ToContent converts a parsed Xiaohongshu note to shared content.
 func (a *XiaohongshuAdapter) ToContent(data any) (*model.Content, error) {
 	result, err := fetch_result_from_data(data)
 	if err != nil {
@@ -108,7 +108,7 @@ func (a *XiaohongshuAdapter) ToAccount(data any) (*model.Account, error) {
 	return to_account(result)
 }
 
-// ToContentDetails converts every available stream to video variants.
+// ToContentDetails converts a note to its video or album detail.
 func (a *XiaohongshuAdapter) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
 	result, err := fetch_result_from_data(data)
 	if err != nil {
@@ -206,6 +206,9 @@ func build_download_task(result *fetch_result, config_json json.RawMessage) (*ad
 	if err != nil {
 		return nil, err
 	}
+	if !is_video_note(result.Note) {
+		return build_album_download_task(result, config, content, account)
+	}
 	video, err := to_content_video(result)
 	if err != nil {
 		return nil, err
@@ -242,7 +245,7 @@ func build_download_task(result *fetch_result, config_json json.RawMessage) (*ad
 		"Referer":         "https://www.xiaohongshu.com/",
 		"User-Agent":      xiaohongshu_user_agent,
 	})
-	endpoints := video_endpoints(selected_variant.URL, selected_stream, string(headers_json))
+	endpoints := media_endpoints(selected_variant.URL, selected_stream, string(headers_json))
 	if len(endpoints) == 0 {
 		return nil, fmt.Errorf("小红书视频 %s 下载地址为空", content.ExternalId)
 	}
@@ -288,6 +291,104 @@ func build_download_task(result *fetch_result, config_json json.RawMessage) (*ad
 			Key:     content.Id,
 			Content: content,
 			Data:    video,
+			Accounts: []adapter.ContentAccountReference{{
+				Account: account,
+				Role:    "owner",
+			}},
+		}},
+		Account: account,
+		Content: content,
+	}, nil
+}
+
+func build_album_download_task(result *fetch_result, config map[string]any, content *model.Content, account *model.Account) (*adapter.DownloadTaskResult, error) {
+	album, err := to_content_album(result)
+	if err != nil {
+		return nil, err
+	}
+	task_name := config_string(config, "filename")
+	if task_name == "" {
+		task_name = content.Title
+	}
+	normalized_config_json, _ := json.Marshal(config)
+	metadata_json, _ := json.Marshal(map[string]any{
+		"platform":     PlatformID,
+		"external_id":  content.ExternalId,
+		"title":        content.Title,
+		"image_count":  album.ImageCount,
+		"publisher_id": account.ExternalId,
+	})
+	headers_json, _ := json.Marshal(map[string]string{
+		"Accept":          "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+		"Accept-Language": "zh-CN,zh;q=0.9",
+		"Cache-Control":   "no-cache",
+		"Origin":          "https://www.xiaohongshu.com",
+		"Pragma":          "no-cache",
+		"Referer":         "https://www.xiaohongshu.com/",
+		"User-Agent":      xiaohongshu_user_agent,
+	})
+	resources := make([]*adapter.ResourceInfo, 0, len(album.Images))
+	for image_index, image := range album.Images {
+		endpoints := media_endpoints(image.URL, nil, string(headers_json))
+		if len(endpoints) == 0 {
+			continue
+		}
+		image_name := task_name
+		if len(album.Images) > 1 {
+			image_name += fmt.Sprintf("_%02d", image_index+1)
+		}
+		resource_extra, _ := json.Marshal(map[string]any{
+			"note_id":    content.ExternalId,
+			"source_url": content.SourceURL,
+			"image_key":  image.ImageKey,
+		})
+		resources = append(resources, &adapter.ResourceInfo{
+			Resource: model.DownloadResource{
+				ContentId:  &content.Id,
+				Name:       image_name,
+				Kind:       "image",
+				UniqueID:   fmt.Sprintf("%s_image_%d", content.ExternalId, image_index+1),
+				MergeOrder: image_index,
+				Extra:      string(resource_extra),
+			},
+			Endpoints: endpoints,
+			ContentAssets: []adapter.ContentAssetReference{{
+				Kind:            model.ContentAssetKindImage,
+				Role:            model.ContentAssetRolePrimary,
+				AssetKey:        model.BuildContentAlbumImageAssetKey(image.ImageKey, "original"),
+				Relation:        model.DownloadResourceAssetRelationSource,
+				SubjectType:     model.ContentAssetSubjectAlbumImage,
+				SubjectKey:      image.ImageKey,
+				SubjectRelation: model.ContentAssetSubjectRelationRepresentation,
+			}},
+		})
+	}
+	if len(resources) == 0 {
+		return nil, fmt.Errorf("小红书图文笔记 %s 没有可下载图片", content.ExternalId)
+	}
+	now := util.NowMillis()
+	return &adapter.DownloadTaskResult{
+		Task: &model.DownloadTask{
+			ContentId:    &content.Id,
+			Name:         task_name,
+			UniqueID:     content.ExternalId,
+			PlatformId:   PlatformID,
+			Status:       model.TaskStatusWaiting,
+			SourceURL:    content.SourceURL,
+			CoverURL:     content.CoverURL,
+			CoverWidth:   content.CoverWidth,
+			CoverHeight:  content.CoverHeight,
+			ConfigJSON:   string(normalized_config_json),
+			MetadataJSON: string(metadata_json),
+			Timestamps:   model.Timestamps{CreatedAt: now, UpdatedAt: now},
+		},
+		Resources:     resources,
+		ContentDetail: album,
+		ContentDetails: []adapter.ContentDetail{{
+			Type:    content.Type,
+			Key:     content.Id,
+			Content: content,
+			Data:    album,
 			Accounts: []adapter.ContentAccountReference{{
 				Account: account,
 				Role:    "owner",
@@ -352,7 +453,7 @@ func stream_for_url(note *note_data, stream_url string) *video_stream {
 	return nil
 }
 
-func video_endpoints(primary_url string, stream *video_stream, headers_json string) []model.DownloadEndpoint {
+func media_endpoints(primary_url string, stream *video_stream, headers_json string) []model.DownloadEndpoint {
 	urls := []string{normalize_media_url(primary_url)}
 	if stream != nil {
 		urls = append(urls, stream.BackupURLs...)

@@ -24,6 +24,7 @@ const (
 	bridge_method_wxchannels_feed_profile      = "wxchannels.feed.profile"
 	bridge_method_wxchannels_feed_comment_list = "wxchannels.feed.comment.list"
 	bridge_method_wxchannels_feed_share_url    = "wxchannels.feed.share_url"
+	bridge_method_wxmp_biz_msg_list            = "wxmp.biz.msg.list"
 )
 
 // BridgeServiceOptions contains the dependencies and configuration for BridgeService.
@@ -111,6 +112,11 @@ type bridge_wxchannels_feed_share_url_args struct {
 	OID string `json:"oid"`
 }
 
+type bridge_wxmp_biz_msg_list_args struct {
+	Username string `json:"username"`
+	Offset   string `json:"offset"`
+}
+
 type bridge_wxchannels_adapter interface {
 	SearchChannelsContact(keyword string, next_marker string) (json.RawMessage, error)
 	FetchChannelsFeedListOfContact(username string, next_marker string) (json.RawMessage, error)
@@ -118,6 +124,10 @@ type bridge_wxchannels_adapter interface {
 	FetchChannelsFeedProfile(oid string, nid string, request_url string, eid string) (json.RawMessage, error)
 	FetchChannelsFeedCommentList(oid string, nid string, comment_id string, next_marker string) (json.RawMessage, error)
 	FetchChannelsFeedShareUrl(oid string) (json.RawMessage, error)
+}
+
+type bridge_wxmp_adapter interface {
+	FetchBizMsgList(username string, offset string) (json.RawMessage, error)
 }
 
 type bridge_unavailable_error struct {
@@ -142,6 +152,7 @@ type BridgeService struct {
 	config_error          error
 	wxchannels_mu         sync.Mutex
 	wxchannels_adapter    bridge_wxchannels_adapter
+	wxmp_adapter          bridge_wxmp_adapter
 	method_handlers       map[string]BridgeMethodHandler
 }
 
@@ -172,6 +183,11 @@ func NewBridgeService(options BridgeServiceOptions) *BridgeService {
 			service.wxchannels_adapter = wxchannels_adapter
 			service.register_wxchannels_methods()
 		}
+	}
+	wxmp_handler := adapter.Get("wxmp")
+	if wxmp_adapter, ok := wxmp_handler.(bridge_wxmp_adapter); ok {
+		service.wxmp_adapter = wxmp_adapter
+		service.method_handlers[bridge_method_wxmp_biz_msg_list] = service.execute_wxmp_biz_msg_list
 	}
 	if service.download_task_service != nil {
 		service.method_handlers[bridge.MethodDownloadCreate] = service.execute_download_create
@@ -570,6 +586,29 @@ func (s *BridgeService) execute_wxchannels_feed_share_url(
 		return nil, err
 	}
 	response, err := wxchannels_adapter.FetchChannelsFeedShareUrl(request.OID)
+	return encode_bridge_method_result(task_context, response, err)
+}
+
+func (s *BridgeService) execute_wxmp_biz_msg_list(
+	task_context context.Context,
+	args json.RawMessage,
+) (json.RawMessage, error) {
+	var request bridge_wxmp_biz_msg_list_args
+	if err := decode_bridge_method_args(args, &request); err != nil {
+		return nil, err
+	}
+	request.Username = strings.TrimSpace(request.Username)
+	request.Offset = strings.TrimSpace(request.Offset)
+	if request.Username == "" {
+		return nil, errors.New("username 不能为空")
+	}
+	if err := task_context.Err(); err != nil {
+		return nil, err
+	}
+	if s == nil || s.wxmp_adapter == nil {
+		return nil, errors.New("当前设备未安装 wxmp adapter 查询能力")
+	}
+	response, err := s.wxmp_adapter.FetchBizMsgList(request.Username, request.Offset)
 	return encode_bridge_method_result(task_context, response, err)
 }
 

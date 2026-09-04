@@ -1156,7 +1156,7 @@ func (s *DownloadTaskService) ResumeTask(task_id int) (*model.DownloadTask, erro
 		return nil, fmt.Errorf("当前状态不允许恢复")
 	}
 
-	if !s.downloader.HasAvailableSlot() {
+	if !s.has_stream_resources(task.Id) && !s.downloader.HasAvailableSlot() {
 		return nil, fmt.Errorf("exceeds maximum concurrent download tasks (%d)", s.downloader.MaxConcurrent())
 	}
 

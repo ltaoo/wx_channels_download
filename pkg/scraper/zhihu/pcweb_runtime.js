@@ -576,6 +576,19 @@ globalThis.__setupBrowser = function (config) {
       globalThis.__g.copyBytesToGo = value => {
         const args = Array.from(value[0]);
         const operation = Number(args[1]);
+        if (operation === 1030) {
+          const result = bridgeCopy(value);
+          // goja does not copy this obfuscated TinyGo bridge's plain byte array.
+          const raw_reference = BigInt(args[2]);
+          const source_reference = (raw_reference & ~0xffffffffn) | ((raw_reference + 1030n) & 0xffffffffn);
+          const source = Array.from(value[1](source_reference) || []);
+          const destination = new Uint8Array(value[3], Number(args[10]), Number(args[11]));
+          source.forEach((byte, index) => { destination[index] = byte; });
+          return result;
+        }
+        if (operation !== 1022 && operation !== 1024 && operation !== 1026 && operation !== 1034) {
+          return bridgeCopy(value);
+        }
         const method = value[2](Number(args[4]), Number(args[5]));
         const decodeReference = encoded => {
           const raw = BigInt(encoded);
@@ -615,14 +628,7 @@ globalThis.__setupBrowser = function (config) {
           new DataView(value[3]).setUint8(Number(args[0]) + 8, 1);
           return;
         }
-        const result = bridgeCopy(value);
-        if (operation === 1030) {
-          // goja does not copy this obfuscated TinyGo bridge's plain byte array.
-          const source = Array.from(value[1](decodeReference(args[2])) || []);
-          const destination = new Uint8Array(value[3], Number(args[10]), Number(args[11]));
-          source.forEach((byte, index) => { destination[index] = byte; });
-        }
-        return result;
+        return bridgeCopy(value);
       };
       try {
         return originalCopy(...wasmArgs);

@@ -1,6 +1,5 @@
 import { Checkbox, createCheckboxStore } from "../dmui.js";
 import {
-  MaxRunning,
   format_download_percent,
   format_download_size,
   format_download_speed,
@@ -287,13 +286,8 @@ function DownloadV2TaskState(task$) {
   );
 }
 
-function task_cover_url(raw) {
-  if (!raw || typeof raw !== "object") return "";
-  return String(raw.cover_url || raw.coverUrl || raw.CoverURL || "").trim();
-}
-
 function DownloadV2TaskCover(props) {
-  const { state: state_, task: task$ } = props;
+  const { state: state_, store: vm$, task: task$ } = props;
   const raw_ = task$.state.raw;
   const progress = Show({
     when: computed(
@@ -301,7 +295,10 @@ function DownloadV2TaskCover(props) {
       (state) => !state.is_live_stream && (state.is_running || state.is_paused),
     ),
     ok() {
-      return View({ class: "dl-page-task-cover-progress" }, [
+      return View({
+        class: "dl-page-task-cover-progress",
+        attributes: { n: "download-task-cover-progress" },
+      }, [
         DownloadV2Number({
           value: computed(state_, (state) => state.progress_text),
         }),
@@ -309,23 +306,30 @@ function DownloadV2TaskCover(props) {
     },
   });
   const fallback = () =>
-    View({ class: "dl-page-task-cover dl-page-task-cover-fallback" });
+    View({
+      class: "dl-page-task-cover dl-page-task-cover-fallback",
+      attributes: {
+        n: "download-task-cover-fallback",
+        "aria-hidden": "true",
+      },
+    });
 
   return Show({
-    when: computed(raw_, (raw) => Boolean(task_cover_url(raw))),
+    when: computed(raw_, (raw) => Boolean(vm$.methods.taskCoverURL(raw))),
     ok() {
-      return View({ class: "dl-page-task-cover-wrap" }, [
+      return View({
+        class: "dl-page-task-cover-wrap",
+        attributes: { n: "download-task-cover-wrap" },
+      }, [
         fallback(),
-        Img({
+        LazyImg({
           class: "dl-page-task-cover",
-          src: computed(raw_, task_cover_url),
+          src: computed(raw_, vm$.methods.taskCoverURL),
           alt: task$.state.name,
           attributes: {
+            n: "download-task-cover-image",
             loading: "lazy",
             referrerpolicy: "no-referrer",
-          },
-          onError(event) {
-            event.target.style.display = "none";
           },
         }),
         progress,
@@ -363,17 +367,13 @@ export function DownloadV2TaskActions(props) {
 
   return [
     Match({
-      when: combine(
-        { state: state_, running_count: vm$.state.running_count },
-        (value) => {
-          if (value.state.is_completed) return 1;
-          if (value.state.is_running) return 2;
-          if (value.running_count >= MaxRunning) return 5;
-          if (value.state.is_paused) return 3;
-          if (value.state.is_failed) return 4;
-          return 0;
-        },
-      ),
+      when: computed(state_, (state) => {
+        if (state.is_completed) return 1;
+        if (state.is_running) return 2;
+        if (state.is_paused) return 3;
+        if (state.is_failed) return 4;
+        return 0;
+      }),
       cases: {
         0() {
           return DownloadV2TaskActionButton({
@@ -444,9 +444,6 @@ export function DownloadV2TaskActions(props) {
             },
           });
         },
-        5() {
-          return View({ class: "dl-page-task-action-spacer" });
-        },
       },
     }),
     DownloadV2TaskActionButton({
@@ -466,7 +463,7 @@ export function DownloadV2TaskMain(props) {
   const state_ = DownloadV2TaskState(task$);
 
   return [
-    DownloadV2TaskCover({ task: task$, state: state_ }),
+    DownloadV2TaskCover({ task: task$, state: state_, store: vm$ }),
     View(
       {
         class: "dl-page-task-info",
@@ -773,7 +770,6 @@ function DownloadV2StatusCounts(props) {
 
 function DownloadV2StatusActions(props) {
   const { store: vm$ } = props;
-  const running_count_ = vm$.state.running_count;
 
   return View(
     { class: "dl-page-status-actions dl-v2-page-status-actions" },
@@ -784,16 +780,11 @@ function DownloadV2StatusActions(props) {
         icon: "refresh-cw",
         label: "刷新",
       }),
-      Show({
-        when: computed(running_count_, (count) => count < MaxRunning),
-        ok() {
-          return DownloadV2ActionButton({
-            name: "download-start-all-action",
-            store: vm$.ui.btn_start_all_tasks$,
-            icon: "play",
-            label: "全部开始",
-          });
-        },
+      DownloadV2ActionButton({
+        name: "download-start-all-action",
+        store: vm$.ui.btn_start_all_tasks$,
+        icon: "play",
+        label: "全部开始",
       }),
       DownloadV2ActionButton({
         name: "download-pause-all-action",

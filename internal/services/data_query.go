@@ -24,6 +24,7 @@ var default_data_browse_platform_ids = []string{
 	"wxchannels",
 	"wxmp",
 	"zhihu",
+	"kuaishou",
 	"xiaohongshu",
 	"bilibili",
 	"youtube",

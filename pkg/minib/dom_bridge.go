@@ -1,6 +1,7 @@
 package minib
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -23,6 +24,17 @@ func (runtime *page_runtime) install_shared_dom_bridge(window *goja.Object) {
 		node := runtime.object_node(call.Argument(0))
 		return runtime.call_shared_node_method(node, call.Argument(1).String(), shared_bridge_arguments(call.Argument(2)))
 	})
+	browser_click := runtime.vm.ToValue(func(selector string) bool {
+		node := query_first(runtime.page.Document, selector)
+		if node == nil {
+			return false
+		}
+		if err := runtime.click_node(node, true); err != nil {
+			panic(runtime.vm.NewGoError(err))
+		}
+		return true
+	})
+	_ = window.DefineDataProperty("__minib_browser_click", browser_click, goja.FLAG_FALSE, goja.FLAG_FALSE, goja.FLAG_FALSE)
 }
 
 func shared_bridge_arguments(value goja.Value) []goja.Value {
@@ -68,6 +80,13 @@ func (runtime *page_runtime) shared_node_property(node *html.Node, name string) 
 		return runtime.node_object(node.FirstChild)
 	case "lastChild":
 		return runtime.node_object(node.LastChild)
+	case "firstElementChild":
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			if child.Type == html.ElementNode {
+				return runtime.node_object(child)
+			}
+		}
+		return nil
 	case "nextSibling":
 		return runtime.node_object(node.NextSibling)
 	case "previousSibling":
@@ -82,6 +101,11 @@ func (runtime *page_runtime) shared_node_property(node *html.Node, name string) 
 		}
 		return runtime.node_object(runtime.page.Document)
 	case "isConnected":
+		for root := node; root != nil; root = root.Parent {
+			if host := runtime.shadow_hosts[root]; host != nil {
+				return contains_node(runtime.page.Document, host)
+			}
+		}
 		return contains_node(runtime.page.Document, node)
 	case "textContent":
 		return text_content(node)
@@ -102,6 +126,17 @@ func (runtime *page_runtime) shared_node_property(node *html.Node, name string) 
 		return render_children(node)
 	case "outerHTML":
 		return render_node(node)
+	case "adoptedStyleSheets":
+		if sheets := runtime.adopted_style_sheets[node]; sheets != nil {
+			return sheets
+		}
+		sheets := runtime.vm.NewArray()
+		runtime.adopted_style_sheets[node] = sheets
+		return sheets
+	case "host":
+		return runtime.node_object(runtime.shadow_hosts[node])
+	case "mode":
+		return runtime.shadow_modes[node]
 	}
 	if node.Type != html.ElementNode {
 		return nil
@@ -115,7 +150,7 @@ func (runtime *page_runtime) shared_node_property(node *html.Node, name string) 
 		return attribute(node, "id")
 	case "className":
 		return attribute(node, "class")
-	case "src", "value", "name", "type", "rel", "charset":
+	case "src", "value", "name", "type", "rel", "charset", "dir":
 		return attribute(node, name)
 	case "href":
 		if strings.EqualFold(node.Data, "a") {
@@ -144,6 +179,12 @@ func (runtime *page_runtime) shared_node_property(node *html.Node, name string) 
 		return runtime.dataset_object(node)
 	case "attributes":
 		return runtime.attributes_object(node)
+	case "shadowRoot":
+		root := runtime.shadow_roots[node]
+		if runtime.shadow_modes[root] != "open" {
+			return nil
+		}
+		return runtime.node_object(root)
 	case "contentWindow":
 		if strings.EqualFold(node.Data, "iframe") {
 			return runtime.vm.GlobalObject()
@@ -170,6 +211,9 @@ func (runtime *page_runtime) set_shared_node_property(node *html.Node, name stri
 		return
 	}
 	switch name {
+	case "adoptedStyleSheets":
+		runtime.adopted_style_sheets[node] = value
+		return
 	case "textContent":
 		if node.Type == html.TextNode || node.Type == html.CommentNode {
 			node.Data = value.String()
@@ -216,7 +260,7 @@ func (runtime *page_runtime) set_shared_node_property(node *html.Node, name stri
 		runtime.set_element_attribute(node, "id", value.String())
 	case "className":
 		runtime.set_element_attribute(node, "class", value.String())
-	case "src", "href", "value", "name", "type", "rel", "charset":
+	case "src", "href", "value", "name", "type", "rel", "charset", "dir":
 		runtime.set_element_attribute(node, name, value.String())
 		runtime.queue_dynamic_resource(node)
 	case "content":
@@ -323,12 +367,16 @@ func (runtime *page_runtime) call_shared_node_method(node *html.Node, name strin
 		return runtime.vm.ToValue(ok)
 	case "hasAttributes":
 		return runtime.vm.ToValue(len(node.Attr) > 0)
+	case "getAttributeNames":
+		return runtime.vm.ToValue(element_attribute_names(node))
 	case "querySelector":
-		return runtime.node_object(query_first(node, argument(0).String()))
+		return runtime.nullable_node_value(query_first(node, argument(0).String()))
 	case "querySelectorAll":
 		return runtime.node_array(query_all(node, argument(0).String()))
 	case "getElementsByTagName":
 		return runtime.node_array(find_by_tag(node, argument(0).String()))
+	case "getElementsByName":
+		return runtime.node_array(find_all_by_attribute(node, "name", argument(0).String()))
 	case "getElementsByClassName":
 		return runtime.node_array(find_by_class(node, argument(0).String()))
 	case "matches":
@@ -345,6 +393,24 @@ func (runtime *page_runtime) call_shared_node_method(node *html.Node, name strin
 			}
 		}
 		return goja.Null()
+	case "attachShadow":
+		if node.Type != html.ElementNode {
+			panic(runtime.vm.NewTypeError("attachShadow called on an incompatible receiver"))
+		}
+		if runtime.shadow_roots[node] != nil {
+			panic(runtime.vm.NewGoError(fmt.Errorf("NotSupportedError: element already hosts a shadow tree")))
+		}
+		options := argument(0).ToObject(runtime.vm)
+		mode := options.Get("mode").String()
+		if mode != "open" && mode != "closed" {
+			panic(runtime.vm.NewTypeError("attachShadow mode must be open or closed"))
+		}
+		root := &html.Node{Type: html.DocumentNode, Data: "#document-fragment"}
+		runtime.fragments[root] = true
+		runtime.shadow_roots[node] = root
+		runtime.shadow_hosts[root] = node
+		runtime.shadow_modes[root] = mode
+		return runtime.node_object(root)
 	case "getBoundingClientRect":
 		return runtime.vm.ToValue(runtime.shared_bounding_rect(node))
 	case "getClientRects":
@@ -355,7 +421,9 @@ func (runtime *page_runtime) call_shared_node_method(node *html.Node, name strin
 	case "focus", "blur":
 		return goja.Undefined()
 	case "click":
-		runtime.fire_node_event(node, "click")
+		if err := runtime.click_node(node, false); err != nil {
+			panic(runtime.vm.NewGoError(err))
+		}
 		return goja.Undefined()
 	case "getContext":
 		if strings.EqualFold(node.Data, "canvas") && strings.EqualFold(argument(0).String(), "2d") {

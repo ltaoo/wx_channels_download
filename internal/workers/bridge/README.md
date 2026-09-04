@@ -86,6 +86,14 @@ bridge:
 
 这些方法依赖设备上的视频号页面 WebSocket 连接；设备连接 Bridge 但视频号页面未连接时，调用会失败或超时。
 
+公众号 adapter 当前会注册以下 Bridge 方法：
+
+| method | args | 对应 scraper 方法 |
+| --- | --- | --- |
+| `wxmp.biz.msg.list` | `username`, `offset` | `FetchBizMsgList` |
+
+该方法依赖设备上的公众号页面 WebSocket 连接。`username` 必填，`offset` 可省略或传上一页返回的偏移量。
+
 Docker 中的 Linux 使用独立身份：
 
 ```yaml
@@ -120,7 +128,9 @@ GET /api/bridge/status
 - 用户名：`admin`
 - 密码：`bridge.deploy.adminToken`
 
-管理页每 5 秒刷新，展示操作系统设备，并通过右侧抽屉添加和管理调用 Token。管理员可以创建独立 Token、设置初始积分、充值积分、选择 1/7/30/90 天或永久有效、让 Token 立即过期以及移除 Token。Token 可留空由 Bridge 自动生成，也可手动指定；用途或使用人可选填。Token 明文只在创建成功时显示一次，Bridge 仅保存 SHA-256 摘要。
+管理页每 5 秒刷新，展示操作系统设备。每张设备卡片都有“日志”按钮，可在右侧抽屉查看该设备最近 7 天的连接、断开、连接心跳、调用下发、设备接收、任务心跳、成功响应、失败重试、租约超时和管理员重置等事件。日志支持分类筛选、自动刷新、向前分页，并可展开查看调用参数或响应数据；Token、Cookie、Authorization、Password、Secret 等敏感字段会在落库前自动脱敏，单条超大详情会截断。
+
+管理页也通过右侧抽屉添加和管理调用 Token。管理员可以创建独立 Token、设置初始积分、充值积分、选择 1/7/30/90 天或永久有效、让 Token 立即过期以及移除 Token。Token 可留空由 Bridge 自动生成，也可手动指定；用途或使用人可选填。Token 明文只在创建成功时显示一次，Bridge 仅保存 SHA-256 摘要。
 
 每个调用 Token 都是独立发布方：它只能列出和查询自己创建的调用，不能读取其他 Token 或设备发布的任务。Token 过期或移除后，新请求立即返回 `401`；已经分配给设备的调用仍会继续执行。
 
@@ -152,8 +162,11 @@ DELETE /admin/api/access-tokens/:id
 POST /admin/api/access-tokens/:id/expire
 POST /admin/api/access-tokens/:id/credits
 GET /admin/api/credit-transactions?access_token_id=&limit=
+GET /admin/api/devices/:device_id/logs?category=&before_id=&limit=
 Authorization: Bearer <BRIDGE_ADMIN_TOKEN>
 ```
+
+设备日志 `category` 可选 `connection`、`heartbeat`、`call`、`response`、`system`；`limit` 范围为 1–500，使用响应中的 `next_before_id` 继续读取更早日志。
 
 创建请求：
 

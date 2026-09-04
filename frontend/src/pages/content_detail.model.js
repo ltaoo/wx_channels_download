@@ -196,12 +196,8 @@ function normalize_content_detail(raw) {
   };
 }
 
-function detail_id_from_location() {
-  try {
-    return new URLSearchParams(window.location.search).get("id") || "";
-  } catch {
-    return "";
-  }
+function detail_id_from_query(query) {
+  return String((query && query.id) || "");
 }
 
 function prop_value(value) {
@@ -475,7 +471,10 @@ function content_media_assets(assets) {
 
 function ContentDetailViewModel(props) {
   const detail_id_ = ref(
-    String(prop_value(props.contentId) || detail_id_from_location()).trim(),
+    String(
+      prop_value(props.contentId) ||
+        detail_id_from_query(props.view && props.view.query),
+    ).trim(),
   );
   const detail_ = ref(null);
   const loading_ = ref(false);
@@ -613,7 +612,7 @@ function ContentDetailViewModel(props) {
         props.onBack();
         return;
       }
-      window.location.assign("/content");
+      props.history.push("root.shell.content");
     },
     openDetail(content_id) {
       return load(content_id);
@@ -621,14 +620,14 @@ function ContentDetailViewModel(props) {
     openSource(content) {
       const url = content_source_url(content);
       if (url) {
-        window.open(url, "_blank", "noopener,noreferrer");
+        props.app.openWindow(url);
       }
     },
     openResource(resource) {
       if (!resource_file_available(resource)) return;
       const url = resource_file_url(resource);
       if (url) {
-        window.open(url, "_blank", "noopener,noreferrer");
+        props.app.openWindow(url);
       }
     },
     showResource(resource) {
@@ -666,4 +665,4 @@ function ContentDetailViewModel(props) {
   return { state, ui, methods };
 }
 
-export { ContentDetailViewModel };
+export { ContentDetailViewModel, task_status };

@@ -384,6 +384,7 @@ func new_interceptor_config(c *config.Config) wxchannels.InterceptorConfig {
 	}
 	return wxchannels.InterceptorConfig{
 		Version:               c.Version,
+		Mode:                  c.Mode,
 		DebugShowError:        c.GetBool("debug.error"),
 		DisableLocationToHome: c.GetBool("channels.disableLocationToHome"),
 		GlobalScriptPath:      c.GlobalScriptPath,

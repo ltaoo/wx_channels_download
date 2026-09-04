@@ -1,6 +1,7 @@
 package wxmpadapter
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -58,6 +59,24 @@ func (a *OfficialAccountAdapter) Fetch(raw_url string) (any, error) {
 		return nil, errors.New("wxmp scraper client is nil")
 	}
 	return client.FetchArticle(raw_url)
+}
+
+// FetchBizMsgList fetches one official account's message list through the
+// active browser-backed runtime.
+func (a *OfficialAccountAdapter) FetchBizMsgList(
+	username string,
+	offset string,
+) (json.RawMessage, error) {
+	if a == nil {
+		return nil, errors.New("wxmp adapter is not initialized")
+	}
+	a.runtime_mu.Lock()
+	routes := a.routes
+	a.runtime_mu.Unlock()
+	if routes == nil || routes.server == nil {
+		return nil, errors.New("wxmp runtime is not initialized")
+	}
+	return routes.server.FetchBizMsgList(username, offset)
 }
 
 // Register creates and initializes a standalone official-account adapter.

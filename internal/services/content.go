@@ -1441,7 +1441,7 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 	}
 
 	build_query := func() *gorm.DB {
-		query := s.db.Model(&model.Content{})
+		query := s.db.Model(&model.Content{}).Where("content.deleted_at IS NULL")
 		if scope == ContentListScopeTask {
 			query = query.Where(`EXISTS (
 				SELECT 1

@@ -1,5 +1,6 @@
 import { ThirdPartyDownloaderPanel } from "@/third-party-downloader.js";
 
+import { PlatformIcon } from "../components.js";
 import { ScraperPageViewModel } from "./scraper.model.js";
 
 const task_overwrite_actions = [
@@ -99,7 +100,7 @@ function ScraperPageView(props) {
         ]),
       ]),
       Show({
-        when: vm$.state.result_visible,
+        when: vm$.state.build_download_task_result_visible,
         ok() {
           return ScraperResultActionBar({ store: vm$ });
         },
@@ -330,21 +331,26 @@ function ScraperPageForm(props) {
         Show({
           when: vm$.state.loading,
           ok() {
-            return Button(
-              {
-                store: vm$.ui.btn_interrupt_fetch$,
-                attributes: {
-                  n: "scraper-interrupt-action",
-                  type: "button",
-                },
+            return Show({
+              when: vm$.state.interrupt_visible,
+              ok() {
+                return Button(
+                  {
+                    store: vm$.ui.btn_interrupt_fetch$,
+                    attributes: {
+                      n: "scraper-interrupt-action",
+                      type: "button",
+                    },
+                  },
+                  [
+                    Timeless.Icon({ name: "square", size: 14 }),
+                    computed(vm$.state.interrupt_loading, (loading) =>
+                      loading ? "中断中" : "中断",
+                    ),
+                  ],
+                );
               },
-              [
-                Timeless.Icon({ name: "square", size: 14 }),
-                computed(vm$.state.interrupt_loading, (loading) =>
-                  loading ? "中断中" : "中断",
-                ),
-              ],
-            );
+            });
           },
           else() {
             return View({ class: "home-idle-actions" }, [
@@ -375,20 +381,17 @@ function ScraperContentCover(props) {
     when: content.cover_url,
     ok() {
       return View({ class: "home-content-cover" }, [
-        View({ class: "home-content-cover-fallback" }, [
-          Timeless.Icon({ name: "file", size: 34 }),
-          content.content_type_name,
-        ]),
-        Img({
+        // View({ class: "home-content-cover-fallback" }, [
+        //   Timeless.Icon({ name: "file", size: 34 }),
+        //   content.content_type_name,
+        // ]),
+        LazyImg({
           class: "home-content-cover-image",
           src: content.cover_url,
           alt: content.title,
           attributes: {
             loading: "lazy",
             referrerpolicy: "no-referrer",
-          },
-          onError(event) {
-            event.target.style.display = "none";
           },
         }),
       ]);
@@ -468,17 +471,10 @@ function ScraperContentCard(props) {
               Show({
                 when: content.platform_favicon,
                 ok() {
-                  return Img({
+                  return PlatformIcon({
                     class: "home-platform-favicon",
-                    src: content.platform_favicon,
-                    alt: "",
-                    attributes: {
-                      loading: "lazy",
-                      referrerpolicy: "no-referrer",
-                    },
-                    onError(event) {
-                      event.target.style.display = "none";
-                    },
+                    favicon: content.platform_favicon,
+                    name: "home-platform-favicon",
                   });
                 },
               }),
@@ -727,16 +723,13 @@ function HomeAccountAvatar(props) {
     Show({
       when: account.avatar_url,
       ok() {
-        return Img({
+        return LazyImg({
           class: "home-account-avatar-image",
           src: account.avatar_url,
           alt: account.nickname,
           attributes: {
             loading: "lazy",
             referrerpolicy: "no-referrer",
-          },
-          onError(event) {
-            event.target.style.display = "none";
           },
         });
       },
@@ -810,16 +803,13 @@ function ScraperVideoDetailMedia(props) {
               );
             },
             else() {
-              return Img({
+              return LazyImg({
                 class: "home-detail-video-cover",
                 src: media.cover_url,
                 alt: detail.title,
                 attributes: {
                   loading: "lazy",
                   referrerpolicy: "no-referrer",
-                },
-                onError(event) {
-                  event.target.style.display = "none";
                 },
               });
             },
@@ -1340,16 +1330,13 @@ function ScraperTypedContentDetail(props) {
                 render(image_) {
                   const image = ScraperDetailValue(image_);
                   return View({ class: "home-detail-image-item" }, [
-                    Img({
+                    LazyImg({
                       class: "home-detail-image",
                       src: image.url,
                       alt: "",
                       attributes: {
                         loading: "lazy",
                         referrerpolicy: "no-referrer",
-                      },
-                      onError(event) {
-                        event.target.style.display = "none";
                       },
                     }),
                     Show({
@@ -2016,10 +2003,10 @@ function ScraperCacheContentDialog(props) {
   );
 }
 
-function ScraperPageResult(props) {
+function BuildDownloadTaskResultView(props) {
   const vm$ = props.store;
   return Show({
-    when: vm$.state.result_visible,
+    when: vm$.state.build_download_task_result_visible,
     ok() {
       return View(
         {
@@ -2037,6 +2024,73 @@ function ScraperPageResult(props) {
       );
     },
   });
+}
+
+function PlatformHomeScraperResultView(props) {
+  const vm$ = props.store;
+  const home = vm$.state.platform_home;
+  return Show({
+    when: home.present,
+    ok() {
+      return View(
+        {
+          class: "home-result",
+          attributes: { n: "platform-home-scraper-result" },
+        },
+        [
+          View(
+            {
+              class: "home-card home-platform-preview-card dm-panel",
+              attributes: { n: "platform-home-preview-card" },
+            },
+            [
+              View(
+                {
+                  class: "home-card-heading",
+                  attributes: { n: "platform-home-preview-heading" },
+                },
+                [
+                  View(
+                    {
+                      class: "home-card-title",
+                      attributes: { n: "platform-home-preview-title" },
+                    },
+                    [home.title],
+                  ),
+                ],
+              ),
+              View(
+                {
+                  class: "home-platform-preview",
+                  attributes: { n: "platform-home-preview" },
+                },
+                [
+                  View({
+                    type: "iframe",
+                    class: "home-platform-preview-frame",
+                    attributes: {
+                      n: "platform-home-preview-frame",
+                      srcdoc: home.html,
+                      sandbox: "",
+                      title: "平台主页抓取结果",
+                    },
+                  }),
+                ],
+              ),
+            ],
+          ),
+          ScraperRawJSON({ store: vm$ }),
+        ],
+      );
+    },
+  });
+}
+
+function ScraperPageResult(props) {
+  return Fragment({}, [
+    BuildDownloadTaskResultView(props),
+    PlatformHomeScraperResultView(props),
+  ]);
 }
 
 function ScraperPlatformStatus(props) {

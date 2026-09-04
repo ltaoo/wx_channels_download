@@ -1,4 +1,5 @@
-const MaxRunning = Math.max(1, Number(window.config.maxRunning) || 3);
+import { proxy_image_url } from "@/image-proxy.model.js";
+
 const DOWNLOAD_PAGE_SIZE_DEFAULT = 12;
 
 const DOWNLOAD_SERVER_STATUS_FILTERS = {
@@ -19,6 +20,17 @@ function is_download_open_external() {
   return (
     runtime_flag(window.config.remoteServerEnabled) ||
     runtime_flag(window.config.inDocker)
+  );
+}
+
+function task_cover_url(raw) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  return proxy_image_url(
+    source.platform_id ||
+      source.platformId ||
+      source.PlatformID ||
+      source.PlatformId,
+    source.cover_url || source.coverUrl || source.CoverURL,
   );
 }
 
@@ -173,7 +185,6 @@ function DownloadV2Model(props = {}) {
   const filtered_task_count_ = ref(0);
   const page_ = ref(1);
   const page_size_ = ref(DOWNLOAD_PAGE_SIZE_DEFAULT);
-  const running_count_ = ref(0);
   const status_counts_ = refobj(empty_status_counts());
   const active_status_ = ref("total");
   const initial_ = ref(true);
@@ -482,7 +493,6 @@ function DownloadV2Model(props = {}) {
     filtered_task_count_.as(filtered_total);
     page_.as(response_page);
     page_size_.as(response_page_size);
-    running_count_.as(counts.running);
     status_counts_.as(counts);
   }
 
@@ -659,10 +669,6 @@ function DownloadV2Model(props = {}) {
   }
 
   async function start_all_tasks() {
-    if (running_count_.value >= MaxRunning) {
-      DLUtils.warning({ msg: `已达到最大同时下载任务数（${MaxRunning}）` });
-      return null;
-    }
     try {
       return await downloader.startAll({ status: active_status_.value });
     } catch (error) {
@@ -1188,6 +1194,7 @@ function DownloadV2Model(props = {}) {
     handleListViewScroll: handle_list_view_scroll,
     isPlaceholderTask: is_placeholder_task,
     ensureTaskPageForIndex: ensure_task_page_for_index,
+    taskCoverURL: task_cover_url,
   });
 
   const state = {
@@ -1199,7 +1206,6 @@ function DownloadV2Model(props = {}) {
     page_count: page_count_,
     range_text: range_text_,
     list_render_enabled: list_render_enabled_,
-    running_count: running_count_,
     delete_task: delete_task_,
     delete_task_ids: delete_task_ids_,
     pending_delete_task_count: pending_delete_task_count_,
@@ -1315,7 +1321,6 @@ function DownloadV2Model(props = {}) {
 
 export {
   DownloadV2Model,
-  MaxRunning,
   format_download_percent,
   format_download_size,
   format_download_speed,

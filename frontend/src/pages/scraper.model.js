@@ -1,6 +1,7 @@
 import { ThirdPartyDownloaderModel } from "@/third-party-downloader.model.js";
+import { proxy_image_url } from "@/image-proxy.model.js";
 
-const active_job_storage_key = "scraper.active_scraper_job_id";
+const active_job_storage_key = "scraper_active_job_id";
 const platform_status_popover_hide_delay = 240;
 const ChannelCore = Timeless.kit.ChannelCore;
 const { socket_client$ } = window.__store;
@@ -11,6 +12,7 @@ const scraper_fetch_stage_names = {
   restore: "恢复任务",
   started: "准备解析",
   fetch: "请求平台",
+  platform_home: "平台主页",
   fetched: "平台已响应",
   raw: "原始内容",
   content: "内容信息",
@@ -52,6 +54,7 @@ function ScraperPageViewModel(props) {
   const { client: home_http_client, downloader } = props;
   const third_party_downloader$ = ThirdPartyDownloaderModel({
     client: home_http_client,
+    storage: props.storage,
   });
 
   const url_ = ref("");
@@ -152,6 +155,12 @@ function ScraperPageViewModel(props) {
 
   const fetch_request = new Timeless.kit.RequestCore(
     (body) => window.request.post("/api/scraper/fetch", body),
+    {
+      client: home_http_client,
+    },
+  );
+  const platform_home_request = new Timeless.kit.RequestCore(
+    (params) => window.request.get("/api/douyin/contact/home", params),
     {
       client: home_http_client,
     },
@@ -359,6 +368,22 @@ function ScraperPageViewModel(props) {
     { present: display_result_present_, loading: loading_ },
     (state) => Boolean(state.present) && !state.loading,
   );
+  const platform_home_ = {
+    present: computed(
+      result_,
+      (result) => result && result.result_kind === "platform_home",
+    ),
+    html: computed(result_, (result) => String((result && result.html) || "")),
+    title: computed(result_, (result) =>
+      `${platform_name(result && result.platform)} 主页 · ${String(
+        (result && result.external_id) || "",
+      )}`,
+    ),
+  };
+  const build_download_task_result_visible_ = combine(
+    { visible: result_visible_, platform_home: platform_home_.present },
+    (state) => state.visible && !state.platform_home,
+  );
   const normalized_raw_result_ = computed(result_, normalize_raw_result);
   const raw_result_visible_ = combine(
     {
@@ -492,6 +517,13 @@ function ScraperPageViewModel(props) {
   );
   const interrupt_disabled_ = computed(interrupt_loading_, (loading) =>
     Boolean(loading),
+  );
+  const interrupt_visible_ = combine(
+    { loading: loading_, progress: fetch_progress_ },
+    (state) =>
+      state.loading &&
+      String((state.progress && state.progress.stage) || "") !==
+        "platform_home",
   );
   const normalized_content_ = computed(result_, normalize_content);
   const normalized_account_ = computed(result_, normalize_account);
@@ -1473,7 +1505,7 @@ function ScraperPageViewModel(props) {
     if (disposed || loading_.value || active_job_id) {
       return null;
     }
-    const job_id = load_active_job_id();
+    const job_id = load_active_job_id(props.storage);
     if (!job_id) {
       return null;
     }
@@ -1505,7 +1537,7 @@ function ScraperPageViewModel(props) {
     if (result && result.error) {
       loading_.as(false);
       active_job_id = "";
-      save_active_job_id("");
+      save_active_job_id(props.storage, "");
       fetch_progress_.as(null);
       return result;
     }
@@ -1643,13 +1675,14 @@ function ScraperPageViewModel(props) {
 
     const sequence = ++request_sequence;
     const force_refresh = Boolean(options.force_refresh);
+    const platform_home_target = match_platform_home_url(raw_url);
     clear_pending_download_conflict();
     finish_job_tracking();
     reset_article_html_processing();
     reset_cache_content(true);
     disposed = false;
     active_job_id = "";
-    save_active_job_id("");
+    save_active_job_id(props.storage, "");
     resolving_terminal_job_id = "";
     loading_.as(true);
     error_.as("");
@@ -1666,15 +1699,39 @@ function ScraperPageViewModel(props) {
     fetch_notice_.as("");
     cache_error_.as("");
     fetch_progress_.as({
-      stage: "start",
+      stage: platform_home_target ? "platform_home" : "start",
       status: "pending",
       current: 0,
       total: 0,
       percent: 0,
-      message: force_refresh
-        ? "正在创建重新抓取任务..."
-        : "正在创建抓取任务...",
+      message: platform_home_target
+        ? "正在获取平台主页..."
+        : force_refresh
+          ? "正在创建重新抓取任务..."
+          : "正在创建抓取任务...",
     });
+    if (platform_home_target) {
+      const result = await platform_home_request.run({
+        id: platform_home_target.id,
+      });
+      if (sequence !== request_sequence) {
+        return result;
+      }
+      loading_.as(false);
+      fetch_progress_.as(null);
+      if (result.error) {
+        error_.as(result.error.message || String(result.error));
+        return result;
+      }
+      result_.as({
+        ...(result.data || {}),
+        result_kind: "platform_home",
+        platform: platform_home_target.platform,
+        external_id: platform_home_target.id,
+        url: raw_url,
+      });
+      return result;
+    }
     const result = await fetch_request.run({
       url: raw_url,
       force_refresh,
@@ -1695,7 +1752,7 @@ function ScraperPageViewModel(props) {
       return result;
     }
     active_job_id = job_id;
-    save_active_job_id(job_id);
+    save_active_job_id(props.storage, job_id);
     apply_scraper_job(job, sequence);
     if (loading_.value) {
       try {
@@ -2047,7 +2104,7 @@ function ScraperPageViewModel(props) {
     if (!target_url) {
       return;
     }
-    window.open(target_url, "_blank", "noopener,noreferrer");
+    props.app.openWindow(target_url);
   }
 
   function set_url(value) {
@@ -2113,6 +2170,7 @@ function ScraperPageViewModel(props) {
     loading: loading_,
     error: error_,
     result: result_,
+    platform_home: platform_home_,
     content: content_,
     account: account_,
     content_details: content_details_,
@@ -2151,12 +2209,14 @@ function ScraperPageViewModel(props) {
     cache_action_disabled: cache_action_disabled_,
     cache_button_text: cache_button_text_,
     interrupt_disabled: interrupt_disabled_,
+    interrupt_visible: interrupt_visible_,
     submit_disabled: submit_disabled_,
     status_text: status_text_,
     busy: busy_,
     has_error: has_error_,
     has_result: has_result_,
     result_visible: result_visible_,
+    build_download_task_result_visible: build_download_task_result_visible_,
     result_text: result_text_,
     json_toggle_text: json_toggle_text_,
     download_disabled: download_disabled_,
@@ -2204,26 +2264,24 @@ function number_or_default(value, fallback) {
   return Number.isFinite(number) ? number : fallback;
 }
 
-function load_active_job_id() {
+function load_active_job_id(storage) {
   try {
-    return String(
-      window.localStorage.getItem(active_job_storage_key) || "",
-    ).trim();
-  } catch (error) {
+    return String(storage.get(active_job_storage_key) || "").trim();
+  } catch {
     return "";
   }
 }
 
-function save_active_job_id(job_id) {
+function save_active_job_id(storage, job_id) {
   const normalized_job_id = String(job_id || "").trim();
   try {
     if (normalized_job_id) {
-      window.localStorage.setItem(active_job_storage_key, normalized_job_id);
+      storage.set(active_job_storage_key, normalized_job_id);
       return;
     }
-    window.localStorage.removeItem(active_job_storage_key);
+    storage.clear(active_job_storage_key);
   } catch {
-    // Storage can be unavailable in restricted browser contexts.
+    // The host storage implementation may be unavailable.
   }
 }
 
@@ -3118,7 +3176,7 @@ function normalize_video_detail_media(data, content) {
   return {
     present: Boolean(video_url || cover_url),
     video_url,
-    cover_url,
+    cover_url: proxy_image_url(content && content.platform_id, cover_url),
     has_video: Boolean(video_url),
     has_cover: Boolean(cover_url),
   };
@@ -3692,7 +3750,7 @@ function normalize_typed_content_detail(
         );
         return {
           key: String(image.id || image.url || image_index),
-          url: String(image.url || "").trim(),
+          url: proxy_image_url(content.platform_id, image.url),
           meta:
             [image.width, image.height].filter(Boolean).join(" × ") ||
             image.ext ||
@@ -3974,16 +4032,18 @@ function normalize_content(result) {
   return {
     present: Boolean(result && result.content),
     id: first_non_empty(source.id, source.ID),
+    platform_id: String(platform_id || "")
+      .trim()
+      .toLowerCase(),
     type: String(content_type || "")
       .trim()
       .toLowerCase(),
     title,
     description,
     show_description: Boolean(description && description !== title),
-    cover_url: first_non_empty(
-      source.cover_url,
-      source.CoverURL,
-      source.coverUrl,
+    cover_url: proxy_image_url(
+      platform_id,
+      first_non_empty(source.cover_url, source.CoverURL, source.coverUrl),
     ),
     content_url: first_non_empty(
       source.url,
@@ -4031,10 +4091,9 @@ function normalize_account(result) {
     signature: String(
       first_non_empty(source.signature, source.Signature),
     ).trim(),
-    avatar_url: first_non_empty(
-      source.avatar_url,
-      source.AvatarURL,
-      source.avatarUrl,
+    avatar_url: proxy_image_url(
+      platform_id,
+      first_non_empty(source.avatar_url, source.AvatarURL, source.avatarUrl),
     ),
     profile_url: first_non_empty(
       source.profile_url,
@@ -4123,6 +4182,7 @@ function has_display_result(result) {
     return false;
   }
   return Boolean(
+    result.result_kind === "platform_home" ||
     result.content ||
     result.account ||
     (Array.isArray(result.content_details) &&
@@ -4132,4 +4192,11 @@ function has_display_result(result) {
   );
 }
 
-export { ScraperPageViewModel };
+function match_platform_home_url(raw_url) {
+  const match = String(raw_url || "").match(
+    /\/user\/([0-9A-Za-z_-]{1,})/,
+  );
+  return match ? { platform: "douyin", id: match[1] } : null;
+}
+
+export { ScraperPageViewModel, match_platform_home_url };

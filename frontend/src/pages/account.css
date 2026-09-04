@@ -30,6 +30,17 @@
   min-height: 72px;
 }
 
+.account-row-clickable {
+  cursor: pointer;
+}
+
+.account-row-clickable:hover,
+.account-row-clickable:focus-visible {
+  background: var(--dm-content-panel-soft);
+  box-shadow: inset var(--dm-border-width-strong) 0 var(--dm-color-primary-fill);
+  outline: 0;
+}
+
 .account-identity {
   min-width: 0;
   display: flex;
@@ -137,6 +148,77 @@
 
 .account-skeleton-details {
   width: min(320px, 60%);
+}
+
+.account-content-drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dm-space-4);
+}
+
+.account-content-drawer-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dm-space-3);
+}
+
+.account-content-drawer-account {
+  min-width: 0;
+}
+
+.account-content-drawer-account-name {
+  overflow: hidden;
+  color: var(--dm-content-text);
+  font-weight: var(--dm-font-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-content-drawer-summary {
+  color: var(--dm-content-muted);
+  font-size: var(--dm-font-size-sm);
+}
+
+.account-content-table {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.account-content-record {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--dm-space-3);
+}
+
+.account-content-cover {
+  width: 48px;
+  height: 64px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: var(--dm-radius-sm);
+  background: var(--dm-content-panel-soft);
+}
+
+.account-content-record-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--dm-space-2);
+}
+
+.account-content-record-title {
+  display: block;
+  text-decoration: none;
+}
+
+.account-content-record-id {
+  max-width: 100%;
 }
 
 @media (max-width: 520px) {

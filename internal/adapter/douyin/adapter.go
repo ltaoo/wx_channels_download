@@ -38,6 +38,7 @@ var (
 	_ adapter.PlatformAdapter          = (*handler)(nil)
 	_ adapter.ProgressFetchAdapter     = (*handler)(nil)
 	_ adapter.FetchDownloadTaskBuilder = (*handler)(nil)
+	_ adapter.HomeContentsBuilder      = (*handler)(nil)
 	_ adapter.RuntimeAdapter           = (*handler)(nil)
 	_ adapter.RuntimeHandle            = (*handler)(nil)
 )
@@ -57,6 +58,7 @@ func (h *handler) RegisterRuntime(deps *adapter.AdapterOptions) (adapter.Runtime
 	h.config = deps.Config
 	h.cookies = deps.Cookies
 	h.runtime_mu.Unlock()
+	new_routes(h).register_routes(deps.Routes)
 	if deps.Logger != nil {
 		deps.Logger.Info().
 			Str("component", "douyin_adapter").
