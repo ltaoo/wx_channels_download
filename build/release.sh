@@ -123,6 +123,7 @@ fi
 SSH_CMD=(ssh)
 SCP_CMD=(scp -O)
 SSH_OPTS=()
+ASKPASS_SCRIPT=""
 
 if [ -n "${SERVER_PASSWORD:-}" ]; then
   if command -v sshpass >/dev/null 2>&1; then
@@ -130,7 +131,12 @@ if [ -n "${SERVER_PASSWORD:-}" ]; then
     SSH_CMD=(sshpass -e ssh)
     SCP_CMD=(sshpass -e scp -O)
   else
-    echo "⚠️ SERVER_PASSWORD is set but sshpass is not installed; falling back to SSH prompt."
+    echo "ℹ️ SERVER_PASSWORD is set but sshpass is not installed; using SSH_ASKPASS."
+    ASKPASS_SCRIPT="$(mktemp "${TMPDIR:-/tmp}/wx-deploy-askpass.XXXXXX")"
+    printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$SERVER_PASSWORD"' > "$ASKPASS_SCRIPT"
+    chmod 700 "$ASKPASS_SCRIPT"
+    SSH_CMD=(env "DISPLAY=${DISPLAY:-:0}" "SSH_ASKPASS_REQUIRE=force" "SSH_ASKPASS=$ASKPASS_SCRIPT" ssh)
+    SCP_CMD=(env "DISPLAY=${DISPLAY:-:0}" "SSH_ASKPASS_REQUIRE=force" "SSH_ASKPASS=$ASKPASS_SCRIPT" scp -O)
   fi
 fi
 
@@ -145,6 +151,9 @@ SOCKET_PATH="$SOCKET_DIR/socket"
 
 cleanup() {
     "${SSH_CMD[@]}" -S "$SOCKET_PATH" -O exit "$SERVER_TARGET" >/dev/null 2>&1 || true
+    if [ -n "$ASKPASS_SCRIPT" ]; then
+        rm -f "$ASKPASS_SCRIPT"
+    fi
     rm -rf "$SOCKET_DIR"
 }
 trap cleanup EXIT
@@ -177,7 +186,7 @@ echo "🔎 Inspecting remote binary..."
 
 # Start new service
 echo "🚀 Starting service..."
-"${SSH_CMD[@]}" -p "$SERVER_PORT" "${SSH_OPTS[@]}" "$SERVER_TARGET" "cd $SERVER_DIR && nohup ./$BINARY_NAME server > server.log 2>&1 < /dev/null &"
+"${SSH_CMD[@]}" -p "$SERVER_PORT" "${SSH_OPTS[@]}" "$SERVER_TARGET" "cd $SERVER_DIR || exit 1; nohup ./$BINARY_NAME server < /dev/null > server.log 2>&1 &"
 
 # Health check
 echo "🔍 Checking status..."

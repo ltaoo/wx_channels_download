@@ -2725,7 +2725,6 @@ img.dm-lazy-img-image[data-lazy-img-state] {
 .dm-table-panel {
   min-width: 0;
   min-height: 360px;
-  flex: 1 1 auto;
   overflow: hidden;
   border-radius: var(--dm-radius-card);
 }
