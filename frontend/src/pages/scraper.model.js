@@ -12,6 +12,7 @@ const scraper_fetch_stage_names = {
   restore: "恢复任务",
   started: "准备解析",
   fetch: "请求平台",
+  platform_home: "平台主页",
   fetched: "平台已响应",
   raw: "原始内容",
   content: "内容信息",
@@ -154,6 +155,12 @@ function ScraperPageViewModel(props) {
 
   const fetch_request = new Timeless.kit.RequestCore(
     (body) => window.request.post("/api/scraper/fetch", body),
+    {
+      client: home_http_client,
+    },
+  );
+  const platform_home_request = new Timeless.kit.RequestCore(
+    (params) => window.request.get("/api/douyin/contact/home", params),
     {
       client: home_http_client,
     },
@@ -361,6 +368,22 @@ function ScraperPageViewModel(props) {
     { present: display_result_present_, loading: loading_ },
     (state) => Boolean(state.present) && !state.loading,
   );
+  const platform_home_ = {
+    present: computed(
+      result_,
+      (result) => result && result.result_kind === "platform_home",
+    ),
+    html: computed(result_, (result) => String((result && result.html) || "")),
+    title: computed(result_, (result) =>
+      `${platform_name(result && result.platform)} 主页 · ${String(
+        (result && result.external_id) || "",
+      )}`,
+    ),
+  };
+  const build_download_task_result_visible_ = combine(
+    { visible: result_visible_, platform_home: platform_home_.present },
+    (state) => state.visible && !state.platform_home,
+  );
   const normalized_raw_result_ = computed(result_, normalize_raw_result);
   const raw_result_visible_ = combine(
     {
@@ -494,6 +517,13 @@ function ScraperPageViewModel(props) {
   );
   const interrupt_disabled_ = computed(interrupt_loading_, (loading) =>
     Boolean(loading),
+  );
+  const interrupt_visible_ = combine(
+    { loading: loading_, progress: fetch_progress_ },
+    (state) =>
+      state.loading &&
+      String((state.progress && state.progress.stage) || "") !==
+        "platform_home",
   );
   const normalized_content_ = computed(result_, normalize_content);
   const normalized_account_ = computed(result_, normalize_account);
@@ -1645,6 +1675,7 @@ function ScraperPageViewModel(props) {
 
     const sequence = ++request_sequence;
     const force_refresh = Boolean(options.force_refresh);
+    const platform_home_target = match_platform_home_url(raw_url);
     clear_pending_download_conflict();
     finish_job_tracking();
     reset_article_html_processing();
@@ -1668,15 +1699,39 @@ function ScraperPageViewModel(props) {
     fetch_notice_.as("");
     cache_error_.as("");
     fetch_progress_.as({
-      stage: "start",
+      stage: platform_home_target ? "platform_home" : "start",
       status: "pending",
       current: 0,
       total: 0,
       percent: 0,
-      message: force_refresh
-        ? "正在创建重新抓取任务..."
-        : "正在创建抓取任务...",
+      message: platform_home_target
+        ? "正在获取平台主页..."
+        : force_refresh
+          ? "正在创建重新抓取任务..."
+          : "正在创建抓取任务...",
     });
+    if (platform_home_target) {
+      const result = await platform_home_request.run({
+        id: platform_home_target.id,
+      });
+      if (sequence !== request_sequence) {
+        return result;
+      }
+      loading_.as(false);
+      fetch_progress_.as(null);
+      if (result.error) {
+        error_.as(result.error.message || String(result.error));
+        return result;
+      }
+      result_.as({
+        ...(result.data || {}),
+        result_kind: "platform_home",
+        platform: platform_home_target.platform,
+        external_id: platform_home_target.id,
+        url: raw_url,
+      });
+      return result;
+    }
     const result = await fetch_request.run({
       url: raw_url,
       force_refresh,
@@ -2115,6 +2170,7 @@ function ScraperPageViewModel(props) {
     loading: loading_,
     error: error_,
     result: result_,
+    platform_home: platform_home_,
     content: content_,
     account: account_,
     content_details: content_details_,
@@ -2153,12 +2209,14 @@ function ScraperPageViewModel(props) {
     cache_action_disabled: cache_action_disabled_,
     cache_button_text: cache_button_text_,
     interrupt_disabled: interrupt_disabled_,
+    interrupt_visible: interrupt_visible_,
     submit_disabled: submit_disabled_,
     status_text: status_text_,
     busy: busy_,
     has_error: has_error_,
     has_result: has_result_,
     result_visible: result_visible_,
+    build_download_task_result_visible: build_download_task_result_visible_,
     result_text: result_text_,
     json_toggle_text: json_toggle_text_,
     download_disabled: download_disabled_,
@@ -4124,6 +4182,7 @@ function has_display_result(result) {
     return false;
   }
   return Boolean(
+    result.result_kind === "platform_home" ||
     result.content ||
     result.account ||
     (Array.isArray(result.content_details) &&
@@ -4133,4 +4192,11 @@ function has_display_result(result) {
   );
 }
 
-export { ScraperPageViewModel };
+function match_platform_home_url(raw_url) {
+  const match = String(raw_url || "").match(
+    /\/user\/([0-9A-Za-z_-]{1,})/,
+  );
+  return match ? { platform: "douyin", id: match[1] } : null;
+}
+
+export { ScraperPageViewModel, match_platform_home_url };

@@ -7,6 +7,7 @@ import (
 	// _ "wx_channel/internal/adapter/bilibili"
 	// _ "wx_channel/internal/adapter/cctv"
 	_ "wx_channel/internal/adapter/douyin"
+	_ "wx_channel/internal/adapter/feishu"
 	_ "wx_channel/internal/adapter/kuaishou"
 	// _ "wx_channel/internal/adapter/ucdrive"
 	_ "wx_channel/internal/adapter/webpage"

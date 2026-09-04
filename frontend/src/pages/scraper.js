@@ -100,7 +100,7 @@ function ScraperPageView(props) {
         ]),
       ]),
       Show({
-        when: vm$.state.result_visible,
+        when: vm$.state.build_download_task_result_visible,
         ok() {
           return ScraperResultActionBar({ store: vm$ });
         },
@@ -331,21 +331,26 @@ function ScraperPageForm(props) {
         Show({
           when: vm$.state.loading,
           ok() {
-            return Button(
-              {
-                store: vm$.ui.btn_interrupt_fetch$,
-                attributes: {
-                  n: "scraper-interrupt-action",
-                  type: "button",
-                },
+            return Show({
+              when: vm$.state.interrupt_visible,
+              ok() {
+                return Button(
+                  {
+                    store: vm$.ui.btn_interrupt_fetch$,
+                    attributes: {
+                      n: "scraper-interrupt-action",
+                      type: "button",
+                    },
+                  },
+                  [
+                    Timeless.Icon({ name: "square", size: 14 }),
+                    computed(vm$.state.interrupt_loading, (loading) =>
+                      loading ? "中断中" : "中断",
+                    ),
+                  ],
+                );
               },
-              [
-                Timeless.Icon({ name: "square", size: 14 }),
-                computed(vm$.state.interrupt_loading, (loading) =>
-                  loading ? "中断中" : "中断",
-                ),
-              ],
-            );
+            });
           },
           else() {
             return View({ class: "home-idle-actions" }, [
@@ -1998,10 +2003,10 @@ function ScraperCacheContentDialog(props) {
   );
 }
 
-function ScraperPageResult(props) {
+function BuildDownloadTaskResultView(props) {
   const vm$ = props.store;
   return Show({
-    when: vm$.state.result_visible,
+    when: vm$.state.build_download_task_result_visible,
     ok() {
       return View(
         {
@@ -2019,6 +2024,73 @@ function ScraperPageResult(props) {
       );
     },
   });
+}
+
+function PlatformHomeScraperResultView(props) {
+  const vm$ = props.store;
+  const home = vm$.state.platform_home;
+  return Show({
+    when: home.present,
+    ok() {
+      return View(
+        {
+          class: "home-result",
+          attributes: { n: "platform-home-scraper-result" },
+        },
+        [
+          View(
+            {
+              class: "home-card home-platform-preview-card dm-panel",
+              attributes: { n: "platform-home-preview-card" },
+            },
+            [
+              View(
+                {
+                  class: "home-card-heading",
+                  attributes: { n: "platform-home-preview-heading" },
+                },
+                [
+                  View(
+                    {
+                      class: "home-card-title",
+                      attributes: { n: "platform-home-preview-title" },
+                    },
+                    [home.title],
+                  ),
+                ],
+              ),
+              View(
+                {
+                  class: "home-platform-preview",
+                  attributes: { n: "platform-home-preview" },
+                },
+                [
+                  View({
+                    type: "iframe",
+                    class: "home-platform-preview-frame",
+                    attributes: {
+                      n: "platform-home-preview-frame",
+                      srcdoc: home.html,
+                      sandbox: "",
+                      title: "平台主页抓取结果",
+                    },
+                  }),
+                ],
+              ),
+            ],
+          ),
+          ScraperRawJSON({ store: vm$ }),
+        ],
+      );
+    },
+  });
+}
+
+function ScraperPageResult(props) {
+  return Fragment({}, [
+    BuildDownloadTaskResultView(props),
+    PlatformHomeScraperResultView(props),
+  ]);
 }
 
 function ScraperPlatformStatus(props) {
