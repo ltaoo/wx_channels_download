@@ -80,6 +80,13 @@ func (runtime *page_runtime) shared_node_property(node *html.Node, name string) 
 		return runtime.node_object(node.FirstChild)
 	case "lastChild":
 		return runtime.node_object(node.LastChild)
+	case "firstElementChild":
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			if child.Type == html.ElementNode {
+				return runtime.node_object(child)
+			}
+		}
+		return nil
 	case "nextSibling":
 		return runtime.node_object(node.NextSibling)
 	case "previousSibling":

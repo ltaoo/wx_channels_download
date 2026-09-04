@@ -98,3 +98,44 @@ func TestPageResourceSchedulerHonorsPriorityConcurrencyAndScriptSemantics(t *tes
 		t.Fatalf("resource client hints = %+v", client_hints)
 	}
 }
+
+func TestCreatedExternalScriptDoesNotBlockInitialAsyncScript(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/":
+			response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = fmt.Fprint(response_writer, `<!doctype html><html data-n="script-order-page"><head data-n="script-order-head"><script data-n="dynamic-script-loader">
+window.scriptOrder = [];
+var dynamicScript = document.createElement('script');
+dynamicScript.src = '/dynamic.js';
+document.head.appendChild(dynamicScript);
+</script><script data-n="initial-async-script" async src="/async.js"></script></head><body data-n="script-order-body"></body></html>`)
+		case "/async.js":
+			response_writer.Header().Set("Content-Type", "application/javascript")
+			_, _ = fmt.Fprint(response_writer, `window.scriptOrder.push('async'); document.body.setAttribute('data-order', window.scriptOrder.join(','))`)
+		case "/dynamic.js":
+			time.Sleep(20 * time.Millisecond)
+			response_writer.Header().Set("Content-Type", "application/javascript")
+			_, _ = fmt.Fprint(response_writer, `window.scriptOrder.push('dynamic:' + document.readyState); document.body.setAttribute('data-order', window.scriptOrder.join(','))`)
+		default:
+			http.NotFound(response_writer, request)
+		}
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.ScriptFailures) != 0 {
+		t.Fatalf("script failures: %+v", page.ScriptFailures)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-order="async,dynamic:interactive"`) {
+		t.Fatalf("script order mismatch: %s", page.RenderedHTML)
+	}
+}

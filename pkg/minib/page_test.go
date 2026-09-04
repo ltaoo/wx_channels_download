@@ -1015,7 +1015,8 @@ try { document.body.dispatchEvent({}); } catch (error) { document.body.setAttrib
 var eventParent = document.createElement('div'); eventParent.setAttribute('data-n', 'event-parent'); var eventChild = document.createElement('button'); eventChild.setAttribute('data-n', 'event-child'); eventParent.appendChild(eventChild); document.body.appendChild(eventParent); eventParent.addEventListener('minib-event', function(event) { var path = event.composedPath(); document.body.setAttribute('data-event-dispatch', [event.detail.value, event.target === eventChild, event.currentTarget === eventParent, path[0] === eventChild, path[1] === eventParent].join(':')); event.preventDefault(); }); document.body.setAttribute('data-event-result', eventChild.dispatchEvent(new CustomEvent('minib-event', { detail: { value: 'ready' }, bubbles: true, cancelable: true })));
 var svgNode = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svgNode.setAttributeNS(null, 'viewBox', '0 0 1 1');
 var cyclicArray = []; cyclicArray.push(cyclicArray);
-var templateNode = document.createElement('template'); templateNode.innerHTML = '<strong data-n="template-clone">template</strong>'; document.body.appendChild(document.importNode(templateNode.content, true));
+Object.getPrototypeOf(navigator).vendorSubs = 'ready'; document.body.setAttribute('data-navigator-prototype', [navigator instanceof Navigator, ({}).vendorSubs === undefined].join(':')); delete Object.getPrototypeOf(navigator).vendorSubs;
+var templateNode = document.createElement('template'); templateNode.innerHTML = 'text<strong data-n="template-clone">template</strong>'; document.body.setAttribute('data-template-first-element', templateNode.content.firstElementChild.tagName); document.body.appendChild(document.importNode(templateNode.content, true));
 var nestedTemplate = document.createElement('template'); nestedTemplate.setAttribute('data-n', 'nested-template'); nestedTemplate.innerHTML = '<b data-n="nested-template-content">nested</b>'; document.body.setAttribute('data-fragment-query', nestedTemplate.content.querySelector('b').textContent + ':' + nestedTemplate.content.querySelectorAll('b').length); document.body.appendChild(nestedTemplate.cloneNode(true).content);
 var fragmentInsertTarget = document.createElement('div'); fragmentInsertTarget.setAttribute('data-n', 'fragment-insert-target'); var fragmentInsertMark = document.createElement('span'); fragmentInsertMark.setAttribute('data-n', 'fragment-insert-mark'); fragmentInsertTarget.appendChild(fragmentInsertMark); var fragmentInsert = document.createDocumentFragment(); fragmentInsert.appendChild(document.createElement('em')).setAttribute('data-n', 'fragment-insert-child'); fragmentInsertTarget.insertBefore(fragmentInsert, fragmentInsertMark); var fragmentReplace = document.createDocumentFragment(); fragmentReplace.appendChild(document.createElement('b')).setAttribute('data-n', 'fragment-replace-child'); fragmentInsertTarget.replaceChild(fragmentReplace, fragmentInsertMark); document.body.appendChild(fragmentInsertTarget);
 document.body.setAttribute('data-wrapped-import', document.importNode({ node: document.body }, false).tagName);
@@ -1190,6 +1191,12 @@ fetch('/fetch-api?source=fetch', { method: 'POST', headers: { 'Content-Type': 'a
 	if page.ExecutedScripts != 7 {
 		t.Fatalf("executed %d scripts, want 7; failures=%+v", page.ExecutedScripts, page.ScriptFailures)
 	}
+	if !strings.Contains(page.RenderedHTML, `data-template-first-element="STRONG"`) {
+		t.Fatalf("template firstElementChild missing from rendered HTML: %s", page.RenderedHTML)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-navigator-prototype="true:true"`) {
+		t.Fatalf("navigator prototype semantics missing from rendered HTML: %s", page.RenderedHTML)
+	}
 	if !strings.Contains(page.RenderedHTML, `external-inline`) || !strings.Contains(page.RenderedHTML, `data-initial-script-load="done"`) || !strings.Contains(page.RenderedHTML, `data-written="done"`) || !strings.Contains(page.RenderedHTML, `data-apply-null="0"`) || !strings.Contains(page.RenderedHTML, `data-single-argument-timer="done"`) || !strings.Contains(page.RenderedHTML, `data-dynamic="done"`) || !strings.Contains(page.RenderedHTML, `data-dynamic-style="loaded"`) || !strings.Contains(page.RenderedHTML, `data-dynamic-image="loaded"`) || !strings.Contains(page.RenderedHTML, `data-defer-saw-body="yes"`) || !strings.Contains(page.RenderedHTML, `data-anchor="/jobs?q=go#details"`) || !strings.Contains(page.RenderedHTML, `data-attribute="test"`) || !strings.Contains(page.RenderedHTML, `data-has-attributes="true:false"`) || !strings.Contains(page.RenderedHTML, `data-class-list="one,two"`) || !strings.Contains(page.RenderedHTML, `data-event-prototype="ready"`) || !strings.Contains(page.RenderedHTML, `data-wrapped-event="wrapped"`) || !strings.Contains(page.RenderedHTML, `data-invalid-event="true"`) || !strings.Contains(page.RenderedHTML, `data-adjacent="done"`) || !strings.Contains(page.RenderedHTML, `data-module="done"`) || !strings.Contains(page.RenderedHTML, `data-named-global="done"`) || !strings.Contains(page.RenderedHTML, `data-browser-api="detached:function"`) || !strings.Contains(page.RenderedHTML, `data-youtube-apis="true:en-US:en-US:click:Enter:detail:0 0 1 1:true:false:true:true:true:16px:true"`) || !strings.Contains(page.RenderedHTML, `data-custom-elements="true:upgraded:yes:true:yes:on&gt;null:true:true:true"`) || !strings.Contains(page.RenderedHTML, `data-template-inert="0:1"`) || !strings.Contains(page.RenderedHTML, `data-upgraded="yes"`) || !strings.Contains(page.RenderedHTML, `data-connect-order="parent,child"`) || !strings.Contains(page.RenderedHTML, `data-wrapped-import="BODY"`) || !strings.Contains(page.RenderedHTML, `data-message-channel="ready"`) || !strings.Contains(page.RenderedHTML, `<strong data-n="template-clone">template</strong>`) || !strings.Contains(page.RenderedHTML, `data-fragment-query="nested:1"`) || !strings.Contains(page.RenderedHTML, `<b data-n="nested-template-content">nested</b>`) || !strings.Contains(page.RenderedHTML, `<em data-n="fragment-insert-child"></em><b data-n="fragment-replace-child"></b>`) || !strings.Contains(page.RenderedHTML, `<i data-n="range-fragment">range</i>`) || !strings.Contains(page.RenderedHTML, `data-canvas-api="true:true"`) || !strings.Contains(page.RenderedHTML, `data-native-dom="ok:true:true:true:true:true:true:true:probably:true:probably:true:true:true:true:true:false:true:true:true:true:true:true:true"`) || !strings.Contains(page.RenderedHTML, `data-layout="100:20:0:1:0"`) || !strings.Contains(page.RenderedHTML, `data-intersection="true:BODY"`) || !strings.Contains(page.RenderedHTML, `data-mutation="sync,after,observer"`) || !strings.Contains(page.RenderedHTML, `data-xhr="200:{&#34;ok&#34;:true}"`) || !strings.Contains(page.RenderedHTML, `data-promise-xhr="200"`) || !strings.Contains(page.RenderedHTML, `data-axios-xhr="200:{&#34;axios&#34;:true}"`) || !strings.Contains(page.RenderedHTML, `data-async-finally="mounted"`) || !strings.Contains(page.RenderedHTML, `data-delayed-xhr="done"`) || !strings.Contains(page.RenderedHTML, `data-kv-xhr="ready"`) || !strings.Contains(page.RenderedHTML, `data-fetch="true"`) || !strings.Contains(page.RenderedHTML, `<span>fragment</span>`) {
 		t.Fatalf("script DOM changes missing from rendered HTML: %s", page.RenderedHTML)
 	}
@@ -1200,7 +1207,7 @@ fetch('/fetch-api?source=fetch', { method: 'POST', headers: { 'Content-Type': 'a
 	if err != nil {
 		t.Fatal(err)
 	}
-	if value.String() != "external,inline,written,dynamic,defer" {
+	if value.String() != "external,inline,written,defer,dynamic" {
 		t.Fatalf("script order = %q", value.String())
 	}
 	for _, path := range []string{"/", "/style.css", "/dynamic.css", "/app.js", "/defer.js", "/dynamic.js", "/written.js", "/pixel.png", "/dynamic.png", "/api", "/promise-api", "/axios-api", "/async-axios-api", "/delayed-api", "/kv-api", "/fetch-api"} {
@@ -1221,6 +1228,40 @@ fetch('/fetch-api?source=fetch', { method: 'POST', headers: { 'Content-Type': 'a
 	}
 	if len(page.FetchRequests) != 1 || !strings.Contains(page.FetchRequests[0], "/fetch-api?source=fetch") {
 		t.Fatalf("fetch requests = %q", page.FetchRequests)
+	}
+}
+
+func TestDynamicNonJavaScriptScriptIsInert(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(response_writer, `<!doctype html><html><head data-n="dynamic-script-head"></head><body data-n="dynamic-script-body"><script data-n="dynamic-script-loader">
+var dataScript = document.createElement('script');
+dataScript.type = 'application/json';
+dataScript.setAttribute('data-n', 'dynamic-json-data');
+dataScript.textContent = '%7B%22ready%22%3Atrue%7D';
+document.head.appendChild(dataScript);
+var executableScript = document.createElement('script');
+executableScript.setAttribute('data-n', 'dynamic-executable-script');
+executableScript.textContent = "document.body.setAttribute('data-dynamic-script', 'ran')";
+document.head.appendChild(executableScript);
+</script></body></html>`)
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.ScriptFailures) != 0 {
+		t.Fatalf("non-JavaScript data block executed: %+v", page.ScriptFailures)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-dynamic-script="ran"`) {
+		t.Fatalf("JavaScript sibling did not execute: %s", page.RenderedHTML)
 	}
 }
 

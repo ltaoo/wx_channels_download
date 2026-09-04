@@ -279,6 +279,7 @@ type page_runtime struct {
 	dynamic_styles        []*html.Node
 	dynamic_resources     []*html.Node
 	dynamic_seen          map[*html.Node]bool
+	created_scripts       map[*html.Node]bool
 	custom_elements       map[string]*custom_element_definition
 	custom_waiters        map[string][]func(interface{}) error
 	custom_constructed    map[*html.Node]bool
@@ -988,6 +989,7 @@ func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *ur
 		dispatching_events:   make(map[*goja.Object]bool),
 		timer_by_id:          make(map[int64]*timer_job),
 		dynamic_seen:         make(map[*html.Node]bool),
+		created_scripts:      make(map[*html.Node]bool),
 		custom_elements:      make(map[string]*custom_element_definition),
 		custom_waiters:       make(map[string][]func(interface{}) error),
 		custom_constructed:   make(map[*html.Node]bool),
@@ -1101,7 +1103,7 @@ func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *ur
 		}
 		if !runtime.use_custom_runtime {
 			runtime.drain_dynamic_styles(ctx)
-			runtime.drain_dynamic_scripts(ctx)
+			runtime.drain_dynamic_scripts(ctx, false)
 			runtime.drain_dynamic_resources(ctx)
 		}
 		runtime.run_host_jobs(ctx)
@@ -1133,6 +1135,7 @@ func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *ur
 	if runtime.wait_until == WaitUntilDOMContentLoaded && !runtime.wait_active {
 		return nil
 	}
+	runtime.drain_dynamic_scripts(ctx, true)
 	runtime.pump_event_loop(ctx)
 	if runtime.wait_condition_met() {
 		return nil
@@ -1410,6 +1413,8 @@ EventTarget.prototype.dispatchEvent = function(event) {
 };
 function Window() {}
 Window.prototype = Object.create(EventTarget.prototype);
+function Navigator() {}
+Object.defineProperty(Navigator.prototype, Symbol.toStringTag, { value: 'Navigator' });
 function Node() {}
 Node.prototype = Object.create(EventTarget.prototype);
 Object.assign(Node, {
@@ -1583,6 +1588,7 @@ function __minibConvertNodes(owner, values) {
   return Array.prototype.map.call(values, function(value) { return value instanceof Node ? value : documentForNodes.createTextNode(String(value)); });
 }
 function __minibInstallParentNode(prototype) {
+  Object.defineProperty(prototype, 'firstElementChild', __minibNodeAccessor('firstElementChild', false));
   prototype.append = function() { __minibConvertNodes(this, arguments).forEach(function(node) { this.appendChild(node); }, this); };
   prototype.prepend = function() { var mark = this.firstChild; __minibConvertNodes(this, arguments).forEach(function(node) { this.insertBefore(node, mark); }, this); };
   prototype.replaceChildren = function() { var nodes = __minibConvertNodes(this, arguments); while (this.firstChild) this.removeChild(this.firstChild); nodes.forEach(function(node) { this.appendChild(node); }, this); };
@@ -2017,6 +2023,7 @@ if (!Date.prototype.toGMTString) Date.prototype.toGMTString = Date.prototype.toU
 	runtime.install_cssom(window)
 	_ = window.Set("location", runtime.location_object(runtime.page_url))
 	navigator := runtime.vm.NewObject()
+	_ = navigator.SetPrototype(window.Get("Navigator").ToObject(runtime.vm).Get("prototype").ToObject(runtime.vm))
 	_ = navigator.Set("appName", "Netscape")
 	_ = navigator.Set("userAgent", runtime.user_agent)
 	_ = navigator.Set("platform", "MacIntel")
@@ -2894,7 +2901,7 @@ func (runtime *page_runtime) run_timers(ctx context.Context, timer_deadline_ms i
 		}
 		runtime.run_host_jobs(ctx)
 		runtime.drain_dynamic_styles(ctx)
-		runtime.drain_dynamic_scripts(ctx)
+		runtime.drain_dynamic_scripts(ctx, true)
 		runtime.drain_dynamic_resources(ctx)
 	}
 	return ran_callback
@@ -2946,7 +2953,7 @@ func (runtime *page_runtime) pump_event_loop(ctx context.Context) {
 			return
 		}
 		runtime.drain_dynamic_styles(ctx)
-		runtime.drain_dynamic_scripts(ctx)
+		runtime.drain_dynamic_scripts(ctx, true)
 		runtime.drain_dynamic_resources(ctx)
 		if runtime.wait_condition_met() {
 			return
@@ -3141,6 +3148,9 @@ func (runtime *page_runtime) install_custom_elements(window *goja.Object) {
 
 func (runtime *page_runtime) create_element_object(name string) *goja.Object {
 	node := new_element(name)
+	if strings.EqualFold(name, "script") {
+		runtime.created_scripts[node] = true
+	}
 	if runtime.custom_elements[strings.ToLower(name)] != nil {
 		if object, err := runtime.construct_custom_element(node); err == nil {
 			return object
@@ -3986,6 +3996,8 @@ func (runtime *page_runtime) queue_dynamic_resource(node *html.Node) {
 		return
 	}
 	switch {
+	case strings.EqualFold(node.Data, "script") && !is_javascript_type(attribute(node, "type")):
+		runtime.dynamic_seen[node] = true
 	case runtime.page.disable_subresources && strings.EqualFold(node.Data, "script") && attribute(node, "src") != "":
 		runtime.dynamic_seen[node] = true
 		runtime.queue_host_job(func() { runtime.fire_node_event(node, "load") })
@@ -4046,13 +4058,23 @@ func (runtime *page_runtime) drain_dynamic_styles(ctx context.Context) {
 	}
 }
 
-func (runtime *page_runtime) drain_dynamic_scripts(ctx context.Context) {
+func (runtime *page_runtime) drain_dynamic_scripts(ctx context.Context, include_async bool) {
 	for loaded := 0; len(runtime.dynamic_scripts) > 0 && loaded < max_dynamic_scripts && ctx.Err() == nil; loaded++ {
 		if runtime.wait_condition_met() {
 			return
 		}
-		node := runtime.dynamic_scripts[0]
-		runtime.dynamic_scripts = runtime.dynamic_scripts[1:]
+		dynamic_index := -1
+		for node_index, node := range runtime.dynamic_scripts {
+			if include_async || !runtime.dynamic_script_is_async(node) {
+				dynamic_index = node_index
+				break
+			}
+		}
+		if dynamic_index < 0 {
+			return
+		}
+		node := runtime.dynamic_scripts[dynamic_index]
+		runtime.dynamic_scripts = append(runtime.dynamic_scripts[:dynamic_index], runtime.dynamic_scripts[dynamic_index+1:]...)
 		source_url := attribute(node, "src")
 		job := script_job{
 			node:           node,
@@ -4087,6 +4109,20 @@ func (runtime *page_runtime) drain_dynamic_scripts(ctx context.Context) {
 			return
 		}
 	}
+}
+
+func (runtime *page_runtime) dynamic_script_is_async(node *html.Node) bool {
+	if attribute(node, "src") == "" {
+		return false
+	}
+	if object := runtime.nodes[node]; object != nil {
+		for _, name := range object.GetOwnPropertyNames() {
+			if name == "async" {
+				return object.Get(name).ToBoolean()
+			}
+		}
+	}
+	return runtime.created_scripts[node] || has_attribute(node, "async")
 }
 
 func (runtime *page_runtime) drain_dynamic_resources(ctx context.Context) {
