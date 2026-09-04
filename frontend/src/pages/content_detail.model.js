@@ -665,4 +665,4 @@ function ContentDetailViewModel(props) {
   return { state, ui, methods };
 }
 
-export { ContentDetailViewModel };
+export { ContentDetailViewModel, task_status };

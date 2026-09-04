@@ -244,9 +244,7 @@ function ContentRowAccounts(props) {
 function ContentRowStatistics(props) {
   const statistics = props.statistics;
   const items = [
-    { key: "in-progress", label: "进行中任务", value: statistics.in_progress },
-    { key: "failed", label: "失败任务", value: statistics.failed },
-    { key: "success", label: "成功任务", value: statistics.total_tasks },
+    ...statistics.task_statuses,
     { key: "files", label: "文件", value: statistics.files },
   ].filter((item) => item.value > 0);
   return [

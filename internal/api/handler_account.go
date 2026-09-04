@@ -3,11 +3,14 @@ package api
 import (
 	"errors"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"wx_channel/internal/adapter"
 	result "wx_channel/internal/apiresult"
+	"wx_channel/internal/database/model"
 	"wx_channel/internal/services"
 )
 
@@ -221,4 +224,49 @@ func (c *APIClient) handle_account_list(ctx *gin.Context) {
 		"page":      page_result.Page,
 		"page_size": page_result.PageSize,
 	})
+}
+
+func (c *APIClient) handle_account_synchronize(ctx *gin.Context) {
+	if c.db == nil {
+		result.Err(ctx, 500, "数据库未初始化")
+		return
+	}
+	var body struct {
+		AccountID string `json:"account_id"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
+		return
+	}
+	account_id := strings.TrimSpace(body.AccountID)
+	if account_id == "" {
+		result.Err(ctx, 400, "account_id 不能为空")
+		return
+	}
+
+	var account model.Account
+	if err := c.db.WithContext(ctx.Request.Context()).First(&account, "id = ?", account_id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			result.Err(ctx, 404, "账号不存在")
+			return
+		}
+		result.Err(ctx, 500, err.Error())
+		return
+	}
+	handler := adapter.Get(account.PlatformId)
+	if handler == nil {
+		result.Err(ctx, 400, "不支持的平台: "+account.PlatformId)
+		return
+	}
+	home_builder, ok := handler.(adapter.HomeContentsBuilder)
+	if !ok {
+		result.Err(ctx, 400, "平台 "+account.PlatformId+" 不支持主页同步")
+		return
+	}
+	contents, err := home_builder.BuildHomeContents(&account)
+	if err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	result.Ok(ctx, gin.H{"list": contents, "total": len(contents)})
 }

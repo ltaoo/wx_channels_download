@@ -1,4 +1,9 @@
 import { proxy_image_url } from "@/image-proxy.model.js";
+import {
+  content_type_label,
+  normalize_content_item,
+  normalize_content_list_response,
+} from "./content.model.js";
 
 function first_non_empty(...values) {
   for (const value of values) {
@@ -110,6 +115,13 @@ function format_content_count(value) {
   return `${Math.max(0, number_or_default(value, 0))} 条`;
 }
 
+function format_download_task_count(content) {
+  const tasks = Array.isArray(content && content.download_tasks)
+    ? content.download_tasks
+    : [];
+  return tasks.length > 0 ? `${tasks.length} 个` : "无";
+}
+
 function AccountViewModel(props) {
   const PAGE_SIZE_DEFAULT = 24;
   const initial_search = account_search_from_query(
@@ -125,13 +137,32 @@ function AccountViewModel(props) {
   const loading_ = ref(false);
   const error_ = ref("");
   const copied_account_id_ = ref("");
+  const selected_account_ = ref(null);
+  const drawer_contents_ = refarr([]);
+  const drawer_total_ = ref(0);
+  const drawer_initial_ = ref(true);
+  const drawer_loading_ = ref(false);
+  const drawer_syncing_ = ref(false);
+  const drawer_error_ = ref("");
+  const drawer_mode_ = ref("database");
   let request_sequence = 0;
+  let drawer_request_sequence = 0;
   let copy_feedback_timer = null;
 
   const reqs = {
     account: {
       list: new Timeless.kit.RequestCore(
         (params) => window.request.get("/api/account/list", params),
+        { client: props.client },
+      ),
+      synchronize: new Timeless.kit.RequestCore(
+        (body) => window.request.post("/api/account/synchronize", body),
+        { client: props.client },
+      ),
+    },
+    content: {
+      list: new Timeless.kit.RequestCore(
+        (params) => window.request.get("/api/content/list", params),
         { client: props.client },
       ),
     },
@@ -169,6 +200,25 @@ function AccountViewModel(props) {
       return `第 ${start}-${start + state.count - 1} 个，共 ${state.total} 个账号`;
     },
   );
+  const drawer_status_ = combine(
+    {
+      initial: drawer_initial_,
+      error: drawer_error_,
+      count: computed(drawer_contents_, (contents) => contents.length),
+    },
+    (state) => {
+      if (state.initial) return "initial";
+      if (state.error && state.count === 0) return "error";
+      return state.count === 0 ? "empty" : "normal";
+    },
+  );
+  const drawer_summary_ = combine(
+    { total: drawer_total_, mode: drawer_mode_ },
+    (state) =>
+      state.mode === "preview"
+        ? `同步预览 ${state.total} 条（未保存）`
+        : `数据库记录 ${state.total} 条`,
+  );
 
   const ui = {
     input_keyword$: new Timeless.vm.InputCore({
@@ -203,6 +253,23 @@ function AccountViewModel(props) {
         return load(page_.value);
       },
     }),
+    account_contents_drawer$: new Timeless.vm.DialogCore({
+      title: "账号内容",
+      closeable: true,
+      footer: false,
+    }),
+    btn_synchronize$: new Timeless.vm.ButtonCore({
+      variant: "primary",
+      onClick() {
+        return synchronize_account();
+      },
+    }),
+    btn_drawer_retry$: new Timeless.vm.ButtonCore({
+      variant: "outline",
+      onClick() {
+        return load_account_contents(selected_account_.value);
+      },
+    }),
   };
 
   keyword_.subscribe({
@@ -221,6 +288,16 @@ function AccountViewModel(props) {
           button.enable();
         }
       });
+    },
+  });
+  drawer_loading_.subscribe({
+    onChange(loading) {
+      ui.btn_drawer_retry$.setLoading(Boolean(loading));
+    },
+  });
+  drawer_syncing_.subscribe({
+    onChange(syncing) {
+      ui.btn_synchronize$.setLoading(Boolean(syncing));
     },
   });
 
@@ -294,6 +371,66 @@ function AccountViewModel(props) {
     return load(page);
   }
 
+  async function load_account_contents(account) {
+    if (!account || !account.id) return null;
+    const sequence = ++drawer_request_sequence;
+    drawer_syncing_.as(false);
+    drawer_initial_.as(true);
+    drawer_loading_.as(true);
+    drawer_error_.as("");
+    drawer_mode_.as("database");
+    drawer_contents_.as([], { reset: true });
+    drawer_total_.as(0);
+
+    const result = await reqs.content.list.run({
+      account_id: account.id,
+      scope: "all",
+      page: 1,
+      page_size: Math.max(1, account.content_count),
+    });
+    if (sequence !== drawer_request_sequence) return result;
+    drawer_loading_.as(false);
+    drawer_initial_.as(false);
+    if (result.error) {
+      drawer_error_.as(result.error.message || String(result.error));
+      return result;
+    }
+    const data = normalize_content_list_response(
+      result.data,
+      1,
+      Math.max(1, account.content_count),
+    );
+    drawer_contents_.as(data.list.map(normalize_content_item), { reset: true });
+    drawer_total_.as(data.total);
+    return result;
+  }
+
+  async function synchronize_account() {
+    const account = selected_account_.value;
+    if (!account || !account.id || drawer_syncing_.value) return null;
+    const sequence = ++drawer_request_sequence;
+    drawer_loading_.as(false);
+    drawer_syncing_.as(true);
+    drawer_error_.as("");
+    drawer_initial_.as(true);
+    drawer_mode_.as("preview");
+    drawer_contents_.as([], { reset: true });
+    drawer_total_.as(0);
+    const result = await reqs.account.synchronize.run({ account_id: account.id });
+    if (sequence !== drawer_request_sequence) return result;
+    drawer_syncing_.as(false);
+    drawer_initial_.as(false);
+    if (result.error) {
+      drawer_error_.as(result.error.message || String(result.error));
+      return result;
+    }
+    const data = normalize_content_list_response(result.data, 1, 1);
+    drawer_contents_.as(data.list.map(normalize_content_item), { reset: true });
+    drawer_total_.as(data.total);
+    drawer_mode_.as("preview");
+    return result;
+  }
+
   const methods = {
     ready() {
       return load(1);
@@ -320,7 +457,17 @@ function AccountViewModel(props) {
       copy_feedback_timer = setTimeout(() => copied_account_id_.as(""), 3000);
       return result;
     },
+    openAccount(account) {
+      selected_account_.as(account);
+      ui.account_contents_drawer$.show();
+      return load_account_contents(account);
+    },
+    openContent(content) {
+      if (content && content.url) props.app.openWindow(content.url);
+    },
     platformName: account_platform_name,
+    contentTypeLabel: content_type_label,
+    formatDownloadTaskCount: format_download_task_count,
     formatTime: window.format_time,
     formatContentCount: format_content_count,
   };
@@ -338,6 +485,11 @@ function AccountViewModel(props) {
     loading: loading_,
     error: error_,
     copied_account_id: copied_account_id_,
+    selected_account: selected_account_,
+    drawer_contents: drawer_contents_,
+    drawer_error: drawer_error_,
+    drawer_status: drawer_status_,
+    drawer_summary: drawer_summary_,
   };
 
   return { state, ui, methods };

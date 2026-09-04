@@ -87,13 +87,16 @@
   font-weight: var(--dm-font-weight-semibold);
 }
 
-.content-row-stat-in-progress {
+.content-row-stat-in-progress,
+.content-row-stat-running,
+.content-row-stat-paused {
   /* border-color: color-mix(in srgb, var(--dm-color-warning) 28%, transparent); */
   background: var(--dm-color-warning-soft);
   color: var(--dm-color-warning);
 }
 
-.content-row-stat-success {
+.content-row-stat-success,
+.content-row-stat-finished {
   /* border-color: var(--dm-color-info-border); */
   background: var(--dm-color-success-soft);
   color: var(--dm-color-success);

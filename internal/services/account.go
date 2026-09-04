@@ -96,7 +96,8 @@ func (s *AccountService) ListAccounts(ctx context.Context, input AccountListInpu
 			account.nickname, account.signature, account.avatar_url, account.profile_url,
 			account.follower_count, account.created_at, account.updated_at,
 			(SELECT COUNT(*) FROM content_account
-				WHERE content_account.account_id = account.id) AS content_count`).
+				JOIN content ON content.id = content_account.content_id
+				WHERE content_account.account_id = account.id AND content.deleted_at IS NULL) AS content_count`).
 		Order("created_at DESC, id DESC").
 		Limit(page_size).
 		Offset((page - 1) * page_size).

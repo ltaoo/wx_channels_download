@@ -100,7 +100,7 @@ func (c *APIClient) SetupRoutes() {
 	// c.engine.POST("/influencers", c.handle_influencer_create)
 	// c.engine.PUT("/influencers/:id", c.handle_influencer_update)
 	c.engine.GET("/api/account/list", c.handle_account_list)
-	// c.engine.POST("/api/account/synchronize", c.handle_account_synchronize)
+	c.engine.POST("/api/account/synchronize", c.handle_account_synchronize)
 	c.engine.GET("/api/content/list", c.handle_content_list)
 	c.engine.GET("/api/content/detail", c.handle_content_detail)
 	c.engine.GET("/api/content/relations", c.handle_content_relations)

@@ -1,4 +1,5 @@
 import { proxy_image_url } from "@/image-proxy.model.js";
+import { task_status } from "./content_detail.model.js";
 
 function number_or_default(value, fallback) {
   const number = Number(value);
@@ -175,21 +176,24 @@ function content_statistics(content) {
   const tasks = Array.isArray(source.download_tasks)
     ? source.download_tasks
     : [];
-  const statistics = {
-    total_tasks: tasks.length,
-    in_progress: 0,
-    failed: 0,
-    files: Math.max(0, number_or_default(source.file_count, 0)),
-  };
+  const task_statuses = new Map();
   tasks.forEach((task) => {
-    const status = task.status;
-    if ([2, 3, 4].includes(status)) {
-      statistics.in_progress += 1;
-    } else if ([6, 7].includes(status)) {
-      statistics.failed += 1;
+    const status = task_status(task.status);
+    const statistic = task_statuses.get(status.tone);
+    if (statistic) {
+      statistic.value += 1;
+    } else {
+      task_statuses.set(status.tone, {
+        key: status.tone,
+        label: `${status.label}任务`,
+        value: 1,
+      });
     }
   });
-  return statistics;
+  return {
+    task_statuses: Array.from(task_statuses.values()),
+    files: Math.max(0, number_or_default(source.file_count, 0)),
+  };
 }
 
 function ContentViewModel(props) {
@@ -479,4 +483,4 @@ function ContentViewModel(props) {
   return { state, ui, methods };
 }
 
-export { ContentViewModel };
+export { ContentViewModel, content_type_label, normalize_content_item, normalize_content_list_response };

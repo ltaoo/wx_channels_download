@@ -7,16 +7,197 @@ function AccountPageView(props) {
   return View(
     {
       class: "content-page account-page page",
+      attributes: { n: "account-page" },
       onMounted() {
         console.count("AccountPage onMounted");
         vm$.methods.ready();
       },
     },
     [
-      View({ class: "content-toolbar-wrap account-toolbar-wrap" }, [
+      View({
+        class: "content-toolbar-wrap account-toolbar-wrap",
+        attributes: { n: "account-toolbar-wrap" },
+      }, [
         AccountPageToolbar({ store: vm$ }),
       ]),
       AccountPageBody({ store: vm$ }),
+      AccountContentsDrawer({ store: vm$ }),
+    ],
+  );
+}
+
+function AccountContentRecord(props) {
+  const vm$ = props.store;
+  const content = props.content;
+  const source_url = String(content.url || "").trim();
+  return [
+    Show({
+      when: content.cover_url,
+      ok() {
+        return LazyImg({
+          class: "account-content-cover",
+          src: content.cover_url,
+          alt: content.title,
+          attributes: {
+            n: "account-content-cover",
+            loading: "lazy",
+            referrerpolicy: "no-referrer",
+          },
+        });
+      },
+    }),
+    View(
+      {
+        class: "account-content-record-main",
+        attributes: { n: "account-content-record-main" },
+      },
+      [
+        View(
+          {
+            type: source_url ? "a" : "span",
+            class: "account-content-record-title account-name",
+            attributes: {
+              n: "account-content-record-title",
+              href: source_url || undefined,
+              title: source_url ? "打开原内容" : content.title,
+            },
+            onClick(event) {
+              if (!source_url) return;
+              event.preventDefault();
+              vm$.methods.openContent(content);
+            },
+          },
+          [content.title || content.external_id || "未命名内容"],
+        ),
+        View(
+          {
+            class: "account-content-record-id account-id",
+            attributes: {
+              n: "account-content-record-id",
+              title: content.id || "",
+            },
+          },
+          [content.id || "-"],
+        ),
+      ],
+    ),
+  ];
+}
+
+function AccountContentsDrawer(props) {
+  const vm$ = props.store;
+  return Drawer(
+    {
+      store: vm$.ui.account_contents_drawer$,
+      class: "dm-drawer--wide account-content-drawer",
+      attributes: { n: "account-content-drawer" },
+    },
+    [
+      View(
+        {
+          class: "dm-drawer-body account-content-drawer-body",
+          attributes: { n: "account-content-drawer-body" },
+        },
+        [
+          View(
+            {
+              class: "account-content-drawer-toolbar",
+              attributes: { n: "account-content-drawer-toolbar" },
+            },
+            [
+              View(
+                {
+                  class: "account-content-drawer-account",
+                  attributes: { n: "account-content-drawer-account" },
+                },
+                [
+                  View(
+                    {
+                      class: "account-content-drawer-account-name",
+                      attributes: { n: "account-content-drawer-account-name" },
+                    },
+                    [
+                      computed(
+                        vm$.state.selected_account,
+                        (account) => (account && account.nickname) || "账号",
+                      ),
+                    ],
+                  ),
+                  View(
+                    {
+                      class: "account-content-drawer-summary",
+                      attributes: { n: "account-content-drawer-summary" },
+                    },
+                    [vm$.state.drawer_summary],
+                  ),
+                ],
+              ),
+              AccountPageActionButton({
+                name: "account-synchronize-action",
+                store: vm$.ui.btn_synchronize$,
+                icon: "rotate-ccw",
+                label: "同步",
+                title: "抓取主页内容，仅预览不保存",
+              }),
+            ],
+          ),
+          Table({
+            name: "account-content-table",
+            containerClass: "account-content-table",
+            containerAttributes: { n: "account-content-table" },
+            panelAttributes: { n: "account-content-table-panel" },
+            columns: [
+              {
+                name: "content",
+                title: "内容",
+                cellClass: "account-content-record",
+                render(content) {
+                  return AccountContentRecord({ store: vm$, content });
+                },
+              },
+              {
+                name: "type",
+                title: "类型",
+                width: 100,
+                cellClass: "account-content-count",
+                render(content) {
+                  return vm$.methods.contentTypeLabel(
+                    content.content_type,
+                    content.content_subtype,
+                  );
+                },
+              },
+              {
+                name: "time",
+                title: "发布时间",
+                width: 160,
+                cellClass: "account-added",
+                render(content) {
+                  return vm$.methods.formatTime(content.publish_time);
+                },
+              },
+              {
+                name: "download-tasks",
+                title: "下载任务",
+                width: 110,
+                cellClass: "account-content-count",
+                render(content) {
+                  return vm$.methods.formatDownloadTaskCount(content);
+                },
+              },
+            ],
+            rows: vm$.state.drawer_contents,
+            rowKey: "id",
+            status: vm$.state.drawer_status,
+            error: vm$.state.drawer_error,
+            skeletonCount: 6,
+            errorTitle: "内容加载失败",
+            retry: { store: vm$.ui.btn_drawer_retry$ },
+            emptyTitle: "暂无内容",
+            emptyDescription: "点击同步可预览平台主页内容",
+          }),
+        ],
+      ),
     ],
   );
 }
@@ -49,7 +230,7 @@ function AccountPageToolbar(props) {
     {
       type: "form",
       class: "content-toolbar account-toolbar",
-      attributes: { role: "search" },
+      attributes: { n: "account-toolbar", role: "search" },
       onSubmit(event) {
         event.preventDefault();
         vm$.methods.search();
@@ -84,6 +265,7 @@ function AccountPageToolbar(props) {
         {
           class:
             "content-filter-actions dm-flex dm-items-center dm-gap-2",
+          attributes: { n: "account-toolbar-actions" },
         },
         [
         AccountPageActionButton({
@@ -112,9 +294,19 @@ function AccountPageToolbar(props) {
 
 function AccountAvatar(props) {
   const account = props.account;
-  return View({ class: "account-avatar-wrap" }, [
-    View({ class: "account-avatar-fallback" }, [
-      Timeless.Icon({ name: "user", size: 20 }),
+  return View({
+    class: "account-avatar-wrap",
+    attributes: { n: "account-avatar" },
+  }, [
+    View({
+      class: "account-avatar-fallback",
+      attributes: { n: "account-avatar-fallback" },
+    }, [
+      Timeless.Icon({
+        name: "user",
+        size: 20,
+        attributes: { n: "account-avatar-fallback-icon" },
+      }),
     ]),
     Show({
       when: account.avatar_url,
@@ -124,6 +316,7 @@ function AccountAvatar(props) {
           src: account.avatar_url,
           alt: account.nickname,
           attributes: {
+            n: "account-avatar-image",
             loading: "lazy",
             referrerpolicy: "no-referrer",
           },
@@ -152,8 +345,14 @@ function AccountIdentity(props) {
   );
   return [
     AccountAvatar({ account }),
-    View({ class: "account-details" }, [
-      View({ class: "account-name" }, [account.nickname]),
+    View({
+      class: "account-details",
+      attributes: { n: "account-details" },
+    }, [
+      View({
+        class: "account-name",
+        attributes: { n: "account-name" },
+      }, [account.nickname]),
       View({ class: "account-meta", attributes: { n: "account-meta" } }, [
         View(
           {
@@ -229,11 +428,21 @@ function AccountSkeletonRow() {
           attributes: { n: "account-table-skeleton-account", role: "cell" },
         },
         [
-          View({ class: "account-avatar-wrap content-skeleton" }),
-          View({ class: "account-skeleton-details" }, [
-            View({ class: "content-skeleton content-skeleton-line" }),
+          View({
+            class: "account-avatar-wrap content-skeleton",
+            attributes: { n: "account-table-skeleton-avatar" },
+          }),
+          View({
+            class: "account-skeleton-details",
+            attributes: { n: "account-table-skeleton-details" },
+          }, [
+            View({
+              class: "content-skeleton content-skeleton-line",
+              attributes: { n: "account-table-skeleton-name" },
+            }),
             View({
               class: "content-skeleton content-skeleton-line-short",
+              attributes: { n: "account-table-skeleton-id" },
             }),
           ]),
         ],
@@ -243,14 +452,20 @@ function AccountSkeletonRow() {
           class: "dm-table-cell",
           attributes: { n: "account-table-skeleton-count", role: "cell" },
         },
-        [View({ class: "content-skeleton content-skeleton-line-short" })],
+        [View({
+          class: "content-skeleton content-skeleton-line-short",
+          attributes: { n: "account-table-skeleton-count-value" },
+        })],
       ),
       View(
         {
           class: "dm-table-cell",
           attributes: { n: "account-table-skeleton-time", role: "cell" },
         },
-        [View({ class: "content-skeleton content-skeleton-line-short" })],
+        [View({
+          class: "content-skeleton content-skeleton-line-short",
+          attributes: { n: "account-table-skeleton-time-value" },
+        })],
       ),
     ],
   );
@@ -320,6 +535,26 @@ function AccountPageBody(props) {
     rowClass: "account-row",
     skeletonCount: 8,
     renderSkeletonRow: AccountSkeletonRow,
+    onRow(account) {
+      return {
+        class: "account-row-clickable",
+        attributes: {
+          n: "account-record",
+          role: "button",
+          tabindex: 0,
+          title: "查看账号关联内容",
+        },
+        onClick() {
+          vm$.methods.openAccount(account);
+        },
+        onKeydown(event) {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            vm$.methods.openAccount(account);
+          }
+        },
+      };
+    },
     errorTitle: "账号加载失败",
     retry: {
       store: vm$.ui.btn_retry$,

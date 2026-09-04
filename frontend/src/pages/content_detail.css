@@ -179,7 +179,8 @@
   font-size: var(--dm-font-size-sm);
 }
 
-.content-detail-status-running {
+.content-detail-status-running,
+.content-detail-status-paused {
   color: var(--dm-color-warning);
 }
 
@@ -632,8 +633,7 @@
   border: var(--dm-border-width) solid currentColor;
 }
 
-.content-detail-status-waiting,
-.content-detail-status-paused {
+.content-detail-status-waiting {
   color: var(--dm-content-muted);
 }
 
