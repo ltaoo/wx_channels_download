@@ -1800,7 +1800,6 @@ function DownloadTaskSelectionCheckbox(props) {
 function DownloadTaskCard(props) {
   const vm$ = props.store;
   const task_ = props.task;
-  const running_count_ = vm$.state.running_count;
   const iconSize = "50px";
   const state_ = computed(task_, (t) => {
     const pr = format_download_percent(t);
@@ -2233,33 +2232,24 @@ function DownloadTaskCard(props) {
         },
         [
           Match({
-            when: combine(
-              {
-                state: state_,
-                running_count: running_count_,
-              },
-              (t) => {
-                if (t.state.isCompleted) {
-                  return 1;
-                }
-                if (t.state.isRunning) {
-                  return 2;
-                }
-                if (t.state.isLiveStream && t.state.isPaused) {
-                  return 5;
-                }
-                if (t.running_count >= MaxRunning) {
-                  return 5;
-                }
-                if (t.state.isPaused) {
-                  return 3;
-                }
-                if (t.state.isFailed) {
-                  return 4;
-                }
-                return 0;
-              },
-            ),
+            when: computed(state_, (state) => {
+              if (state.isCompleted) {
+                return 1;
+              }
+              if (state.isRunning) {
+                return 2;
+              }
+              if (state.isLiveStream && state.isPaused) {
+                return 5;
+              }
+              if (state.isPaused) {
+                return 3;
+              }
+              if (state.isFailed) {
+                return 4;
+              }
+              return 0;
+            }),
             cases: {
               0() {
                 return View(

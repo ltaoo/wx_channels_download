@@ -1,6 +1,5 @@
 import { Checkbox, createCheckboxStore } from "../dmui.js";
 import {
-  MaxRunning,
   format_download_percent,
   format_download_size,
   format_download_speed,
@@ -368,17 +367,13 @@ export function DownloadV2TaskActions(props) {
 
   return [
     Match({
-      when: combine(
-        { state: state_, running_count: vm$.state.running_count },
-        (value) => {
-          if (value.state.is_completed) return 1;
-          if (value.state.is_running) return 2;
-          if (value.running_count >= MaxRunning) return 5;
-          if (value.state.is_paused) return 3;
-          if (value.state.is_failed) return 4;
-          return 0;
-        },
-      ),
+      when: computed(state_, (state) => {
+        if (state.is_completed) return 1;
+        if (state.is_running) return 2;
+        if (state.is_paused) return 3;
+        if (state.is_failed) return 4;
+        return 0;
+      }),
       cases: {
         0() {
           return DownloadV2TaskActionButton({
@@ -448,9 +443,6 @@ export function DownloadV2TaskActions(props) {
               vm$.methods.retryTask(task$);
             },
           });
-        },
-        5() {
-          return View({ class: "dl-page-task-action-spacer" });
         },
       },
     }),
@@ -778,7 +770,6 @@ function DownloadV2StatusCounts(props) {
 
 function DownloadV2StatusActions(props) {
   const { store: vm$ } = props;
-  const running_count_ = vm$.state.running_count;
 
   return View(
     { class: "dl-page-status-actions dl-v2-page-status-actions" },
@@ -789,16 +780,11 @@ function DownloadV2StatusActions(props) {
         icon: "refresh-cw",
         label: "刷新",
       }),
-      Show({
-        when: computed(running_count_, (count) => count < MaxRunning),
-        ok() {
-          return DownloadV2ActionButton({
-            name: "download-start-all-action",
-            store: vm$.ui.btn_start_all_tasks$,
-            icon: "play",
-            label: "全部开始",
-          });
-        },
+      DownloadV2ActionButton({
+        name: "download-start-all-action",
+        store: vm$.ui.btn_start_all_tasks$,
+        icon: "play",
+        label: "全部开始",
       }),
       DownloadV2ActionButton({
         name: "download-pause-all-action",

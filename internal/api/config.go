@@ -70,7 +70,7 @@ func NewAPIConfig(c *config.Config) *APIConfig {
 		LogPath:               c.LogPath(),
 		DownloadDir:           dir,
 		PlayDoneAudio:         c.GetBool("download.playDoneAudio"),
-		MaxRunning:            3,
+		MaxRunning:            c.GetInt("download.maxRunning"),
 		ResourceConcurrency:   resource_concurrency,
 		SegmentConcurrency:    segment_concurrency,
 		ConnectionConcurrency: connection_concurrency,
