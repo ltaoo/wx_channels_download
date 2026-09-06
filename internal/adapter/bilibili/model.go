@@ -37,6 +37,8 @@ func build_task_from_video_info(info *bilibili.VideoInfo, source_url string, con
 	if info == nil || strings.TrimSpace(info.VideoID) == "" {
 		return nil, fmt.Errorf("B站视频信息为空")
 	}
+	source_url = bilibili_video_source_url(info, source_url)
+	media_headers := bilibili_media_headers(source_url)
 	now := util.NowMillis()
 	external_id := strings.TrimSpace(info.VideoID)
 	content_id := BuildContentID(external_id)
@@ -87,6 +89,7 @@ func build_task_from_video_info(info *bilibili.VideoInfo, source_url string, con
 			Protocol: bilibili_endpoint_protocol(info.URL),
 			URL:      info.URL,
 			Enabled:  1,
+			Headers:  media_headers,
 		}},
 		ContentAssets: []adapter.ContentAssetReference{{
 			Kind:     model.ContentAssetKindVideo,
@@ -109,6 +112,7 @@ func build_task_from_video_info(info *bilibili.VideoInfo, source_url string, con
 				Protocol: bilibili_endpoint_protocol(info.AudioURL),
 				URL:      info.AudioURL,
 				Enabled:  1,
+				Headers:  media_headers,
 			}},
 			ContentAssets: []adapter.ContentAssetReference{{
 				Kind:     model.ContentAssetKindAudio,
@@ -137,6 +141,42 @@ func build_task_from_video_info(info *bilibili.VideoInfo, source_url string, con
 		Account:        account,
 		Content:        content,
 	}, nil
+}
+
+func bilibili_video_source_url(info *bilibili.VideoInfo, source_url string) string {
+	if source_url = strings.TrimSpace(source_url); source_url != "" {
+		return source_url
+	}
+	if info != nil && info.InitialData != nil {
+		for _, bvid := range []string{info.InitialData.BVID, info.InitialData.VideoData.BVID} {
+			if canonical_url := bilibili_canonical_video_url(bvid); canonical_url != "" {
+				return canonical_url
+			}
+		}
+	}
+	if info != nil {
+		video_id, _, _ := strings.Cut(strings.TrimSpace(info.VideoID), "-")
+		if canonical_url := bilibili_canonical_video_url(video_id); canonical_url != "" {
+			return canonical_url
+		}
+	}
+	return "https://www.bilibili.com/"
+}
+
+func bilibili_canonical_video_url(bvid string) string {
+	candidate_url := "https://www.bilibili.com/video/" + strings.TrimSpace(bvid) + "/"
+	if _, ok := bilibili.ParseBVURL(candidate_url); !ok {
+		return ""
+	}
+	return candidate_url
+}
+
+func bilibili_media_headers(source_url string) string {
+	headers_data, _ := json.Marshal(map[string]string{
+		"Referer":    source_url,
+		"User-Agent": bilibili_download_user_agent,
+	})
+	return string(headers_data)
 }
 
 func bilibili_video_content_details(content_id string, video *model.ContentVideo) []adapter.ContentDetail {

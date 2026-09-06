@@ -1,4 +1,5 @@
 import { ContentDetailViewModel } from "./content_detail.model.js";
+import { BrandError } from "../dmui.js";
 import { PlatformIcon } from "../components.js";
 
 function ContentDetailAction(props) {
@@ -1170,8 +1171,11 @@ function ContentDetailBody(props) {
         return Show({
           when: computed(vm$.state.error, (error) => Boolean(error)),
           ok() {
-            return View({ class: "content-state" }, [
-              Timeless.Icon({ name: "circle-alert", size: 32 }),
+            return View({ class: "content-state content-state--error" }, [
+              BrandError({
+                size: 132,
+                name: "content-detail-error-symbol",
+              }),
               View({ class: "content-state-title" }, ["内容加载失败"]),
               View({ class: "content-state-text" }, [vm$.state.error]),
               ContentDetailAction({

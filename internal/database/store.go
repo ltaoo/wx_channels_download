@@ -314,6 +314,7 @@ func (s *DBTaskStore) UpdateResourceOutput(update hermes.ResourceOutputUpdate) e
 		"name":         update.ResourceName,
 		"kind":         update.ResourceKind,
 		"size":         update.ResourceSize,
+		"downloaded":   update.ResourceDownloaded,
 		"updated_at":   now,
 	})
 	if result.Error != nil {

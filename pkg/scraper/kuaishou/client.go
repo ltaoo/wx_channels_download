@@ -16,6 +16,9 @@ import (
 	"time"
 
 	"golang.org/x/net/html"
+
+	"wx_channel/pkg/cache"
+	"wx_channel/pkg/cookies"
 )
 
 const (
@@ -35,9 +38,11 @@ const apollo_state_variable = "window.__APOLLO_STATE__"
 
 // Client resolves Kuaishou links and requests their public video metadata.
 type Client struct {
-	http_client    *http.Client
-	response_limit int64
-	cookie         string
+	http_client     *http.Client
+	response_limit  int64
+	cookie          string
+	cookie_provider *cookies.Reader
+	file_cache      *cache.CacheProvider
 }
 
 // NewClient creates a Kuaishou client with a cookie jar and a 30-second
@@ -88,6 +93,21 @@ func (c *Client) Close() {
 func (c *Client) SetCookie(cookie string) {
 	if c != nil {
 		c.cookie = strings.TrimSpace(cookie)
+	}
+}
+
+// SetCookieProvider configures persistent browser cookies for authenticated
+// Kuaishou requests.
+func (c *Client) SetCookieProvider(cookie_provider *cookies.Reader) {
+	if c != nil {
+		c.cookie_provider = cookie_provider
+	}
+}
+
+// SetPersistentCache configures the cache used by account-home requests.
+func (c *Client) SetPersistentCache(file_cache *cache.CacheProvider) {
+	if c != nil {
+		c.file_cache = file_cache
 	}
 }
 

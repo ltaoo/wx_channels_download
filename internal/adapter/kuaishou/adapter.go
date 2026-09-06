@@ -11,6 +11,7 @@ import (
 	"wx_channel/internal/config"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/events"
+	"wx_channel/pkg/cache"
 	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/scraper/kuaishou"
 )
@@ -28,6 +29,7 @@ type KuaishouAdapter struct {
 	runtime_mu     sync.RWMutex
 	runtime_config *config.Config
 	cookie_reader  *cookies.Reader
+	file_cache     *cache.CacheProvider
 }
 
 var (
@@ -37,6 +39,7 @@ var (
 	_ adapter.RuntimeAdapter              = (*KuaishouAdapter)(nil)
 	_ adapter.RuntimeHandle               = (*KuaishouAdapter)(nil)
 	_ adapter.PlatformStatusDescriber     = (*KuaishouAdapter)(nil)
+	_ adapter.HomeContentsBuilder         = (*KuaishouAdapter)(nil)
 )
 
 // NewKuaishouAdapter creates a Kuaishou adapter.
@@ -67,6 +70,7 @@ func (a *KuaishouAdapter) RegisterRuntime(adapter_options *adapter.AdapterOption
 	a.runtime_mu.Lock()
 	a.runtime_config = adapter_options.Config
 	a.cookie_reader = adapter_options.Cookies
+	a.file_cache = adapter_options.Cache
 	a.runtime_mu.Unlock()
 	if adapter_options.Bus != nil {
 		adapter_options.Bus.Publish(events.PlatformStatusChanged{
@@ -88,6 +92,7 @@ func (a *KuaishouAdapter) Stop() {
 	a.runtime_mu.Lock()
 	a.runtime_config = nil
 	a.cookie_reader = nil
+	a.file_cache = nil
 	a.runtime_mu.Unlock()
 }
 

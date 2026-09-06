@@ -22,6 +22,7 @@ func SQLiteDSN(filepath string) string {
 		"_busy_timeout": {strconv.Itoa(sqlite_busy_timeout_millis)},
 		"_journal_mode": {"WAL"},
 		"_synchronous":  {"NORMAL"},
+		"_txlock":       {"immediate"},
 	}
 	parameters.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", sqlite_busy_timeout_millis))
 	parameters.Add("_pragma", "journal_mode(WAL)")

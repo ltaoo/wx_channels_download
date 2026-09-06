@@ -20,6 +20,101 @@ type ArticleURL struct {
 	Canonical string
 }
 
+const (
+	CollectionVisibilityPublic  = "public"
+	CollectionVisibilityPrivate = "private"
+)
+
+// CollectionContentItem is one answer, article, or question saved in a
+// Zhihu collection.
+type CollectionContentItem struct {
+	ID         string `json:"id"`
+	Type       string `json:"type"`
+	Title      string `json:"title"`
+	URL        string `json:"url"`
+	QuestionID string `json:"question_id,omitempty"`
+	AnswerID   string `json:"answer_id,omitempty"`
+	ArticleID  string `json:"article_id,omitempty"`
+}
+
+// CollectionContentList is one rendered page of a Zhihu collection.
+type CollectionContentList struct {
+	CollectionID string                  `json:"collection_id"`
+	Page         int                     `json:"page"`
+	Source       string                  `json:"source"`
+	Title        string                  `json:"title"`
+	TotalCount   int                     `json:"total_count"`
+	Items        []CollectionContentItem `json:"items"`
+	HasNext      bool                    `json:"has_next"`
+	NextPage     int                     `json:"next_page,omitempty"`
+}
+
+// Collection describes one collection shown on a user's collection list.
+type Collection struct {
+	ID            string `json:"id"`
+	Title         string `json:"title"`
+	URL           string `json:"url"`
+	Visibility    string `json:"visibility"`
+	IsPrivate     bool   `json:"is_private"`
+	UpdatedAt     string `json:"updated_at,omitempty"`
+	ContentCount  int    `json:"content_count"`
+	FollowerCount int    `json:"follower_count"`
+}
+
+// CollectionList contains the public and authenticated private collections
+// visible on one Zhihu profile's collection page.
+type CollectionList struct {
+	Source        string       `json:"source"`
+	OwnerURLToken string       `json:"owner_url_token"`
+	Collections   []Collection `json:"collections"`
+}
+
+const (
+	UserContentKindAnswers = "answers"
+	UserContentKindPosts   = "posts"
+	UserContentKindZvideos = "zvideos"
+	UserContentKindColumns = "columns"
+)
+
+// UserContentItem is one normalized answer, article, video, or column from a
+// Zhihu profile list.
+type UserContentItem struct {
+	ID                 string `json:"id"`
+	Type               string `json:"type"`
+	Title              string `json:"title"`
+	URL                string `json:"url"`
+	Excerpt            string `json:"excerpt,omitempty"`
+	ImageURL           string `json:"image_url,omitempty"`
+	QuestionID         string `json:"question_id,omitempty"`
+	AnswerID           string `json:"answer_id,omitempty"`
+	ArticleID          string `json:"article_id,omitempty"`
+	ZvideoID           string `json:"zvideo_id,omitempty"`
+	ColumnID           string `json:"column_id,omitempty"`
+	CreatedAt          int64  `json:"created_at,omitempty"`
+	UpdatedAt          int64  `json:"updated_at,omitempty"`
+	CommentCount       int    `json:"comment_count,omitempty"`
+	VoteupCount        int    `json:"voteup_count,omitempty"`
+	FavoriteCount      int    `json:"favorite_count,omitempty"`
+	PlayCount          int    `json:"play_count,omitempty"`
+	FollowerCount      int    `json:"follower_count,omitempty"`
+	ContentCount       int    `json:"content_count,omitempty"`
+	ContributionsCount int    `json:"contributions_count,omitempty"`
+}
+
+// UserContentList is one page from a Zhihu profile's answers, posts, videos,
+// or columns tab.
+type UserContentList struct {
+	Source        string            `json:"source"`
+	OwnerURLToken string            `json:"owner_url_token"`
+	Kind          string            `json:"kind"`
+	Page          int               `json:"page"`
+	PageSize      int               `json:"page_size"`
+	TotalCount    int               `json:"total_count"`
+	Items         []UserContentItem `json:"items"`
+	HasNext       bool              `json:"has_next"`
+	NextPage      int               `json:"next_page,omitempty"`
+}
+
 type User struct {
 	ID                string            `json:"id"`
 	URL               string            `json:"url"`

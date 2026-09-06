@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"wx_channel/pkg/cache"
 	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/minib"
 )
@@ -28,6 +29,14 @@ const (
 type Client struct {
 	cookie_provider *cookies.Reader
 	proxy_client    *http.Client
+	file_cache      *cache.CacheProvider
+}
+
+// SetPersistentCache configures the cache used by account-home requests.
+func (c *Client) SetPersistentCache(file_cache *cache.CacheProvider) {
+	if c != nil {
+		c.file_cache = file_cache
+	}
 }
 
 // IsDetailURL reports whether raw_url is a supported Weibo post URL.

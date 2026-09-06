@@ -1,6 +1,7 @@
 import { ThirdPartyDownloaderPanel } from "@/third-party-downloader.js";
 
 import { PlatformIcon } from "../components.js";
+import { createCheckboxStore } from "../dmui.js";
 import { ScraperPageViewModel } from "./scraper.model.js";
 
 const task_overwrite_actions = [
@@ -24,14 +25,40 @@ function ScraperPageView(props) {
     ...page_props,
     downloader: window.dl$,
   });
+  let focus_input_frame = null;
+  let unlisten_route_change = null;
+
+  function focus_url_input() {
+    if (focus_input_frame !== null) {
+      cancelAnimationFrame(focus_input_frame);
+    }
+    focus_input_frame = requestAnimationFrame(() => {
+      focus_input_frame = null;
+      vm$.ui.input_url$.focus();
+    });
+  }
 
   return View(
     {
       class: "content-page home-page page",
       onMounted() {
         vm$.methods.connectProgress();
+        unlisten_route_change = props.history.onRouteChange(({ view }) => {
+          if (view === props.view) {
+            focus_url_input();
+          }
+        });
+        focus_url_input();
       },
       onUnmounted() {
+        if (typeof unlisten_route_change === "function") {
+          unlisten_route_change();
+          unlisten_route_change = null;
+        }
+        if (focus_input_frame !== null) {
+          cancelAnimationFrame(focus_input_frame);
+          focus_input_frame = null;
+        }
         vm$.methods.dispose();
       },
     },
@@ -62,36 +89,6 @@ function ScraperPageView(props) {
                 ]),
               ]),
               ScraperPageForm({ store: vm$ }),
-              Show({
-                when: computed(vm$.state.status_text, (text) => Boolean(text)),
-                ok() {
-                  return View(
-                    {
-                      class: computed(vm$.state.has_error, (has_error) =>
-                        has_error
-                          ? "home-status error dm-badge dm-badge--danger"
-                          : "home-status dm-badge dm-badge--info",
-                      ),
-                      attributes: {
-                        role: "status",
-                        "aria-live": "polite",
-                      },
-                    },
-                    [
-                      Show({
-                        when: vm$.state.busy,
-                        ok() {
-                          return View({
-                            class: "dm-spinner",
-                            attributes: { n: "scraper-status-loading" },
-                          });
-                        },
-                      }),
-                      vm$.state.status_text,
-                    ],
-                  );
-                },
-              }),
               ScraperFetchProgress({ store: vm$ }),
             ],
           ),
@@ -225,24 +222,24 @@ function TaskOverwriteConfirmDialog(props) {
                         },
                       },
                       [
-                      View(
-                        {
-                          class: "dm-choice-row__title",
-                          attributes: {
-                            n: `download-overwrite-${item.value}-title`,
+                        View(
+                          {
+                            class: "dm-choice-row__title",
+                            attributes: {
+                              n: `download-overwrite-${item.value}-title`,
+                            },
                           },
-                        },
-                        [item.label],
-                      ),
-                      View(
-                        {
-                          class: "dm-choice-row__description",
-                          attributes: {
-                            n: `download-overwrite-${item.value}-description`,
+                          [item.label],
+                        ),
+                        View(
+                          {
+                            class: "dm-choice-row__description",
+                            attributes: {
+                              n: `download-overwrite-${item.value}-description`,
+                            },
                           },
-                        },
-                        [item.description],
-                      ),
+                          [item.description],
+                        ),
                       ],
                     ),
                     Show({
@@ -282,10 +279,10 @@ function TaskOverwriteConfirmDialog(props) {
 }
 
 /**
- * 
+ *
  * @param {object} props
  * @param {ReturnType<ScraperPageViewModel>} props.store
- * @returns 
+ * @returns
  */
 function ScraperPageForm(props) {
   const vm$ = props.store;
@@ -452,59 +449,59 @@ function ScraperContentCard(props) {
         ]),
       ]),
     ]),
-    View({
-      class: computed(content.cover_url, (cover_url) =>
-        cover_url
-          ? "home-content-card-body"
-          : "home-content-card-body is-coverless",
-      ),
-    }, [
-      ScraperContentCover({ content }),
-      View({ class: "home-content-info" }, [
-        View({ class: "home-badges" }, [
+    View(
+      {
+        class: computed(content.cover_url, (cover_url) =>
+          cover_url
+            ? "home-content-card-body"
+            : "home-content-card-body is-coverless",
+        ),
+      },
+      [
+        ScraperContentCover({ content }),
+        View({ class: "home-content-info" }, [
+          View({ class: "home-badges" }, [
+            View(
+              {
+                class: "home-badge home-badge-primary home-platform-badge",
+              },
+              [
+                Show({
+                  when: content.platform_favicon,
+                  ok() {
+                    return PlatformIcon({
+                      class: "home-platform-favicon",
+                      favicon: content.platform_favicon,
+                      name: "home-platform-favicon",
+                    });
+                  },
+                }),
+                content.platform_name,
+              ],
+            ),
+            View({ class: "home-badge" }, [content.content_type_name]),
+          ]),
           View(
             {
-              class:
-                "home-badge home-badge-primary home-platform-badge",
+              class: "home-content-title",
+              attributes: { title: content.title },
             },
-            [
-              Show({
-                when: content.platform_favicon,
-                ok() {
-                  return PlatformIcon({
-                    class: "home-platform-favicon",
-                    favicon: content.platform_favicon,
-                    name: "home-platform-favicon",
-                  });
-                },
-              }),
-              content.platform_name,
-            ],
+            [content.title],
           ),
-          View({ class: "home-badge" }, [content.content_type_name]),
+          View({ class: "home-content-meta" }, [
+            Timeless.Icon({ name: "clock3", size: 14 }),
+            content.publish_time_text,
+          ]),
+          Show({
+            when: content.show_description,
+            ok() {
+              return View({ class: "home-content-description" }, [description]);
+            },
+          }),
+          ScraperContentAccount({ account }),
         ]),
-        View(
-          {
-            class: "home-content-title",
-            attributes: { title: content.title },
-          },
-          [content.title],
-        ),
-        View({ class: "home-content-meta" }, [
-          Timeless.Icon({ name: "clock3", size: 14 }),
-          content.publish_time_text,
-        ]),
-        Show({
-          when: content.show_description,
-          ok() {
-            return View({ class: "home-content-description" }, [
-              description,
-            ]);
-          },
-        }),
-        ScraperContentAccount({ account }),
-      ]),
-    ]),
+      ],
+    ),
   ]);
 }
 
@@ -535,12 +532,8 @@ function HomeContentInfluencerEntity(props) {
       ].join(" "),
     },
     [
-      View({ class: "home-content-influencer-entity-type" }, [
-        node.type_name,
-      ]),
-      View({ class: "home-content-influencer-entity-title" }, [
-        node.title,
-      ]),
+      View({ class: "home-content-influencer-entity-type" }, [node.type_name]),
+      View({ class: "home-content-influencer-entity-title" }, [node.title]),
     ],
   );
 }
@@ -563,8 +556,7 @@ function ScraperContentInfluencers(props) {
         ]),
         View(
           {
-            class:
-              "home-content-relation-list home-content-influencer-list",
+            class: "home-content-relation-list home-content-influencer-list",
           },
           [
             For({
@@ -584,14 +576,12 @@ function ScraperContentInfluencers(props) {
                       }),
                       View({ class: "home-content-relation-edge" }, [
                         Timeless.Icon({ name: "arrow-right", size: 11 }),
-                        View(
-                          { class: "home-content-relation-edge-name" },
-                          [relation.role_text],
-                        ),
-                        View(
-                          { class: "home-content-relation-edge-type" },
-                          [relation.type],
-                        ),
+                        View({ class: "home-content-relation-edge-name" }, [
+                          relation.role_text,
+                        ]),
+                        View({ class: "home-content-relation-edge-type" }, [
+                          relation.type,
+                        ]),
                       ]),
                       HomeContentInfluencerEntity({
                         node: relation.target,
@@ -615,9 +605,7 @@ function ScraperContentRelations(props) {
   return Show({
     when: relations.present,
     ok() {
-      return View(
-        { class: "home-card home-content-relations dm-panel" },
-        [
+      return View({ class: "home-card home-content-relations dm-panel" }, [
         View({ class: "home-card-heading" }, [
           View({ class: "home-card-title-group" }, [
             View({ class: "home-card-icon" }, [
@@ -668,15 +656,13 @@ function ScraperContentRelations(props) {
                                 }),
                                 View(
                                   {
-                                    class:
-                                      "home-content-relation-edge-name",
+                                    class: "home-content-relation-edge-name",
                                   },
                                   [edge.type_name],
                                 ),
                                 View(
                                   {
-                                    class:
-                                      "home-content-relation-edge-type",
+                                    class: "home-content-relation-edge-type",
                                   },
                                   [edge.type],
                                 ),
@@ -693,8 +679,7 @@ function ScraperContentRelations(props) {
           },
         }),
         ScraperContentInfluencers({ store: vm$ }),
-        ],
-      );
+      ]);
     },
   });
 }
@@ -717,9 +702,7 @@ function ScraperContentAccount(props) {
 function HomeAccountAvatar(props) {
   const account = props.account;
   return View({ class: "home-account-avatar" }, [
-    View({ class: "home-account-avatar-fallback" }, [
-      account.avatar_fallback,
-    ]),
+    View({ class: "home-account-avatar-fallback" }, [account.avatar_fallback]),
     Show({
       when: account.avatar_url,
       ok() {
@@ -921,9 +904,7 @@ function ScraperNovelDetails(props) {
   return Show({
     when: novel.present,
     ok() {
-      return View(
-        { class: "home-detail-card home-novel-detail dm-panel" },
-        [
+      return View({ class: "home-detail-card home-novel-detail dm-panel" }, [
         View({ class: "home-detail-card-heading" }, [
           View({ class: "home-detail-card-title-group" }, [
             View({ class: "home-detail-card-icon" }, [
@@ -931,9 +912,7 @@ function ScraperNovelDetails(props) {
             ]),
             View({}, [
               View({ class: "home-detail-card-title" }, [novel.title]),
-              View({ class: "home-detail-card-subtitle" }, [
-                novel.subtitle,
-              ]),
+              View({ class: "home-detail-card-subtitle" }, [novel.subtitle]),
             ]),
           ]),
           View({ class: "home-detail-badge" }, [novel.progress_text]),
@@ -945,12 +924,8 @@ function ScraperNovelDetails(props) {
               render(metric_) {
                 const metric = ScraperDetailValue(metric_);
                 return View({ class: "home-detail-metric" }, [
-                  View({ class: "home-detail-metric-label" }, [
-                    metric.label,
-                  ]),
-                  View({ class: "home-detail-metric-value" }, [
-                    metric.value,
-                  ]),
+                  View({ class: "home-detail-metric-label" }, [metric.label]),
+                  View({ class: "home-detail-metric-value" }, [metric.value]),
                 ]);
               },
             }),
@@ -989,9 +964,7 @@ function ScraperNovelDetails(props) {
           View({ class: "home-novel-section home-novel-chapters" }, [
             View({ class: "home-novel-section-heading" }, [
               View({ class: "home-novel-section-title" }, ["章节列表"]),
-              View({ class: "home-novel-section-meta" }, [
-                novel.progress_text,
-              ]),
+              View({ class: "home-novel-section-meta" }, [novel.progress_text]),
             ]),
             Show({
               when: novel.has_chapters,
@@ -1041,8 +1014,7 @@ function ScraperNovelDetails(props) {
             }),
           ]),
         ]),
-        ],
-      );
+      ]);
     },
   });
 }
@@ -1137,25 +1109,57 @@ function ScraperVideoVariantItem(props) {
 }
 
 function ScraperContentTextTrackItem(props) {
+  const vm$ = props.store;
   const track = props.track || {};
+  const selected_ = computed(vm$.state.selected_text_track_keys, (keys) =>
+    (Array.isArray(keys) ? keys : []).includes(track.track_key),
+  );
+  const checkbox_store = createCheckboxStore({
+    checked: selected_,
+    disabled:
+      vm$.state.text_track_selection_disabled.value || !track.has_sources,
+    onChange(checked) {
+      return vm$.methods.selectTextTrack(track.track_key, checked);
+    },
+  });
   return View({ class: "home-video-subtitle-track" }, [
-    View({ class: "home-video-supplement-item" }, [
-      View({ class: "home-video-supplement-main" }, [
-        View(
-          {
-            class: "home-video-supplement-title",
-            attributes: { title: track.track_key },
-          },
-          [track.title],
+    View(
+      {
+        class: computed(selected_, (selected) =>
+          selected
+            ? "home-video-supplement-item is-selected"
+            : "home-video-supplement-item",
         ),
-        View({ class: "home-video-supplement-meta" }, [
-          track.meta_text || track.track_key,
+      },
+      [
+        Checkbox({
+          store: checkbox_store,
+          class: "home-video-subtitle-checkbox",
+          attributes: {
+            n: "scraper-text-track-checkbox",
+            "aria-label": `下载字幕 ${track.title || track.track_key}`,
+          },
+          onUnmounted() {
+            selected_.destroy?.();
+          },
+        }),
+        View({ class: "home-video-supplement-main" }, [
+          View(
+            {
+              class: "home-video-supplement-title",
+              attributes: { title: track.track_key },
+            },
+            [track.title],
+          ),
+          View({ class: "home-video-supplement-meta" }, [
+            track.meta_text || track.track_key,
+          ]),
         ]),
-      ]),
-      View({ class: "home-video-supplement-badge" }, [
-        `${track.sources.length} 个源`,
-      ]),
-    ]),
+        View({ class: "home-video-supplement-badge" }, [
+          `${track.sources.length} 个源`,
+        ]),
+      ],
+    ),
     Show({
       when: track.has_sources,
       ok() {
@@ -1202,8 +1206,7 @@ function ScraperVideoSupplements(props) {
           ]),
           View(
             {
-              class:
-                "home-video-supplement-list home-video-variant-list",
+              class: "home-video-supplement-list home-video-variant-list",
               attributes: {
                 role: "radiogroup",
                 "aria-label": "选择下载视频规格",
@@ -1244,6 +1247,7 @@ function ScraperVideoSupplements(props) {
               each: detail.text_tracks,
               render(track_) {
                 return ScraperContentTextTrackItem({
+                  store: props.store,
                   track: ScraperDetailValue(track_),
                 });
               },
@@ -1294,9 +1298,7 @@ function ScraperTypedContentDetail(props) {
           ]),
           View({}, [
             View({ class: "home-detail-card-title" }, [detail.title]),
-            View({ class: "home-detail-card-subtitle" }, [
-              detail.model_name,
-            ]),
+            View({ class: "home-detail-card-subtitle" }, [detail.model_name]),
           ]),
         ]),
         View({ class: "home-detail-badge" }, [detail.type_name]),
@@ -1354,9 +1356,7 @@ function ScraperTypedContentDetail(props) {
                         );
                       },
                     }),
-                    View({ class: "home-detail-image-meta" }, [
-                      image.meta,
-                    ]),
+                    View({ class: "home-detail-image-meta" }, [image.meta]),
                   ]);
                 },
               }),
@@ -1414,9 +1414,7 @@ function ScraperRawJSON(props) {
             Timeless.Icon({ name: "braces", size: 17 }),
           ]),
           View({}, [
-            View({ class: "home-json-title" }, [
-              vm$.state.json_toggle_text,
-            ]),
+            View({ class: "home-json-title" }, [vm$.state.json_toggle_text]),
             View({ class: "home-json-subtitle" }, [
               "完整接口响应，仅供调试与核对",
             ]),
@@ -1477,9 +1475,7 @@ function ScraperFetchedRawContent(props) {
               ]),
               View({}, [
                 View({ class: "home-json-title" }, ["抓取原始内容"]),
-                View({ class: "home-json-subtitle" }, [
-                  raw_result.meta_text,
-                ]),
+                View({ class: "home-json-subtitle" }, [raw_result.meta_text]),
               ]),
             ]),
             Show({
@@ -1540,13 +1536,9 @@ function ScraperDownloadAssetRelation(props) {
         },
       },
       [
-        View({ class: "home-download-relation-node-type" }, [
-          "ContentAsset",
-        ]),
+        View({ class: "home-download-relation-node-type" }, ["ContentAsset"]),
         View({ class: "home-download-relation-node-value" }, [
-          [asset.kind, asset.role, asset.asset_key]
-            .filter(Boolean)
-            .join(" · "),
+          [asset.kind, asset.role, asset.asset_key].filter(Boolean).join(" · "),
         ]),
         Show({
           when: Boolean(asset.subject_text),
@@ -1584,9 +1576,7 @@ function ScraperDownloadResourceItem(props) {
   const resource = props.resource || {};
   return View({ class: "home-download-resource" }, [
     View({ class: "home-download-resource-row" }, [
-      View({ class: "home-download-resource-index" }, [
-        resource.index_text,
-      ]),
+      View({ class: "home-download-resource-index" }, [resource.index_text]),
       View({ class: "home-download-resource-icon" }, [
         Timeless.Icon({ name: resource.icon, size: 18 }),
       ]),
@@ -1598,9 +1588,7 @@ function ScraperDownloadResourceItem(props) {
           },
           [resource.display_name],
         ),
-        View({ class: "home-download-resource-meta" }, [
-          resource.meta_text,
-        ]),
+        View({ class: "home-download-resource-meta" }, [resource.meta_text]),
       ]),
       Button(
         {
@@ -1613,9 +1601,7 @@ function ScraperDownloadResourceItem(props) {
         },
         [
           Timeless.Icon({ name: "download", size: 14 }),
-          View({ class: "home-download-resource-action-label" }, [
-            "下载",
-          ]),
+          View({ class: "home-download-resource-action-label" }, ["下载"]),
         ],
       ),
     ]),
@@ -1656,9 +1642,7 @@ function ScraperDownloadInfo(props) {
   return Show({
     when: download_info.present,
     ok() {
-      return View(
-        { class: "home-card home-download-info dm-panel" },
-        [
+      return View({ class: "home-card home-download-info dm-panel" }, [
         View({ class: "home-card-heading" }, [
           View({ class: "home-card-title-group" }, [
             View({ class: "home-card-icon" }, [
@@ -1746,8 +1730,7 @@ function ScraperDownloadInfo(props) {
             ],
           }),
         ]),
-        ],
-      );
+      ]);
     },
   });
 }
@@ -1816,10 +1799,7 @@ function ScraperResultActionBar(props) {
                 title: "使用 DownloadResource endpoint 创建三方下载任务",
               },
             },
-            [
-              Timeless.Icon({ name: "hard-drive", size: 16 }),
-              "三方下载",
-            ],
+            [Timeless.Icon({ name: "hard-drive", size: 16 }), "三方下载"],
           ),
           Button(
             {
@@ -1912,9 +1892,7 @@ function ScraperCacheCard(props) {
                     ),
                   ]),
                   View({ class: "home-cache-entry-trailing" }, [
-                    View({ class: "home-cache-entry-size" }, [
-                      entry.size_text,
-                    ]),
+                    View({ class: "home-cache-entry-size" }, [entry.size_text]),
                     Timeless.Icon({ name: "chevron-right", size: 15 }),
                   ]),
                 ],
@@ -1940,12 +1918,8 @@ function ScraperCacheContentDialog(props) {
     [
       View({ class: "home-cache-dialog-header" }, [
         View({ class: "home-cache-dialog-heading" }, [
-          View({ class: "home-cache-dialog-title" }, [
-            cache_content.title,
-          ]),
-          View({ class: "home-cache-dialog-meta" }, [
-            cache_content.meta_text,
-          ]),
+          View({ class: "home-cache-dialog-title" }, [cache_content.title]),
+          View({ class: "home-cache-dialog-meta" }, [cache_content.meta_text]),
         ]),
         Button(
           {
@@ -1980,8 +1954,7 @@ function ScraperCacheContentDialog(props) {
               ok() {
                 return View(
                   {
-                    class:
-                      "home-cache-dialog-state home-cache-dialog-error",
+                    class: "home-cache-dialog-state home-cache-dialog-error",
                   },
                   [cache_content.error],
                 );
@@ -2119,48 +2092,82 @@ function ScraperPlatformStatus(props) {
           when: status.has_items,
           ok() {
             return View(
-              { class: "home-platform-status-list" },
+              {
+                class: "home-platform-status-list",
+                attributes: { role: "list", "aria-label": "平台状态" },
+              },
               [
                 For({
                   key: "render_key",
                   each: status.items,
                   render(item_) {
                     const item = ScraperDetailValue(item_);
-                    return View({ class: item.status_class }, [
-                      View({ class: "home-platform-status-dot" }),
-                      View({ class: "home-platform-status-main" }, [
-                        View({ class: "home-platform-status-head" }, [
-                          View({ class: "home-platform-status-name" }, [
-                            item.platform_name,
-                          ]),
-                          View({ class: "home-platform-status-value" }, [
-                            item.status_text,
-                          ]),
-                        ]),
-                        Show({
-                          when: item.has_reason,
-                          ok() {
-                            return View(
-                              {
-                                class: "home-platform-status-reason",
-                                attributes: { title: item.reason },
-                              },
-                              [item.reason],
-                            );
+                    return View(
+                      {
+                        class: item.status_class,
+                        attributes: {
+                          role: "listitem",
+                          title: item.has_reason
+                            ? `${item.platform_name}：${item.reason}`
+                            : item.has_status_text
+                              ? `${item.platform_name}：${item.status_text}`
+                              : item.platform_name,
+                        },
+                      },
+                      [
+                        View(
+                          {
+                            class: "home-platform-status-logo-wrap",
+                            attributes: { "aria-hidden": "true" },
                           },
-                        }),
-                      ]),
-                    ]);
+                          [
+                            PlatformIcon({
+                              class: "home-platform-status-logo",
+                              favicon: item.platform_favicon,
+                              name: "platform-status-logo",
+                            }),
+                            View({ class: "home-platform-status-dot" }),
+                          ],
+                        ),
+                        View({ class: "home-platform-status-main" }, [
+                          View({ class: "home-platform-status-head" }, [
+                            View({ class: "home-platform-status-name" }, [
+                              item.platform_name,
+                            ]),
+                            Show({
+                              when: item.has_status_text,
+                              ok() {
+                                return View(
+                                  { class: "home-platform-status-value" },
+                                  [item.status_text],
+                                );
+                              },
+                            }),
+                          ]),
+                          Show({
+                            when: item.has_reason,
+                            ok() {
+                              return View(
+                                {
+                                  class: "home-platform-status-reason",
+                                  attributes: { title: item.reason },
+                                },
+                                [item.reason],
+                              );
+                            },
+                          }),
+                        ]),
+                      ],
+                    );
                   },
                 }),
               ],
             );
           },
           else() {
-            return View(
-              { class: "home-platform-status-empty" },
-              ["正在连接 /ws/scraper"],
-            );
+            return View({ class: "home-platform-status-empty" }, [
+              "正在连接 /ws/scraper",
+            ]);
           },
         }),
       ],
@@ -2179,9 +2186,7 @@ function ScraperPlatformStatus(props) {
         },
         [
           View({ class: "home-platform-status-dot" }),
-          View({ class: "home-platform-status-trigger-label" }, [
-            "平台状态",
-          ]),
+          View({ class: "home-platform-status-trigger-label" }, ["平台状态"]),
           View({ class: "home-platform-status-trigger-summary" }, [
             status.summary,
           ]),
@@ -2196,59 +2201,62 @@ function ScraperFetchProgress(props) {
   return Show({
     when: vm$.state.progress_visible,
     ok() {
-      return View({
-        class: "home-fetch-progress",
-        attributes: {
-          role: "progressbar",
-          "aria-label": "抓取进度",
-          "aria-valuemin": "0",
-          "aria-valuemax": "100",
-          "aria-valuenow": vm$.state.progress_percent,
-        },
-      }, [
-        View({ class: "home-fetch-progress-head" }, [
-          View({ class: "home-fetch-progress-stage" }, [
-            vm$.state.progress_stage_text,
-          ]),
-          View({ class: "home-fetch-progress-right" }, [
-            Show({
-              when: vm$.state.progress_updated_text,
-              ok() {
-                return View({ class: "home-fetch-progress-updated" }, [
-                  vm$.state.progress_updated_text,
-                ]);
-              },
-            }),
-            Show({
-              when: vm$.state.progress_has_percent,
-              ok() {
-                return View({ class: "home-fetch-progress-percent" }, [
-                  vm$.state.progress_percent_text,
-                ]);
-              },
-            }),
-          ]),
-        ]),
-        View({ class: "home-fetch-progress-message" }, [
-          vm$.state.progress_message,
-        ]),
-        View({ class: "home-fetch-progress-track" }, [
-          View({
-            class: vm$.state.progress_bar_class,
-            style: computed(vm$.state.progress_percent, (percent) => ({
-              width: `${percent}%`,
-            })),
-          }),
-        ]),
-        Show({
-          when: vm$.state.progress_has_total,
-          ok() {
-            return View({ class: "home-fetch-progress-count" }, [
-              vm$.state.progress_count_text,
-            ]);
+      return View(
+        {
+          class: "home-fetch-progress",
+          attributes: {
+            role: "progressbar",
+            "aria-label": "抓取进度",
+            "aria-valuemin": "0",
+            "aria-valuemax": "100",
+            "aria-valuenow": vm$.state.progress_percent,
           },
-        }),
-      ]);
+        },
+        [
+          View({ class: "home-fetch-progress-head" }, [
+            View({ class: "home-fetch-progress-stage" }, [
+              vm$.state.progress_stage_text,
+            ]),
+            View({ class: "home-fetch-progress-right" }, [
+              Show({
+                when: vm$.state.progress_updated_text,
+                ok() {
+                  return View({ class: "home-fetch-progress-updated" }, [
+                    vm$.state.progress_updated_text,
+                  ]);
+                },
+              }),
+              Show({
+                when: vm$.state.progress_has_percent,
+                ok() {
+                  return View({ class: "home-fetch-progress-percent" }, [
+                    vm$.state.progress_percent_text,
+                  ]);
+                },
+              }),
+            ]),
+          ]),
+          View({ class: "home-fetch-progress-message" }, [
+            vm$.state.progress_message,
+          ]),
+          View({ class: "home-fetch-progress-track" }, [
+            View({
+              class: vm$.state.progress_bar_class,
+              style: computed(vm$.state.progress_percent, (percent) => ({
+                width: `${percent}%`,
+              })),
+            }),
+          ]),
+          Show({
+            when: vm$.state.progress_has_total,
+            ok() {
+              return View({ class: "home-fetch-progress-count" }, [
+                vm$.state.progress_count_text,
+              ]);
+            },
+          }),
+        ],
+      );
     },
   });
 }

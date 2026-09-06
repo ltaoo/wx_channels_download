@@ -465,7 +465,7 @@ func (d *HermesEngine) persist_resource_outputs(task_id int, resources []Resourc
 		}
 		update := ResourceOutputUpdate{
 			TaskID: task_id, ResourceID: r.ID, DownloadDir: r.DownloadDir, ResourceName: r.Name,
-			ResourceKind: r.Kind, ResourceSize: r.Size,
+			ResourceKind: r.Kind, ResourceSize: r.Size, ResourceDownloaded: r.Downloaded,
 		}
 		d.logger.Info().
 			Int("task_id", task_id).

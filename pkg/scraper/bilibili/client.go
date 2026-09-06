@@ -21,7 +21,6 @@ import (
 )
 
 const (
-	bilibili_cookie_domain     = ".bilibili.com"
 	bilibili_log_preview_limit = 2048
 )
 
@@ -266,7 +265,7 @@ func (c *Client) apply_request_headers(req *http.Request) error {
 	if !is_bilibili_request(req.URL) {
 		return nil
 	}
-	cookie_header, err := c.resolve_cookie()
+	cookie_header, err := c.resolve_cookie(req.URL)
 	if err != nil {
 		return err
 	}
@@ -276,22 +275,22 @@ func (c *Client) apply_request_headers(req *http.Request) error {
 	return nil
 }
 
-func (c *Client) resolve_cookie() (string, error) {
+func (c *Client) resolve_cookie(request_url *url.URL) (string, error) {
 	if c == nil {
 		return "", nil
 	}
 	if cookie_header := strings.TrimSpace(c.cookie); cookie_header != "" {
 		return cookie_header, nil
 	}
-	if c.cookie_provider == nil {
+	if c.cookie_provider == nil || request_url == nil {
 		return "", nil
 	}
-	cookie_header, err := c.cookie_provider.HeaderForDomain(bilibili_cookie_domain)
+	cookie_header, err := c.cookie_provider.HeaderForURL(request_url.String())
 	if errors.Is(err, cookies.ErrCookieNotFound) {
 		return "", nil
 	}
 	if err != nil {
-		return "", fmt.Errorf("read %s cookies: %w", bilibili_cookie_domain, err)
+		return "", fmt.Errorf("read %s cookies: %w", request_url.Hostname(), err)
 	}
 	return strings.TrimSpace(cookie_header), nil
 }

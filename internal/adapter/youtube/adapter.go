@@ -40,8 +40,11 @@ var (
 	_ adapter.ContextProgressFetchAdapter = (*handler)(nil)
 	_ adapter.FetchCacheAdapter           = (*handler)(nil)
 	_ adapter.FetchDownloadTaskBuilder    = (*handler)(nil)
+	_ adapter.Postprocessor               = (*handler)(nil)
 	_ adapter.RuntimeAdapter              = (*handler)(nil)
 	_ adapter.RuntimeHandle               = (*handler)(nil)
+	_ adapter.HomeContentsBuilder         = (*handler)(nil)
+	_ adapter.HomeDetailsFetcher          = (*handler)(nil)
 )
 
 func (h *handler) PlatformID() string { return PlatformID }
@@ -284,6 +287,7 @@ func (h *handler) build_download_task(info *youtube.VideoInfo, config map[string
 		return nil, err
 	}
 	content_detail := youtube_content_video(info)
+	selected_text_tracks := select_download_text_tracks(content, config)
 	task_name := strings.TrimSpace(config_string(config, "filename"))
 	if task_name == "" {
 		task_name = content.Title
@@ -291,21 +295,22 @@ func (h *handler) build_download_task(info *youtube.VideoInfo, config map[string
 
 	config_data, _ := json.Marshal(config)
 	metadata_data, _ := json.Marshal(map[string]any{
-		"platform":       PlatformID,
-		"external_id":    info.ID,
-		"title":          info.Title,
-		"channel_id":     info.ChannelID,
-		"channel":        info.Channel,
-		"source_url":     content.SourceURL,
-		"download_at":    time.Now().Unix(),
-		"format_ids":     format_ids(download_formats),
-		"format_count":   len(info.Formats),
-		"requires_merge": len(download_formats) > 1,
+		"platform":        PlatformID,
+		"external_id":     info.ID,
+		"title":           info.Title,
+		"channel_id":      info.ChannelID,
+		"channel":         info.Channel,
+		"source_url":      content.SourceURL,
+		"download_at":     time.Now().Unix(),
+		"format_ids":      format_ids(download_formats),
+		"text_track_keys": config_string_slice(config, "text_track_keys"),
+		"format_count":    len(info.Formats),
+		"requires_merge":  len(download_formats) > 1,
 	})
 
 	extra_json := build_extra_json(info, download_formats)
 	content_id := content.Id
-	resources := make([]*adapter.ResourceInfo, 0, len(download_formats)+1)
+	resources := make([]*adapter.ResourceInfo, 0, len(download_formats)+len(selected_text_tracks)+1)
 	if config_bool(config, "download_cover") && info.Thumbnail != "" {
 		resources = append(resources, &adapter.ResourceInfo{
 			Resource: model.DownloadResource{
@@ -369,6 +374,35 @@ func (h *handler) build_download_task(info *youtube.VideoInfo, config map[string
 		})
 	}
 
+	caption_headers := headers_json_string(download_client.DownloadHeaders(content.SourceURL))
+	for _, selected_track := range selected_text_tracks {
+		track := selected_track.track
+		source := selected_track.source
+		resource_suffix := youtube_text_track_resource_suffix(track, source)
+		resources = append(resources, &adapter.ResourceInfo{
+			Resource: model.DownloadResource{
+				ContentId:  &content_id,
+				Name:       task_name + "_subtitle_" + resource_suffix,
+				Kind:       youtube_text_track_resource_kind(source),
+				UniqueID:   info.ID + "_subtitle_" + resource_suffix,
+				MergeOrder: len(resources),
+				Extra:      source.Metadata,
+			},
+			Endpoints: []model.DownloadEndpoint{{
+				Protocol: endpoint_protocol(source.URL),
+				URL:      source.URL,
+				Headers:  caption_headers,
+				Enabled:  1,
+			}},
+			ContentAssets: []adapter.ContentAssetReference{{
+				Kind:     model.ContentAssetKindText,
+				Role:     model.ContentAssetRoleSubtitle,
+				AssetKey: model.BuildContentTextTrackAssetKey(track.TrackKey, source.SourceKey),
+				Relation: model.DownloadResourceAssetRelationSource,
+			}},
+		})
+	}
+
 	return &adapter.DownloadTaskResult{
 		Task: &model.DownloadTask{
 			ContentId:    &content.Id,
@@ -387,6 +421,71 @@ func (h *handler) build_download_task(info *youtube.VideoInfo, config map[string
 		Account:        account,
 		Content:        content,
 	}, nil
+}
+
+type selected_download_text_track struct {
+	track  model.ContentTextTrack
+	source model.ContentTextTrackSource
+}
+
+func select_download_text_tracks(content *model.Content, config map[string]any) []selected_download_text_track {
+	selected_keys := config_string_slice(config, "text_track_keys")
+	if content == nil || len(selected_keys) == 0 {
+		return nil
+	}
+	wanted := make(map[string]struct{}, len(selected_keys))
+	for _, track_key := range selected_keys {
+		wanted[track_key] = struct{}{}
+	}
+	selected_tracks := make([]selected_download_text_track, 0, len(selected_keys))
+	for _, track := range content.TextTracks {
+		if _, selected := wanted[track.TrackKey]; !selected {
+			continue
+		}
+		for _, source := range track.Sources {
+			if strings.TrimSpace(source.URL) == "" {
+				continue
+			}
+			selected_tracks = append(selected_tracks, selected_download_text_track{
+				track:  track,
+				source: source,
+			})
+			break
+		}
+	}
+	return selected_tracks
+}
+
+func youtube_text_track_resource_kind(source model.ContentTextTrackSource) string {
+	if mime_type := strings.TrimSpace(source.MIMEType); mime_type != "" {
+		return mime_type
+	}
+	switch strings.ToLower(strings.TrimSpace(source.Format)) {
+	case "vtt":
+		return "text/vtt"
+	case "json3":
+		return "application/json"
+	case "srv3":
+		return "application/xml"
+	case "ttml":
+		return "application/ttml+xml"
+	default:
+		return "text/plain"
+	}
+}
+
+func youtube_text_track_resource_suffix(track model.ContentTextTrack, source model.ContentTextTrackSource) string {
+	value := strings.Join([]string{
+		first_non_empty(track.LanguageCode, "und"),
+		first_non_empty(track.TrackKey, "subtitle"),
+		first_non_empty(source.SourceKey, source.Format, "default"),
+	}, "_")
+	return strings.Trim(strings.NewReplacer(
+		"/", "_",
+		"\\", "_",
+		":", "_",
+		" ", "_",
+	).Replace(value), "._")
 }
 
 func youtube_info_from_fetch(data any) (*youtube.VideoInfo, error) {
@@ -434,15 +533,19 @@ func youtube_video_variants(info *youtube.VideoInfo, selected *youtube.VideoForm
 		}
 		variant_key := youtube_video_variant_key(format)
 		metadata, _ := json.Marshal(map[string]any{
-			"itag":            format.Itag,
-			"mime_type":       format.MimeType,
-			"quality":         format.Quality,
-			"audio_quality":   format.AudioQuality,
-			"audio_codec":     format.AudioCodec,
-			"video_codec":     format.VideoCodec,
-			"adaptive":        format.Adaptive,
-			"content_length":  format.ContentLength,
-			"average_bitrate": format.AverageBitrate,
+			"itag":              format.Itag,
+			"mime_type":         format.MimeType,
+			"quality":           format.Quality,
+			"audio_quality":     format.AudioQuality,
+			"audio_codec":       format.AudioCodec,
+			"audio_track_id":    format.AudioTrackID,
+			"audio_track_name":  format.AudioTrackName,
+			"audio_is_default":  format.AudioIsDefault,
+			"audio_is_original": format.AudioIsOriginal,
+			"video_codec":       format.VideoCodec,
+			"adaptive":          format.Adaptive,
+			"content_length":    format.ContentLength,
+			"average_bitrate":   format.AverageBitrate,
 		})
 		stream_type := model.ContentVideoVariantStreamTypeProgressive
 		if !format.HasAudio {
@@ -559,11 +662,31 @@ func best_video_format(formats []youtube.VideoFormat) youtube.VideoFormat {
 func best_audio_format(formats []youtube.VideoFormat) youtube.VideoFormat {
 	best := formats[0]
 	for _, format := range formats[1:] {
-		if audio_score(format) > audio_score(best) {
+		if audio_track_preference(format) > audio_track_preference(best) ||
+			(audio_track_preference(format) == audio_track_preference(best) && audio_score(format) > audio_score(best)) {
 			best = format
 		}
 	}
 	return best
+}
+
+func audio_track_preference(format youtube.VideoFormat) int {
+	audio_track_name := strings.ToLower(format.AudioTrackName)
+	if strings.Contains(audio_track_name, "descriptive") {
+		return -1
+	}
+	if format.AudioIsOriginal || strings.Contains(audio_track_name, "original") {
+		return 3
+	}
+	// Formats without audio-track metadata are the legacy single/original
+	// stream. Prefer them over an explicitly labeled alternate or auto-dub.
+	if strings.TrimSpace(format.AudioTrackID) == "" && strings.TrimSpace(format.AudioTrackName) == "" {
+		return 2
+	}
+	if format.AudioIsDefault {
+		return 1
+	}
+	return 0
 }
 
 func video_score(format youtube.VideoFormat) int {
@@ -680,6 +803,33 @@ func config_string(config map[string]any, key string) string {
 func config_bool(config map[string]any, key string) bool {
 	value, _ := config[key].(bool)
 	return value
+}
+
+func config_string_slice(config map[string]any, key string) []string {
+	values, ok := config[key].([]any)
+	if !ok {
+		if string_values, string_ok := config[key].([]string); string_ok {
+			values = make([]any, len(string_values))
+			for index, value := range string_values {
+				values[index] = value
+			}
+		}
+	}
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		text, _ := value.(string)
+		text = strings.TrimSpace(text)
+		if text == "" {
+			continue
+		}
+		if _, exists := seen[text]; exists {
+			continue
+		}
+		seen[text] = struct{}{}
+		result = append(result, text)
+	}
+	return result
 }
 
 func json_string_array(values []string) string {

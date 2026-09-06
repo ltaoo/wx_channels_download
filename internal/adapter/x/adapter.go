@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/events"
+	"wx_channel/pkg/cache"
+	"wx_channel/pkg/cookies"
 	x_scraper "wx_channel/pkg/scraper/x"
 	"wx_channel/pkg/util"
 )
@@ -16,7 +19,11 @@ import (
 // PlatformID is the platform identifier for X/Twitter posts.
 const PlatformID = x_scraper.PlatformID
 
-type handler struct{}
+type handler struct {
+	runtime_mu    sync.RWMutex
+	cookie_reader *cookies.Reader
+	file_cache    *cache.CacheProvider
+}
 
 var (
 	_ adapter.PlatformAdapter             = (*handler)(nil)
@@ -25,6 +32,7 @@ var (
 	_ adapter.RuntimeAdapter              = (*handler)(nil)
 	_ adapter.RuntimeHandle               = (*handler)(nil)
 	_ adapter.PlatformStatusDescriber     = (*handler)(nil)
+	_ adapter.HomeContentsBuilder         = (*handler)(nil)
 )
 
 func init() {
@@ -41,6 +49,10 @@ func (h *handler) RegisterRuntime(adapter_options *adapter.AdapterOptions) (adap
 	if adapter_options == nil {
 		return nil, fmt.Errorf("x runtime dependencies are nil")
 	}
+	h.runtime_mu.Lock()
+	h.cookie_reader = adapter_options.Cookies
+	h.file_cache = adapter_options.Cache
+	h.runtime_mu.Unlock()
 	if adapter_options.Bus != nil {
 		adapter_options.Bus.Publish(events.PlatformStatusChanged{
 			Platform:  PlatformID,
@@ -53,14 +65,19 @@ func (h *handler) RegisterRuntime(adapter_options *adapter.AdapterOptions) (adap
 	return h, nil
 }
 
-func (h *handler) Stop() {}
+func (h *handler) Stop() {
+	h.runtime_mu.Lock()
+	h.cookie_reader = nil
+	h.file_cache = nil
+	h.runtime_mu.Unlock()
+}
 
 func (h *handler) Fetch(raw_url string) (any, error) {
 	return h.FetchWithProgressContext(context.Background(), raw_url, adapter.FetchOptions{})
 }
 
 func (h *handler) FetchWithProgressContext(fetch_context context.Context, raw_url string, _ adapter.FetchOptions) (any, error) {
-	client, err := x_scraper.NewClient()
+	client, err := x_scraper.NewClient(h.runtime_cookie_reader())
 	if err != nil {
 		return nil, err
 	}

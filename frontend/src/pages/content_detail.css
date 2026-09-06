@@ -170,6 +170,10 @@
   white-space: pre-wrap;
 }
 
+.content-detail-summary-no-cover .content-detail-description {
+  max-width: none;
+}
+
 .content-detail-publish-time {
   display: inline-flex;
   align-items: center;

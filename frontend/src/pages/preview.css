@@ -186,6 +186,68 @@
   border-radius: var(--dm-radius-content);
 }
 
+.preview-html-reader {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #29251d;
+  color-scheme: light;
+  background: var(--dm-color-document-canvas);
+}
+
+.preview-html-content {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--dm-space-5);
+  overflow: auto;
+  color: #29251d;
+  line-height: var(--dm-line-height-relaxed);
+  overflow-wrap: anywhere;
+  background: var(--dm-color-document-canvas);
+}
+
+.preview-html-content > :first-child {
+  margin-top: 0;
+}
+
+.preview-html-content > :last-child {
+  margin-bottom: 0;
+}
+
+.preview-html-content img,
+.preview-html-content video,
+.preview-html-content audio,
+.preview-html-content iframe {
+  max-width: 100%;
+}
+
+.preview-html-content img,
+.preview-html-content video {
+  height: auto;
+}
+
+.preview-html-content pre {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.preview-html-content table {
+  max-width: 100%;
+  border-collapse: collapse;
+}
+
+.preview-html-reader > .preview-state {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
 .preview-text-reader {
   display: flex;
   min-width: 0;
@@ -471,7 +533,9 @@
 }
 
 .preview-gallery-viewport > .preview-gallery-text-reader,
-.preview-overlay-body > .preview-overlay-text-reader {
+.preview-gallery-viewport > .preview-gallery-html-reader,
+.preview-overlay-body > .preview-overlay-text-reader,
+.preview-overlay-body > .preview-overlay-html-reader {
   align-self: stretch;
   width: 100%;
   height: 100%;

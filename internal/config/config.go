@@ -487,6 +487,38 @@ func (c *Config) LoadConfig() error {
 		HotReload:   true,
 	})
 	Register(ConfigField{
+		Key:         "download.maxRunning",
+		Type:        ConfigTypeInt,
+		Default:     3,
+		Description: "同时运行的下载任务数量上限",
+		Title:       "最大并发任务数",
+		Group:       "Download",
+	})
+	Register(ConfigField{
+		Key:         "download.resourceConcurrency",
+		Type:        ConfigTypeInt,
+		Default:     100,
+		Description: "所有运行任务可同时下载的资源数量上限",
+		Title:       "资源并发数",
+		Group:       "Download",
+	})
+	Register(ConfigField{
+		Key:         "download.segmentConcurrency",
+		Type:        ConfigTypeInt,
+		Default:     10,
+		Description: "单个资源可同时下载的分段数量上限",
+		Title:       "分段并发数",
+		Group:       "Download",
+	})
+	Register(ConfigField{
+		Key:         "download.connectionConcurrency",
+		Type:        ConfigTypeInt,
+		Default:     0,
+		Description: "所有下载任务的连接数上限；0 表示根据资源与分段并发数自动计算",
+		Title:       "连接并发数",
+		Group:       "Download",
+	})
+	Register(ConfigField{
 		Key:         "download.defaultActionWhenExisting",
 		Type:        ConfigTypeSelect,
 		Default:     "",

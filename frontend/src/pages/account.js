@@ -1,5 +1,16 @@
 import { AccountViewModel } from "./account.model.js";
-import { TablePlatformBadge } from "../components.js";
+import {
+  BrandEmpty,
+  BrandError,
+  BrandLoading,
+  Card,
+  Tab,
+  Tabs,
+  Waterfall,
+} from "../dmui.js";
+import { PlatformSelect, TablePlatformBadge } from "../components.js";
+
+const ACCOUNT_TEXT_CONTENT_TYPES = new Set(["answer", "webpage", "text"]);
 
 function AccountPageView(props) {
   const vm$ = AccountViewModel(props);
@@ -26,62 +37,439 @@ function AccountPageView(props) {
   );
 }
 
-function AccountContentRecord(props) {
-  const vm$ = props.store;
+function account_content_duration(value) {
+  let seconds = Math.max(0, Number(value) || 0);
+  if (seconds > 36000) seconds /= 1000;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.floor(seconds % 60);
+  return `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
+
+function account_content_card_height(content, _index, column_width) {
+  const width = Math.max(180, Number(column_width) || 240);
+  const images = Array.isArray(content && content.preview_images)
+    ? content.preview_images
+    : [];
+  const kind = String(content && content.content_type || "").toLowerCase();
+  if (ACCOUNT_TEXT_CONTENT_TYPES.has(kind)) {
+    const title = String(
+      content && (content.title || content.external_id) || "未命名内容",
+    );
+    const description = String(content && content.description || "").trim();
+    const characters_per_line = Math.max(12, Math.floor((width - 32) / 14));
+    const title_lines = Math.min(
+      4,
+      Math.max(1, Math.ceil(title.length / characters_per_line)),
+    );
+    const description_lines = description
+      ? Math.min(6, Math.ceil(description.length / characters_per_line))
+      : 0;
+    return 32 + title_lines * 24 + description_lines * 23 +
+      (description_lines > 0 ? 8 : 0);
+  }
+  let height = 190;
+  if (images.length > 0) {
+    if (images.length > 1) {
+      const ratio = images.length === 2 ? 3 / 2 : 4 / 3;
+      height = Math.min(420, width / ratio);
+    } else {
+      const fallback_ratio = kind === "album" ? 4 / 3 : 16 / 9;
+      const ratio = Math.max(
+        0.56,
+        Math.min(
+          1.9,
+          Number(content.preview_aspect_ratio) || fallback_ratio,
+        ),
+      );
+      height = Math.max(170, Math.min(420, width / ratio));
+    }
+  }
+  return height;
+}
+
+function AccountContentCoverMeta(props) {
+  return View(
+    {
+      class: "account-content-card-cover-meta",
+      attributes: { n: "account-content-card-cover-meta" },
+    },
+    [
+      View(
+        {
+          class: "account-content-card-cover-kicker",
+          attributes: { n: "account-content-card-cover-kicker" },
+        },
+        [
+          View(
+            {
+              class: "account-content-card-type",
+              attributes: { n: "account-content-card-type" },
+            },
+            [props.typeLabel],
+          ),
+          View(
+            {
+              class: "account-content-card-time",
+              attributes: { n: "account-content-card-time" },
+            },
+            [props.publishTime],
+          ),
+        ],
+      ),
+      View(
+        {
+          as: "h3",
+          class: "account-content-card-title",
+          attributes: { n: "account-content-card-title" },
+        },
+        [props.title],
+      ),
+    ],
+  );
+}
+
+function AccountContentMedia(props) {
   const content = props.content;
-  const source_url = String(content.url || "").trim();
-  return [
-    Show({
-      when: content.cover_url,
-      ok() {
-        return LazyImg({
-          class: "account-content-cover",
-          src: content.cover_url,
-          alt: content.title,
-          attributes: {
-            n: "account-content-cover",
-            loading: "lazy",
-            referrerpolicy: "no-referrer",
-          },
-        });
-      },
-    }),
-    View(
+  const images = Array.isArray(content.preview_images)
+    ? content.preview_images.filter(Boolean)
+    : [];
+  const kind = String(content.content_type || "").toLowerCase();
+  if (images.length === 0) {
+    return View(
       {
-        class: "account-content-record-main",
-        attributes: { n: "account-content-record-main" },
+        class: `account-content-card-media account-content-card-media-empty account-content-card-media-${kind || "unknown"}`,
+        attributes: { n: "account-content-card-media-empty" },
       },
       [
         View(
           {
-            type: source_url ? "a" : "span",
-            class: "account-content-record-title account-name",
-            attributes: {
-              n: "account-content-record-title",
-              href: source_url || undefined,
-              title: source_url ? "打开原内容" : content.title,
-            },
-            onClick(event) {
-              if (!source_url) return;
-              event.preventDefault();
-              vm$.methods.openContent(content);
-            },
+            class: "account-content-card-media-symbol",
+            attributes: { "aria-hidden": "true" },
           },
-          [content.title || content.external_id || "未命名内容"],
+          [Timeless.Icon({ name: kind === "answer" ? "message-circle" : "file-text", size: 42 })],
         ),
-        View(
-          {
-            class: "account-content-record-id account-id",
-            attributes: {
-              n: "account-content-record-id",
-              title: content.id || "",
-            },
-          },
-          [content.id || "-"],
-        ),
+        props.coverMeta,
       ],
-    ),
-  ];
+    );
+  }
+
+  if (kind === "album" || images.length > 1) {
+    const visible_images = images.slice(0, 4);
+    const single_image_ratio = Math.max(
+      0.56,
+      Math.min(1.9, Number(content.preview_aspect_ratio) || 4 / 3),
+    );
+    return View(
+      {
+        class: `account-content-card-media account-content-card-gallery account-content-card-gallery-${Math.min(visible_images.length, 4)}`,
+        style: visible_images.length === 1
+          ? { "aspect-ratio": String(single_image_ratio) }
+          : undefined,
+        attributes: { n: "account-content-card-gallery" },
+      },
+      [
+        ...visible_images.map((image_url, index) =>
+          View(
+            {
+              class: "account-content-card-gallery-item",
+              attributes: { n: "account-content-card-gallery-item" },
+            },
+            [
+              LazyImg({
+                class: "account-content-card-image",
+                src: image_url,
+                alt: `${content.title || "图集"} ${index + 1}`,
+                attributes: {
+                  loading: "lazy",
+                  referrerpolicy: "no-referrer",
+                },
+              }),
+              index === visible_images.length - 1 && images.length > 4
+                ? View(
+                    {
+                      class: "account-content-card-gallery-more",
+                      attributes: { n: "account-content-card-gallery-more" },
+                    },
+                    [`+${images.length - 4}`],
+                  )
+                : null,
+            ].filter(Boolean),
+          )
+        ),
+        props.coverMeta,
+      ],
+    );
+  }
+
+  return View(
+    {
+      class: "account-content-card-media account-content-card-poster",
+      style: {
+        "aspect-ratio": Number(content.preview_aspect_ratio) > 0
+          ? String(content.preview_aspect_ratio)
+          : "16 / 9",
+      },
+      attributes: { n: "account-content-card-poster" },
+    },
+    [
+      LazyImg({
+        class: "account-content-card-image",
+        src: images[0],
+        alt: content.title || "内容封面",
+        attributes: {
+          loading: "lazy",
+          referrerpolicy: "no-referrer",
+        },
+      }),
+      kind === "video"
+        ? View(
+            {
+              class: "account-content-card-play",
+              attributes: {
+                n: "account-content-card-play",
+                "aria-hidden": "true",
+              },
+            },
+            [Timeless.Icon({ name: "play", size: 20 })],
+          )
+        : null,
+      kind === "video" && Number(content.duration) > 0
+        ? View(
+            {
+              class: "account-content-card-duration",
+              attributes: { n: "account-content-card-duration" },
+            },
+            [account_content_duration(content.duration)],
+          )
+        : null,
+      props.coverMeta,
+    ].filter(Boolean),
+  );
+}
+
+function AccountContentCard(props) {
+  const vm$ = props.store;
+  const content = props.content;
+  const source_url = String(content.url || "").trim();
+  const title = content.title || content.external_id || "未命名内容";
+  const description = String(content.description || "").trim();
+  const kind = String(content.content_type || "unknown").toLowerCase();
+  const text_only = ACCOUNT_TEXT_CONTENT_TYPES.has(kind);
+  const cover_meta = text_only
+    ? null
+    : AccountContentCoverMeta({
+        title,
+        typeLabel: vm$.methods.contentTypeLabel(
+          content.content_type,
+          content.content_subtype,
+        ),
+        publishTime: vm$.methods.formatTime(content.publish_time),
+      });
+  return Card(
+    {
+      as: source_url ? "button" : "article",
+      class: [
+        "account-content-card",
+        `account-content-card-${kind}`,
+        text_only ? "account-content-card-text-only" : "",
+        source_url ? "account-content-card-clickable" : "",
+      ].filter(Boolean).join(" "),
+      attributes: {
+        n: "account-content-card",
+        type: source_url ? "button" : undefined,
+        title: source_url ? "打开原内容" : undefined,
+      },
+      onClick() {
+        if (source_url) vm$.methods.openContent(content);
+      },
+    },
+    text_only
+      ? [
+          View(
+            {
+              as: "h3",
+              class: "account-content-card-text-title",
+              attributes: { n: "account-content-card-text-title" },
+            },
+            [title],
+          ),
+          description
+            ? View(
+                {
+                  as: "p",
+                  class: "account-content-card-description",
+                  attributes: { n: "account-content-card-description" },
+                },
+                [description],
+              )
+            : null,
+        ].filter(Boolean)
+      : [AccountContentMedia({ content, coverMeta: cover_meta })],
+  );
+}
+
+function AccountContentState(props) {
+  const role = props.error ? "alert" : "status";
+  return View(
+    {
+      class: `account-content-state${props.error ? " is-error" : ""}`,
+      attributes: { n: "account-content-state", role },
+    },
+    [
+      props.loading
+        ? BrandLoading({
+            size: 112,
+            label: props.title || "正在加载账号内容",
+            decorative: true,
+            name: "account-content-loading-symbol",
+          })
+        : props.error
+          ? BrandError({ size: 116, name: "account-content-error-symbol" })
+          : BrandEmpty({ size: 116, name: "account-content-empty-symbol" }),
+      View({ as: "h3", class: "account-content-state-title" }, [props.title]),
+      props.description
+        ? View({ as: "p", class: "account-content-state-description" }, [
+            props.description,
+          ])
+        : null,
+      props.action || null,
+    ].filter(Boolean),
+  );
+}
+
+function AccountContentsCollection(props) {
+  const vm$ = props.store;
+  return View(
+    {
+      class: "account-content-collection",
+      attributes: { n: "account-content-collection" },
+    },
+    [
+      Show({
+        when: computed(vm$.state.drawer_status, (status) => status === "initial"),
+        ok() {
+          return AccountContentState({
+            loading: true,
+            title: "正在加载账号内容",
+          });
+        },
+      }),
+      Show({
+        when: computed(vm$.state.drawer_status, (status) => status === "error"),
+        ok() {
+          return AccountContentState({
+            error: true,
+            title: "内容加载失败",
+            description: vm$.state.drawer_error,
+            action: AccountPageActionButton({
+              name: "account-content-retry-action",
+              store: vm$.ui.btn_drawer_retry$,
+              icon: "rotate-ccw",
+              label: "重试",
+            }),
+          });
+        },
+      }),
+      Show({
+        when: computed(vm$.state.drawer_status, (status) => status === "empty"),
+        ok() {
+          return AccountContentState({
+            title: "暂无内容",
+            description: vm$.state.drawer_empty_description,
+          });
+        },
+      }),
+      Show({
+        when: computed(vm$.state.drawer_status, (status) => status === "normal"),
+        ok() {
+          return Waterfall({
+            class: "account-content-waterfall",
+            attributes: {
+              n: "account-content-waterfall",
+              "aria-label": "账号内容列表",
+            },
+            each: vm$.state.drawer_contents,
+            key: "id",
+            columns: 4,
+            gap: 14,
+            size: 8,
+            buffer: 3,
+            itemHeight: account_content_card_height,
+            render(content) {
+              return AccountContentCard({ store: vm$, content });
+            },
+            footer: [
+              Show({
+                when: computed(
+                  vm$.state.drawer_loading_more,
+                  (loading) => Boolean(loading),
+                ),
+                ok() {
+                  return View(
+                    {
+                      class: "account-content-waterfall-footer",
+                      attributes: {
+                        n: "account-content-load-more-status",
+                        role: "status",
+                      },
+                    },
+                    [
+                      BrandLoading({ size: 30, decorative: true }),
+                      "正在加载更多…",
+                    ],
+                  );
+                },
+              }),
+              Show({
+                when: computed(
+                  vm$.state.drawer_more_error,
+                  (error) => Boolean(error),
+                ),
+                ok() {
+                  return View(
+                    {
+                      class: "account-content-waterfall-footer is-error",
+                      attributes: {
+                        n: "account-content-load-more-error",
+                        role: "alert",
+                      },
+                    },
+                    [vm$.state.drawer_more_error],
+                  );
+                },
+              }),
+              Show({
+                when: Timeless.combine(
+                  {
+                    marker: vm$.state.drawer_next_marker,
+                    loading: vm$.state.drawer_loading_more,
+                    error: vm$.state.drawer_more_error,
+                  },
+                  ({ marker, loading, error }) =>
+                    !marker && !loading && !error,
+                ),
+                ok() {
+                  return View(
+                    {
+                      class: "account-content-waterfall-footer is-end",
+                      attributes: {
+                        n: "account-content-no-more",
+                        role: "status",
+                      },
+                    },
+                    ["没有更多了"],
+                  );
+                },
+              }),
+            ],
+            onReachBottom() {
+              vm$.methods.loadMoreAccountContents();
+            },
+          });
+        },
+      }),
+    ],
+  );
 }
 
 function AccountContentsDrawer(props) {
@@ -92,113 +480,53 @@ function AccountContentsDrawer(props) {
       class: "dm-drawer--wide account-content-drawer",
       attributes: { n: "account-content-drawer" },
     },
-    [
+    () => [
       View(
         {
           class: "dm-drawer-body account-content-drawer-body",
           attributes: { n: "account-content-drawer-body" },
         },
         [
-          View(
+          Tabs(
             {
-              class: "account-content-drawer-toolbar",
-              attributes: { n: "account-content-drawer-toolbar" },
+              class: "account-content-tabs",
+              attributes: { n: "account-content-tabs" },
+              each: vm$.state.drawer_tabs,
+              key: "scope",
+              render(tab) {
+                return AccountContentTab({ store: vm$, tab });
+              },
             },
-            [
-              View(
-                {
-                  class: "account-content-drawer-account",
-                  attributes: { n: "account-content-drawer-account" },
-                },
-                [
-                  View(
-                    {
-                      class: "account-content-drawer-account-name",
-                      attributes: { n: "account-content-drawer-account-name" },
-                    },
-                    [
-                      computed(
-                        vm$.state.selected_account,
-                        (account) => (account && account.nickname) || "账号",
-                      ),
-                    ],
-                  ),
-                  View(
-                    {
-                      class: "account-content-drawer-summary",
-                      attributes: { n: "account-content-drawer-summary" },
-                    },
-                    [vm$.state.drawer_summary],
-                  ),
-                ],
-              ),
-              AccountPageActionButton({
-                name: "account-synchronize-action",
-                store: vm$.ui.btn_synchronize$,
-                icon: "rotate-ccw",
-                label: "同步",
-                title: "抓取主页内容，仅预览不保存",
-              }),
-            ],
           ),
-          Table({
-            name: "account-content-table",
-            containerClass: "account-content-table",
-            containerAttributes: { n: "account-content-table" },
-            panelAttributes: { n: "account-content-table-panel" },
-            columns: [
-              {
-                name: "content",
-                title: "内容",
-                cellClass: "account-content-record",
-                render(content) {
-                  return AccountContentRecord({ store: vm$, content });
-                },
-              },
-              {
-                name: "type",
-                title: "类型",
-                width: 100,
-                cellClass: "account-content-count",
-                render(content) {
-                  return vm$.methods.contentTypeLabel(
-                    content.content_type,
-                    content.content_subtype,
-                  );
-                },
-              },
-              {
-                name: "time",
-                title: "发布时间",
-                width: 160,
-                cellClass: "account-added",
-                render(content) {
-                  return vm$.methods.formatTime(content.publish_time);
-                },
-              },
-              {
-                name: "download-tasks",
-                title: "下载任务",
-                width: 110,
-                cellClass: "account-content-count",
-                render(content) {
-                  return vm$.methods.formatDownloadTaskCount(content);
-                },
-              },
-            ],
-            rows: vm$.state.drawer_contents,
-            rowKey: "id",
-            status: vm$.state.drawer_status,
-            error: vm$.state.drawer_error,
-            skeletonCount: 6,
-            errorTitle: "内容加载失败",
-            retry: { store: vm$.ui.btn_drawer_retry$ },
-            emptyTitle: "暂无内容",
-            emptyDescription: "点击同步可预览平台主页内容",
-          }),
+          AccountContentsCollection({ store: vm$ }),
         ],
       ),
     ],
+  );
+}
+
+function AccountContentTab(props) {
+  const vm$ = props.store;
+  const tab = props.tab;
+  const scope = String(tab.scope || "");
+  const content_types = Array.isArray(tab.content_types)
+    ? tab.content_types.join("、")
+    : "";
+  return Tab(
+    {
+      selected: computed(
+        vm$.state.drawer_scope,
+        (active_scope) => active_scope === scope,
+      ),
+      attributes: {
+        n: `account-content-tab-${scope}`,
+        title: content_types ? `内容类型：${content_types}` : tab.name,
+      },
+      onClick() {
+        return vm$.methods.selectHomeTab(tab);
+      },
+    },
+    [tab.name || scope],
   );
 }
 
@@ -239,26 +567,42 @@ function AccountPageToolbar(props) {
     [
       View(
         {
-          class: "account-search",
-          attributes: { n: "account-search-field" },
+          class:
+            "content-filter-fields account-filter-fields dm-flex dm-items-center dm-gap-2",
         },
         [
-          Input({
-            store: vm$.ui.input_keyword$,
-            rootAttributes: { n: "account-search-control" },
-            prefix: Timeless.Icon({
-              name: "search",
-              size: 16,
-              attributes: { n: "account-search-icon" },
+          View({}, [
+            PlatformSelect({
+              store: vm$.ui.select_platform$,
+              attributes: {
+                "aria-label": "按平台筛选账号",
+              },
             }),
-            attributes: {
-              n: "account-search-input",
-              name: "keyword",
-              type: "text",
-              autocomplete: "off",
-              "aria-label": "搜索账号昵称或 ID",
+          ]),
+          View(
+            {
+              class: "account-search",
+              attributes: { n: "account-search-field" },
             },
-          }),
+            [
+              Input({
+                store: vm$.ui.input_keyword$,
+                rootAttributes: { n: "account-search-control" },
+                prefix: Timeless.Icon({
+                  name: "search",
+                  size: 16,
+                  attributes: { n: "account-search-icon" },
+                }),
+                attributes: {
+                  n: "account-search-input",
+                  name: "keyword",
+                  type: "search",
+                  autocomplete: "off",
+                  "aria-label": "搜索账号昵称或 ID",
+                },
+              }),
+            ],
+          ),
         ],
       ),
       View(
@@ -268,24 +612,24 @@ function AccountPageToolbar(props) {
           attributes: { n: "account-toolbar-actions" },
         },
         [
-        AccountPageActionButton({
-          name: "account-search-action",
-          store: vm$.ui.btn_search$,
-          icon: "search",
-          label: "搜索",
-          variant: "primary",
-          type: "submit",
-          onClick(event) {
-            event.preventDefault();
-            vm$.methods.search();
-          },
-        }),
-        AccountPageActionButton({
-          name: "account-reset-action",
-          store: vm$.ui.btn_refresh$,
-          icon: "rotate-ccw",
-          label: "重置",
-        }),
+          AccountPageActionButton({
+            name: "account-search-action",
+            store: vm$.ui.btn_search$,
+            icon: "search",
+            label: "搜索",
+            variant: "primary",
+            type: "submit",
+            onClick(event) {
+              event.preventDefault();
+              vm$.methods.search();
+            },
+          }),
+          AccountPageActionButton({
+            name: "account-reset-action",
+            store: vm$.ui.btn_refresh$,
+            icon: "rotate-ccw",
+            label: "重置",
+          }),
         ],
       ),
     ],
@@ -298,16 +642,6 @@ function AccountAvatar(props) {
     class: "account-avatar-wrap",
     attributes: { n: "account-avatar" },
   }, [
-    View({
-      class: "account-avatar-fallback",
-      attributes: { n: "account-avatar-fallback" },
-    }, [
-      Timeless.Icon({
-        name: "user",
-        size: 20,
-        attributes: { n: "account-avatar-fallback-icon" },
-      }),
-    ]),
     Show({
       when: account.avatar_url,
       ok() {
@@ -559,13 +893,25 @@ function AccountPageBody(props) {
     retry: {
       store: vm$.ui.btn_retry$,
     },
-    emptyTitle: computed(vm$.state.keyword, (keyword) =>
-      String(keyword || "").trim() ? "没有匹配的账号" : "暂无账号",
+    emptyTitle: Timeless.combine(
+      {
+        keyword: vm$.state.keyword,
+        platform: vm$.state.platform_id,
+      },
+      ({ keyword, platform }) =>
+        String(keyword || "").trim() || String(platform || "").trim()
+          ? "没有匹配的账号"
+          : "暂无账号",
     ),
-    emptyDescription: computed(vm$.state.keyword, (keyword) =>
-      String(keyword || "").trim()
-        ? "请尝试其他昵称或账号 ID"
-        : "还没有记录任何账号",
+    emptyDescription: Timeless.combine(
+      {
+        keyword: vm$.state.keyword,
+        platform: vm$.state.platform_id,
+      },
+      ({ keyword, platform }) =>
+        String(keyword || "").trim() || String(platform || "").trim()
+          ? "请尝试其他平台、昵称或账号 ID"
+          : "还没有记录任何账号",
     ),
   });
 }

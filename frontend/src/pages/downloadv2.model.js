@@ -1,6 +1,6 @@
 import { proxy_image_url } from "@/image-proxy.model.js";
 
-const DOWNLOAD_PAGE_SIZE_DEFAULT = 12;
+const DOWNLOAD_PAGE_SIZE_DEFAULT = 50;
 
 const DOWNLOAD_SERVER_STATUS_FILTERS = {
   wait: "0,1",

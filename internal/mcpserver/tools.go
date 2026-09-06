@@ -313,6 +313,7 @@ func tool_definitions() []any {
 	definitions = append(definitions, wxchannels_tool_definitions()...)
 	definitions = append(definitions, wxchannels_download_tool_definitions()...)
 	definitions = append(definitions, sph_tool_definitions()...)
+	definitions = append(definitions, zhihu_tool_definitions()...)
 	return append(definitions, data_tool_definitions()...)
 }
 
@@ -366,6 +367,14 @@ func (s *Server) supports_tool(name string) bool {
 		return s.download_task_deleter != nil
 	case "deploy_sph_worker":
 		return s.sph_deployer != nil
+	case get_zhihu_credential_status_tool_name,
+		get_my_zhihu_collections_tool_name,
+		get_zhihu_collection_contents_tool_name,
+		get_my_zhihu_answers_tool_name,
+		get_my_zhihu_posts_tool_name,
+		get_my_zhihu_zvideos_tool_name,
+		get_my_zhihu_columns_tool_name:
+		return s.zhihu_collections != nil && s.zhihu_credentials != nil
 	default:
 		return s.api_client != nil
 	}
@@ -436,6 +445,20 @@ func (s *Server) call_tool(ctx context.Context, params call_tool_params) (map[st
 		return s.get_certificate_status(ctx)
 	case "deploy_sph_worker":
 		return s.deploy_sph_worker(ctx, params.Arguments)
+	case get_zhihu_credential_status_tool_name:
+		return s.get_zhihu_credential_status(ctx, params.Arguments)
+	case get_my_zhihu_collections_tool_name:
+		return s.get_my_zhihu_collections(ctx, params.Arguments)
+	case get_zhihu_collection_contents_tool_name:
+		return s.get_zhihu_collection_contents(ctx, params.Arguments)
+	case get_my_zhihu_answers_tool_name:
+		return s.get_my_zhihu_answers(ctx, params.Arguments)
+	case get_my_zhihu_posts_tool_name:
+		return s.get_my_zhihu_posts(ctx, params.Arguments)
+	case get_my_zhihu_zvideos_tool_name:
+		return s.get_my_zhihu_zvideos(ctx, params.Arguments)
+	case get_my_zhihu_columns_tool_name:
+		return s.get_my_zhihu_columns(ctx, params.Arguments)
 	default:
 		return nil, fmt.Errorf("%w: %s", err_unknown_tool, params.Name)
 	}

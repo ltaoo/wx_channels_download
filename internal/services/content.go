@@ -155,15 +155,16 @@ func account_updates(existing *model.Account, account *model.Account, now int64)
 }
 
 type ContentListOptions struct {
-	AccountID string
-	Type      string
-	Scope     string
-	Keyword   string
-	StartAt   *int64 // Inclusive Unix timestamp in milliseconds.
-	EndAt     *int64 // Exclusive Unix timestamp in milliseconds.
-	Page      int
-	PageSize  int
-	Offset    *int
+	AccountID  string
+	PlatformID string
+	Type       string
+	Scope      string
+	Keyword    string
+	StartAt    *int64 // Inclusive Unix timestamp in milliseconds.
+	EndAt      *int64 // Exclusive Unix timestamp in milliseconds.
+	Page       int
+	PageSize   int
+	Offset     *int
 }
 
 const (
@@ -1452,6 +1453,9 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 		}
 		if content_type := strings.TrimSpace(options.Type); content_type != "" {
 			query = query.Where("content.type = ?", content_type)
+		}
+		if platform_id := strings.TrimSpace(options.PlatformID); platform_id != "" {
+			query = query.Where("content.platform_id = ?", platform_id)
 		}
 		if account_id := strings.TrimSpace(options.AccountID); account_id != "" {
 			query = query.

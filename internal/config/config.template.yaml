@@ -10,7 +10,7 @@ download:
   playDoneAudio: true
   defaultActionWhenExisting: ""
   maxRunning: 3
-  resourceConcurrency: 10
+  resourceConcurrency: 100
   segmentConcurrency: 10
   connectionConcurrency: 0 # 0 derives resourceConcurrency * segmentConcurrency
   remoteServer:

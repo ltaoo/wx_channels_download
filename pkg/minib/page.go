@@ -1664,6 +1664,10 @@ function PromiseRejectionEvent(type, init) { __minib_event_constructor.call(this
 PromiseRejectionEvent.prototype = Object.create(Event.prototype);
 Object.defineProperty(PromiseRejectionEvent.prototype, 'constructor', { configurable: true, writable: true, value: PromiseRejectionEvent });
 Object.defineProperty(PromiseRejectionEvent.prototype, Symbol.toStringTag, { value: 'PromiseRejectionEvent' });
+function ErrorEvent(type, init) { __minib_event_constructor.call(this, type, init); init = init || {}; this.message = String(init.message || ''); this.filename = String(init.filename || ''); this.lineno = Number(init.lineno || 0); this.colno = Number(init.colno || 0); this.error = init.error === undefined ? null : init.error; }
+ErrorEvent.prototype = Object.create(Event.prototype);
+Object.defineProperty(ErrorEvent.prototype, 'constructor', { configurable: true, writable: true, value: ErrorEvent });
+Object.defineProperty(ErrorEvent.prototype, Symbol.toStringTag, { value: 'ErrorEvent' });
 function StyleSheet() {}
 function CSSStyleSheet() { if (typeof __minib_construct_css_style_sheet === 'function') return __minib_construct_css_style_sheet(); }
 CSSStyleSheet.prototype = Object.create(StyleSheet.prototype);
@@ -1856,7 +1860,7 @@ URLSearchParams.prototype.values = function() { return this._pairs.map(function(
 URLSearchParams.prototype.toString = function() { function encode(value) { return encodeURIComponent(value).replace(/%20/g, '+').replace(/[!'()~]/g, function(character) { return '%' + character.charCodeAt(0).toString(16).toUpperCase(); }); } return this._pairs.map(function(pair) { return encode(pair[0]) + '=' + encode(pair[1]); }).join('&'); };
 URLSearchParams.prototype[Symbol.iterator] = URLSearchParams.prototype.entries;
 Object.defineProperty(URLSearchParams.prototype, 'size', { configurable: true, enumerable: true, get: function() { return this._pairs.length; } });
-[Window, Node, CharacterData, Text, Comment, CDATASection, ProcessingInstruction, DocumentType, Element, HTMLElement, HTMLBodyElement, HTMLHtmlElement, HTMLImageElement, HTMLIFrameElement, HTMLTemplateElement, HTMLMediaElement, HTMLAudioElement, HTMLVideoElement, SVGElement, Document, DOMParser, HTMLDocument, DocumentFragment, ShadowRoot, UIEvent, MouseEvent, KeyboardEvent, FocusEvent, InputEvent, WheelEvent, PointerEvent, CustomEvent, MessageEvent, PromiseRejectionEvent, StyleSheet, CSSStyleSheet, MediaList, StyleSheetList, CSSRuleList, CSSRule, CSSStyleRule, CSSMediaRule, CSSStyleDeclaration, File, TextEncoder, ReadableStream, ReadableStreamDefaultController, ReadableStreamDefaultReader, ResizeObserver, ResizeObserverEntry, PerformanceObserver, AbortSignal, AbortController, URLSearchParams].forEach(function(constructor) {
+[Window, Node, CharacterData, Text, Comment, CDATASection, ProcessingInstruction, DocumentType, Element, HTMLElement, HTMLBodyElement, HTMLHtmlElement, HTMLImageElement, HTMLIFrameElement, HTMLTemplateElement, HTMLMediaElement, HTMLAudioElement, HTMLVideoElement, SVGElement, Document, DOMParser, HTMLDocument, DocumentFragment, ShadowRoot, UIEvent, MouseEvent, KeyboardEvent, FocusEvent, InputEvent, WheelEvent, PointerEvent, CustomEvent, MessageEvent, PromiseRejectionEvent, ErrorEvent, StyleSheet, CSSStyleSheet, MediaList, StyleSheetList, CSSRuleList, CSSRule, CSSStyleRule, CSSMediaRule, CSSStyleDeclaration, File, TextEncoder, ReadableStream, ReadableStreamDefaultController, ReadableStreamDefaultReader, ResizeObserver, ResizeObserverEntry, PerformanceObserver, AbortSignal, AbortController, URLSearchParams].forEach(function(constructor) {
   Object.defineProperty(constructor.prototype, 'constructor', { configurable: true, writable: true, value: constructor });
 });
 function Headers(init) {
@@ -2672,7 +2676,7 @@ func (runtime *page_runtime) location_object(parsed_url *url.URL) *goja.Object {
 	_ = object.DefineAccessorProperty("href", runtime.vm.ToValue(func() string { return parsed_url.String() }), runtime.vm.ToValue(navigate), goja.FLAG_TRUE, goja.FLAG_TRUE)
 	_ = object.Set("assign", navigate)
 	_ = object.Set("replace", navigate)
-	_ = object.Set("reload", func() {})
+	_ = object.Set("reload", func() { runtime.request_navigation(parsed_url.String()) })
 	_ = object.Set("toString", func() string { return parsed_url.String() })
 	return object
 }

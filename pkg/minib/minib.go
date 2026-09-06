@@ -256,6 +256,13 @@ func (b *MiniBrowser) JavaScriptRuntime() *goja.Runtime {
 
 // ExecuteJS evaluates JavaScript in the persistent goja runtime.
 func (b *MiniBrowser) ExecuteJS(ctx context.Context, expression string) (value goja.Value, err error) {
+	return b.execute_js(ctx, expression, nil)
+}
+
+// ExecuteJSImmediate evaluates JavaScript without pumping page timers, DOM
+// reactions, or pending network callbacks after the expression returns. It is
+// intended for small synchronous computations against an already loaded page.
+func (b *MiniBrowser) ExecuteJSImmediate(ctx context.Context, expression string) (value goja.Value, err error) {
 	if b == nil || b.js_runtime == nil {
 		return nil, fmt.Errorf("minib: browser is closed")
 	}
@@ -272,10 +279,71 @@ func (b *MiniBrowser) ExecuteJS(ctx context.Context, expression string) (value g
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	finished := make(chan struct{})
+	interrupt_done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			b.js_runtime.Interrupt(ctx.Err())
+		case <-finished:
+		}
+		close(interrupt_done)
+	}()
+	defer func() {
+		close(finished)
+		<-interrupt_done
+		b.js_runtime.ClearInterrupt()
+		if recovered := recover(); recovered != nil {
+			value = nil
+			err = javascript_panic_error(recovered)
+		}
+	}()
+	value, err = b.js_runtime.RunString(expression)
+	if err != nil {
+		return nil, fmt.Errorf("minib: JavaScript failed: %w", err)
+	}
+	return value, nil
+}
+
+// ExecuteJSWithRequestHeaderModifier evaluates JavaScript while allowing the
+// caller to inspect or modify requests started by that evaluation.
+func (b *MiniBrowser) ExecuteJSWithRequestHeaderModifier(ctx context.Context, expression string, modifier func(*http.Request) error) (value goja.Value, err error) {
+	return b.execute_js(ctx, expression, modifier)
+}
+
+func (b *MiniBrowser) execute_js(ctx context.Context, expression string, modifier func(*http.Request) error) (value goja.Value, err error) {
+	if b == nil || b.js_runtime == nil {
+		return nil, fmt.Errorf("minib: browser is closed")
+	}
+	b.js_mutex.Lock()
+	defer b.js_mutex.Unlock()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, has_deadline := ctx.Deadline(); !has_deadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, b.timeout)
+		defer cancel()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	var request_started chan struct{}
 	if b.page_runtime != nil {
 		b.page_runtime.ctx = ctx
+		b.page_runtime.network_ctx = ctx
+		if modifier != nil {
+			request_started = make(chan struct{})
+			var signal_once sync.Once
+			b.page_runtime.network_ctx = with_request_header_modifier(ctx, func(request *http.Request) error {
+				modifier_err := modifier(request)
+				signal_once.Do(func() { close(request_started) })
+				return modifier_err
+			})
+		}
 		defer func() {
 			b.page_runtime.ctx = b.lifecycle_ctx
+			b.page_runtime.network_ctx = b.lifecycle_ctx
 		}()
 	}
 	finished := make(chan struct{})
@@ -300,6 +368,14 @@ func (b *MiniBrowser) ExecuteJS(ctx context.Context, expression string) (value g
 	value, err = b.js_runtime.RunString(expression)
 	if err != nil {
 		return nil, fmt.Errorf("minib: JavaScript failed: %w", err)
+	}
+	if request_started != nil {
+		select {
+		case <-request_started:
+			return value, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 	if b.page_runtime != nil && b.page_runtime.page != nil && b.page_runtime.page.Document != nil {
 		b.page_runtime.pump_event_loop(ctx)

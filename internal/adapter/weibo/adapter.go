@@ -17,6 +17,7 @@ import (
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/events"
+	"wx_channel/pkg/cache"
 	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/scraper/weibo"
 	"wx_channel/pkg/util"
@@ -68,6 +69,7 @@ type FetchResult struct {
 type handler struct {
 	runtime_mu      sync.RWMutex
 	cookie_provider *cookies.Reader
+	file_cache      *cache.CacheProvider
 }
 
 var (
@@ -78,6 +80,7 @@ var (
 	_ adapter.RuntimeAdapter              = (*handler)(nil)
 	_ adapter.RuntimeHandle               = (*handler)(nil)
 	_ adapter.PlatformStatusDescriber     = (*handler)(nil)
+	_ adapter.HomeContentsBuilder         = (*handler)(nil)
 )
 
 func init() {
@@ -96,6 +99,7 @@ func (h *handler) RegisterRuntime(adapter_options *adapter.AdapterOptions) (adap
 	}
 	h.runtime_mu.Lock()
 	h.cookie_provider = adapter_options.Cookies
+	h.file_cache = adapter_options.Cache
 	h.runtime_mu.Unlock()
 	new_routes(weibo.NewClient(adapter_options.Cookies)).register_routes(adapter_options.Routes)
 	if adapter_options.Bus != nil {
@@ -116,6 +120,7 @@ func (h *handler) Stop() {
 	}
 	h.runtime_mu.Lock()
 	h.cookie_provider = nil
+	h.file_cache = nil
 	h.runtime_mu.Unlock()
 }
 

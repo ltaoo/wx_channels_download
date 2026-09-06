@@ -19,6 +19,7 @@ if (!Timeless) {
 }
 
 Timeless.ui.ScrollViewPrimitive.setScrollViewProvider(Timeless.web);
+Timeless.ui.InputPrimitive.setInputProvider(Timeless.web);
 
 window.config = window.__d_config || {};
 
@@ -104,7 +105,9 @@ window.API_ORIGIN = window.config.remoteServerEnabled
   ? "https://weixin110.qq.com"
   : window.config.apiOrigin || window.location.origin;
 
-window.PLATFORM_FAVICONS = Object.freeze({
+const default_platform_favicon = "public/platform-icons.svg#default";
+const platform_favicons = Object.freeze({
+  default: default_platform_favicon,
   wxchannels: "public/platform-icons.svg#wxchannels",
   wxmp: "public/platform-icons.svg#wxmp",
   weibo: "public/platform-icons.svg#weibo",
@@ -115,6 +118,7 @@ window.PLATFORM_FAVICONS = Object.freeze({
   bilibili: "public/platform-icons.svg#bilibili",
   cctv: "public/platform-icons.svg#cctv",
   ucdrive: "public/platform-icons.svg#ucdrive",
+  feishu: "public/platform-icons.svg#feishu",
   x: "public/platform-icons.svg#x",
   twitter: "public/platform-icons.svg#x",
   instagram: "public/platform-icons.svg#instagram",
@@ -143,45 +147,55 @@ window.PLATFORM_FAVICONS = Object.freeze({
   jianshu: "public/platform-icons.svg#jianshu",
 });
 
+window.PLATFORM_FAVICONS = new Proxy(platform_favicons, {
+  get(target, property, receiver) {
+    const favicon = Reflect.get(target, property, receiver);
+    if (favicon !== undefined || typeof property !== "string" || !property) {
+      return favicon;
+    }
+    return default_platform_favicon;
+  },
+});
+
 window.PLATFORM_NAMES = Object.freeze({
   wxchannels: "视频号",
   wxmp: "公众号",
-  officialaccount: "公众号",
   douyin: "抖音",
-  x: "X",
-  twitter: "X",
-  instagram: "Instagram",
-  insgram: "Instagram",
-  telegram: "Telegram",
-  facebook: "Facebook",
-  threads: "Threads",
-  tiktok: "TikTok",
-  reddit: "Reddit",
-  linkedin: "LinkedIn",
-  pinterest: "Pinterest",
-  snapchat: "Snapchat",
-  whatsapp: "WhatsApp",
-  discord: "Discord",
-  twitch: "Twitch",
-  github: "GitHub",
-  stackoverflow: "Stack Overflow",
   kuaishou: "快手",
-  bilibili: "Bilibili",
   xiaohongshu: "小红书",
-  xhs: "小红书",
   youtube: "YouTube",
-  zhihu: "知乎",
-  douban: "豆瓣",
-  tieba: "百度贴吧",
-  baidutieba: "百度贴吧",
+  bilibili: "Bilibili",
+  x: "X",
   weibo: "微博",
-  qidian: "起点中文网",
-  fanqienovel: "番茄小说",
-  jianshu: "简书",
-  "69shuba": "69书吧",
-  ttk: "TT看书",
-  ucdrive: "UC网盘",
+  zhihu: "知乎",
   webpage: "网页",
+  // officialaccount: "公众号",
+  // twitter: "X",
+  // instagram: "Instagram",
+  // insgram: "Instagram",
+  // telegram: "Telegram",
+  // facebook: "Facebook",
+  // threads: "Threads",
+  // tiktok: "TikTok",
+  // reddit: "Reddit",
+  // linkedin: "LinkedIn",
+  // pinterest: "Pinterest",
+  // snapchat: "Snapchat",
+  // whatsapp: "WhatsApp",
+  // discord: "Discord",
+  // twitch: "Twitch",
+  // github: "GitHub",
+  // stackoverflow: "Stack Overflow",
+  // xhs: "小红书",
+  // douban: "豆瓣",
+  // tieba: "百度贴吧",
+  // baidutieba: "百度贴吧",
+  // qidian: "起点中文网",
+  // fanqienovel: "番茄小说",
+  // jianshu: "简书",
+  // "69shuba": "69书吧",
+  // ttk: "TT看书",
+  // ucdrive: "UC网盘",
 });
 
 window.CONTENT_TYPE_NAMES = Object.freeze({

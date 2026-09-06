@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/events"
+	"wx_channel/pkg/cache"
+	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/scraper/xiaohongshu"
 	"wx_channel/pkg/util"
 )
@@ -18,9 +21,13 @@ func init() {
 	adapter.Register(NewXiaohongshuAdapter())
 }
 
-// XiaohongshuAdapter connects the Xiaohongshu HTML scraper to the shared
+// XiaohongshuAdapter converts Xiaohongshu scraper results to the shared
 // content, account, and download-task models.
-type XiaohongshuAdapter struct{}
+type XiaohongshuAdapter struct {
+	runtime_mu    sync.RWMutex
+	cookie_reader *cookies.Reader
+	file_cache    *cache.CacheProvider
+}
 
 var (
 	_ adapter.PlatformAdapter             = (*XiaohongshuAdapter)(nil)
@@ -29,16 +36,18 @@ var (
 	_ adapter.RuntimeAdapter              = (*XiaohongshuAdapter)(nil)
 	_ adapter.RuntimeHandle               = (*XiaohongshuAdapter)(nil)
 	_ adapter.PlatformStatusDescriber     = (*XiaohongshuAdapter)(nil)
+	_ adapter.HomeContentsBuilder         = (*XiaohongshuAdapter)(nil)
+	_ adapter.HomeDetailsFetcher          = (*XiaohongshuAdapter)(nil)
 )
 
-// NewXiaohongshuAdapter creates a stateless Xiaohongshu adapter.
+// NewXiaohongshuAdapter creates a Xiaohongshu adapter.
 func NewXiaohongshuAdapter() *XiaohongshuAdapter {
 	return &XiaohongshuAdapter{}
 }
 
 func (a *XiaohongshuAdapter) PlatformID() string { return PlatformID }
 
-// PlatformStatuses describes the always-available HTML scraper.
+// PlatformStatuses describes the always-available Xiaohongshu scraper.
 func (a *XiaohongshuAdapter) PlatformStatuses() []adapter.PlatformStatusDescriptor {
 	return []adapter.PlatformStatusDescriptor{{
 		Platform: PlatformID,
@@ -47,7 +56,7 @@ func (a *XiaohongshuAdapter) PlatformStatuses() []adapter.PlatformStatusDescript
 	}}
 }
 
-// RegisterRuntime publishes the stateless scraper's availability.
+// RegisterRuntime attaches scraper dependencies and publishes availability.
 func (a *XiaohongshuAdapter) RegisterRuntime(adapter_options *adapter.AdapterOptions) (adapter.RuntimeHandle, error) {
 	if a == nil {
 		return nil, fmt.Errorf("xiaohongshu adapter is nil")
@@ -55,6 +64,10 @@ func (a *XiaohongshuAdapter) RegisterRuntime(adapter_options *adapter.AdapterOpt
 	if adapter_options == nil {
 		return nil, fmt.Errorf("xiaohongshu runtime dependencies are nil")
 	}
+	a.runtime_mu.Lock()
+	a.cookie_reader = adapter_options.Cookies
+	a.file_cache = adapter_options.Cache
+	a.runtime_mu.Unlock()
 	if adapter_options.Bus != nil {
 		adapter_options.Bus.Publish(events.PlatformStatusChanged{
 			Platform:  PlatformID,
@@ -67,8 +80,16 @@ func (a *XiaohongshuAdapter) RegisterRuntime(adapter_options *adapter.AdapterOpt
 	return a, nil
 }
 
-// Stop releases the stateless adapter runtime.
-func (a *XiaohongshuAdapter) Stop() {}
+// Stop releases the adapter runtime.
+func (a *XiaohongshuAdapter) Stop() {
+	if a == nil {
+		return
+	}
+	a.runtime_mu.Lock()
+	a.cookie_reader = nil
+	a.file_cache = nil
+	a.runtime_mu.Unlock()
+}
 
 // Fetch retrieves and parses a Xiaohongshu note page.
 func (a *XiaohongshuAdapter) Fetch(raw_url string) (any, error) {
@@ -77,17 +98,19 @@ func (a *XiaohongshuAdapter) Fetch(raw_url string) (any, error) {
 
 // FetchWithProgressContext retrieves a note with cancellation support.
 func (a *XiaohongshuAdapter) FetchWithProgressContext(fetch_context context.Context, raw_url string, _ adapter.FetchOptions) (any, error) {
-	source_url, err := xiaohongshu.ExtractURL(raw_url)
-	if err != nil {
-		return nil, fmt.Errorf("解析小红书 URL 失败: %w", err)
-	}
-	client := xiaohongshu.NewClient()
+	client := a.new_scraper_client()
 	defer client.Close()
-	html_text, err := client.FetchContext(fetch_context, source_url)
-	if err != nil {
-		return nil, err
-	}
-	return parse_fetch_result(source_url, html_text)
+	return client.FetchContext(fetch_context, raw_url)
+}
+
+func (a *XiaohongshuAdapter) new_scraper_client() *xiaohongshu.Client {
+	a.runtime_mu.RLock()
+	cookie_reader := a.cookie_reader
+	file_cache := a.file_cache
+	a.runtime_mu.RUnlock()
+	client := xiaohongshu.NewClientWithCookieReader(cookie_reader)
+	client.SetPersistentCache(file_cache)
+	return client
 }
 
 // ToContent converts a parsed Xiaohongshu note to shared content.

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 96" aria-hidden="true" focusable="false">
+  <defs>
+    <mask id="watermark-error-badge-cutout" maskUnits="userSpaceOnUse" x="0" y="0" width="120" height="96">
+      <rect width="120" height="96" fill="#fff"/>
+      <circle cx="91" cy="68" r="19" fill="#000"/>
+    </mask>
+  </defs>
+  <g fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round">
+    <g mask="url(#watermark-error-badge-cutout)" transform="translate(0 -3) scale(.92)">
+      <path d="M22 31v29M22 31h6c10 0 16 5 16 14.5S38 60 28 60h-6" stroke-width="8"/>
+      <path d="M53 60V37c0-5 2-8 6-8s6 4 7 13c.5 4 2.5 4 3 0 1-9 3-13 7-13s6 3 6 8v23" stroke-width="8"/>
+      <path d="M29 68q21 12 43 0" stroke-width="6"/>
+    </g>
+    <circle cx="91" cy="68" r="14" stroke-width="5"/>
+    <path d="m86.5 63.5 9 9m0-9-9 9" stroke-width="4"/>
+  </g>
+</svg>

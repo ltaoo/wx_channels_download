@@ -3,6 +3,12 @@ import { proxy_image_url } from "@/image-proxy.model.js";
 
 const active_job_storage_key = "scraper_active_job_id";
 const platform_status_popover_hide_delay = 240;
+const platform_status_order = new Map(
+  Object.keys(window.PLATFORM_NAMES || {}).map((platform_id, index) => [
+    platform_id,
+    index,
+  ]),
+);
 const ChannelCore = Timeless.kit.ChannelCore;
 const { socket_client$ } = window.__store;
 
@@ -73,6 +79,7 @@ function ScraperPageViewModel(props) {
   const download_preview_loading_ = ref(false);
   const download_preview_error_ = ref("");
   const selected_video_variant_ = ref(null);
+  const selected_text_track_keys_ = ref([]);
   const fetch_progress_ = ref(null);
   const fetch_notice_ = ref("");
   const interrupt_loading_ = ref(false);
@@ -209,6 +216,16 @@ function ScraperPageViewModel(props) {
     (Array.isArray(statuses) ? statuses : [])
       .slice()
       .sort((left, right) => {
+        const fallback_rank = platform_status_order.size;
+        const left_rank =
+          platform_status_order.get(String(left.platform || "")) ??
+          fallback_rank;
+        const right_rank =
+          platform_status_order.get(String(right.platform || "")) ??
+          fallback_rank;
+        if (left_rank !== right_rank) {
+          return left_rank - right_rank;
+        }
         const platform_compare = String(left.platform || "").localeCompare(
           String(right.platform || ""),
         );
@@ -221,13 +238,16 @@ function ScraperPageViewModel(props) {
       })
       .map((status) => {
         const status_key = String(status.key || status.platform || "").trim();
-        const reason =
-          !status.available && status.status !== "checking"
-            ? status.reason
-            : "";
+        const is_checking = status.status === "checking";
+        const is_unavailable = !status.available && !is_checking;
+        const reason = is_unavailable
+          ? String(status.reason || "").trim() || "不可用"
+          : "";
         return {
           key: status_key,
           render_key: `${status_key}:${status.status}:${reason || ""}`,
+          platform_favicon:
+            (window.PLATFORM_FAVICONS || {})[status.platform] || "",
           platform_name:
             String(status.name || "").trim() ||
             platform_name(status.platform),
@@ -235,12 +255,8 @@ function ScraperPageViewModel(props) {
           status: status.status,
           reason,
           has_reason: Boolean(reason),
-          status_text:
-            status.status === "checking"
-              ? "检测中"
-              : status.available
-                ? "可用"
-                : "不可用",
+          status_text: is_checking ? "检测中" : "",
+          has_status_text: is_checking,
           status_class:
             status.status === "checking"
               ? "home-platform-status-item is-checking"
@@ -287,53 +303,6 @@ function ScraperPageViewModel(props) {
       return "dm-button--status is-available";
     },
   );
-  const status_text_ = combine(
-    {
-      loading: loading_,
-      error: error_,
-      download_loading: download_loading_,
-      download_error: download_error_,
-      download_success: download_success_,
-      download_resource_success: download_resource_success_,
-      download_preview_loading: download_preview_loading_,
-      download_preview_error: download_preview_error_,
-      fetch_progress: fetch_progress_,
-      fetch_notice: fetch_notice_,
-      interrupt_loading: interrupt_loading_,
-      cache_loading: cache_loading_,
-      cache_error: cache_error_,
-    },
-    (state) => {
-      if (state.interrupt_loading) {
-        return "正在中断获取...";
-      }
-      if (state.loading) {
-        const progress = state.fetch_progress;
-        return progress && progress.message
-          ? progress.message
-          : "正在获取...";
-      }
-      if (state.download_loading) {
-        return "正在创建下载任务...";
-      }
-      if (state.download_preview_loading) {
-        return "正在更新下载任务预览...";
-      }
-      if (state.cache_loading) {
-        return "正在清理缓存...";
-      }
-      return (
-        state.error ||
-        state.download_error ||
-        state.download_preview_error ||
-        state.cache_error ||
-        state.fetch_notice ||
-        state.download_success ||
-        state.download_resource_success ||
-        ""
-      );
-    },
-  );
   const busy_ = combine(
     {
       loading: loading_,
@@ -346,21 +315,6 @@ function ScraperPageViewModel(props) {
       state.download_loading ||
       state.download_preview_loading ||
       state.cache_loading,
-  );
-  const has_error_ = combine(
-    {
-      error: error_,
-      download_error: download_error_,
-      download_preview_error: download_preview_error_,
-      cache_error: cache_error_,
-    },
-    (state) =>
-      Boolean(
-        state.error ||
-          state.download_error ||
-          state.download_preview_error ||
-          state.cache_error,
-      ),
   );
   const has_result_ = computed(result_, (data) => Boolean(data));
   const display_result_present_ = computed(result_, has_display_result);
@@ -877,6 +831,9 @@ function ScraperPageViewModel(props) {
       onChange(value) {
         set_url(value);
       },
+      onEnter() {
+        return submit();
+      },
     }),
     btn_interrupt_fetch$: new Timeless.vm.ButtonCore({
       disabled: interrupt_disabled_.value,
@@ -987,10 +944,7 @@ function ScraperPageViewModel(props) {
       variant: "ghost",
       size: "sm",
     }),
-    platform_status_popover$: new Timeless.vm.PopoverCore({
-      offsetY: 8,
-      destroyOnClose: false,
-    }),
+    platform_status_popover$: new Timeless.vm.PopoverCore(),
     cache_content_dialog$: new Timeless.vm.DialogCore({
       closeable: true,
       footer: false,
@@ -1691,6 +1645,7 @@ function ScraperPageViewModel(props) {
     download_preview_loading_.as(false);
     download_preview_error_.as("");
     selected_video_variant_.as(null);
+    selected_text_track_keys_.as([]);
     chapter_display_limit_.as(100);
     json_expanded_.as(false);
     download_error_.as("");
@@ -2014,21 +1969,93 @@ function ScraperPageViewModel(props) {
   function selected_video_variant_config(platform) {
     const config = { platform };
     const selected = selected_video_variant_.value;
-    if (!selected || typeof selected !== "object") {
-      return config;
+    if (selected && typeof selected === "object") {
+      const variant_key = String(selected.variant_key || "").trim();
+      const spec = String(selected.spec || "").trim();
+      if (variant_key) {
+        config.video_variant_key = variant_key;
+      }
+      if (spec) {
+        config.video_variant_spec = spec;
+        // Keep the established adapter option while all adapters migrate to the
+        // shared ContentVideoVariant keys.
+        config.spec = spec;
+      }
     }
-    const variant_key = String(selected.variant_key || "").trim();
-    const spec = String(selected.spec || "").trim();
-    if (variant_key) {
-      config.video_variant_key = variant_key;
-    }
-    if (spec) {
-      config.video_variant_spec = spec;
-      // Keep the established adapter option while all adapters migrate to the
-      // shared ContentVideoVariant keys.
-      config.spec = spec;
+    const text_track_keys = selected_text_track_keys_.value
+      .map((track_key) => String(track_key || "").trim())
+      .filter(Boolean);
+    if (text_track_keys.length > 0) {
+      config.text_track_keys = text_track_keys;
     }
     return config;
+  }
+
+  async function refresh_download_preview(fetch_result, platform, content) {
+    download_preview_loading_.as(true);
+    download_preview_error_.as("");
+    download_error_.as("");
+    download_success_.as("");
+    download_resource_success_.as("");
+    const sequence = ++download_preview_request_sequence;
+    if (!downloader || typeof downloader.prepare !== "function") {
+      download_preview_loading_.as(false);
+      download_preview_error_.as("下载服务尚未初始化");
+      return null;
+    }
+    let download_info;
+    try {
+      download_info = await downloader.prepare({
+        platform,
+        content,
+        build_from_fetch: true,
+        config: selected_video_variant_config(platform),
+      });
+    } catch (error) {
+      if (sequence !== download_preview_request_sequence) return null;
+      download_preview_loading_.as(false);
+      download_preview_error_.as(error.message || String(error));
+      return null;
+    }
+    if (sequence !== download_preview_request_sequence) return download_info;
+    download_preview_loading_.as(false);
+    if (!download_info || typeof download_info !== "object") {
+      download_preview_error_.as("预览响应缺少 download_info");
+      return null;
+    }
+
+    result_.as({ ...fetch_result, download_info });
+    return download_info;
+  }
+
+  async function select_text_track(track_key_value, checked) {
+    if (video_variant_selection_disabled_.value) {
+      return null;
+    }
+    const track_key = String(track_key_value || "").trim();
+    if (!track_key) {
+      download_preview_error_.as("该字幕缺少 track_key");
+      return null;
+    }
+
+    const fetch_result = result_.value;
+    const platform = String(
+      (fetch_result && fetch_result.platform) || "",
+    ).trim();
+    const content = fetch_result && fetch_result.result;
+    if (!platform || content === undefined || content === null) {
+      download_preview_error_.as("解析结果缺少 platform 或 result");
+      return null;
+    }
+
+    const selected_keys = new Set(selected_text_track_keys_.value);
+    if (checked) {
+      selected_keys.add(track_key);
+    } else {
+      selected_keys.delete(track_key);
+    }
+    selected_text_track_keys_.as([...selected_keys]);
+    return refresh_download_preview(fetch_result, platform, content);
   }
 
   async function select_video_variant(detail_key, variant_value) {
@@ -2061,42 +2088,7 @@ function ScraperPageViewModel(props) {
       spec: String(variant.spec || "").trim(),
     };
     selected_video_variant_.as(selected);
-    download_preview_loading_.as(true);
-    download_preview_error_.as("");
-    download_error_.as("");
-    download_success_.as("");
-    download_resource_success_.as("");
-    const sequence = ++download_preview_request_sequence;
-    if (!downloader || typeof downloader.prepare !== "function") {
-      download_preview_loading_.as(false);
-      download_preview_error_.as("下载服务尚未初始化");
-      return null;
-    }
-    let download_info;
-    try {
-      download_info = await downloader.prepare({
-        platform,
-        content,
-        build_from_fetch: true,
-        config: selected_video_variant_config(platform),
-      });
-    } catch (error) {
-      if (sequence !== download_preview_request_sequence) return null;
-      download_preview_loading_.as(false);
-      download_preview_error_.as(
-        error.message || String(error),
-      );
-      return null;
-    }
-    if (sequence !== download_preview_request_sequence) return download_info;
-    download_preview_loading_.as(false);
-    if (!download_info || typeof download_info !== "object") {
-      download_preview_error_.as("预览响应缺少 download_info");
-      return null;
-    }
-
-    result_.as({ ...fetch_result, download_info });
-    return download_info;
+    return refresh_download_preview(fetch_result, platform, content);
   }
 
   function open_external_url(value) {
@@ -2134,6 +2126,7 @@ function ScraperPageViewModel(props) {
     setTaskOverwriteAction: set_task_overwrite_action,
     confirmTaskOverwrite: confirm_task_overwrite,
     selectVideoVariant: select_video_variant,
+    selectTextTrack: select_text_track,
     toggleJSON() {
       json_expanded_.as(!json_expanded_.value);
     },
@@ -2189,7 +2182,9 @@ function ScraperPageViewModel(props) {
     download_preview_loading: download_preview_loading_,
     download_preview_error: download_preview_error_,
     selected_video_variant: selected_video_variant_,
+    selected_text_track_keys: selected_text_track_keys_,
     video_variant_selection_disabled: video_variant_selection_disabled_,
+    text_track_selection_disabled: video_variant_selection_disabled_,
     fetch_progress: fetch_progress_,
     fetch_notice: fetch_notice_,
     interrupt_loading: interrupt_loading_,
@@ -2211,9 +2206,7 @@ function ScraperPageViewModel(props) {
     interrupt_disabled: interrupt_disabled_,
     interrupt_visible: interrupt_visible_,
     submit_disabled: submit_disabled_,
-    status_text: status_text_,
     busy: busy_,
-    has_error: has_error_,
     has_result: has_result_,
     result_visible: result_visible_,
     build_download_task_result_visible: build_download_task_result_visible_,

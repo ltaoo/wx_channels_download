@@ -25,10 +25,11 @@ func NewAccountService(db *gorm.DB) *AccountService {
 }
 
 type AccountListInput struct {
-	Page      int
-	PageSize  int
-	Keyword   string
-	AccountID string
+	Page       int
+	PageSize   int
+	Keyword    string
+	AccountID  string
+	PlatformID string
 }
 
 type AccountListItem struct {
@@ -65,6 +66,10 @@ func (s *AccountService) ListAccounts(ctx context.Context, input AccountListInpu
 	account_id := strings.TrimSpace(input.AccountID)
 	if account_id != "" {
 		account_query = account_query.Where("id = ?", account_id)
+	}
+	platform_id := strings.TrimSpace(input.PlatformID)
+	if platform_id != "" {
+		account_query = account_query.Where("platform_id = ?", platform_id)
 	}
 	keyword := strings.TrimSpace(input.Keyword)
 	if keyword != "" {

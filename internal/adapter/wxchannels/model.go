@@ -372,6 +372,170 @@ func ToContent(obj *wxchannels.ChannelsObject) (*model.Content, any, error) {
 	return c, ext, nil
 }
 
+// BuildHomeContents fetches the first page of an account's Channels feed and
+// converts every supported object into a scoped account-home result.
+func (a *ChannelsAdapter) HomeContentTabs(_ *model.Account) []adapter.HomeContentTab {
+	return []adapter.HomeContentTab{{
+		Scope: "posts", Name: "作品", ContentTypes: []string{model.ContentTypeVideo},
+	}}
+}
+
+func (a *ChannelsAdapter) BuildHomeContents(account *model.Account, scope string) (*adapter.HomeContents, error) {
+	if account == nil {
+		return nil, errors.New("视频号账号不能为空")
+	}
+	if strings.TrimSpace(scope) != "posts" {
+		return nil, fmt.Errorf("视频号不支持主页 scope: %s", scope)
+	}
+	username := strings.TrimSpace(account.ExternalId)
+	if username == "" {
+		return nil, errors.New("视频号账号 external_id 不能为空")
+	}
+
+	client, err := a.wxchannels_client()
+	if err != nil {
+		return nil, err
+	}
+	response_json, err := client.FetchChannelsFeedListOfContact(username, "")
+	if err != nil {
+		return nil, err
+	}
+	contents, err := wxchannels_home_contents_from_response(response_json, account)
+	if err != nil {
+		return nil, err
+	}
+	return &adapter.HomeContents{Scope: "posts", Contents: contents}, nil
+}
+
+func wxchannels_home_contents_from_response(response_json json.RawMessage, account *model.Account) ([]model.Content, error) {
+	var response wxchannels.ChannelsFeedListOfAccountResp
+	if err := json.Unmarshal(response_json, &response); err != nil {
+		return nil, fmt.Errorf("解析视频号主页内容失败: %w", err)
+	}
+	if response.ErrCode != 0 {
+		message := strings.TrimSpace(response.ErrMsg)
+		if message == "" {
+			message = fmt.Sprintf("视频号返回错误码 %d", response.ErrCode)
+		}
+		return nil, errors.New(message)
+	}
+	if response.Data.BaseResponse.Ret != 0 {
+		message := strings.TrimSpace(response.Data.BaseResponse.ErrMsg.String)
+		if message == "" {
+			message = fmt.Sprintf("视频号返回错误码 %d", response.Data.BaseResponse.Ret)
+		}
+		return nil, errors.New(message)
+	}
+
+	contact := response.Data.Contact
+	if account != nil {
+		if strings.TrimSpace(contact.Username) == "" {
+			contact.Username = strings.TrimSpace(account.ExternalId)
+		}
+		if strings.TrimSpace(contact.Nickname) == "" {
+			contact.Nickname = strings.TrimSpace(account.Nickname)
+		}
+		if strings.TrimSpace(contact.HeadUrl) == "" {
+			contact.HeadUrl = strings.TrimSpace(account.AvatarURL)
+		}
+	}
+
+	contents := make([]model.Content, 0, len(response.Data.Object))
+	seen := make(map[string]struct{}, len(response.Data.Object))
+	var first_conversion_error error
+	for index := range response.Data.Object {
+		object := &response.Data.Object[index]
+		if strings.TrimSpace(object.Contact.Username) == "" {
+			object.Contact.Username = contact.Username
+		}
+		if strings.TrimSpace(object.Contact.Nickname) == "" {
+			object.Contact.Nickname = contact.Nickname
+		}
+		if strings.TrimSpace(object.Contact.HeadUrl) == "" {
+			object.Contact.HeadUrl = contact.HeadUrl
+		}
+		if strings.TrimSpace(object.SourceURL) == "" {
+			object.SourceURL = BuildJumpURLFromParts(
+				object.ID,
+				object.ObjectNonceId,
+				"",
+				object.Contact.Username,
+			)
+		}
+		content, _, err := ToContent(object)
+		if err != nil {
+			if first_conversion_error == nil {
+				first_conversion_error = fmt.Errorf("转换视频号主页第 %d 条内容失败: %w", index+1, err)
+			}
+			continue
+		}
+		if _, exists := seen[content.Id]; exists {
+			continue
+		}
+		seen[content.Id] = struct{}{}
+		contents = append(contents, *content)
+	}
+	if len(contents) == 0 && first_conversion_error != nil {
+		return nil, first_conversion_error
+	}
+	return contents, nil
+}
+
+// FetchHomeDetails fetches one page of raw feed objects for a Channels
+// account. page is the opaque lastBuffer returned by the preceding request.
+func (a *ChannelsAdapter) FetchHomeDetails(account *model.Account, scope string, page string) (*adapter.HomeDetails, error) {
+	if account == nil {
+		return nil, errors.New("视频号账号不能为空")
+	}
+	if strings.TrimSpace(scope) != "feed" {
+		return nil, fmt.Errorf("视频号不支持主页 scope: %s", scope)
+	}
+	username := strings.TrimSpace(account.ExternalId)
+	if username == "" {
+		return nil, errors.New("视频号账号 external_id 不能为空")
+	}
+
+	client, err := a.wxchannels_client()
+	if err != nil {
+		return nil, err
+	}
+	response_json, err := client.FetchChannelsFeedListOfContact(username, page)
+	if err != nil {
+		return nil, err
+	}
+	return wxchannels_home_details_from_response(response_json)
+}
+
+func wxchannels_home_details_from_response(response_json json.RawMessage) (*adapter.HomeDetails, error) {
+	var response wxchannels.ChannelsFeedListOfAccountResp
+	if err := json.Unmarshal(response_json, &response); err != nil {
+		return nil, fmt.Errorf("解析视频号主页内容失败: %w", err)
+	}
+	if response.ErrCode != 0 {
+		message := strings.TrimSpace(response.ErrMsg)
+		if message == "" {
+			message = fmt.Sprintf("视频号返回错误码 %d", response.ErrCode)
+		}
+		return nil, errors.New(message)
+	}
+	if response.Data.BaseResponse.Ret != 0 {
+		message := strings.TrimSpace(response.Data.BaseResponse.ErrMsg.String)
+		if message == "" {
+			message = fmt.Sprintf("视频号返回错误码 %d", response.Data.BaseResponse.Ret)
+		}
+		return nil, errors.New(message)
+	}
+
+	contents := response.Data.Object
+	if contents == nil {
+		contents = make([]wxchannels.ChannelsObject, 0)
+	}
+	return &adapter.HomeDetails{
+		Scopes: []adapter.HomeDetailsScope{{Label: "feed", Value: "feed"}},
+		Scope:  "feed", Contents: contents, NextMarker: response.Data.LastBuffer,
+	}, nil
+}
+
 // BuildBrowseHistory converts an intercepted ChannelsObject into the standard
 // browse history result.
 func (a *ChannelsAdapter) BuildBrowseHistory(content_json json.RawMessage) (*adapter.BrowseHistoryResult, error) {

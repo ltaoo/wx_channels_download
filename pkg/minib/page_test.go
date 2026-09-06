@@ -951,6 +951,38 @@ document.body.setAttribute('data-css-disabled', [
 	}
 }
 
+func TestNavigateFollowsLocationReloadWithChallengeCookie(t *testing.T) {
+	request_count := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		request_count++
+		if cookie, err := request.Cookie("challenge"); err == nil && cookie.Value == "ready" {
+			_, _ = fmt.Fprint(response_writer, `<div id="complete">ready</div>`)
+			return
+		}
+		_, _ = fmt.Fprint(response_writer, `<script>document.cookie = 'challenge=ready; path=/'; window.location.reload();</script>`)
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil, NavigateOptions{WaitForSelector: "#complete"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request_count != 2 {
+		t.Fatalf("request_count=%d, want 2", request_count)
+	}
+	if len(page.NavigationRequests) != 1 || page.NavigationRequests[0] != server.URL {
+		t.Fatalf("navigation requests=%v", page.NavigationRequests)
+	}
+	if !strings.Contains(page.RenderedHTML, `id="complete"`) {
+		t.Fatalf("rendered HTML=%s", page.RenderedHTML)
+	}
+}
+
 func TestNavigateBuildsDOMDownloadsResourcesAndRunsScripts(t *testing.T) {
 	requested := make(map[string]int)
 	received_cookies := make(map[string]string)
@@ -1010,7 +1042,7 @@ var detached = document.implementation.createHTMLDocument('detached');
 var treeRoot = document.createElement('div'); treeRoot.appendChild(document.createTextNode('skip')); var treeChild = document.createElement('span'); treeRoot.appendChild(treeChild);
 var treeWalker = document.createTreeWalker(treeRoot, NodeFilter.SHOW_ELEMENT, null); var customEvent = document.createEvent('CustomEvent'); customEvent.initCustomEvent('ready', true, false, 'detail');
 document.body.setAttribute('data-event-prototype', Object.getOwnPropertyDescriptor(Event.prototype, 'type').get.call(customEvent));
-var nativeEvent = Event; var nativeCustomEvent = CustomEvent; function wrapEvent(constructor) { function WrappedEvent(type, init) { var event = new constructor(type, init); event.__composed = !!(init && init.composed); return event; } WrappedEvent.prototype = constructor.prototype; return WrappedEvent; } Event = wrapEvent(Event); CustomEvent = wrapEvent(CustomEvent); document.body.setAttribute('data-wrapped-event', new CustomEvent('wrapped', { composed: true }).type); Event = nativeEvent; CustomEvent = nativeCustomEvent;
+var nativeEvent = Event; var nativeCustomEvent = CustomEvent; function wrapEvent(constructor) { function WrappedEvent(type, init) { var event = new constructor(type, init); event.__composed = !!(init && init.composed); return event; } WrappedEvent.prototype = constructor.prototype; return WrappedEvent; } Event = wrapEvent(Event); CustomEvent = wrapEvent(CustomEvent); document.body.setAttribute('data-wrapped-event', new CustomEvent('wrapped', { composed: true }).type); Event = nativeEvent; CustomEvent = nativeCustomEvent; var errorEvent = new ErrorEvent('error', { message: 'boom', filename: 'app.js', lineno: 4, colno: 8, error: new Error('boom') }); document.body.setAttribute('data-error-event', [errorEvent instanceof Event, errorEvent.type, errorEvent.message, errorEvent.filename, errorEvent.lineno, errorEvent.colno, errorEvent.error.message].join(':'));
 try { document.body.dispatchEvent({}); } catch (error) { document.body.setAttribute('data-invalid-event', error instanceof TypeError); }
 var eventParent = document.createElement('div'); eventParent.setAttribute('data-n', 'event-parent'); var eventChild = document.createElement('button'); eventChild.setAttribute('data-n', 'event-child'); eventParent.appendChild(eventChild); document.body.appendChild(eventParent); eventParent.addEventListener('minib-event', function(event) { var path = event.composedPath(); document.body.setAttribute('data-event-dispatch', [event.detail.value, event.target === eventChild, event.currentTarget === eventParent, path[0] === eventChild, path[1] === eventParent].join(':')); event.preventDefault(); }); document.body.setAttribute('data-event-result', eventChild.dispatchEvent(new CustomEvent('minib-event', { detail: { value: 'ready' }, bubbles: true, cancelable: true })));
 var svgNode = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svgNode.setAttributeNS(null, 'viewBox', '0 0 1 1');
@@ -1187,6 +1219,9 @@ fetch('/fetch-api?source=fetch', { method: 'POST', headers: { 'Content-Type': 'a
 	}
 	if len(page.ScriptFailures) != 0 {
 		t.Fatalf("unexpected script failures: %+v", page.ScriptFailures)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-error-event="true:error:boom:app.js:4:8:boom"`) {
+		t.Fatalf("ErrorEvent API missing from rendered HTML: %s", page.RenderedHTML)
 	}
 	if page.ExecutedScripts != 7 {
 		t.Fatalf("executed %d scripts, want 7; failures=%+v", page.ExecutedScripts, page.ScriptFailures)

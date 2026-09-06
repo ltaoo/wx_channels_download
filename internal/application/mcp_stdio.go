@@ -18,6 +18,7 @@ import (
 	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/hermes"
 	"wx_channel/pkg/hermes/protocol"
+	"wx_channel/pkg/scraper/zhihu"
 )
 
 // MCPStdioConfig configures a process-local MCP server that does not start the
@@ -167,6 +168,8 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 		DownloadTaskCreator: new_mcp_download_task_creator(download_task_service),
 		DownloadTaskDeleter: new_mcp_download_task_deleter(download_task_service),
 		SphDeployer:         NewMCPSphDeployer(cfg),
+		ZhihuCollections:    zhihu.NewClient(cookie_reader, logger),
+		ZhihuCredentials:    cookie_reader,
 	})
 	if err != nil {
 		stop_adapter_handles(adapter_handles)

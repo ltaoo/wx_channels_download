@@ -14,6 +14,9 @@ import (
 	"time"
 
 	"golang.org/x/net/html/charset"
+
+	"wx_channel/pkg/cache"
+	"wx_channel/pkg/cookies"
 )
 
 const (
@@ -39,11 +42,13 @@ func ExtractURL(content string) (string, error) {
 	return "", errors.New("xiaohongshu URL not found")
 }
 
-// Client fetches the server-rendered HTML of Xiaohongshu note pages. It accepts
+// Client fetches structured Xiaohongshu notes and profile contents. It accepts
 // both xhslink.cn share links and direct xiaohongshu.com links.
 type Client struct {
 	http_client    *http.Client
 	response_limit int64
+	cookie_reader  *cookies.Reader
+	file_cache     *cache.CacheProvider
 }
 
 // NewClient creates a Xiaohongshu client with a 30-second request timeout.
@@ -55,6 +60,14 @@ func NewClient() *Client {
 		},
 		response_limit: default_response_limit,
 	}
+}
+
+// NewClientWithCookieReader creates a Xiaohongshu client backed by persistent
+// browser cookies.
+func NewClientWithCookieReader(cookie_reader *cookies.Reader) *Client {
+	client := NewClient()
+	client.cookie_reader = cookie_reader
+	return client
 }
 
 // NewClientWithHTTPClient creates a Xiaohongshu client using http_client.
@@ -77,6 +90,14 @@ func NewClientWithHTTPClient(http_client *http.Client) *Client {
 	}
 }
 
+// SetPersistentCache configures the namespace-scoped cache used by profile
+// page scraping.
+func (c *Client) SetPersistentCache(file_cache *cache.CacheProvider) {
+	if c != nil {
+		c.file_cache = file_cache
+	}
+}
+
 // Close releases idle HTTP connections held by the client.
 func (c *Client) Close() {
 	if c == nil || c.http_client == nil {
@@ -85,33 +106,37 @@ func (c *Client) Close() {
 	c.http_client.CloseIdleConnections()
 }
 
-// Fetch retrieves the HTML for a Xiaohongshu share or note URL.
-func (c *Client) Fetch(raw_url string) (string, error) {
+// Fetch retrieves and parses a Xiaohongshu share or note URL.
+func (c *Client) Fetch(raw_url string) (*FetchResult, error) {
 	return c.FetchContext(context.Background(), raw_url)
 }
 
-// FetchContext retrieves the HTML for a Xiaohongshu share or note URL with
+// FetchContext retrieves and parses a Xiaohongshu share or note URL with
 // cancellation support.
-func (c *Client) FetchContext(fetch_context context.Context, raw_url string) (string, error) {
+func (c *Client) FetchContext(fetch_context context.Context, raw_url string) (*FetchResult, error) {
 	if c == nil || c.http_client == nil {
-		return "", errors.New("xiaohongshu client is not initialized")
+		return nil, errors.New("xiaohongshu client is not initialized")
 	}
-	request_url, err := parse_request_url(raw_url)
+	source_url, err := ExtractURL(raw_url)
 	if err != nil {
-		return "", err
+		return nil, err
+	}
+	request_url, err := parse_request_url(source_url)
+	if err != nil {
+		return nil, err
 	}
 	if fetch_context == nil {
 		fetch_context = context.Background()
 	}
 	select {
 	case <-fetch_context.Done():
-		return "", fmt.Errorf("xiaohongshu: fetch canceled: %w", fetch_context.Err())
+		return nil, fmt.Errorf("xiaohongshu: fetch canceled: %w", fetch_context.Err())
 	default:
 	}
 
 	response, final_url, err := c.follow_redirect_chain(fetch_context, request_url)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer response.Body.Close()
 
@@ -121,24 +146,24 @@ func (c *Client) FetchContext(fetch_context context.Context, raw_url string) (st
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, response_limit+1))
 	if err != nil {
-		return "", fmt.Errorf("xiaohongshu: read response body: %w", err)
+		return nil, fmt.Errorf("xiaohongshu: read response body: %w", err)
 	}
 	if int64(len(body)) > response_limit {
-		return "", fmt.Errorf("xiaohongshu: response body exceeds %d bytes", response_limit)
+		return nil, fmt.Errorf("xiaohongshu: response body exceeds %d bytes", response_limit)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return "", fmt.Errorf("xiaohongshu: HTTP %d for %q: %s", response.StatusCode, final_url.String(), response_preview(body))
+		return nil, fmt.Errorf("xiaohongshu: HTTP %d for %q: %s", response.StatusCode, final_url.String(), response_preview(body))
 	}
 
 	decoded_reader, err := charset.NewReader(bytes.NewReader(body), response.Header.Get("Content-Type"))
 	if err != nil {
-		return "", fmt.Errorf("xiaohongshu: determine response encoding: %w", err)
+		return nil, fmt.Errorf("xiaohongshu: determine response encoding: %w", err)
 	}
 	decoded_body, err := io.ReadAll(decoded_reader)
 	if err != nil {
-		return "", fmt.Errorf("xiaohongshu: decode response body: %w", err)
+		return nil, fmt.Errorf("xiaohongshu: decode response body: %w", err)
 	}
-	return string(decoded_body), nil
+	return ParseFetchResult(source_url, final_url.String(), string(decoded_body))
 }
 
 func (c *Client) follow_redirect_chain(fetch_context context.Context, request_url *url.URL) (*http.Response, *url.URL, error) {
@@ -149,6 +174,7 @@ func (c *Client) follow_redirect_chain(fetch_context context.Context, request_ur
 			return nil, nil, fmt.Errorf("xiaohongshu: create request: %w", err)
 		}
 		set_navigation_headers(request.Header)
+		c.set_request_cookie(request)
 
 		response, err := c.http_client.Do(request)
 		if err != nil {
@@ -175,6 +201,16 @@ func (c *Client) follow_redirect_chain(fetch_context context.Context, request_ur
 			return nil, nil, fmt.Errorf("xiaohongshu: invalid redirect URL: %w", err)
 		}
 		current_url = next_url
+	}
+}
+
+func (c *Client) set_request_cookie(request *http.Request) {
+	if c == nil || c.cookie_reader == nil || request == nil || request.URL == nil {
+		return
+	}
+	cookie_header, err := c.cookie_reader.HeaderForURL(request.URL.String())
+	if err == nil && strings.TrimSpace(cookie_header) != "" {
+		request.Header.Set("Cookie", cookie_header)
 	}
 }
 

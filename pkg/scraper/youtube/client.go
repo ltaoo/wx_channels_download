@@ -285,6 +285,10 @@ type VideoFormat struct {
 	AudioSampleRate  int    `json:"audio_sample_rate,omitempty"`
 	AudioChannels    int    `json:"audio_channels,omitempty"`
 	AudioCodec       string `json:"audio_codec,omitempty"`
+	AudioTrackID     string `json:"audio_track_id,omitempty"`
+	AudioTrackName   string `json:"audio_track_name,omitempty"`
+	AudioIsDefault   bool   `json:"audio_is_default,omitempty"`
+	AudioIsOriginal  bool   `json:"audio_is_original,omitempty"`
 	VideoCodec       string `json:"video_codec,omitempty"`
 	HasAudio         bool   `json:"has_audio,omitempty"`
 	HasVideo         bool   `json:"has_video,omitempty"`
@@ -1181,21 +1185,26 @@ type raw_streaming_data struct {
 }
 
 type raw_format struct {
-	Itag              int      `json:"itag"`
-	URL               string   `json:"url"`
-	SignatureCipher   string   `json:"signatureCipher"`
-	Cipher            string   `json:"cipher"`
-	MimeType          string   `json:"mimeType"`
-	Bitrate           int      `json:"bitrate"`
-	AverageBitrate    int      `json:"averageBitrate"`
-	Width             int      `json:"width"`
-	Height            int      `json:"height"`
-	FPS               int      `json:"fps"`
-	Quality           string   `json:"quality"`
-	QualityLabel      string   `json:"qualityLabel"`
-	AudioQuality      string   `json:"audioQuality"`
-	AudioSampleRate   string   `json:"audioSampleRate"`
-	AudioChannels     int      `json:"audioChannels"`
+	Itag            int    `json:"itag"`
+	URL             string `json:"url"`
+	SignatureCipher string `json:"signatureCipher"`
+	Cipher          string `json:"cipher"`
+	MimeType        string `json:"mimeType"`
+	Bitrate         int    `json:"bitrate"`
+	AverageBitrate  int    `json:"averageBitrate"`
+	Width           int    `json:"width"`
+	Height          int    `json:"height"`
+	FPS             int    `json:"fps"`
+	Quality         string `json:"quality"`
+	QualityLabel    string `json:"qualityLabel"`
+	AudioQuality    string `json:"audioQuality"`
+	AudioSampleRate string `json:"audioSampleRate"`
+	AudioChannels   int    `json:"audioChannels"`
+	AudioTrack      struct {
+		DisplayName    string `json:"displayName"`
+		ID             string `json:"id"`
+		AudioIsDefault bool   `json:"audioIsDefault"`
+	} `json:"audioTrack"`
 	ContentLength     string   `json:"contentLength"`
 	ApproxDurationMS  string   `json:"approxDurationMs"`
 	DRMFamilies       []string `json:"drmFamilies"`
@@ -1358,6 +1367,7 @@ func raw_format_key(format raw_format) string {
 		format.MimeType,
 		first_non_empty(format.URL, format.SignatureCipher, format.Cipher),
 		format.AudioQuality,
+		format.AudioTrack.ID,
 	}, "\x00")
 }
 
@@ -1623,6 +1633,10 @@ func format_from_raw(raw raw_format, adaptive bool) VideoFormat {
 		AudioSampleRate: int(parse_int64(raw.AudioSampleRate)),
 		AudioChannels:   raw.AudioChannels,
 		AudioCodec:      audio_codec,
+		AudioTrackID:    raw.AudioTrack.ID,
+		AudioTrackName:  raw.AudioTrack.DisplayName,
+		AudioIsDefault:  raw.AudioTrack.AudioIsDefault,
+		AudioIsOriginal: strings.Contains(strings.ToLower(raw.AudioTrack.DisplayName), "original"),
 		VideoCodec:      video_codec,
 		HasAudio:        has_audio,
 		HasVideo:        has_video,
@@ -2235,21 +2249,25 @@ func clone_string_map(values map[string]string) map[string]string {
 
 func format_metadata(format VideoFormat) map[string]any {
 	return map[string]any{
-		"format_id":       format.ID,
-		"itag":            format.Itag,
-		"ext":             format.Ext,
-		"mime_type":       format.MimeType,
-		"quality":         format.Quality,
-		"quality_label":   format.QualityLabel,
-		"audio_quality":   format.AudioQuality,
-		"audio_codec":     format.AudioCodec,
-		"video_codec":     format.VideoCodec,
-		"has_audio":       format.HasAudio,
-		"has_video":       format.HasVideo,
-		"adaptive":        format.Adaptive,
-		"protocol":        format.Protocol,
-		"average_bitrate": format.AverageBitrate,
-		"content_length":  format.ContentLength,
+		"format_id":         format.ID,
+		"itag":              format.Itag,
+		"ext":               format.Ext,
+		"mime_type":         format.MimeType,
+		"quality":           format.Quality,
+		"quality_label":     format.QualityLabel,
+		"audio_quality":     format.AudioQuality,
+		"audio_codec":       format.AudioCodec,
+		"audio_track_id":    format.AudioTrackID,
+		"audio_track_name":  format.AudioTrackName,
+		"audio_is_default":  format.AudioIsDefault,
+		"audio_is_original": format.AudioIsOriginal,
+		"video_codec":       format.VideoCodec,
+		"has_audio":         format.HasAudio,
+		"has_video":         format.HasVideo,
+		"adaptive":          format.Adaptive,
+		"protocol":          format.Protocol,
+		"average_bitrate":   format.AverageBitrate,
+		"content_length":    format.ContentLength,
 	}
 }
 

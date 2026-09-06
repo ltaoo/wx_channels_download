@@ -7,6 +7,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"wx_channel/pkg/cache"
 	"wx_channel/pkg/cookies"
 )
 
@@ -19,6 +20,16 @@ type Client struct {
 	web           *DouyinWebClient
 	cookie_reader *cookies.Reader
 	logger        zerolog.Logger
+	file_cache    *cache.CacheProvider
+}
+
+// SetPersistentCache configures the namespace-scoped cache used by rendered
+// Douyin user pages.
+func (c *Client) SetPersistentCache(file_cache *cache.CacheProvider) {
+	if c == nil {
+		return
+	}
+	c.file_cache = file_cache
 }
 
 // NewClient creates a new Douyin client.

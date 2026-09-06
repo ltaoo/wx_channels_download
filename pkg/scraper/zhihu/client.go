@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,7 @@ import (
 
 	"wx_channel/pkg/cache"
 	"wx_channel/pkg/cookies"
+	"wx_channel/pkg/minib"
 )
 
 const (
@@ -31,19 +33,29 @@ const (
 	SourceURL = "https://www.zhihu.com/"
 )
 
+const current_user_api_url = "https://www.zhihu.com/api/v4/me"
+
 var answer_url_re = regexp.MustCompile(`^/question/([0-9]+|undefined)/answer/([0-9]+)$`)
 var question_url_re = regexp.MustCompile(`^/question/([0-9]+)$`)
 var article_url_re = regexp.MustCompile(`^/p/([0-9]+)$`)
 var article_appview_url_re = regexp.MustCompile(`^/appview/p/([0-9]+)$`)
+var collection_id_re = regexp.MustCompile(`^[0-9]+$`)
+var collection_url_re = regexp.MustCompile(`^/collection/([0-9]+)$`)
+var collection_list_url_re = regexp.MustCompile(`^/people/([^/]+)/collections/?$`)
+var collection_total_count_re = regexp.MustCompile(`([0-9][0-9,.]*\s*[万亿]?)\s*条内容`)
+var collection_metadata_re = regexp.MustCompile(`([0-9]{4}-[0-9]{2}-[0-9]{2})\s*更新\s*·\s*([0-9][0-9,.]*\s*[万亿]?)\s*条内容\s*·\s*([0-9][0-9,.]*\s*[万亿]?)\s*人关注`)
+
+const collection_page_size = 20
 
 type Client struct {
-	http_client      *http.Client
-	cookie_reader    *cookies.Reader
-	logger           *zerolog.Logger
-	file_cache       *cache.CacheProvider
-	pcweb_zse_mutex  sync.RWMutex
-	pcweb_zse_cookie string
-	OnProgress       func(downloaded int64)
+	http_client         *http.Client
+	cookie_reader       *cookies.Reader
+	logger              *zerolog.Logger
+	file_cache          *cache.CacheProvider
+	profile_api_fetcher func(endpoint string, referer string) ([]byte, error)
+	pcweb_zse_mutex     sync.RWMutex
+	pcweb_zse_cookie    string
+	OnProgress          func(downloaded int64)
 }
 
 func (c *Client) Fetch(raw_url string) (any, error) {
@@ -61,6 +73,13 @@ func (c *Client) Fetch(raw_url string) (any, error) {
 	}
 	if answer_url, ok := ParseAnswerURL(resolved_url); ok {
 		return c.FetchAnswerPage(answer_url.Canonical)
+	}
+	user_content_url, matched, err := parse_user_content_list_url(resolved_url)
+	if matched {
+		if err != nil {
+			return nil, err
+		}
+		return c.fetch_user_content_list(user_content_url)
 	}
 	return nil, fmt.Errorf("不支持的知乎URL: %s", raw_url)
 }
@@ -238,6 +257,419 @@ func (c *Client) FetchArticlePage(raw_url string) (*ArticlePage, error) {
 	}
 	page.Source = article_url.Canonical
 	return page, nil
+}
+
+// FetchContentListOfCollection renders one collection page with authenticated
+// cookies and returns only the saved answer/article/question title links.
+func (c *Client) FetchContentListOfCollection(collection_id string, page int) (*CollectionContentList, error) {
+	collection_id = strings.TrimSpace(collection_id)
+	if !collection_id_re.MatchString(collection_id) {
+		return nil, fmt.Errorf("invalid zhihu collection id %q", collection_id)
+	}
+	if page < 1 {
+		return nil, fmt.Errorf("zhihu collection page must be greater than zero")
+	}
+	page_url := "https://www.zhihu.com/collection/" + collection_id
+	if page > 1 {
+		page_url += "?page=" + strconv.Itoa(page)
+	}
+	rendered_html, final_url, err := c.fetch_rendered_collection_page(page_url)
+	if err != nil {
+		return nil, fmt.Errorf("fetch zhihu collection %s page %d: %w", collection_id, page, err)
+	}
+	result, err := parse_collection_content_list(rendered_html, final_url, collection_id, page)
+	if err != nil {
+		return nil, fmt.Errorf("parse zhihu collection %s page %d: %w", collection_id, page, err)
+	}
+	return result, nil
+}
+
+// FetchCollectionList renders a user's collection page. Authenticated cookies
+// allow the owner's private collections to be returned alongside public ones.
+func (c *Client) FetchCollectionList(raw_url string) (*CollectionList, error) {
+	page_url, owner_url_token, err := normalize_collection_list_url(raw_url)
+	if err != nil {
+		return nil, err
+	}
+	rendered_html, final_url, err := c.fetch_rendered_collection_page(page_url)
+	if err != nil {
+		return nil, fmt.Errorf("fetch zhihu collection list for %s: %w", owner_url_token, err)
+	}
+	result, err := parse_collection_list(rendered_html, final_url, owner_url_token)
+	if err != nil {
+		return nil, fmt.Errorf("parse zhihu collection list for %s: %w", owner_url_token, err)
+	}
+	return result, nil
+}
+
+// FetchCurrentUser returns the Zhihu account represented by the current
+// persistent login cookies.
+func (c *Client) FetchCurrentUser() (*User, error) {
+	if c == nil {
+		return nil, fmt.Errorf("zhihu client is nil")
+	}
+	body, err := c.do_bytes(http.MethodGet, current_user_api_url, SourceURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetch current zhihu user: %w", err)
+	}
+	var user User
+	if err := json.Unmarshal(body, &user); err != nil {
+		return nil, fmt.Errorf("parse current zhihu user: %w", err)
+	}
+	url_token := strings.TrimSpace(user.URLTokenSnake)
+	if url_token == "" {
+		url_token = strings.TrimSpace(user.URLToken)
+	}
+	if url_token == "" {
+		return nil, fmt.Errorf("current zhihu user response has no url_token")
+	}
+	user.URLToken = url_token
+	user.URLTokenSnake = url_token
+	return &user, nil
+}
+
+// FetchContentListOfUser fetches one page from a user's answers, posts,
+// zvideos, or columns profile tab. The tab is selected from raw_url.
+func (c *Client) FetchContentListOfUser(raw_url string, page int) (*UserContentList, error) {
+	user_content_url, matched, err := parse_user_content_list_url(raw_url)
+	if !matched {
+		return nil, fmt.Errorf("unsupported zhihu user content list URL")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if page < 1 || page > max_user_content_page {
+		return nil, fmt.Errorf("zhihu user content page must be between 1 and %d", max_user_content_page)
+	}
+	user_content_url.Page = page
+	user_content_url.Canonical = canonical_user_content_list_url(
+		user_content_url.OwnerURLToken,
+		user_content_url.Kind,
+		page,
+	)
+	return c.fetch_user_content_list(user_content_url)
+}
+
+// FetchAnswerListOfUser fetches one page from a user's answers tab.
+func (c *Client) FetchAnswerListOfUser(raw_url string, page int) (*UserContentList, error) {
+	return c.fetch_user_content_list_of_kind(raw_url, UserContentKindAnswers, page)
+}
+
+// FetchPostListOfUser fetches one page from a user's posts tab.
+func (c *Client) FetchPostListOfUser(raw_url string, page int) (*UserContentList, error) {
+	return c.fetch_user_content_list_of_kind(raw_url, UserContentKindPosts, page)
+}
+
+// FetchZvideoListOfUser fetches one page from a user's video tab.
+func (c *Client) FetchZvideoListOfUser(raw_url string, page int) (*UserContentList, error) {
+	return c.fetch_user_content_list_of_kind(raw_url, UserContentKindZvideos, page)
+}
+
+// FetchColumnListOfUser fetches one page from a user's columns tab.
+func (c *Client) FetchColumnListOfUser(raw_url string, page int) (*UserContentList, error) {
+	return c.fetch_user_content_list_of_kind(raw_url, UserContentKindColumns, page)
+}
+
+func (c *Client) fetch_rendered_collection_page(raw_url string) (string, string, error) {
+	if c == nil {
+		return "", "", fmt.Errorf("zhihu client is nil")
+	}
+	timeout := 2 * time.Minute
+	if c.http_client != nil && c.http_client.Timeout > 0 {
+		timeout = c.http_client.Timeout
+	}
+	browser, err := minib.NewMiniBrowser(timeout, c.cookie_reader)
+	if err != nil {
+		return "", "", fmt.Errorf("create minib browser: %w", err)
+	}
+	defer browser.Close()
+
+	navigation_request, err := http.NewRequest(http.MethodGet, raw_url, nil)
+	if err != nil {
+		return "", "", err
+	}
+	set_zhihu_document_headers(navigation_request, SourceURL)
+	navigation_context, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	page, err := browser.Navigate(navigation_context, raw_url, navigation_request.Header, minib.NavigateOptions{
+		DisableCache:      true,
+		DisableCSS:        true,
+		DisableImages:     true,
+		DisableMedia:      true,
+		JavaScriptTimeout: 20 * time.Second,
+		ResourceTimeout:   20 * time.Second,
+		WaitUntil:         minib.WaitUntilLoad,
+	})
+	if err != nil {
+		return "", "", err
+	}
+	if page.StatusCode < http.StatusOK || page.StatusCode >= http.StatusMultipleChoices {
+		return "", page.URL, fmt.Errorf("upstream returned HTTP %d", page.StatusCode)
+	}
+	if strings.Contains(page.URL, "/signin") {
+		return "", page.URL, fmt.Errorf("authentication redirected to sign-in")
+	}
+	rendered_html := strings.TrimSpace(page.RenderedHTML)
+	if rendered_html == "" {
+		return "", page.URL, fmt.Errorf("rendered page is empty")
+	}
+	document, parse_err := goquery.NewDocumentFromReader(strings.NewReader(rendered_html))
+	if parse_err != nil {
+		return "", page.URL, parse_err
+	}
+	body_text := strings.Join(strings.Fields(document.Find("body").Text()), " ")
+	if strings.Contains(body_text, "请登录后查看") {
+		return "", page.URL, fmt.Errorf("authenticated cookies are required")
+	}
+	if strings.Contains(body_text, "安全验证") {
+		return "", page.URL, fmt.Errorf("zhihu returned a verification page")
+	}
+	return rendered_html, page.URL, nil
+}
+
+func normalize_collection_list_url(raw_url string) (string, string, error) {
+	parsed_url, err := url.Parse(strings.TrimSpace(raw_url))
+	if err != nil || parsed_url.Hostname() == "" {
+		return "", "", fmt.Errorf("invalid zhihu collection list URL")
+	}
+	if parsed_url.Scheme != "https" && parsed_url.Scheme != "http" {
+		return "", "", fmt.Errorf("unsupported zhihu collection list URL scheme")
+	}
+	if !strings.EqualFold(parsed_url.Hostname(), "www.zhihu.com") {
+		return "", "", fmt.Errorf("unsupported zhihu collection list host %q", parsed_url.Hostname())
+	}
+	matches := collection_list_url_re.FindStringSubmatch(parsed_url.EscapedPath())
+	if len(matches) != 2 {
+		return "", "", fmt.Errorf("unsupported zhihu collection list URL")
+	}
+	owner_url_token, err := url.PathUnescape(matches[1])
+	if err != nil || strings.TrimSpace(owner_url_token) == "" {
+		return "", "", fmt.Errorf("invalid zhihu collection owner token")
+	}
+	page_url := "https://www.zhihu.com/people/" + url.PathEscape(owner_url_token) + "/collections"
+	return page_url, owner_url_token, nil
+}
+
+func parse_collection_content_list(rendered_html string, page_url string, collection_id string, page int) (*CollectionContentList, error) {
+	document, err := goquery.NewDocumentFromReader(strings.NewReader(rendered_html))
+	if err != nil {
+		return nil, err
+	}
+	base_url, err := url.Parse(page_url)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]CollectionContentItem, 0)
+	seen_urls := make(map[string]bool)
+	document.Find(".CollectionDetailPageItem .ContentItem-title a[href]").Each(func(_ int, selection *goquery.Selection) {
+		item, ok := collection_content_item_from_link(base_url, selection.AttrOr("href", ""), selection.Text())
+		if !ok || seen_urls[item.URL] {
+			return
+		}
+		seen_urls[item.URL] = true
+		items = append(items, item)
+	})
+
+	total_count := collection_total_count(document, base_url, collection_id)
+	has_next := total_count > page*collection_page_size
+	if total_count == 0 && len(items) >= collection_page_size {
+		has_next = true
+	}
+	result := &CollectionContentList{
+		CollectionID: collection_id,
+		Page:         page,
+		Source:       page_url,
+		Title:        collection_page_title(document),
+		TotalCount:   total_count,
+		Items:        items,
+		HasNext:      has_next,
+	}
+	if has_next {
+		result.NextPage = page + 1
+	}
+	return result, nil
+}
+
+func collection_content_item_from_link(base_url *url.URL, raw_url string, raw_title string) (CollectionContentItem, bool) {
+	parsed_url, err := url.Parse(strings.TrimSpace(raw_url))
+	if err != nil || base_url == nil {
+		return CollectionContentItem{}, false
+	}
+	parsed_url = base_url.ResolveReference(parsed_url)
+	parsed_url.Fragment = ""
+	resolved_url := parsed_url.String()
+	title := strings.TrimSpace(strings.ReplaceAll(raw_title, "\u200b", ""))
+	if answer_url, ok := ParseAnswerURL(resolved_url); ok {
+		return CollectionContentItem{
+			ID:         answer_url.AnswerID,
+			Type:       "answer",
+			Title:      title,
+			URL:        answer_url.Canonical,
+			QuestionID: answer_url.QuestionID,
+			AnswerID:   answer_url.AnswerID,
+		}, true
+	}
+	if article_url, ok := ParseArticleURL(resolved_url); ok {
+		return CollectionContentItem{
+			ID:        article_url.ArticleID,
+			Type:      "article",
+			Title:     title,
+			URL:       article_url.Canonical,
+			ArticleID: article_url.ArticleID,
+		}, true
+	}
+	if question_url, ok := ParseQuestionURL(resolved_url); ok {
+		return CollectionContentItem{
+			ID:         question_url.QuestionID,
+			Type:       "question",
+			Title:      title,
+			URL:        question_url.Canonical,
+			QuestionID: question_url.QuestionID,
+		}, true
+	}
+	return CollectionContentItem{}, false
+}
+
+func parse_collection_list(rendered_html string, page_url string, owner_url_token string) (*CollectionList, error) {
+	document, err := goquery.NewDocumentFromReader(strings.NewReader(rendered_html))
+	if err != nil {
+		return nil, err
+	}
+	base_url, err := url.Parse(page_url)
+	if err != nil {
+		return nil, err
+	}
+	collections := make([]Collection, 0)
+	seen_ids := make(map[string]bool)
+	document.Find(".SelfCollectionItem").Each(func(_ int, card *goquery.Selection) {
+		var item Collection
+		card.Find(`a[href*="/collection/"]`).EachWithBreak(func(_ int, selection *goquery.Selection) bool {
+			collection_id, collection_url, ok := collection_link(base_url, selection.AttrOr("href", ""))
+			if !ok {
+				return true
+			}
+			item.ID = collection_id
+			item.URL = collection_url
+			item.Title = strings.TrimSpace(strings.ReplaceAll(selection.Text(), "\u200b", ""))
+			return false
+		})
+		if item.ID == "" || seen_ids[item.ID] {
+			return
+		}
+		seen_ids[item.ID] = true
+		item.IsPrivate = card.Find("svg.Zi--Lock, .Zi--Lock").Length() > 0
+		item.Visibility = CollectionVisibilityPublic
+		if item.IsPrivate {
+			item.Visibility = CollectionVisibilityPrivate
+		}
+		metadata_matches := collection_metadata_re.FindStringSubmatch(strings.Join(strings.Fields(card.Text()), " "))
+		if len(metadata_matches) == 4 {
+			item.UpdatedAt = metadata_matches[1]
+			item.ContentCount = parse_zhihu_display_count(metadata_matches[2])
+			item.FollowerCount = parse_zhihu_display_count(metadata_matches[3])
+		}
+		collections = append(collections, item)
+	})
+	return &CollectionList{
+		Source:        page_url,
+		OwnerURLToken: owner_url_token,
+		Collections:   collections,
+	}, nil
+}
+
+func collection_link(base_url *url.URL, raw_url string) (string, string, bool) {
+	parsed_url, err := url.Parse(strings.TrimSpace(raw_url))
+	if err != nil || base_url == nil {
+		return "", "", false
+	}
+	parsed_url = base_url.ResolveReference(parsed_url)
+	if !strings.EqualFold(parsed_url.Hostname(), "www.zhihu.com") {
+		return "", "", false
+	}
+	matches := collection_url_re.FindStringSubmatch(parsed_url.EscapedPath())
+	if len(matches) != 2 {
+		return "", "", false
+	}
+	collection_id := matches[1]
+	return collection_id, "https://www.zhihu.com/collection/" + collection_id, true
+}
+
+func collection_total_count(document *goquery.Document, base_url *url.URL, collection_id string) int {
+	if document == nil {
+		return 0
+	}
+	header_count := 0
+	document.Find(".CollectionDetailPageHeader").EachWithBreak(func(_ int, selection *goquery.Selection) bool {
+		header_count = first_collection_total_count(selection.Text())
+		return header_count == 0
+	})
+	if header_count > 0 {
+		return header_count
+	}
+
+	sidebar_count := 0
+	document.Find(".SideBarCollectionItem").EachWithBreak(func(_ int, card *goquery.Selection) bool {
+		matches_collection := false
+		card.Find(`a[href*="/collection/"]`).EachWithBreak(func(_ int, selection *goquery.Selection) bool {
+			linked_id, _, ok := collection_link(base_url, selection.AttrOr("href", ""))
+			matches_collection = ok && linked_id == collection_id
+			return !matches_collection
+		})
+		if !matches_collection {
+			return true
+		}
+		sidebar_count = first_collection_total_count(card.Text())
+		return false
+	})
+	return sidebar_count
+}
+
+func first_collection_total_count(text string) int {
+	matches := collection_total_count_re.FindStringSubmatch(text)
+	if len(matches) != 2 {
+		return 0
+	}
+	return parse_zhihu_display_count(matches[1])
+}
+
+func parse_zhihu_display_count(raw_count string) int {
+	raw_count = strings.ReplaceAll(strings.Join(strings.Fields(raw_count), ""), ",", "")
+	if raw_count == "" {
+		return 0
+	}
+	multiplier := float64(1)
+	switch {
+	case strings.HasSuffix(raw_count, "万"):
+		multiplier = 10000
+		raw_count = strings.TrimSuffix(raw_count, "万")
+	case strings.HasSuffix(raw_count, "亿"):
+		multiplier = 100000000
+		raw_count = strings.TrimSuffix(raw_count, "亿")
+	}
+	count, err := strconv.ParseFloat(raw_count, 64)
+	if err != nil || count < 0 {
+		return 0
+	}
+	return int(count * multiplier)
+}
+
+func collection_page_title(document *goquery.Document) string {
+	if document == nil {
+		return ""
+	}
+	if title := strings.TrimSpace(strings.ReplaceAll(document.Find(".CollectionDetailPageHeader-title").First().Text(), "\u200b", "")); title != "" {
+		return title
+	}
+	title := strings.TrimSpace(document.Find("title").First().Text())
+	if suffix_index := strings.Index(title, " - 收藏夹 - 知乎"); suffix_index >= 0 {
+		title = title[:suffix_index]
+	}
+	if strings.HasPrefix(title, "(") {
+		if prefix_end := strings.Index(title, ") "); prefix_end >= 0 {
+			title = title[prefix_end+2:]
+		}
+	}
+	return strings.TrimSpace(title)
 }
 
 func (c *Client) do_bytes(method, raw_url, referer string) ([]byte, error) {

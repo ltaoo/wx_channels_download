@@ -38,8 +38,11 @@ var (
 	_ adapter.ProgressFetchAdapter     = (*handler)(nil)
 	_ adapter.FetchCacheAdapter        = (*handler)(nil)
 	_ adapter.FetchDownloadTaskBuilder = (*handler)(nil)
+	_ adapter.Postprocessor            = (*handler)(nil)
 	_ adapter.RuntimeAdapter           = (*handler)(nil)
 	_ adapter.RuntimeHandle            = (*handler)(nil)
+	_ adapter.HomeContentsBuilder      = (*handler)(nil)
+	_ adapter.HomeDetailsFetcher       = (*handler)(nil)
 )
 
 func (h *handler) PlatformID() string { return PlatformID }
@@ -61,6 +64,7 @@ func (h *handler) RegisterRuntime(adapter_options *adapter.AdapterOptions) (adap
 	if adapter_options.Logger != nil {
 		adapter_options.Logger.Info().
 			Str("component", "bilibili_adapter").
+			Bool("cookie_provider_available", adapter_options.Cookies != nil).
 			Msg("bilibili adapter runtime registered")
 	}
 	if adapter_options.Bus != nil {

@@ -1,21 +1,30 @@
 import { PreviewViewModel } from "./preview.model.js";
+import { BrandEmpty, BrandError, BrandLoading } from "../dmui.js";
 import { PlatformIcon } from "../components.js";
 
 function PreviewStateView(props) {
   return View(
     {
-      class: "preview-state dm-empty-state",
+      class: [
+        "preview-state dm-empty-state",
+        props.role === "alert" ? "is-error" : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
       role: props.role || "status",
     },
     [
-      props.loading ? View({ class: "preview-spinner" }) : null,
+      props.loading
+        ? BrandLoading({
+            size: 88,
+            name: "preview-loading-symbol",
+            decorative: true,
+          })
+        : null,
       !props.loading
-        ? View({ class: "preview-state-icon" }, [
-            Timeless.Icon({
-              name: props.role === "alert" ? "circle-alert" : "file-search",
-              size: 22,
-            }),
-          ])
+        ? props.role === "alert"
+          ? BrandError({ size: 124, name: "preview-error-symbol" })
+          : BrandEmpty({ size: 124, name: "preview-empty-symbol" })
         : null,
       props.title
         ? View({ as: "h3", class: "preview-state-title" }, [props.title])
@@ -86,6 +95,9 @@ function PreviewSingleFileView(props) {
   const vm$ = props.store;
   const file = props.file;
   const url = vm$.methods.fileURL(file);
+  if (vm$.methods.isHTMLFile(file)) {
+    return PreviewHTMLFileView({ store: vm$, file });
+  }
   if (vm$.methods.isTextFile(file)) {
     return PreviewTextFileView({ store: vm$, file });
   }
@@ -108,6 +120,66 @@ function PreviewSingleFileView(props) {
     }),
     View({ class: "preview-filename" }, [file.name]),
   ]);
+}
+
+function PreviewHTMLFileView(props) {
+  const vm$ = props.store;
+  const file = props.file;
+  return View(
+    {
+      class: ["preview-html-reader", props.class].filter(Boolean).join(" "),
+      attributes: {
+        n: props.nodeName || "preview-html-reader",
+        role: "region",
+        "aria-label": `HTML 预览：${file.name}`,
+      },
+      onMounted() {
+        vm$.methods.mountHTMLReader(file);
+      },
+      onUnmounted() {
+        vm$.methods.unmountHTMLReader();
+      },
+    },
+    [
+      Timeless.RichText({
+        class: "preview-html-content",
+        content: vm$.state.html_content,
+        attributes: {
+          n: "preview-html-content",
+          "data-content-format": "html",
+        },
+      }),
+      Show({
+        when: vm$.state.html_loading,
+        ok() {
+          return PreviewStateView({
+            loading: true,
+            message: "正在加载 HTML…",
+          });
+        },
+      }),
+      Show({
+        when: computed(vm$.state.html_error, (error) => Boolean(error)),
+        ok() {
+          return PreviewStateView({
+            role: "alert",
+            message: vm$.state.html_error,
+            action: View(
+              {
+                as: "button",
+                class: "preview-retry dm-button dm-button--primary dm-focus-ring",
+                attributes: { type: "button" },
+                onClick() {
+                  vm$.methods.retryHTML();
+                },
+              },
+              ["重试"],
+            ),
+          });
+        },
+      }),
+    ],
+  );
 }
 
 function PreviewTextFileView(props) {
@@ -481,6 +553,14 @@ function PreviewGalleryMediaView(props) {
   if (!vm$.methods.filePlayable(file)) {
     return PreviewGalleryPlaceholderView({ store: vm$, file });
   }
+  if (vm$.methods.isHTMLFile(file)) {
+    return PreviewHTMLFileView({
+      store: vm$,
+      file,
+      class: "preview-gallery-html-reader",
+      nodeName: "gallery-html-reader",
+    });
+  }
   if (vm$.methods.isTextFile(file)) {
     return PreviewTextFileView({
       store: vm$,
@@ -527,16 +607,13 @@ function PreviewGalleryMediaView(props) {
       }),
     ]);
   }
-  if (["html", "pdf"].includes(file.file_type)) {
+  if (file.file_type === "pdf") {
     return Timeless.Webview({
       class: "preview-gallery-document",
       href: url,
       attributes: {
         title: file.name,
         loading: "eager",
-        ...(file.file_type === "html"
-          ? { sandbox: "allow-same-origin" }
-          : {}),
       },
     });
   }
@@ -742,9 +819,10 @@ function PreviewTaskBodyView(props) {
   const single_file = existing_files.length === 1 ? existing_files[0] : null;
   return [
     PreviewHeaderView({ task }),
-    single_file && vm$.methods.isTextFile(single_file)
-      ? PreviewTextFileView({ store: vm$, file: single_file })
-      : single_file && ["video", "image"].includes(single_file.file_type)
+    single_file &&
+    (vm$.methods.isHTMLFile(single_file) ||
+      vm$.methods.isTextFile(single_file) ||
+      ["video", "image"].includes(single_file.file_type))
       ? PreviewSingleFileView({ store: vm$, file: single_file })
       : PreviewFileGridView({ store: vm$, files: task.files }),
   ];
@@ -844,6 +922,14 @@ function PreviewOverlayMediaView(props) {
   const vm$ = props.store;
   const file = props.file;
   const url = vm$.methods.fileURL(file);
+  if (vm$.methods.isHTMLFile(file)) {
+    return PreviewHTMLFileView({
+      store: vm$,
+      file,
+      class: "preview-overlay-html-reader",
+      nodeName: "overlay-html-reader",
+    });
+  }
   if (vm$.methods.isTextFile(file)) {
     return PreviewTextFileView({
       store: vm$,
@@ -875,15 +961,12 @@ function PreviewOverlayMediaView(props) {
       autoplay: true,
     });
   }
-  if (["html", "pdf"].includes(file.file_type)) {
+  if (file.file_type === "pdf") {
     return Timeless.Webview({
       class: "preview-overlay-frame",
       href: url,
       attributes: {
         title: file.name,
-        ...(file.file_type === "html"
-          ? { sandbox: "allow-same-origin" }
-          : {}),
       },
     });
   }

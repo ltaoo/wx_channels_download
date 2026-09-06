@@ -235,14 +235,15 @@
     }
 
     function getItemHeight(index) {
+      const measured = measuredHeights.get(getKeyAt(index));
+      if (Number.isFinite(measured) && measured > 0) {
+        return measured;
+      }
       const resolved = resolvedItemHeight(index);
       if (resolved > 0) {
         return resolved;
       }
-      const measured = measuredHeights.get(getKeyAt(index));
-      return Number.isFinite(measured) && measured > 0
-        ? measured
-        : estimatedItemHeight();
+      return estimatedItemHeight();
     }
 
     function markOffsetsDirty() {

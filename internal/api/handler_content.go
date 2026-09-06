@@ -26,6 +26,7 @@ func (c *APIClient) handle_content_list_with_type(ctx *gin.Context, force_conten
 	}
 	var body struct {
 		AccountId   *string `form:"account_id"`
+		PlatformId  *string `form:"platform_id"`
 		ContentType *string `form:"content_type"`
 		Scope       *string `form:"scope"`
 		Keyword     *string `form:"keyword"`
@@ -72,9 +73,12 @@ func (c *APIClient) handle_content_list_with_type(ctx *gin.Context, force_conten
 	if content_type == "" && body.ContentType != nil {
 		content_type = strings.TrimSpace(*body.ContentType)
 	}
-	var account_id, scope, keyword string
+	var account_id, platform_id, scope, keyword string
 	if body.AccountId != nil {
 		account_id = *body.AccountId
+	}
+	if body.PlatformId != nil {
+		platform_id = *body.PlatformId
 	}
 	if body.Scope != nil {
 		scope = strings.ToLower(strings.TrimSpace(*body.Scope))
@@ -88,15 +92,16 @@ func (c *APIClient) handle_content_list_with_type(ctx *gin.Context, force_conten
 	}
 
 	page_result, err := c.content_service.ListContents(services.ContentListOptions{
-		AccountID: account_id,
-		Type:      content_type,
-		Scope:     scope,
-		Keyword:   keyword,
-		StartAt:   body.StartAt,
-		EndAt:     body.EndAt,
-		Page:      page,
-		PageSize:  size,
-		Offset:    &offset,
+		AccountID:  account_id,
+		PlatformID: platform_id,
+		Type:       content_type,
+		Scope:      scope,
+		Keyword:    keyword,
+		StartAt:    body.StartAt,
+		EndAt:      body.EndAt,
+		Page:       page,
+		PageSize:   size,
+		Offset:     &offset,
 	})
 	if err != nil {
 		result.Err(ctx, 500, err.Error())

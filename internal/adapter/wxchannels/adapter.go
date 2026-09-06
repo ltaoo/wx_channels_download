@@ -33,6 +33,8 @@ var (
 	_ adapter.RuntimeAdapter           = (*ChannelsAdapter)(nil)
 	_ adapter.RuntimeHandle            = (*ChannelsAdapter)(nil)
 	_ adapter.FetchDownloadTaskBuilder = (*ChannelsAdapter)(nil)
+	_ adapter.HomeContentsBuilder      = (*ChannelsAdapter)(nil)
+	_ adapter.HomeDetailsFetcher       = (*ChannelsAdapter)(nil)
 	_ adapter.Postprocessor            = (*ChannelsAdapter)(nil)
 	_ adapter.PlatformStatusDescriber  = (*ChannelsAdapter)(nil)
 	_ adapter.PlatformStatusRefresher  = (*ChannelsAdapter)(nil)

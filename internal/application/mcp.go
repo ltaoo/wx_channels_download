@@ -7,6 +7,8 @@ import (
 	"wx_channel/internal/api"
 	"wx_channel/internal/config"
 	"wx_channel/internal/services"
+	"wx_channel/pkg/cookies"
+	"wx_channel/pkg/scraper/zhihu"
 )
 
 func new_mcp_service(
@@ -16,6 +18,7 @@ func new_mcp_service(
 	scraper_job_service *services.ScraperJobService,
 	enabled bool,
 ) (*services.MCPService, error) {
+	cookie_reader := cookies.NewPersistentReader(api_config.WorkDir)
 	service_config := services.MCPServiceConfig{
 		APIBaseURL:          mcp_api_base_url(api_config),
 		Version:             api_config.Version,
@@ -24,6 +27,8 @@ func new_mcp_service(
 		DownloadTaskCreator: new_mcp_download_task_creator(download_task_service),
 		DownloadTaskDeleter: new_mcp_download_task_deleter(download_task_service),
 		SphDeployer:         NewMCPSphDeployer(api_config.Original),
+		ZhihuCollections:    zhihu.NewClient(cookie_reader, api_config.Original.Logger()),
+		ZhihuCredentials:    cookie_reader,
 	}
 	if !enabled {
 		return services.NewLazyMCPService(service_config), nil

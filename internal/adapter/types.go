@@ -29,6 +29,38 @@ type BrowseHistoryResult struct {
 	Account       *model.Account
 }
 
+// HomeContents is the result of fetching exactly one platform-defined account
+// home tab. Callers select Scope from HomeContentTabs before fetching.
+type HomeContents struct {
+	Scope      string          `json:"scope"`
+	Contents   []model.Content `json:"contents"`
+	NextMarker string          `json:"next_marker,omitempty"`
+}
+
+// HomeContentTab describes one independently fetchable section on a platform
+// account page. ContentTypes documents the normalized content types that may
+// occur in the tab.
+type HomeContentTab struct {
+	Scope        string   `json:"scope"`
+	Name         string   `json:"name"`
+	ContentTypes []string `json:"content_types"`
+}
+
+// HomeDetails is one page of platform-native content from an account home.
+// Page cursors are opaque values and must be passed back unchanged.
+type HomeDetails struct {
+	Scopes     []HomeDetailsScope `json:"scopes"`
+	Scope      string             `json:"scope"`
+	Contents   any                `json:"contents"`
+	NextMarker string             `json:"next_marker"`
+}
+
+// HomeDetailsScope describes a scope accepted by HomeDetailsFetcher.
+type HomeDetailsScope struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
 // ResourceInfo describes a resource and its mirror endpoints. Adapter-generated
 // Resource.Name values are extensionless display names so Hermes can append the
 // extension derived from the final MIME Kind. Explicit filenameTemplate and

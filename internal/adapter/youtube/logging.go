@@ -39,6 +39,10 @@ func log_selected_download_format(logger *zerolog.Logger, video_id string, resou
 		Bool("adaptive", format.Adaptive).
 		Bool("has_video", format.HasVideo).
 		Bool("has_audio", format.HasAudio).
+		Str("audio_track_id", format.AudioTrackID).
+		Str("audio_track_name", format.AudioTrackName).
+		Bool("audio_is_default", format.AudioIsDefault).
+		Bool("audio_is_original", format.AudioIsOriginal).
 		Int64("content_length", format.ContentLength).
 		Bool("requires_pot", format.RequiresPOT).
 		Bool("pot_present", query.Get("pot") != "").

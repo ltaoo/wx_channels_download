@@ -1520,7 +1520,14 @@ func (c *APIClient) handle_pause_all_download_task(ctx *gin.Context) {
 	}
 	var paused int
 	var failures []gin.H
+	var total int
 	for _, task := range tasks {
+		// Live recordings cannot be paused and resumed like regular downloads.
+		// Leave them running when handling the batch "pause all" action.
+		if c.hasStreamResources(task.Id) {
+			continue
+		}
+		total++
 		if _, _, err := c.download_task_service.PauseTask(task.Id); err != nil {
 			failures = append(failures, gin.H{"task_id": task.Id, "error": err.Error()})
 			continue
@@ -1528,7 +1535,7 @@ func (c *APIClient) handle_pause_all_download_task(ctx *gin.Context) {
 		paused++
 	}
 
-	result.Ok(ctx, gin.H{"paused": paused, "total": len(tasks), "failures": failures})
+	result.Ok(ctx, gin.H{"paused": paused, "total": total, "failures": failures})
 }
 
 // handle_clear_download_task clears the requested download task records.

@@ -41,6 +41,8 @@ var (
 	_ adapter.PlatformAdapter          = (*handler)(nil)
 	_ adapter.FetchCacheAdapter        = (*handler)(nil)
 	_ adapter.FetchDownloadTaskBuilder = (*handler)(nil)
+	_ adapter.HomeContentsBuilder      = (*handler)(nil)
+	_ adapter.HomeDetailsFetcher       = (*handler)(nil)
 )
 
 func (h *handler) PlatformID() string { return PlatformID }

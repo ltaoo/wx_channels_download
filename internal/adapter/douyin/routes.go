@@ -7,7 +7,6 @@ import (
 
 	"wx_channel/internal/adapter"
 	result "wx_channel/internal/apiresult"
-	"wx_channel/pkg/scraper/douyin"
 )
 
 const douyin_home_path = "/api/douyin/contact/home"
@@ -33,11 +32,7 @@ func (r *routes) handle_fetch_home(ctx *gin.Context) {
 		result.Err(ctx, 400, "id parameter is required")
 		return
 	}
-	client := douyin.NewClientWithLoggerAndCookieReader(
-		r.handler.config_string("douyin.cookie"),
-		r.handler.cookie_reader(),
-		r.handler.get_logger(),
-	)
+	client := r.handler.douyin_home_client()
 	home, err := client.FetchHome(id)
 	if err != nil {
 		result.Err(ctx, 400, err.Error())

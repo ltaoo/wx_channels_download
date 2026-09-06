@@ -13,6 +13,8 @@ import (
 	"wx_channel/internal/application"
 	"wx_channel/internal/config"
 	"wx_channel/internal/mcpserver"
+	"wx_channel/pkg/cookies"
+	"wx_channel/pkg/scraper/zhihu"
 )
 
 var mcp_api_base_url string
@@ -37,13 +39,16 @@ var mcp_cmd = &cobra.Command{
 		if api_base_url == "" {
 			api_base_url = configured_api_base_url()
 		}
+		cookie_reader := cookies.NewPersistentReader(Cfg.WorkDir)
 		server, err := mcpserver.NewServer(mcpserver.Config{
-			APIBaseURL:  api_base_url,
-			Version:     Version,
-			Input:       cmd.InOrStdin(),
-			Output:      cmd.OutOrStdout(),
-			ErrorOutput: cmd.ErrOrStderr(),
-			SphDeployer: application.NewMCPSphDeployer(Cfg),
+			APIBaseURL:       api_base_url,
+			Version:          Version,
+			Input:            cmd.InOrStdin(),
+			Output:           cmd.OutOrStdout(),
+			ErrorOutput:      cmd.ErrOrStderr(),
+			SphDeployer:      application.NewMCPSphDeployer(Cfg),
+			ZhihuCollections: zhihu.NewClient(cookie_reader, Cfg.Logger()),
+			ZhihuCredentials: cookie_reader,
 		})
 		if err != nil {
 			return err

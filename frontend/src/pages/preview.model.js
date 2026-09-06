@@ -36,8 +36,62 @@ function normalized_content_type(value) {
     .toLowerCase();
 }
 
-function is_text_file(file) {
+function normalized_file_type(source) {
+  const file_type = normalized_content_type(
+    first_non_empty(source.file_type, source.fileType, source.FileType),
+  );
+  if (file_type && file_type !== "other") {
+    return file_type;
+  }
+  const content_type = normalized_content_type(
+    first_non_empty(
+      source.mime_type,
+      source.mimeType,
+      source.MIMEType,
+      source.kind,
+      source.Kind,
+      source.type,
+      source.Type,
+    ),
+  );
+  if (content_type.startsWith("audio/")) {
+    return "audio";
+  }
+  const is_m4a = [
+    source.name,
+    source.Name,
+    source.local_path,
+    source.localPath,
+    source.LocalPath,
+  ].some((value) => /\.m4a$/i.test(String(prop_value(value) || "").trim()));
+  return is_m4a ? "audio" : file_type || "other";
+}
+
+function is_html_file(file) {
   if (!file) {
+    return false;
+  }
+  const has_html_type = [
+    file.file_type,
+    file.kind,
+    file.type,
+    file.mime_type,
+    file.mimeType,
+  ].some((value) =>
+    ["html", "text/html", "application/xhtml+xml"].includes(
+      normalized_content_type(value),
+    ),
+  );
+  if (has_html_type) {
+    return true;
+  }
+  return [file.name, file.local_path, file.localPath].some((value) =>
+    /\.(?:html?|xhtml)$/i.test(String(prop_value(value) || "").trim()),
+  );
+}
+
+function is_text_file(file) {
+  if (!file || is_html_file(file)) {
     return false;
   }
   return [
@@ -204,12 +258,7 @@ function normalize_file(raw) {
         ? source.playback_available
         : source.playbackAvailable || source.PlaybackAvailable,
     ),
-    file_type: first_non_empty(
-      source.file_type,
-      source.fileType,
-      source.FileType,
-      "other",
-    ),
+    file_type: normalized_file_type(source),
     status: first_non_empty(source.status, source.Status),
     size: Math.max(0, number_or_default(source.size || source.Size, 0)),
     progress: Math.min(
@@ -287,6 +336,9 @@ function PreviewViewModel(props) {
   const zip_images_ = refarr([]);
   const zip_loading_ = ref(false);
   const zip_error_ = ref("");
+  const html_content_ = ref("");
+  const html_loading_ = ref(false);
+  const html_error_ = ref("");
   const text_lines_ = refarr([]);
   const text_loading_ = ref(false);
   const text_error_ = ref("");
@@ -299,6 +351,9 @@ function PreviewViewModel(props) {
   let zip_request_sequence = 0;
   let detail_task_id = "";
   let live_file = null;
+  let html_reader_file = null;
+  let html_reader_sequence = 0;
+  let html_reader_abort_controller = null;
   let text_reader_file = null;
   let text_reader_sequence = 0;
   let text_reader_offset = 0;
@@ -560,6 +615,66 @@ function PreviewViewModel(props) {
     load_text_more(file);
   }
 
+  function unmount_html_reader() {
+    html_reader_sequence += 1;
+    if (html_reader_abort_controller) {
+      html_reader_abort_controller.abort();
+      html_reader_abort_controller = null;
+    }
+    html_reader_file = null;
+    html_content_.as("");
+    html_loading_.as(false);
+    html_error_.as("");
+  }
+
+  async function load_html(file) {
+    if (!file || html_reader_file !== file || html_loading_.value) {
+      return null;
+    }
+    const sequence = ++html_reader_sequence;
+    const abort_controller = new AbortController();
+    html_reader_abort_controller = abort_controller;
+    html_loading_.as(true);
+    html_error_.as("");
+    try {
+      const response = await window.fetch(file_url(file), {
+        headers: {
+          Accept: "text/html, application/xhtml+xml;q=0.9, */*;q=0.1",
+        },
+        signal: abort_controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`读取 HTML 失败（HTTP ${response.status}）`);
+      }
+      const content = await response.text();
+      if (sequence !== html_reader_sequence || html_reader_file !== file) {
+        return null;
+      }
+      html_content_.as(content);
+      return content;
+    } catch (error) {
+      if (error && error.name === "AbortError") {
+        return null;
+      }
+      if (sequence === html_reader_sequence && html_reader_file === file) {
+        html_error_.as(error_message(error, "读取 HTML 失败"));
+      }
+      return null;
+    } finally {
+      if (sequence === html_reader_sequence) {
+        html_loading_.as(false);
+        html_reader_abort_controller = null;
+      }
+    }
+  }
+
+  function mount_html_reader(file) {
+    unmount_html_reader();
+    html_reader_file = file;
+    html_error_.as("");
+    return load_html(file);
+  }
+
   const detail_request = new Timeless.kit.RequestCore(
     (params) => window.request.get("/api/v1/download_task/detail", params),
     { client: props.client },
@@ -577,6 +692,7 @@ function PreviewViewModel(props) {
         "",
     ).trim();
     if (!task_id) {
+      unmount_html_reader();
       unmount_text_reader();
       loading_.as(false);
       error_.as("Missing task id");
@@ -590,6 +706,7 @@ function PreviewViewModel(props) {
     const task_changed = task_id !== detail_task_id;
     detail_task_id = task_id;
     if (task_changed) {
+      unmount_html_reader();
       unmount_text_reader();
       destroy_live_player();
       task_.as(null);
@@ -657,6 +774,7 @@ function PreviewViewModel(props) {
         return;
       }
       destroy_live_player();
+      unmount_html_reader();
       unmount_text_reader();
       gallery_file_.as(file);
     },
@@ -670,8 +788,9 @@ function PreviewViewModel(props) {
       if (!file_playable(file)) {
         return;
       }
-      active_file_.as(file);
+      unmount_html_reader();
       unmount_text_reader();
+      active_file_.as(file);
       zip_images_.as([], { reset: true });
       zip_error_.as("");
       platform.patchBodyStyle({ overflow: "hidden" });
@@ -680,6 +799,7 @@ function PreviewViewModel(props) {
       }
     },
     closePreview() {
+      unmount_html_reader();
       unmount_text_reader();
       zip_request_sequence += 1;
       active_file_.as(null);
@@ -714,7 +834,17 @@ function PreviewViewModel(props) {
     fileTypeIcon: file_type_icon,
     fileTypeLabel: file_type_label,
     formatBytes: format_bytes,
+    isHTMLFile: is_html_file,
     isTextFile: is_text_file,
+    mountHTMLReader: mount_html_reader,
+    unmountHTMLReader: unmount_html_reader,
+    retryHTML() {
+      if (!html_reader_file) {
+        return null;
+      }
+      html_error_.as("");
+      return load_html(html_reader_file);
+    },
     textScrollView() {
       return text_scroll_view$;
     },
@@ -740,6 +870,9 @@ function PreviewViewModel(props) {
     zip_images: zip_images_,
     zip_loading: zip_loading_,
     zip_error: zip_error_,
+    html_content: html_content_,
+    html_loading: html_loading_,
+    html_error: html_error_,
     text_lines: text_lines_,
     text_loading: text_loading_,
     text_error: text_error_,
@@ -757,6 +890,7 @@ function PreviewViewModel(props) {
 export {
   PreviewViewModel,
   normalize_file,
+  is_html_file,
   is_text_file,
   playback_url,
   should_use_stream_playback,

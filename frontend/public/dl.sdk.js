@@ -64,11 +64,30 @@
   }
 
   function prepare_download_task(params) {
+    // DownloaderModel.prepare passes the batch request body directly. Keep
+    // accepting the older { mode, body } descriptor as well because injected
+    // clients may still call the request core through `requests.download`.
+    const request_body =
+      params && params.body && typeof params.body === "object"
+        ? params.body
+        : params;
+    const objects =
+      request_body && Array.isArray(request_body.objects)
+        ? request_body.objects
+        : [];
+    const object = objects[0] || {};
+    const is_url_task =
+      params && params.mode
+        ? params.mode === "url"
+        : !!object.url &&
+          !object.platform &&
+          !object.content &&
+          !object.platform_id;
     const path =
-      params.mode === "url"
+      is_url_task
         ? "/api/v1/download_task/prepare_by_url"
         : "/api/v1/download_task/prepare";
-    return request.post(path, params.body);
+    return request.post(path, request_body);
   }
 
   function start_all_download_tasks(params) {

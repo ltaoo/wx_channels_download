@@ -53,11 +53,11 @@ func NewAPIConfig(c *config.Config) *APIConfig {
 	cloudflare_sph_cookie := c.GetString("cloudflare.sphCookie")
 	resource_concurrency := c.GetInt("download.resourceConcurrency")
 	if resource_concurrency <= 0 {
-		resource_concurrency = 5
+		resource_concurrency = 100
 	}
 	segment_concurrency := c.GetInt("download.segmentConcurrency")
 	if segment_concurrency <= 0 {
-		segment_concurrency = 5
+		segment_concurrency = 10
 	}
 	connection_concurrency := c.GetInt("download.connectionConcurrency")
 

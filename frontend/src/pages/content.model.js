@@ -15,6 +15,54 @@ function first_non_empty(...values) {
   return "";
 }
 
+function normalize_filter_account(raw) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const platform_id = first_non_empty(
+    source.platform_id,
+    source.platformId,
+    source.PlatformID,
+  );
+  return {
+    id: first_non_empty(source.id, source.ID),
+    platform_id,
+    external_id: first_non_empty(
+      source.external_id,
+      source.externalId,
+      source.ExternalID,
+    ),
+    nickname: first_non_empty(
+      source.nickname,
+      source.Nickname,
+      source.alias,
+      source.Alias,
+      source.external_id,
+      source.ExternalID,
+      source.id,
+      source.ID,
+      "未命名账号",
+    ),
+    avatar_url: proxy_image_url(
+      platform_id,
+      first_non_empty(source.avatar_url, source.avatarUrl, source.AvatarURL),
+    ),
+  };
+}
+
+function select_item(label, value, data = {}) {
+  const item = new Timeless.vm.SelectItemCore({ label, value });
+  Object.assign(item, data);
+  return item;
+}
+
+function select_search(placeholder) {
+  return new Timeless.vm.InputCore({
+    defaultValue: "",
+    placeholder,
+    allowClear: true,
+    autocomplete: false,
+  });
+}
+
 function content_detail_href(content) {
   const id = String(first_non_empty(content && content.id, content && content.ID)).trim();
   return id ? `/content/detail?id=${encodeURIComponent(id)}` : "";
@@ -197,13 +245,15 @@ function content_statistics(content) {
 }
 
 function ContentViewModel(props) {
-  const PAGE_SIZE_DEFAULT = 24;
+  const PAGE_SIZE_DEFAULT = 50;
   const contents_ = refarr([]);
   const total_ = ref(0);
   const page_ = ref(1);
   const page_size_ = ref(PAGE_SIZE_DEFAULT);
   const keyword_ = ref("");
   const content_type_ = ref("");
+  const platform_id_ = ref("");
+  const account_id_ = ref("");
   const scope_ = ref("task");
   const initial_ = ref(true);
   const loading_ = ref(false);
@@ -211,6 +261,7 @@ function ContentViewModel(props) {
   const detail_id_ = ref("");
   const copied_content_id_ = ref("");
   let request_sequence = 0;
+  let account_request_sequence = 0;
   let copy_feedback_timer = null;
 
   const ui = {
@@ -230,6 +281,34 @@ function ContentViewModel(props) {
       checked: scope_.value === "all",
       onChange(value) {
         set_all_scope(value);
+      },
+    }),
+    select_platform$: new Timeless.vm.SelectCore({
+      defaultValue: "",
+      placeholder: "全部平台",
+      search: select_search("搜索平台"),
+      position: "popper",
+      options: [
+        ["", "全部平台"],
+        ...Object.entries(window.PLATFORM_NAMES || {}),
+      ].map(([value, label]) => select_item(label, value)),
+      onChange(value) {
+        account_id_.as("");
+        ui.select_account$.setValue("", { silence: true });
+        platform_id_.as(String(value || ""));
+        void load_accounts();
+        return load(1);
+      },
+    }),
+    select_account$: new Timeless.vm.SelectCore({
+      defaultValue: "",
+      placeholder: "全部账号",
+      search: select_search("搜索账号"),
+      position: "popper",
+      options: [select_item("全部账号", "")],
+      onChange(value) {
+        account_id_.as(String(value || ""));
+        return load(1);
       },
     }),
     select_content_type$: new Timeless.vm.SelectCore({
@@ -262,7 +341,8 @@ function ContentViewModel(props) {
       disabled: loading_.value,
       variant: "outline",
       onClick() {
-        set_keyword("");
+        reset_filters();
+        void load_accounts();
         return load(1);
       },
     }),
@@ -325,6 +405,10 @@ function ContentViewModel(props) {
       },
     },
   );
+  const account_list_request = new Timeless.kit.RequestCore(
+    (params) => window.request.get("/api/account/list", params),
+    { client: props.client },
+  );
 
   const page_count_ = combine(
     { total: total_, pageSize: page_size_ },
@@ -371,11 +455,19 @@ function ContentViewModel(props) {
     };
     const keyword = String(keyword_.value || "").trim();
     const contentType = String(content_type_.value || "").trim();
+    const platform_id = String(platform_id_.value || "").trim();
+    const account_id = String(account_id_.value || "").trim();
     if (keyword) {
       params.keyword = keyword;
     }
     if (contentType) {
       params.content_type = contentType;
+    }
+    if (platform_id) {
+      params.platform_id = platform_id;
+    }
+    if (account_id) {
+      params.account_id = account_id;
     }
 
     const result = await list_request.run(params);
@@ -400,8 +492,66 @@ function ContentViewModel(props) {
     return result;
   }
 
+  async function load_accounts() {
+    const sequence = ++account_request_sequence;
+    const selected_account_id = String(account_id_.value || "");
+    const params = { page: 1, page_size: 200 };
+    const platform_id = String(platform_id_.value || "").trim();
+    if (platform_id) {
+      params.platform_id = platform_id;
+    }
+
+    ui.select_account$.setLoading(true);
+    const result = await account_list_request.run(params);
+    if (sequence !== account_request_sequence) return result;
+
+    const source = result.error ? {} : result.data || {};
+    const list = Array.isArray(source.list)
+      ? source.list
+      : Array.isArray(source.List)
+        ? source.List
+        : [];
+    const accounts = list.map(normalize_filter_account);
+    const options = [
+      select_item("全部账号", ""),
+      ...accounts
+        .filter((account) => account.id)
+        .map((account) =>
+          select_item(account.nickname, account.id, {
+            account,
+            search_text: [
+              account.nickname,
+              account.external_id,
+              account.id,
+            ].join(" "),
+          }),
+        ),
+    ];
+    const next_account_id = accounts.some(
+      (account) => account.id === selected_account_id,
+    )
+      ? selected_account_id
+      : "";
+    account_id_.as(next_account_id);
+    ui.select_account$.setOptions(options);
+    ui.select_account$.setValue(next_account_id, { silence: true });
+    ui.select_account$.setLoading(false);
+    return result;
+  }
+
   function set_keyword(value) {
     keyword_.as(String(value || ""));
+  }
+
+  function reset_filters() {
+    set_keyword("");
+    content_type_.as("");
+    platform_id_.as("");
+    account_id_.as("");
+    ui.input_keyword$.setValue("", { silence: true });
+    ui.select_content_type$.setValue("", { silence: true });
+    ui.select_platform$.setValue("", { silence: true });
+    ui.select_account$.setValue("", { silence: true });
   }
 
   function set_all_scope(value) {
@@ -420,7 +570,7 @@ function ContentViewModel(props) {
 
   const methods = {
     ready() {
-      return load(1);
+      return Promise.all([load_accounts(), load(1)]);
     },
     refresh() {
       return load(1);
@@ -472,6 +622,8 @@ function ContentViewModel(props) {
     page_count: page_count_,
     range_text: range_text_,
     scope: scope_,
+    platform_id: platform_id_,
+    account_id: account_id_,
     initial: initial_,
     status: list_status_,
     loading: loading_,

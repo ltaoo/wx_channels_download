@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/net/html"
 
+	"wx_channel/pkg/cache"
 	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/minib"
 )
@@ -65,7 +66,9 @@ type VideoVariant struct {
 
 // Client owns the minib session used for one or more X requests.
 type Client struct {
-	browser *minib.MiniBrowser
+	browser         *minib.MiniBrowser
+	cookie_provider *cookies.Reader
+	file_cache      *cache.CacheProvider
 }
 
 // NewClient creates an X client backed by a Chrome-fingerprint minib session.
@@ -74,7 +77,18 @@ func NewClient(cookie_providers ...*cookies.Reader) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("x: create minib browser: %w", err)
 	}
-	return &Client{browser: browser}, nil
+	var cookie_provider *cookies.Reader
+	if len(cookie_providers) > 0 {
+		cookie_provider = cookie_providers[0]
+	}
+	return &Client{browser: browser, cookie_provider: cookie_provider}, nil
+}
+
+// SetPersistentCache configures the cache used by account-home requests.
+func (c *Client) SetPersistentCache(file_cache *cache.CacheProvider) {
+	if c != nil {
+		c.file_cache = file_cache
+	}
 }
 
 // Close releases the client's minib session.

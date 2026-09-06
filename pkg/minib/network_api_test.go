@@ -3,6 +3,7 @@ package minib
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -247,6 +248,66 @@ func TestRequestHeaderModifierReceivesSessionCookies(t *testing.T) {
 	received := <-received_headers
 	if received.Get("Cookie") != "session=created" || received.Get("X-Session") != "created" {
 		t.Fatalf("modifier received incomplete headers: %v", received)
+	}
+}
+
+func TestExecuteJSWithRequestHeaderModifier(t *testing.T) {
+	request_count := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/data" {
+			request_count++
+		}
+		_, _ = response_writer.Write([]byte(`<html><body>ready</body></html>`))
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	if _, err := browser.Navigate(context.Background(), server.URL, nil); err != nil {
+		t.Fatal(err)
+	}
+	captured_err := errors.New("captured")
+	captured_url := ""
+	_, err = browser.ExecuteJSWithRequestHeaderModifier(context.Background(), `fetch('/data')`, func(request *http.Request) error {
+		captured_url = request.URL.String()
+		return captured_err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if captured_url != server.URL+"/data" {
+		t.Fatalf("captured URL = %q", captured_url)
+	}
+	if request_count != 0 {
+		t.Fatalf("intercepted request reached server %d times", request_count)
+	}
+}
+
+func TestExecuteJSImmediateDoesNotPumpTimers(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, _ *http.Request) {
+		_, _ = response_writer.Write([]byte(`<html><body>ready</body></html>`))
+	}))
+	defer server.Close()
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	if _, err := browser.Navigate(context.Background(), server.URL, nil); err != nil {
+		t.Fatal(err)
+	}
+	value, err := browser.ExecuteJSImmediate(context.Background(), `setTimeout(function(){document.body.setAttribute('data-pumped','yes')},0); 42`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value.ToInteger() != 42 {
+		t.Fatalf("value = %s, want 42", value.String())
+	}
+	if _, exists := find_attribute(find_element(browser.page_runtime.page.Document, "body"), "data-pumped"); exists {
+		t.Fatal("ExecuteJSImmediate pumped a pending timer")
 	}
 }
 

@@ -35,7 +35,7 @@ const (
 
 const (
 	default_segment_count = 32
-	minimum_segment_size  = int64(25 * 1024 * 1024)
+	minimum_segment_size  = int64(5 * 1024 * 1024)
 	partial_file_suffix   = ".part"
 	progress_interval     = 1 * time.Second
 	progress_log_interval = 3 * time.Second
@@ -312,12 +312,13 @@ type OutputNameStore interface {
 // filename finalization. Kind is the persisted MIME source of truth;
 // Extension is derived from it at runtime.
 type ResourceOutputUpdate struct {
-	TaskID       int // Optional task guard; zero supports standalone resources.
-	ResourceID   int
-	DownloadDir  string
-	ResourceName string
-	ResourceKind string
-	ResourceSize int64
+	TaskID             int // Optional task guard; zero supports standalone resources.
+	ResourceID         int
+	DownloadDir        string
+	ResourceName       string
+	ResourceKind       string
+	ResourceSize       int64
+	ResourceDownloaded int64
 }
 
 // ResourceOutputStore persists the final post-processed resource metadata.
@@ -330,7 +331,7 @@ type ResourceOutputStore interface {
 // connections and segments) that were removed by post-processing.
 // It is optional so non-persistent HermesEngine users remain supported.
 type ResourceCleanupStore interface {
-	DeleteStaleResources(task_id int, keep_resource_ids []int) error
+	DeleteStaleResources(task_id int, stale_resource_ids []int) error
 }
 
 // Postprocessor defines platform-specific post-download processing.
@@ -434,13 +435,13 @@ func (j *TaskJob) cancellation_reason() cancellation_reason {
 // HermesEngineConfig contains the download scheduler's runtime configuration.
 type HermesEngineConfig struct {
 	MaxConcurrent         int
-	ResourceConcurrency   int // Max concurrent resources across all tasks, <=0 uses default 5
+	ResourceConcurrency   int // Max concurrent resources across all tasks, <=0 uses default 100
 	ConnectionConcurrency int // Optional overall safety cap; <=0 derives ResourceConcurrency*SegmentConcurrency
 	FilenameTemplate      string
 	BasePath              string        // Absolute download root directory.
 	ProgressEmitInterval  time.Duration // Progress event emission interval, <=0 uses default 180ms
 	SpeedLimit            int64         // Per-segment download speed limit (bytes/sec), 0 means unlimited
-	SegmentConcurrency    int           // Max concurrent segments per resource, <=0 uses default 5
+	SegmentConcurrency    int           // Max concurrent segments per resource, <=0 uses default 10
 	ReadTimeout           time.Duration // Timeout for a single Read() call, <=0 uses default 10s
 }
 
@@ -449,13 +450,13 @@ func (cfg HermesEngineConfig) with_defaults() HermesEngineConfig {
 		cfg.MaxConcurrent = 3
 	}
 	if cfg.ResourceConcurrency <= 0 {
-		cfg.ResourceConcurrency = 5
+		cfg.ResourceConcurrency = 100
 	}
 	if cfg.ProgressEmitInterval <= 0 {
 		cfg.ProgressEmitInterval = 180 * time.Millisecond
 	}
 	if cfg.SegmentConcurrency <= 0 {
-		cfg.SegmentConcurrency = 5
+		cfg.SegmentConcurrency = 10
 	}
 	if cfg.ConnectionConcurrency <= 0 {
 		// Match aria2's concurrency layers: active items multiplied by the
