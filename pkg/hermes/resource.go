@@ -534,6 +534,7 @@ var content_type_ext_map = map[string]string{
 	"video/x-matroska": ".mkv",
 	"audio/mpeg":       ".mp3",
 	"audio/mp4":        ".m4a",
+	"audio/webm":       ".weba",
 	"audio/aac":        ".aac",
 	"audio/ogg":        ".ogg",
 	"audio/wav":        ".wav",
@@ -543,6 +544,7 @@ var content_type_ext_map = map[string]string{
 	"text/css":         ".css",
 	"text/csv":         ".csv",
 	"text/markdown":    ".md",
+	"text/vtt":         ".vtt",
 	"application/json": ".json",
 	"application/xml":  ".xml",
 	"application/pdf":  ".pdf",
@@ -552,6 +554,8 @@ var content_type_ext_map = map[string]string{
 	"image/tiff":       ".tiff",
 	"video/mp2t":       ".ts",
 	"video/x-flv":      ".flv",
+
+	"application/ttml+xml": ".ttml",
 }
 
 // detectContentTypeFromBytes detects file type via magic bytes.

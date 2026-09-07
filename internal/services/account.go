@@ -95,14 +95,15 @@ func (s *AccountService) ListAccounts(ctx context.Context, input AccountListInpu
 		page = page_count
 	}
 
+	content_count_query := exclude_embedded_contents(db.Table("content_account").
+		Joins("JOIN content ON content.id = content_account.content_id").
+		Where("content_account.account_id = account.id AND content.deleted_at IS NULL")).Select("COUNT(*)")
 	var items []AccountListItem
 	if err := account_query.
 		Select(`account.id, account.platform_id, account.external_id, account.alias,
 			account.nickname, account.signature, account.avatar_url, account.profile_url,
 			account.follower_count, account.created_at, account.updated_at,
-			(SELECT COUNT(*) FROM content_account
-				JOIN content ON content.id = content_account.content_id
-				WHERE content_account.account_id = account.id AND content.deleted_at IS NULL) AS content_count`).
+			(?) AS content_count`, content_count_query).
 		Order("created_at DESC, id DESC").
 		Limit(page_size).
 		Offset((page - 1) * page_size).

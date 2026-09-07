@@ -1,5 +1,6 @@
 import { ThirdPartyDownloaderModel } from "@/third-party-downloader.model.js";
 import { proxy_image_url } from "@/image-proxy.model.js";
+import { createCheckboxStore } from "../dmui.js";
 
 const active_job_storage_key = "scraper_active_job_id";
 const platform_status_popover_hide_delay = 240;
@@ -255,6 +256,7 @@ function ScraperPageViewModel(props) {
           status: status.status,
           reason,
           has_reason: Boolean(reason),
+          tooltip$: is_unavailable ? new Timeless.vm.TooltipCore() : null,
           status_text: is_checking ? "检测中" : "",
           has_status_text: is_checking,
           status_class:
@@ -788,13 +790,11 @@ function ScraperPageViewModel(props) {
       fetch_loading: loading_,
       preview_loading: download_preview_loading_,
       download_loading: download_loading_,
-      download_success: download_success_,
     },
     (state) =>
       state.fetch_loading ||
       state.preview_loading ||
-      state.download_loading ||
-      Boolean(state.download_success),
+      state.download_loading,
   );
   const download_button_text_ = combine(
     { loading: download_loading_, success: download_success_ },
@@ -1262,6 +1262,13 @@ function ScraperPageViewModel(props) {
     interrupt_loading_.as(false);
     finish_job_tracking();
     loading_.as(false);
+    if (final_job.status === "completed" && final_job.output) {
+      const tracks = normalized_content_.value.text_tracks.filter(
+        (track) => track.has_sources,
+      );
+      const track = tracks.find((item) => item.is_default) || tracks[0];
+      if (track) await select_text_track(track.track_key, true);
+    }
   }
 
   function upsert_content_detail(details, content_detail) {
@@ -2028,6 +2035,38 @@ function ScraperPageViewModel(props) {
     return download_info;
   }
 
+  function create_text_track_checkbox(track) {
+    const selected = computed(selected_text_track_keys_, (keys) =>
+      keys.includes(track.track_key),
+    );
+    const store = createCheckboxStore({
+      checked: selected,
+      disabled: Boolean(
+        video_variant_selection_disabled_.value || !track.has_sources,
+      ),
+      onChange(checked) {
+        if (!store.disabled) return select_text_track(track.track_key, checked);
+      },
+    });
+    const unlisten = video_variant_selection_disabled_.subscribe({
+      onChange(value) {
+        const disabled = Boolean(value || !track.has_sources);
+        if (store.disabled === disabled) return;
+        store.disabled = disabled;
+        // CheckboxCore has no enable/disable methods; setStatus emits its state.
+        store.setStatus(store.status);
+      },
+    });
+    return {
+      store,
+      selected,
+      dispose() {
+        unlisten();
+        selected.destroy?.();
+      },
+    };
+  }
+
   async function select_text_track(track_key_value, checked) {
     if (video_variant_selection_disabled_.value) {
       return null;
@@ -2082,13 +2121,94 @@ function ScraperPageViewModel(props) {
       return null;
     }
 
-    const selected = {
-      detail_key: String(detail_key || "").trim(),
-      variant_key,
-      spec: String(variant.spec || "").trim(),
-    };
-    selected_video_variant_.as(selected);
-    return refresh_download_preview(fetch_result, platform, content);
+    const detail = normalized_content_details_.value.items.find(
+      (item) => item.key === String(detail_key || "").trim(),
+    );
+    const current = detail && detail.variants.find((item) => item.selected);
+    const target =
+      detail && detail.variants.find((item) => item.variant_key === variant_key);
+    if (!current || !target) {
+      download_preview_error_.as("未找到当前或目标视频规格");
+      return null;
+    }
+    if (current.variant_key === target.variant_key) return null;
+
+    const download_info = fetch_result.download_info;
+    const resources = download_info_array(
+      download_info,
+      "Resources",
+      "resources",
+    );
+    const matches = resources.filter((resource) =>
+      download_info_array(resource, "Endpoints", "endpoints").some(
+        (endpoint) =>
+          current.url && (endpoint.url || endpoint.URL) === current.url,
+      ),
+    );
+    if (matches.length === 0) {
+      matches.push(
+        ...resources.filter((resource) =>
+          download_info_array(resource, "ContentAssets", "content_assets").some(
+            (asset) =>
+              asset.role === "video_variant" &&
+              asset.asset_key === current.variant_key,
+          ),
+        ),
+      );
+    }
+    if (matches.length !== 1) {
+      download_preview_error_.as("无法定位当前视频规格的下载资源");
+      return null;
+    }
+    if (!downloader || typeof downloader.updateResource !== "function") {
+      download_preview_error_.as("下载服务不支持更新资源");
+      return null;
+    }
+
+    download_preview_loading_.as(true);
+    download_preview_error_.as("");
+    download_error_.as("");
+    download_success_.as("");
+    download_resource_success_.as("");
+    const sequence = ++download_preview_request_sequence;
+    try {
+      const resource = await downloader.updateResource({
+        platform,
+        content,
+        config: selected_video_variant_config(platform),
+        current: current.raw,
+        target: target.raw,
+      });
+      if (sequence !== download_preview_request_sequence) return null;
+      if (!resource || !(resource.Resource || resource.resource)) {
+        throw new Error("更新响应缺少资源");
+      }
+      const resources_key = Array.isArray(download_info.Resources)
+        ? "Resources"
+        : "resources";
+      const updated_info = {
+        ...download_info,
+        [resources_key]: resources.map((item) =>
+          item === matches[0] ? resource : item,
+        ),
+      };
+      result_.as({ ...fetch_result, download_info: updated_info });
+      selected_video_variant_.as({
+        detail_key: detail.key,
+        variant_key,
+        spec: target.spec,
+      });
+      return resource;
+    } catch (error) {
+      if (sequence === download_preview_request_sequence) {
+        download_preview_error_.as(error.message || String(error));
+      }
+      return null;
+    } finally {
+      if (sequence === download_preview_request_sequence) {
+        download_preview_loading_.as(false);
+      }
+    }
   }
 
   function open_external_url(value) {
@@ -2127,6 +2247,7 @@ function ScraperPageViewModel(props) {
     confirmTaskOverwrite: confirm_task_overwrite,
     selectVideoVariant: select_video_variant,
     selectTextTrack: select_text_track,
+    createTextTrackCheckbox: create_text_track_checkbox,
     toggleJSON() {
       json_expanded_.as(!json_expanded_.value);
     },
@@ -2571,15 +2692,16 @@ function normalize_content_video_variant(variant, index) {
     Number(first_non_empty(source.is_default, source.IsDefault)) > 0;
   const meta_text = [
     dimensions,
+    format_bytes(first_non_empty(source.size, source.Size)),
     first_non_empty(source.codec, source.Codec),
     first_non_empty(source.format, source.Format),
     first_non_empty(source.stream_type, source.StreamType),
-    format_bytes(first_non_empty(source.size, source.Size)),
   ]
     .filter(Boolean)
     .join(" · ");
   return {
     key: `${variant_key}:${index}`,
+    raw: source,
     title: String(
       first_non_empty(
         source.quality,
@@ -2631,7 +2753,9 @@ function normalize_content_text_track(track, index) {
     first_non_empty(source.track_key, source.TrackKey, `track-${index + 1}`),
   );
   const flags = [];
-  if (Number(first_non_empty(source.is_default, source.IsDefault)) > 0) {
+  const is_default =
+    Number(first_non_empty(source.is_default, source.IsDefault)) > 0;
+  if (is_default) {
     flags.push("默认");
   }
   if (Number(first_non_empty(source.is_forced, source.IsForced)) > 0) {
@@ -2661,6 +2785,7 @@ function normalize_content_text_track(track, index) {
       ),
     ),
     track_key,
+    is_default,
     meta_text: [
       first_non_empty(source.language_code, source.LanguageCode),
       first_non_empty(source.type, source.Type),

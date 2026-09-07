@@ -1,6 +1,5 @@
 import { PreviewViewModel } from "./preview.model.js";
-import { BrandEmpty, BrandError, BrandLoading } from "../dmui.js";
-import { PlatformIcon } from "../components.js";
+import { BrandEmpty, BrandError, BrandLoading, Tag, PlatformTag } from "../dmui.js";
 
 function PreviewStateView(props) {
   return View(
@@ -64,26 +63,21 @@ function PreviewHeaderView(props) {
     ),
     View({ class: "preview-subtitle" }, [
       task.platform_id
-        ? View({ class: "preview-platform" }, [
-            task.platform_favicon
-              ? PlatformIcon({
-                  class: "preview-platform-icon",
-                  favicon: task.platform_favicon,
-                  name: "preview-platform-icon",
-                })
-              : null,
-            task.platform_name,
-          ])
+        ? PlatformTag({
+            name: "preview-platform",
+            favicon: task.platform_favicon,
+            label: task.platform_name,
+          })
         : null,
       task.content_type
-        ? View(
-            { class: "preview-badge dm-badge dm-badge--info" },
+        ? Tag(
+            { variant: "info", name: "preview-content-type" },
             [task.content_type],
           )
         : null,
       Number.isFinite(props.fileCount)
-        ? View(
-            { class: "preview-badge dm-badge dm-badge--info" },
+        ? Tag(
+            { variant: "info", name: "preview-file-count" },
             [`文件 (${props.fileCount})`],
           )
         : null,
@@ -147,6 +141,7 @@ function PreviewHTMLFileView(props) {
         attributes: {
           n: "preview-html-content",
           "data-content-format": "html",
+          title: `HTML 预览：${file.name}`,
         },
       }),
       Show({
@@ -348,7 +343,10 @@ function PreviewVideoPlayerView(props) {
   const vm$ = props.store;
   const file = props.file;
   const is_live_playback = vm$.methods.isLivePlayback(file);
-  let hls_session = null;
+  const player$ = vm$.methods.createVideoPlayer(file, {
+    autoplay: Boolean(props.autoplay),
+  });
+  let unsubscribe_tracks = null;
   return View(
     {
       class: [
@@ -369,19 +367,44 @@ function PreviewVideoPlayerView(props) {
         preload: is_live_playback ? "none" : "metadata",
         attributes: { n: "preview-video-media" },
         onMounted(event) {
-          hls_session = vm$.methods.mountVideo(event, file, {
-            autoplay: Boolean(props.autoplay),
+          unsubscribe_tracks?.();
+          const video = event.target.get$elm();
+          // Timeless 0.33 View always renders a div, so render native tracks here.
+          unsubscribe_tracks = player$.state.tracks.subscribe({
+            onChange(tracks) {
+              video.querySelectorAll('[data-n="preview-video-subtitle-track"]')
+                .forEach((track) => track.remove());
+              for (const track of tracks) {
+                const element = video.ownerDocument.createElement("track");
+                element.setAttribute("data-n", "preview-video-subtitle-track");
+                element.kind = "captions";
+                element.src = track.src;
+                element.label = track.label;
+                element.default = track.is_default;
+                video.appendChild(element);
+                player$.mountTrack(element, track);
+              }
+            },
           });
+          player$.mount(event);
         },
         onUnmounted() {
-          if (hls_session !== null) {
-            vm$.methods.unmountVideo(hls_session);
-            hls_session = null;
-          }
+          player$.unmount();
+          unsubscribe_tracks?.();
+          unsubscribe_tracks = null;
+        },
+      }),
+      Show({
+        when: computed(player$.state.subtitle_error, Boolean),
+        ok() {
+          return Tag({
+            class: "preview-subtitle-error",
+            attributes: { n: "preview-video-subtitle-error", role: "status" },
+          }, [player$.state.subtitle_error]);
         },
       }),
       is_live_playback
-        ? View(
+        ? Tag(
             {
               class: computed(
                 vm$.state.live_playback_status,
@@ -465,7 +488,7 @@ function PreviewFileCardView(props) {
       View({ class: "preview-file-thumb" }, [
         PreviewFileThumbnail({ store: vm$, file }),
         file.status
-          ? View({ class: "preview-file-status" }, [file.status])
+          ? Tag({ name: "preview-file-status", class: "preview-file-status" }, [file.status])
           : null,
       ].filter(Boolean)),
       View({ class: "preview-file-info" }, [
@@ -1109,4 +1132,5 @@ function PreviewPageView(props) {
   );
 }
 
+export { PreviewGalleryMediaView };
 export default PreviewPageView;

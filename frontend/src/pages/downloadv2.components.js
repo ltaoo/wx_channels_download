@@ -1,4 +1,4 @@
-import { Checkbox, createCheckboxStore } from "../dmui.js";
+import { Checkbox, Tag, createCheckboxStore } from "../dmui.js";
 import {
   format_download_percent,
   format_download_size,
@@ -496,7 +496,7 @@ export function DownloadV2TaskMain(props) {
             Show({
               when: computed(state_, (state) => state.is_live_stream),
               ok() {
-                return View(
+                return Tag(
                   {
                     class: "dl-page-task-live",
                     attributes: { n: "download-task-live-badge" },
@@ -508,10 +508,10 @@ export function DownloadV2TaskMain(props) {
             Show({
               when: computed(task$.state.raw, (raw) => !task_has_content(raw)),
               ok() {
-                return View(
+                return Tag(
                   {
-                    class:
-                      "dl-page-task-missing-detail dm-badge dm-badge--warning",
+                    class: "dl-page-task-missing-detail",
+                    variant: "warning",
                     attributes: {
                       n: "download-task-missing-detail-badge",
                       title: "该下载任务没有关联内容详情",
@@ -730,7 +730,7 @@ function DownloadV2StatusTab(vm$, status, label) {
         },
         [label],
       ),
-      View(
+      Tag(
         {
           class: "dl-v2-tab-count",
           attributes: { n: `download-status-${status}-count` },

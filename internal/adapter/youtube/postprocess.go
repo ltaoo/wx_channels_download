@@ -1,9 +1,13 @@
 package youtubeadapter
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"mime"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,11 +23,16 @@ var run_youtube_ffmpeg = func(ctx context.Context, ffmpeg_path string, args ...s
 	return exec.CommandContext(ctx, ffmpeg_path, args...).CombinedOutput()
 }
 
-// Postprocess merges a separately downloaded YouTube MP4 video track and M4A
-// audio track into one MP4 resource before Hermes finalizes its filename.
+// Postprocess validates subtitles and merges separately downloaded YouTube video
+// and audio tracks into H.264/AAC MP4 before Hermes finalizes filenames.
 func (h *handler) Postprocess(ctx context.Context, info *hermes.TaskJob, deps adapter.PostprocessDeps) error {
 	if info == nil {
 		return fmt.Errorf("youtube postprocess: task is nil")
+	}
+	for _, resource := range info.Resources {
+		if err := validate_youtube_subtitle(resource); err != nil {
+			return fmt.Errorf("youtube postprocess: resource %s: %w", resource.Name, err)
+		}
 	}
 	video_index, audio_index := youtube_media_resource_indexes(info.Resources)
 	if video_index < 0 || audio_index < 0 {
@@ -101,50 +110,80 @@ func (h *handler) Postprocess(ctx context.Context, info *hermes.TaskJob, deps ad
 	return nil
 }
 
+func validate_youtube_subtitle(resource hermes.ResourceJob) error {
+	kind := youtube_resource_media_type(resource.Kind)
+	if kind != "text/vtt" && kind != "application/ttml+xml" {
+		return nil
+	}
+	file, err := os.Open(resource.FilePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, 512))
+	if err != nil {
+		return err
+	}
+	data = bytes.TrimSpace(bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf}))
+	if len(data) == 0 || youtube_resource_media_type(http.DetectContentType(data)) == "text/html" {
+		return errors.New("字幕源返回空内容或 HTML，无法下载有效字幕；YouTube 字幕请检查 web.subs PO Token 是否有效并重新解析视频")
+	}
+	if kind == "text/vtt" && !(bytes.Equal(data, []byte("WEBVTT")) ||
+		bytes.HasPrefix(data, []byte("WEBVTT\n")) || bytes.HasPrefix(data, []byte("WEBVTT\r")) ||
+		bytes.HasPrefix(data, []byte("WEBVTT ")) || bytes.HasPrefix(data, []byte("WEBVTT\t"))) {
+		return errors.New("字幕源返回的内容不是有效的 WebVTT 字幕")
+	}
+	return nil
+}
+
 func youtube_media_resource_indexes(resources []hermes.ResourceJob) (int, int) {
 	video_index := -1
 	audio_index := -1
 	for resource_index := range resources {
 		resource := &resources[resource_index]
-		if video_index < 0 && youtube_resource_is_mp4_video(resource) {
+		if video_index < 0 && youtube_resource_is_mergeable_video(resource) {
 			video_index = resource_index
 			continue
 		}
-		if audio_index < 0 && youtube_resource_is_m4a_audio(resource) {
+		if audio_index < 0 && youtube_resource_is_mergeable_audio(resource) {
 			audio_index = resource_index
 		}
 	}
 	return video_index, audio_index
 }
 
-func youtube_resource_is_mp4_video(resource *hermes.ResourceJob) bool {
+func youtube_resource_is_mergeable_video(resource *hermes.ResourceJob) bool {
 	if resource == nil {
 		return false
 	}
 	media_type := youtube_resource_media_type(resource.Kind)
-	if media_type == "video/mp4" {
+	if media_type == "video/mp4" || media_type == "video/webm" {
 		return true
 	}
 	if media_type != "" && media_type != "application/octet-stream" && media_type != "binary/octet-stream" {
 		return false
 	}
 	return strings.EqualFold(filepath.Ext(resource.Name), ".mp4") ||
-		strings.EqualFold(filepath.Ext(resource.FilePath), ".mp4")
+		strings.EqualFold(filepath.Ext(resource.FilePath), ".mp4") ||
+		strings.EqualFold(filepath.Ext(resource.Name), ".webm") ||
+		strings.EqualFold(filepath.Ext(resource.FilePath), ".webm")
 }
 
-func youtube_resource_is_m4a_audio(resource *hermes.ResourceJob) bool {
+func youtube_resource_is_mergeable_audio(resource *hermes.ResourceJob) bool {
 	if resource == nil {
 		return false
 	}
 	media_type := youtube_resource_media_type(resource.Kind)
-	if media_type == "audio/mp4" || media_type == "audio/x-m4a" {
+	if media_type == "audio/mp4" || media_type == "audio/x-m4a" || media_type == "audio/webm" {
 		return true
 	}
 	if media_type != "" && media_type != "application/octet-stream" && media_type != "binary/octet-stream" {
 		return false
 	}
 	return strings.EqualFold(filepath.Ext(resource.Name), ".m4a") ||
-		strings.EqualFold(filepath.Ext(resource.FilePath), ".m4a")
+		strings.EqualFold(filepath.Ext(resource.FilePath), ".m4a") ||
+		strings.EqualFold(filepath.Ext(resource.Name), ".weba") ||
+		strings.EqualFold(filepath.Ext(resource.FilePath), ".weba")
 }
 
 func youtube_resource_media_type(kind string) string {
@@ -186,8 +225,11 @@ func youtube_merge_media(ctx context.Context, ffmpeg_path string, video_path str
 		"-i", audio_path,
 		"-map", "0:v:0",
 		"-map", "1:a:0",
-		"-c", "copy",
+		// Normalize codecs as well as the container for browser playback.
+		"-c:v", "libx264", "-pix_fmt", "yuv420p",
+		"-c:a", "aac",
 		"-movflags", "+faststart",
+		"-f", "mp4",
 		merged_path,
 	)
 	if err != nil {

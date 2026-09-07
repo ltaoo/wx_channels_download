@@ -1210,6 +1210,10 @@
         prepare: new RequestCore(prepare_download_task, {
           client: http_client,
         }),
+        update_resource: new RequestCore(
+          (body) => request.post("/api/v1/download_task/update_resource", body),
+          { client: http_client },
+        ),
         start_all: new RequestCore(start_all_download_tasks, {
           client: http_client,
         }),
@@ -1276,6 +1280,7 @@
       pause,
       retry,
       prepare,
+      updateResource: update_resource,
       startAll: start_all,
       pauseAll: pause_all,
       clear: clear_all,
@@ -1547,6 +1552,12 @@
         throw error_value(preview.error, "Prepare download task failed");
       }
       return preview.data || preview;
+    }
+
+    async function update_resource(object) {
+      const r = await reqs.download.update_resource.run(object);
+      if (r.error) throw r.error;
+      return r.data;
     }
 
     async function fetch_task_page(params) {

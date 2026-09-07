@@ -27,7 +27,7 @@ func (c *YouTubePluginConfig) ConfigSchema() []config.ConfigField {
 			Key:         "poToken",
 			Type:        config.ConfigTypeText,
 			Default:     "",
-			Description: "YouTube PO Token，使用 client.gvs+TOKEN 格式；多个 Token 用逗号分隔，Token 只会用于匹配的 client",
+			Description: "YouTube PO Token：视频使用 client.gvs+TOKEN，网页字幕使用 web.subs+TOKEN；多个 Token 用逗号分隔，须匹配视频及会话，字幕 Token 不能用视频 Token 代替",
 			Title:       "YouTube PO Token",
 			Group:       "YouTube",
 			HotReload:   true,

@@ -1,5 +1,5 @@
+import { Tag, PlatformTag } from "../dmui.js";
 import { BrowseHistoryViewModel } from "./browsehistory.model.js";
-import { TablePlatformBadge } from "../components.js";
 
 function BrowseHistoryPageView(props) {
   const vm$ = BrowseHistoryViewModel(props);
@@ -64,6 +64,14 @@ function BrowseHistoryPageToolbar(props) {
             "content-filter-fields dm-flex dm-items-center dm-gap-2",
         },
         [
+        PlatformSelect({
+          name: "browse-history-platform-select",
+          store: vm$.ui.select_platform$,
+          attributes: {
+            n: "browse-history-platform-select-trigger",
+            "aria-label": "按平台筛选浏览记录",
+          },
+        }),
         View(
           {
             class: "content-filter-search",
@@ -195,12 +203,12 @@ function BrowseHistoryRowMain(props) {
             attributes: { n: "browse-history-badges" },
           },
           [
-            TablePlatformBadge({
+            PlatformTag({
               name: "browse-history-platform",
               favicon: vm$.methods.platformFavicon(history),
               label: vm$.methods.platformName(history),
             }),
-            View(
+            Tag(
               {
                 class: "content-row-type",
                 attributes: { n: "browse-history-content-type" },

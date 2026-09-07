@@ -473,25 +473,13 @@
 
 .dl-page-task-live {
   flex: 0 0 auto;
-  height: 18px;
-  padding: 0 var(--dm-space-1-5);
   border: var(--dm-border-width) solid var(--dm-color-danger-border);
-  border-radius: var(--dm-radius-badge);
   background: var(--dm-color-danger-soft);
   color: var(--dm-color-danger);
-  font-size: var(--dm-font-size-xs);
-  font-weight: 650;
-  line-height: 18px;
-  white-space: nowrap;
 }
 
 .dl-page-task-missing-detail {
-  min-height: 18px;
   flex: 0 0 auto;
-  padding: 0 var(--dm-space-1-5);
-  font-size: var(--dm-font-size-xs);
-  border-radius: var(--dm-radius-badge);
-  white-space: nowrap;
 }
 
 .dl-page-task-desc {

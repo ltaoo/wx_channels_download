@@ -1,10 +1,6 @@
+import { Tag, PlatformTag } from "../dmui.js";
 import { ContentViewModel } from "./content.model.js";
 import ContentDetailPageView from "./content_detail.js";
-import {
-  AccountSelect,
-  PlatformSelect,
-  TablePlatformBadge,
-} from "../components.js";
 
 function ContentDetailDrawer(props) {
   const vm$ = props.store;
@@ -14,10 +10,11 @@ function ContentDetailDrawer(props) {
       class: "dm-drawer--wide",
       attributes: { n: "content-detail-drawer" },
     },
-    [
+    () => [
       ContentDetailPageView({
         app: props.app,
         client: props.client,
+        hlsPlayer: props.hlsPlayer,
         history: props.history,
         embedded: true,
         contentId: vm$.state.detail_id,
@@ -47,6 +44,7 @@ function ContentPageView(props) {
         store: vm$,
         app: props.app,
         client: props.client,
+        hlsPlayer: props.hlsPlayer,
         history: props.history,
       }),
     ],
@@ -271,8 +269,9 @@ function ContentRowStatistics(props) {
     For({
       each: items,
       render(item) {
-        return View(
+        return Tag(
           {
+            name: "content-row-stat",
             class: `content-row-stat content-row-stat-${item.key}`,
             attributes: { title: `${item.label}：${item.value}` },
           },
@@ -372,18 +371,18 @@ function ContentRowMain(props) {
           class: "content-row-badges dm-flex dm-items-center dm-gap-1-5",
         },
         [
-          TablePlatformBadge({
+          PlatformTag({
             name: "content-platform",
             favicon,
             label: vm$.methods.platformName(content),
           }),
-          View({ class: "content-row-type" }, [
+          Tag({ name: "content-row-type", class: "content-row-type" }, [
             vm$.methods.typeLabel(content.content_type),
           ]),
           Show({
             when: content.content_subtype,
             ok() {
-              return View(
+              return Tag(
                 {
                   class: "content-row-type content-row-subtype",
                   attributes: {

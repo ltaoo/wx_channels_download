@@ -657,12 +657,31 @@ export function Input(props) {
   );
 }
 
+export function ArrayField(props = {}) {
+  const { store: provided_store, render, onUnmounted, ...rest } = props;
+  const store = require_store("ArrayField", provided_store, vm.ArrayFieldCore);
+  const fields_ = ref(store.fields.slice());
+  const unlisten = store.onStateChange(() => fields_.as(store.fields.slice()));
+  return View({
+    ...rest,
+    class: class_names(["dm-array-field", rest.class]),
+    attributes: { n: "array-field", ...rest.attributes },
+    onUnmounted() {
+      unlisten();
+      if (typeof onUnmounted === "function") onUnmounted();
+    },
+  }, [For({ each: fields_, key: "id", render })]);
+}
+
 export function Textarea(props) {
   const {
     store: provided_store,
     class: extra_class,
     rootClass,
     showCount = false,
+    rootAttributes,
+    attributes,
+    onMounted,
     onUnmounted,
     onKeyDown,
     ...rest
@@ -675,6 +694,7 @@ export function Textarea(props) {
     {
       store,
       class: class_names(["dm-textarea-root", rootClass]),
+      attributes: { n: "textarea-root", ...rootAttributes },
       onUnmounted() {
         if (typeof unlisten === "function") unlisten();
         dispose_owned_store(store);
@@ -685,6 +705,16 @@ export function Textarea(props) {
       ui.TextareaPrimitive.Textarea({
         ...rest,
         store,
+        attributes: { n: "textarea-input", ...attributes },
+        onMounted(event) {
+          // Timeless 0.33 applies initial textarea attributes before the DOM exists.
+          const element = table_scroll_element(event);
+          for (const [name, source] of Object.entries({ n: "textarea-input", ...attributes })) {
+            const value = source_value(source);
+            if (value !== undefined && value !== null && value !== false) element.setAttribute(name, value === true ? "" : String(value));
+          }
+          if (typeof onMounted === "function") onMounted(event);
+        },
         class: class_names(["dm-field dm-textarea", extra_class]),
         onKeyDown(event) {
           store.handleKeyDown(event);
@@ -693,7 +723,7 @@ export function Textarea(props) {
       }),
       showCount
         ? ui.TextareaPrimitive.Count(
-            { store, class: "dm-textarea-count" },
+            { store, class: "dm-textarea-count", attributes: { n: "textarea-count" } },
             [],
           )
         : null,
@@ -1730,6 +1760,144 @@ export function DrawerFooter(props = {}, children = []) {
   );
 }
 
+function create_tooltip_model(store) {
+  let hide_timeout = null;
+  let content_hovered = false;
+  const layer = new vm.DismissableLayerCore();
+  layer.setRect(() => store.popper.floating?.getRect());
+  layer.addBranch(() => store.popper.reference?.getRect());
+
+  function clear_hide() {
+    clearTimeout(hide_timeout);
+    hide_timeout = null;
+  }
+
+  function hide() {
+    clear_hide();
+    layer.unregister();
+    store.hide();
+  }
+
+  function show() {
+    clear_hide();
+    store.show();
+    layer.register();
+  }
+
+  function schedule_hide() {
+    clear_hide();
+    hide_timeout = setTimeout(hide, 240);
+  }
+
+  const unlisten_dismiss = layer.onDismiss(hide);
+
+  return {
+    show,
+    hide,
+    schedule_hide,
+    enter_content() {
+      content_hovered = true;
+      show();
+    },
+    leave_content() {
+      content_hovered = false;
+      schedule_hide();
+    },
+    blur() {
+      if (!content_hovered) hide();
+    },
+    destroy() {
+      hide();
+      unlisten_dismiss();
+      store.presence.unmount();
+    },
+  };
+}
+
+export function Tooltip(props, children = []) {
+  const {
+    store: provided_store, content, class: extra_class, attributes,
+    onContentMouseEnter, onContentMouseLeave,
+  } = props;
+  const store = require_store("Tooltip", provided_store);
+  const model = create_tooltip_model(store);
+  const tooltip_id = `dm-tooltip-${store.unique_id}`;
+  const state_ = refobj(store.state);
+  const unlisten = store.onStateChange((state) => state_.as(state));
+
+  return Fragment(
+    {
+      onUnmounted() {
+        unlisten();
+        state_.destroy();
+        model.destroy();
+      },
+    },
+    [
+      View(
+        {
+          class: "dm-tooltip-trigger dm-focus-ring",
+          attributes: {
+            n: "tooltip-trigger",
+            tabindex: "0",
+            "aria-describedby": tooltip_id,
+            ...attributes,
+          },
+          onMounted({ target }) {
+            store.popper.setReference({
+              $el: target,
+              getRect: () => target.getBoundingClientRect(),
+            });
+          },
+          onMouseEnter: model.show,
+          onMouseLeave: model.schedule_hide,
+          onFocus: model.show,
+          onBlur: model.blur,
+          onKeyDown(event) {
+            if (event.key === "Escape") model.hide();
+          },
+        },
+        children,
+      ),
+      Runtime.Portal({}, [
+        ui.PopperPrimitive.Content(
+          {
+            store: store.popper,
+            zIndex: 1100,
+            attributes: { n: "tooltip-positioner" },
+            style: computed(state_, (state) => ({
+              display: state.visible ? "block" : "none",
+            })),
+            onReferenceOutOfView: model.hide,
+            onMouseEnter(event) {
+              model.enter_content();
+              if (typeof onContentMouseEnter === "function") onContentMouseEnter(event);
+            },
+            onMouseLeave(event) {
+              model.leave_content();
+              if (typeof onContentMouseLeave === "function") onContentMouseLeave(event);
+            },
+          },
+          [
+            ui.TooltipPrimitive.Content(
+              {
+                store,
+                class: class_names(["dm-tooltip-content", extra_class]),
+                attributes: {
+                  n: "tooltip-content",
+                  id: tooltip_id,
+                  role: "tooltip",
+                },
+              },
+              [content],
+            ),
+          ],
+        ),
+      ]),
+    ],
+  );
+}
+
 export function Popover(props, children = []) {
   const {
     store: provided_store,
@@ -2325,25 +2493,82 @@ export function Label(props = {}, children = []) {
   );
 }
 
-export function Badge(props = {}, children = []) {
-  const { variant = "default", ...rest } = props;
+export function Tag(props = {}, children = []) {
+  const { variant = "default", name = "tag", ...rest } = props;
   const variants = {
     default: "",
-    success: "dm-badge--success",
-    warning: "dm-badge--warning",
-    destructive: "dm-badge--danger",
-    danger: "dm-badge--danger",
-    info: "dm-badge--info",
+    success: "dm-tag--success",
+    warning: "dm-tag--warning",
+    destructive: "dm-tag--danger",
+    danger: "dm-tag--danger",
+    info: "dm-tag--info",
   };
   return View(
     {
+      as: "span",
       ...rest,
-      class: class_names(["dm-badge", variants[variant] || "", rest.class]),
-      attributes: { n: "badge", ...(rest.attributes || {}) },
+      class: class_names(["dm-tag", variants[variant] || "", rest.class]),
+      attributes: { n: name, ...(rest.attributes || {}) },
     },
     children,
   );
 }
+
+export function PlatformIcon(props = {}) {
+  const favicon = String(source_value(props.favicon, "") || "");
+  if (!favicon.includes("#")) return null;
+  const semantic_name = props.name || "platform-icon";
+  return Runtime.SVG.SVG(
+    {
+      class: props.class,
+      attributes: {
+        n: semantic_name,
+        viewBox: "0 0 32 32",
+        "aria-hidden": "true",
+        focusable: "false",
+        ...(props.attributes || {}),
+      },
+    },
+    [
+      Runtime.SVG.Use({
+        attributes: { n: `${semantic_name}-symbol`, href: props.favicon },
+      }),
+    ],
+  );
+}
+
+export function PlatformTag(props = {}) {
+  const { favicon, label, name = "platform-tag", ...rest } = props;
+  return Tag(
+    {
+      ...rest,
+      name,
+      class: class_names(["dm-platform-tag", rest.class]),
+    },
+    [
+      Show({
+        when: favicon,
+        ok() {
+          return PlatformIcon({
+            class: "dm-platform-tag__icon",
+            favicon,
+            name: `${name}-icon`,
+          });
+        },
+      }),
+      View(
+        {
+          as: "span",
+          class: "dm-platform-tag__label",
+          attributes: { n: `${name}-label` },
+        },
+        Array.isArray(label) ? label : [label ?? ""],
+      ),
+    ],
+  );
+}
+
+export { Tag as Badge };
 
 function tabs_handle_keydown(event, orientation) {
   const key = event && event.key;
@@ -2933,7 +3158,7 @@ function table_keyed_item(entry, row_key) {
 }
 
 function table_item_value(item_) {
-  return item_ && item_.value !== undefined ? item_.value : item_;
+  return table_source(item_) ? item_.value : item_;
 }
 
 function table_resolve(value, ...args) {

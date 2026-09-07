@@ -3,12 +3,13 @@ import {
   BrandEmpty,
   BrandError,
   BrandLoading,
+  Tag,
+  PlatformTag,
   Card,
   Tab,
   Tabs,
   Waterfall,
 } from "../dmui.js";
-import { PlatformSelect, TablePlatformBadge } from "../components.js";
 
 const ACCOUNT_TEXT_CONTENT_TYPES = new Set(["answer", "webpage", "text"]);
 
@@ -100,7 +101,7 @@ function AccountContentCoverMeta(props) {
           attributes: { n: "account-content-card-cover-kicker" },
         },
         [
-          View(
+          Tag(
             {
               class: "account-content-card-type",
               attributes: { n: "account-content-card-type" },
@@ -663,7 +664,7 @@ function AccountAvatar(props) {
 function AccountPlatform(props) {
   const vm$ = props.store;
   const account = props.account;
-  return TablePlatformBadge({
+  return PlatformTag({
     name: "account-platform",
     favicon: window.PLATFORM_FAVICONS[account.platform_id] || "",
     label: vm$.methods.platformName(account),

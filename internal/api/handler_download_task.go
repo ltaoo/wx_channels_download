@@ -142,8 +142,8 @@ func download_task_download_dir(download_dir string) string {
 	return download_dir
 }
 
-// prepareDownloadTaskSingle previews a single platform download task (no DB write, no download start).
-func (c *APIClient) prepareDownloadTaskSingle(body services.CreateDownloadTaskBody) (*adapter.DownloadTaskResult, error) {
+// build_download_task_info builds platform resources without persisting or starting a task.
+func (c *APIClient) build_download_task_info(body services.CreateDownloadTaskBody) (*adapter.DownloadTaskResult, error) {
 	if body.Platform == "" {
 		return nil, fmt.Errorf("platform 不能为空")
 	}
@@ -153,7 +153,7 @@ func (c *APIClient) prepareDownloadTaskSingle(body services.CreateDownloadTaskBo
 		return nil, fmt.Errorf("不支持的平台: %s", body.Platform)
 	}
 
-	saveDir, err := c.resolve_download_dir(body.DownloadDir)
+	save_dir, err := c.resolve_download_dir(body.DownloadDir)
 	if err != nil {
 		return nil, fmt.Errorf("准备下载目录失败: %w", err)
 	}
@@ -162,11 +162,11 @@ func (c *APIClient) prepareDownloadTaskSingle(body services.CreateDownloadTaskBo
 	for key, value := range body.Config {
 		config[key] = value
 	}
-	config["download_dir"] = saveDir
+	config["download_dir"] = save_dir
 	if body.Filename != "" {
 		config["filename"] = body.Filename
 	}
-	configJSON, err := json.Marshal(config)
+	config_json, err := json.Marshal(config)
 	if err != nil {
 		return nil, fmt.Errorf("构建下载配置失败: %w", err)
 	}
@@ -177,9 +177,9 @@ func (c *APIClient) prepareDownloadTaskSingle(body services.CreateDownloadTaskBo
 		if !ok {
 			return nil, fmt.Errorf("平台 %s 不支持从抓取结果构建下载任务", body.Platform)
 		}
-		info, err = fetch_builder.BuildDownloadTaskFromFetch(body.Content, json.RawMessage(configJSON))
+		info, err = fetch_builder.BuildDownloadTaskFromFetch(body.Content, json.RawMessage(config_json))
 	} else {
-		info, err = h.BuildDownloadTask(body.Content, json.RawMessage(configJSON))
+		info, err = h.BuildDownloadTask(body.Content, json.RawMessage(config_json))
 	}
 	if err != nil {
 		return nil, fmt.Errorf("构建下载任务失败: %w", err)
@@ -216,7 +216,7 @@ func (c *APIClient) handle_prepare_download_task(ctx *gin.Context) {
 
 	previews := make([]gin.H, 0, len(req.Objects))
 	for _, body := range req.Objects {
-		data, err := c.prepareDownloadTaskSingle(body)
+		data, err := c.build_download_task_info(body)
 		if err != nil {
 			previews = append(previews, gin.H{"success": false, "error": err.Error()})
 		} else {
@@ -225,6 +225,74 @@ func (c *APIClient) handle_prepare_download_task(ctx *gin.Context) {
 	}
 
 	result.Ok(ctx, gin.H{"previews": previews})
+}
+
+// handle_update_download_resource resolves one variant using the platform's resource metadata.
+func (c *APIClient) handle_update_download_resource(ctx *gin.Context) {
+	var body struct {
+		services.CreateDownloadTaskBody
+		Current model.ContentVideoVariant `json:"current"`
+		Target  model.ContentVideoVariant `json:"target"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(body.Current.VariantKey) == "" || strings.TrimSpace(body.Target.VariantKey) == "" ||
+		body.Current.VideoId != body.Target.VideoId {
+		result.Err(ctx, 400, "current 和 target 必须是同一视频的有效规格")
+		return
+	}
+	if body.Config == nil {
+		body.Config = make(map[string]any)
+	}
+	body.Config["video_variant_key"] = body.Target.VariantKey
+	body.Config["video_variant_spec"] = body.Target.Spec
+	body.Config["spec"] = body.Target.Spec
+	body.BuildFromFetch = true
+	body.ResourceIndexes = nil
+	info, err := c.build_download_task_info(body.CreateDownloadTaskBody)
+	if err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	resource, err := find_video_variant_resource(info.Resources, body.Target)
+	if err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
+	}
+	result.Ok(ctx, resource)
+}
+
+func find_video_variant_resource(resources []*adapter.ResourceInfo, variant model.ContentVideoVariant) (*adapter.ResourceInfo, error) {
+	for _, resource := range resources {
+		if resource == nil {
+			continue
+		}
+		for _, endpoint := range resource.Endpoints {
+			if variant.URL != "" && endpoint.URL == variant.URL {
+				return resource, nil
+			}
+		}
+	}
+	var matched *adapter.ResourceInfo
+	for _, resource := range resources {
+		if resource == nil {
+			continue
+		}
+		for _, asset := range resource.ContentAssets {
+			if asset.Role == model.ContentAssetRoleVideoVariant && asset.AssetKey == variant.VariantKey {
+				if matched != nil && matched != resource {
+					return nil, fmt.Errorf("视频规格 %s 对应多个资源", variant.VariantKey)
+				}
+				matched = resource
+			}
+		}
+	}
+	if matched == nil {
+		return nil, fmt.Errorf("未找到视频规格 %s 的下载资源", variant.VariantKey)
+	}
+	return matched, nil
 }
 
 // prepareDownloadTaskByURLSingle previews a download task created by resource URL (no DB write, no download start).

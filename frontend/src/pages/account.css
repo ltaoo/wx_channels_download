@@ -396,12 +396,8 @@
 
 .account-content-card-type {
   flex: 0 0 auto;
-  padding: 2px 7px;
   color: #fff;
-  font-size: var(--dm-font-size-xs);
-  line-height: 1.4;
   border: 1px solid rgb(255 255 255 / 36%);
-  border-radius: var(--dm-radius-sm);
   background: rgb(0 0 0 / 34%);
   backdrop-filter: blur(5px);
 }

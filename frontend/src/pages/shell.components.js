@@ -1,3 +1,4 @@
+import { Tag } from "../dmui.js";
 const Timeless = window.Timeless;
 
 if (!Timeless) {
@@ -97,7 +98,7 @@ function CertificateSettingsDetails(props) {
           attributes: { n: "settings-certificate-actions" },
         },
         [
-          View(
+          Tag(
             {
               class: Timeless.classNames([
                 "settings-certificate-status",
@@ -390,7 +391,7 @@ function AboutSettingsDetails(props) {
           "在本机抓取、下载和管理内容。",
         ]),
       ]),
-      View({ class: "settings-about__version" }, [
+      Tag({ name: "settings-about__version", class: "settings-about__version" }, [
         View({ as: "span", class: "settings-about__version-label" }, ["版本"]),
         View({ as: "code", class: "settings-about__version-value" }, [
           props.version,
@@ -593,8 +594,9 @@ function MCPSettingsDetails(props) {
                   "允许兼容 MCP 的 Agent 查询平台、解析链接并创建下载任务。",
                 ]),
               ]),
-              View(
+              Tag(
                 {
+                  name: "settings-mcp__status",
                   class: Timeless.classNames([
                     "settings-mcp__status",
                     Timeless.computed(model.state.enabled, function (enabled) {
@@ -673,7 +675,7 @@ function MCPSettingsDetails(props) {
                     return (data && data.tools) || [];
                   }),
                   render(tool) {
-                    return View({ as: "code" }, [tool]);
+                    return Tag({ as: "code", variant: "info", name: "settings-mcp-tool" }, [tool]);
                   },
                 }),
               ]),

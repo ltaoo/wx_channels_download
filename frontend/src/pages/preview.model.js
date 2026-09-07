@@ -29,6 +29,57 @@ function error_message(error, fallback) {
 const text_preview_chunk_bytes = 64 * 1024;
 const text_preview_scroll_threshold = 320;
 
+function html_preview_content(content) {
+  const document_ = new DOMParser().parseFromString(content, "text/html");
+  const styles = [...document_.querySelectorAll("style")].map((element) => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(element.textContent);
+    const css = html_preview_rules(sheet.cssRules);
+    return element.media ? `@media ${element.media} { ${css} }` : css;
+  });
+  document_.querySelectorAll("style, link, base, meta, title, script")
+    .forEach((element) => element.remove());
+  const root = document_.createElement("div");
+  const body = document_.createElement("div");
+  for (const [source, target, name] of [
+    [document_.documentElement, root, "preview-html-document"],
+    [document_.body, body, "preview-html-body"],
+  ]) {
+    for (const attribute of source.attributes) {
+      target.setAttribute(attribute.name, attribute.value);
+    }
+    target.classList.add(name);
+    target.setAttribute("data-n", name);
+  }
+  const style = document_.createElement("style");
+  style.setAttribute("data-n", "preview-html-scoped-styles");
+  style.textContent = `@scope { ${styles.join("\n")} }`;
+  body.append(...document_.body.childNodes);
+  root.append(style, body);
+  return root.outerHTML;
+}
+
+function html_preview_rules(rules) {
+  return [...rules].map((rule) => {
+    if (rule.type === CSSRule.STYLE_RULE) {
+      // Preserve quoted/attribute values while mapping document roots to wrappers.
+      rule.selectorText = rule.selectorText.replace(
+        /\[(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\\.|[^\]\\])*\]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(^|[\s>+~,(])(html|body|:root)(?=[\s.#:[>+~),]|$)/g,
+        (match, prefix, root) => root
+          ? `${prefix}${root === "body" ? ".preview-html-body" : ":scope"}`
+          : match,
+      );
+      return `${rule.selectorText} { ${rule.style.cssText} ${html_preview_rules(rule.cssRules || [])} }`;
+    }
+    if (rule.cssRules && /^@(media|supports|container|layer|scope|starting-style)\b/.test(rule.cssText)) {
+      const header = rule.cssText.slice(0, rule.cssText.indexOf("{"));
+      return `${header} { ${html_preview_rules(rule.cssRules)} }`;
+    }
+    // Document-wide rules such as @font-face and @page must not escape the preview.
+    return "";
+  }).join("\n");
+}
+
 function normalized_content_type(value) {
   return String(prop_value(value) || "")
     .split(";", 1)[0]
@@ -95,6 +146,7 @@ function is_text_file(file) {
     return false;
   }
   return [
+    file.file_type,
     file.kind,
     file.type,
     file.mime_type,
@@ -166,6 +218,71 @@ function playback_url(file) {
     return "";
   }
   return new URL(file.playback_url, window.API_ORIGIN).href;
+}
+
+function subtitle_format(file) {
+  const extension = String(file.name || file.local_path || "")
+    .match(/\.(vtt|srt|ass|ssa)$/i)?.[1]?.toLowerCase();
+  if (extension) return extension;
+  const formats = {
+    "text/vtt": "vtt",
+    "application/x-subrip": "srt",
+    "text/srt": "srt",
+    "text/x-ssa": "ssa",
+    "text/x-ass": "ass",
+  };
+  return formats[normalized_content_type(file.kind || file.mime_type)] || "";
+}
+
+function subtitle_to_vtt(content, format) {
+  const text = content.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").trim();
+  if (format === "vtt") {
+    if (!/^WEBVTT(?:[ \t\n]|$)/.test(text)) {
+      throw new Error("无效的 WebVTT 字幕");
+    }
+    return text + "\n";
+  }
+  const timestamp = (value) => {
+    const match = value.trim().match(/^(\d+):(\d{2}):(\d{2})[.,](\d{1,3})$/);
+    if (!match || Number(match[2]) > 59 || Number(match[3]) > 59) {
+      throw new Error("无效的字幕时间");
+    }
+    return `${match[1].padStart(2, "0")}:${match[2]}:${match[3]}.${match[4].padEnd(3, "0")}`;
+  };
+  let cues;
+  if (format === "srt") {
+    cues = text.split(/\n[ \t]*\n/).map((block) => {
+      const lines = block.split("\n");
+      if (/^\d+$/.test(lines[0].trim())) lines.shift();
+      const times = lines.shift().trim().split(/\s*-->\s*/);
+      if (times.length !== 2 || !lines.length) throw new Error("无效的 SRT 字幕");
+      return `${timestamp(times[0])} --> ${timestamp(times[1])}\n${lines.join("\n")}`;
+    });
+  } else if (format === "ass" || format === "ssa") {
+    let in_events = false;
+    let fields = ["layer", "start", "end", "style", "name", "marginl", "marginr", "marginv", "effect", "text"];
+    cues = [];
+    for (const line of text.split("\n")) {
+      if (/^\[.*\]$/.test(line.trim())) in_events = /^\[Events\]$/i.test(line.trim());
+      if (!in_events) continue;
+      if (/^Format:/i.test(line)) {
+        fields = line.slice(7).split(",").map((field) => field.trim().toLowerCase());
+      }
+      if (!/^Dialogue:/i.test(line)) continue;
+      const values = line.slice(9).split(",");
+      const text_index = fields.indexOf("text");
+      if (text_index !== fields.length - 1 || values.length < fields.length) {
+        throw new Error("无效的 ASS 字幕");
+      }
+      // ponytail: ASS styles/positioning are discarded; use an ASS renderer if exact styling is needed.
+      const body = values.slice(text_index).join(",").replace(/\{[^}]*\}/g, "")
+        .replace(/\\[Nn]/g, "\n").replace(/\\h/g, "\u00a0")
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      cues.push(`${timestamp(values[fields.indexOf("start")] || "")} --> ${timestamp(values[fields.indexOf("end")] || "")}\n${body}`);
+    }
+  }
+  if (!cues?.length) throw new Error("字幕内容为空或格式不受支持");
+  return `WEBVTT\n\n${cues.join("\n\n")}\n`;
 }
 
 function should_use_stream_playback(file) {
@@ -362,6 +479,7 @@ function PreviewViewModel(props) {
   let text_reader_decoder = null;
   let text_reader_total = 0;
   let text_reader_abort_controller = null;
+  const video_players = new Set();
 
   function handle_text_scroll(value) {
     const target = event_target_element(value);
@@ -422,6 +540,84 @@ function PreviewViewModel(props) {
     if (!hls_player$.unmount(session)) return false;
     live_file = null;
     return true;
+  }
+
+  function create_video_player(file, options) {
+    const tracks = refarr([]);
+    const subtitle_error = ref("");
+    let controller = null;
+    let session = null;
+    const player = {
+      state: { tracks, subtitle_error },
+      async mount(event) {
+        player.unmount();
+        video_players.add(player);
+        session = mount_video(event, file, options);
+        const request = new AbortController();
+        controller = request;
+        const files = (task_.value?.files || []).filter(
+          (candidate) => candidate.exists && subtitle_format(candidate),
+        );
+        const results = await Promise.all(files.map(async (subtitle) => {
+          try {
+            const response = await window.fetch(file_url(subtitle), { signal: request.signal });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const content = subtitle_to_vtt(await response.text(), subtitle_format(subtitle));
+            return { label: subtitle.name, content };
+          } catch (error) {
+            if (!request.signal.aborted) {
+              subtitle_error.as(`字幕加载失败：${subtitle.name}（${error_message(error, "读取失败")}）`);
+            }
+            return null;
+          }
+        }));
+        if (request.signal.aborted) return;
+        tracks.as(results.filter(Boolean).map((result, index) => ({
+          label: result.label,
+          src: URL.createObjectURL(new Blob([result.content], { type: "text/vtt" })),
+          is_default: index === 0,
+        })), { reset: true });
+      },
+      mountTrack(event, track) {
+        const element = event_target_element(event);
+        if (!element || !controller || controller.signal.aborted) return;
+        const signal = controller.signal;
+        const center_cues = () => {
+          if (signal.aborted || !element.isConnected) return;
+          for (const cue of element.track?.cues || []) {
+            cue.align = "center";
+            cue.position = 50;
+            cue.positionAlign = "center";
+          }
+        };
+        element.addEventListener("load", center_cues, { signal });
+        center_cues();
+        const apply_mode = () => {
+          if (!signal.aborted && element.isConnected && element.track) {
+            element.track.mode = track.is_default ? "showing" : "disabled";
+          }
+        };
+        apply_mode();
+        // The browser also selects tracks in a queued task after insertion.
+        setTimeout(apply_mode, 0);
+        element.addEventListener("error", () => {
+          if (!element.isConnected) return;
+          subtitle_error.as(`字幕加载失败：${track.label}`);
+        }, { signal });
+      },
+      unmount() {
+        controller?.abort();
+        controller = null;
+        const previous_tracks = tracks.value;
+        tracks.as([], { reset: true });
+        previous_tracks.forEach((track) => URL.revokeObjectURL(track.src));
+        subtitle_error.as("");
+        if (session !== null) unmount_video(session);
+        session = null;
+        video_players.delete(player);
+      },
+    };
+    return player;
   }
 
   function event_target_element(event) {
@@ -650,7 +846,7 @@ function PreviewViewModel(props) {
       if (sequence !== html_reader_sequence || html_reader_file !== file) {
         return null;
       }
-      html_content_.as(content);
+      html_content_.as(html_preview_content(content));
       return content;
     } catch (error) {
       if (error && error.name === "AbortError") {
@@ -809,6 +1005,7 @@ function PreviewViewModel(props) {
       platform.patchBodyStyle({ overflow: "" });
     },
     destroy() {
+      for (const player of video_players) player.unmount();
       methods.closePreview();
       destroy_live_player();
       unlisten_hls_player();
@@ -829,8 +1026,7 @@ function PreviewViewModel(props) {
     },
     isLivePlayback: is_live_playback,
     filePlayable: file_playable,
-    mountVideo: mount_video,
-    unmountVideo: unmount_video,
+    createVideoPlayer: create_video_player,
     fileTypeIcon: file_type_icon,
     fileTypeLabel: file_type_label,
     formatBytes: format_bytes,
@@ -889,9 +1085,12 @@ function PreviewViewModel(props) {
 
 export {
   PreviewViewModel,
+  html_preview_content,
   normalize_file,
   is_html_file,
   is_text_file,
   playback_url,
   should_use_stream_playback,
+  subtitle_format,
+  subtitle_to_vtt,
 };

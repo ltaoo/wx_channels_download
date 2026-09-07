@@ -357,16 +357,7 @@
 }
 
 .settings-certificate-status {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--dm-space-1-5);
-  padding: var(--dm-space-1-5) var(--dm-space-2-5);
-  font-size: var(--dm-font-size-caption);
-  font-weight: var(--dm-font-weight-semibold);
-  line-height: var(--dm-line-height-snug);
   border: var(--dm-border-width) solid currentColor;
-  border-radius: var(--dm-radius-badge);
-  white-space: nowrap;
 }
 
 .settings-certificate-status--success {
@@ -600,15 +591,7 @@
 }
 
 .settings-mcp__status {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--dm-space-1-5);
-  padding: var(--dm-space-1-5) var(--dm-space-2-5);
-  font-size: var(--dm-font-size-caption);
-  font-weight: var(--dm-font-weight-semibold);
   border: var(--dm-border-width) solid currentColor;
-  border-radius: var(--dm-radius-badge);
-  white-space: nowrap;
 }
 
 .settings-mcp__status--running {
@@ -682,13 +665,7 @@
 }
 
 .settings-mcp__tools code {
-  padding: var(--dm-space-1-5) var(--dm-space-2-5);
-  color: var(--dm-color-primary);
   font-family: var(--dm-font-family-mono);
-  font-size: var(--dm-font-size-xs);
-  background: var(--dm-color-primary-soft);
-  border: var(--dm-border-width) solid var(--dm-color-primary-border);
-  border-radius: var(--dm-radius-badge);
 }
 
 .settings-mcp__guide {
@@ -911,15 +888,9 @@
 }
 
 .settings-about__version {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--dm-space-2);
-  padding: var(--dm-space-2) var(--dm-space-3);
   color: var(--dm-color-text-primary);
   background: color-mix(in srgb, var(--dm-color-bg-surface) 88%, transparent);
   border: var(--dm-border-width) solid var(--dm-color-border-strong);
-  border-radius: var(--dm-radius-badge);
-  white-space: nowrap;
 }
 
 .settings-about__version-label {

@@ -334,9 +334,9 @@ func (h *handler) build_download_task(info *youtube.VideoInfo, config map[string
 		})
 	}
 
-	download_client := h.scraper_client(false)
+	youtube_client := h.scraper_client(false)
 	for index, format := range download_formats {
-		download_headers := download_client.DownloadHeadersForFormat(format, content.SourceURL)
+		download_headers := youtube_client.DownloadHeadersForFormat(format, content.SourceURL)
 		log_selected_download_format(h.get_logger(), info.ID, index, format, download_headers)
 		resource_kind := youtube_resource_kind(format)
 		resource_name := task_name
@@ -374,10 +374,10 @@ func (h *handler) build_download_task(info *youtube.VideoInfo, config map[string
 		})
 	}
 
-	caption_headers := headers_json_string(download_client.DownloadHeaders(content.SourceURL))
 	for _, selected_track := range selected_text_tracks {
 		track := selected_track.track
 		source := selected_track.source
+		source.URL = youtube_client.CaptionDownloadURL(source.URL)
 		resource_suffix := youtube_text_track_resource_suffix(track, source)
 		resources = append(resources, &adapter.ResourceInfo{
 			Resource: model.DownloadResource{
@@ -391,7 +391,7 @@ func (h *handler) build_download_task(info *youtube.VideoInfo, config map[string
 			Endpoints: []model.DownloadEndpoint{{
 				Protocol: endpoint_protocol(source.URL),
 				URL:      source.URL,
-				Headers:  caption_headers,
+				Headers:  headers_json_string(youtube_client.CaptionDownloadHeaders(source.URL, content.SourceURL)),
 				Enabled:  1,
 			}},
 			ContentAssets: []adapter.ContentAssetReference{{

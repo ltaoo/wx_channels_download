@@ -797,7 +797,7 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 		}
 
 		stage = "persist_content_details"
-		if err := save_content_details(tx, content, info.ContentDetail, info.ContentDetails, now); err != nil {
+		if err := save_content_details(tx, content, info.ContentDetail, info.ContentDetails, resource_infos, now); err != nil {
 			return fmt.Errorf("保存内容详情与关联关系失败: %w", err)
 		}
 
@@ -1764,7 +1764,7 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-func save_content_extension(db *gorm.DB, detail any) error {
+func save_content_extension(db *gorm.DB, detail any, selected_video_assets map[[2]string]bool) error {
 	if db == nil {
 		return ErrDBNotInitialized
 	}
@@ -1773,10 +1773,10 @@ func save_content_extension(db *gorm.DB, detail any) error {
 	}
 	switch content_detail := detail.(type) {
 	case *model.ContentVideo:
-		return save_content_video(db, content_detail)
+		return save_content_video(db, content_detail, selected_video_assets)
 	case model.ContentVideo:
 		content_video := content_detail
-		return save_content_video(db, &content_video)
+		return save_content_video(db, &content_video, selected_video_assets)
 	case *model.ContentNovel:
 		return save_content_novel(db, content_detail)
 	case model.ContentNovel:
@@ -1832,18 +1832,43 @@ func save_content_details(
 	root_content *model.Content,
 	primary_detail any,
 	content_details []adapter.ContentDetail,
+	resource_infos []*adapter.ResourceInfo,
 	now int64,
 ) error {
 	if db == nil {
 		return ErrDBNotInitialized
 	}
-	if len(content_details) == 0 {
-		return save_content_extension(db, primary_detail)
-	}
-
 	root_content_id := ""
 	if root_content != nil {
 		root_content_id = strings.TrimSpace(root_content.Id)
+	}
+	selected_video_assets := make(map[[2]string]bool)
+	for _, resource_info := range resource_infos {
+		content_id := root_content_id
+		if resource_info.Resource.ContentId != nil && strings.TrimSpace(*resource_info.Resource.ContentId) != "" {
+			content_id = strings.TrimSpace(*resource_info.Resource.ContentId)
+		}
+		references := resource_info.ContentAssets
+		if len(references) == 0 {
+			references = []adapter.ContentAssetReference{default_content_asset_reference(resource_info.Resource, root_content)}
+		}
+		for _, reference := range references {
+			role := strings.TrimSpace(reference.Role)
+			if role == "" {
+				_, role = content_asset_kind_and_role_from_resource(resource_info.Resource)
+			}
+			if role != model.ContentAssetRoleVideoVariant {
+				continue
+			}
+			asset_key := strings.TrimSpace(reference.AssetKey)
+			if asset_key == "" {
+				asset_key = content_asset_key_from_resource(resource_info.Resource, role)
+			}
+			selected_video_assets[[2]string{content_id, asset_key}] = true
+		}
+	}
+	if len(content_details) == 0 {
+		return save_content_extension(db, primary_detail, selected_video_assets)
 	}
 	return db.Transaction(func(tx *gorm.DB) error {
 		for detail_index := range content_details {
@@ -1871,7 +1896,7 @@ func save_content_details(
 
 		for detail_index := range content_details {
 			detail := content_details[detail_index]
-			if err := save_content_extension(tx, detail.Data); err != nil {
+			if err := save_content_extension(tx, detail.Data, selected_video_assets); err != nil {
 				return fmt.Errorf("save content detail %q: %w", detail.Key, err)
 			}
 		}
@@ -2335,7 +2360,7 @@ func save_content_novel(db *gorm.DB, content_novel *model.ContentNovel) error {
 	})
 }
 
-func save_content_video(db *gorm.DB, content_video *model.ContentVideo) error {
+func save_content_video(db *gorm.DB, content_video *model.ContentVideo, selected_video_assets map[[2]string]bool) error {
 	if content_video == nil {
 		return nil
 	}
@@ -2344,11 +2369,20 @@ func save_content_video(db *gorm.DB, content_video *model.ContentVideo) error {
 	}
 
 	return db.Transaction(func(tx *gorm.DB) error {
-		selected_variant, err := selected_content_video_variant(content_video)
-		if err != nil {
-			return err
+		candidates := content_video.Variants
+		if len(candidates) == 0 {
+			candidates = []model.ContentVideoVariant{default_content_video_variant(content_video)}
 		}
-		variants := append([]model.ContentVideoVariant(nil), content_video.Variants...)
+		variants := make([]model.ContentVideoVariant, 0, len(candidates))
+		for _, variant := range candidates {
+			variant_key := strings.TrimSpace(variant.VariantKey)
+			if variant_key == "" {
+				variant_key = "default"
+			}
+			if selected_video_assets[[2]string{strings.TrimSpace(content_video.Id), variant_key}] {
+				variants = append(variants, variant)
+			}
+		}
 		has_selected_variant := false
 		for variant_index := range variants {
 			if variants[variant_index].IsDefault != 0 {
@@ -2356,29 +2390,25 @@ func save_content_video(db *gorm.DB, content_video *model.ContentVideo) error {
 				break
 			}
 		}
-		if !has_selected_variant {
-			default_variant_index := -1
-			for variant_index := range variants {
-				if variants[variant_index].VariantKey == selected_variant.VariantKey {
-					default_variant_index = variant_index
-					break
-				}
-			}
-			if default_variant_index >= 0 {
-				variants[default_variant_index] = selected_variant
-			} else {
-				variants = append(variants, selected_variant)
-			}
+		if !has_selected_variant && len(variants) > 0 {
+			variants[0].IsDefault = 1
+		}
+		selected_video := *content_video
+		selected_video.Variants = variants
+		if _, err := selected_content_video_variant(&selected_video); err != nil {
+			return err
 		}
 		if err := tx.Omit("Variants").Save(content_video).Error; err != nil {
 			return err
 		}
 
 		now := time.Now().UnixMilli()
-		if err := tx.Model(&model.ContentVideoVariant{}).
-			Where("video_id = ? AND is_default <> 0", content_video.Id).
-			Update("is_default", 0).Error; err != nil {
-			return err
+		if len(variants) > 0 {
+			if err := tx.Model(&model.ContentVideoVariant{}).
+				Where("video_id = ? AND is_default <> 0", content_video.Id).
+				Update("is_default", 0).Error; err != nil {
+				return err
+			}
 		}
 		for variant_index := range variants {
 			variant := &variants[variant_index]

@@ -1,4 +1,4 @@
-import { BrandError, BrandLoading, Input, Popover } from "./dmui.js";
+import { BrandError, BrandLoading, Input, PlatformIcon, Popover } from "./dmui.js";
 
 const Runtime = window.Timeless;
 
@@ -949,29 +949,6 @@ export function AccountSelect(props = {}) {
   );
 }
 
-export function PlatformIcon(props = {}) {
-  const favicon = String(props.favicon || "");
-  if (!favicon.includes("#")) return null;
-  const semantic_name = props.name || "platform-icon";
-  return Runtime.SVG.SVG(
-    {
-      class: props.class,
-      attributes: {
-        n: semantic_name,
-        viewBox: "0 0 32 32",
-        "aria-hidden": "true",
-        focusable: "false",
-        ...(props.attributes || {}),
-      },
-    },
-    [
-      Runtime.SVG.Use({
-        attributes: { href: favicon },
-      }),
-    ],
-  );
-}
-
 export function LoadingView() {
   return View(
     {
@@ -1030,37 +1007,4 @@ export function ErrorFallbackView(error, view_name) {
   );
 }
 
-export function TablePlatformBadge(props = {}) {
-  const semantic_name = props.name || "table-platform";
-  const label =
-    props.label === undefined || props.label === null
-      ? []
-      : Array.isArray(props.label)
-        ? props.label
-        : [props.label];
-  return View(
-    {
-      class: Runtime.classNames([
-        "dm-platform-badge dm-inline-flex dm-items-center dm-gap-1-5",
-        props.class,
-      ]),
-      attributes: {
-        n: semantic_name,
-        ...(props.attributes || {}),
-      },
-    },
-    [
-      Show({
-        when: props.favicon,
-        ok() {
-          return PlatformIcon({
-            class: "dm-platform-badge__icon",
-            favicon: props.favicon,
-            name: `${semantic_name}-icon`,
-          });
-        },
-      }),
-      ...label,
-    ],
-  );
-}
+export { PlatformIcon, PlatformTag as TablePlatformBadge } from "./dmui.js";

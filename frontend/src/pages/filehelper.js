@@ -1,3 +1,4 @@
+import { Tag, PlatformTag } from "../dmui.js";
 import { FileHelperViewModel } from "./filehelper.model.js";
 
 function FileHelperHeaderView(props) {
@@ -21,8 +22,8 @@ function FileHelperHeaderView(props) {
           (status) => status !== "idle",
         ),
         ok() {
-          return View(
-            { class: "filehelper-channels-status dm-badge dm-badge--info" },
+          return Tag(
+            { name: "filehelper-channels-status", variant: "info", class: "filehelper-channels-status" },
             [
             "视频号API: ",
             View(
@@ -38,8 +39,9 @@ function FileHelperHeaderView(props) {
           );
         },
       }),
-      View(
+      Tag(
         {
+          name: "filehelper-status",
           class: computed(vm$.state.logged_in, (logged_in) =>
             logged_in
               ? "filehelper-status is-online"
@@ -144,7 +146,7 @@ function FileHelperLoginView(props) {
   const vm$ = props.store;
   return View({ class: "filehelper-login" }, [
     View({ class: "filehelper-login-copy" }, [
-      View({ class: "filehelper-login-eyebrow" }, ["微信连接"]),
+      Tag({ name: "filehelper-login-eyebrow", class: "filehelper-login-eyebrow" }, ["微信连接"]),
       View({ as: "h1", class: "filehelper-login-title" }, [
         "把手机里的内容，直接送到工作台",
       ]),
@@ -211,7 +213,7 @@ function FileHelperFinderMessageView(props) {
             })
           : null,
         View({ class: "filehelper-finder-nickname" }, [data.nickname]),
-        View({ class: "filehelper-finder-badge" }, ["视频号"]),
+        PlatformTag({ class: "filehelper-finder-badge", name: "filehelper-finder-platform", label: "视频号", favicon: (window.PLATFORM_FAVICONS || {}).wxchannels }),
       ].filter(Boolean)),
     ]),
   ].filter(Boolean));

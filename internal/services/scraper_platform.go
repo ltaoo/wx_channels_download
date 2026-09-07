@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	douyin_scraper "wx_channel/pkg/scraper/douyin"
+	instagram_scraper "wx_channel/pkg/scraper/instagram"
 	kuaishou_scraper "wx_channel/pkg/scraper/kuaishou"
 	weibo_scraper "wx_channel/pkg/scraper/weibo"
 	x_scraper "wx_channel/pkg/scraper/x"
@@ -27,7 +28,7 @@ const (
 	scraper_platform_weibo       = "weibo"
 	scraper_platform_x           = "x"
 	scraper_platform_ucdrive     = "ucdrive"
-	scraper_platform_webpage     = "webpage"
+	scraper_platform_singlefile  = "singlefile"
 )
 
 type ScraperPlatformResolution struct {
@@ -49,6 +50,13 @@ type scraper_http_url_rule struct {
 }
 
 var scraper_raw_url_rules = []scraper_raw_url_rule{
+	{
+		platform_id: instagram_scraper.PlatformID,
+		match: func(raw_url string) bool {
+			_, err := instagram_scraper.ExtractShortcode(raw_url)
+			return err == nil
+		},
+	},
 	{
 		platform_id: scraper_platform_douyin,
 		match: func(raw_url string) bool {
@@ -187,7 +195,7 @@ func ResolveScraperPlatform(raw_url string) (ScraperPlatformResolution, error) {
 			return scraper_platform_resolution(rule.platform_id, rule.status_key), nil
 		}
 	}
-	return scraper_platform_resolution(scraper_platform_webpage, ""), nil
+	return scraper_platform_resolution(scraper_platform_singlefile, ""), nil
 }
 
 func scraper_platform_resolution(platform_id string, status_key string) ScraperPlatformResolution {

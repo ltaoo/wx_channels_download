@@ -66,6 +66,7 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/browse_history/create", c.handle_create_browse_history)
 	c.engine.POST("/api/browse_history/list", c.handle_fetch_browse_history_list)
 	c.engine.POST("/api/v1/download_task/prepare", c.handle_prepare_download_task)
+	c.engine.POST("/api/v1/download_task/update_resource", c.handle_update_download_resource)
 	c.engine.POST("/api/v1/download_task/prepare_by_url", c.handle_prepare_download_task_by_url)
 	c.engine.POST("/api/v1/download_task/create", c.handle_create_download_task)
 	c.engine.POST("/api/v1/download_task/create_by_url", c.handle_create_download_task_by_url)

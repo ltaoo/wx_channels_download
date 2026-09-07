@@ -250,14 +250,10 @@
 .logs-level {
   width: fit-content;
   min-width: 46px;
-  padding: var(--dm-space-1) var(--dm-space-2);
   color: var(--dm-color-info);
   text-align: center;
   background: var(--dm-color-info-soft);
-  border-radius: var(--dm-radius-badge);
   font-family: var(--dm-font-family-sans);
-  font-size: var(--dm-font-size-caption);
-  font-weight: var(--dm-font-weight-semibold);
   text-transform: uppercase;
 }
 

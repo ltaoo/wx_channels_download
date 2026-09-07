@@ -170,7 +170,7 @@ function normalize_author_name(raw) {
 }
 
 function BrowseHistoryViewModel(props) {
-  const PAGE_SIZE_DEFAULT = 24;
+  const PAGE_SIZE_DEFAULT = 50;
   const histories_ = refarr([]);
   const total_ = ref(0);
   const page_ = ref(1);
@@ -198,7 +198,13 @@ function BrowseHistoryViewModel(props) {
     select_platform$: new Timeless.vm.SelectCore({
       defaultValue: "",
       placeholder: "全部平台",
-      position: "item-aligned",
+      search: new Timeless.vm.InputCore({
+        defaultValue: "",
+        placeholder: "搜索平台",
+        allowClear: true,
+        autocomplete: false,
+      }),
+      position: "popper",
       options: [
         ["", "全部平台"],
         ...Object.entries(window.PLATFORM_NAMES),
@@ -206,7 +212,9 @@ function BrowseHistoryViewModel(props) {
         ([value, label]) => new Timeless.vm.SelectItemCore({ label, value }),
       ),
       onChange(value) {
-        platform_id_.as(String(value || ""));
+        const platform_id = String(value || "");
+        if (platform_id === platform_id_.value) return;
+        platform_id_.as(platform_id);
         load(1);
       },
     }),
@@ -219,6 +227,8 @@ function BrowseHistoryViewModel(props) {
       variant: "outline",
       onClick() {
         keyword_.as("");
+        platform_id_.as("");
+        ui.select_platform$.setValue("");
         return load(1);
       },
     }),

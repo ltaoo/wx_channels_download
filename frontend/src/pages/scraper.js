@@ -1,7 +1,6 @@
 import { ThirdPartyDownloaderPanel } from "@/third-party-downloader.js";
 
-import { PlatformIcon } from "../components.js";
-import { createCheckboxStore } from "../dmui.js";
+import { Alert, AlertTitle, AlertDescription, BrandError, Tag, PlatformTag, Tooltip } from "../dmui.js";
 import { ScraperPageViewModel } from "./scraper.model.js";
 
 const task_overwrite_actions = [
@@ -92,6 +91,45 @@ function ScraperPageView(props) {
               ScraperFetchProgress({ store: vm$ }),
             ],
           ),
+          Show({
+            when: vm$.state.error,
+            ok() {
+              return Alert(
+                {
+                  variant: "destructive",
+                  class: "dm-flex dm-flex-col dm-items-center dm-gap-3",
+                  style: { textAlign: "center" },
+                  attributes: { n: "scraper-fetch-error", "aria-atomic": "true" },
+                },
+                [
+                  BrandError({
+                    size: 132,
+                    name: "scraper-fetch-error-symbol",
+                    style: { flexShrink: 0 },
+                  }),
+                  View(
+                    {
+                      class: "dm-min-w-0 dm-w-full",
+                      attributes: { n: "scraper-fetch-error-content" },
+                    },
+                    [
+                      AlertTitle(
+                        { attributes: { n: "scraper-fetch-error-title" } },
+                        ["解析失败"],
+                      ),
+                      AlertDescription(
+                        {
+                          attributes: { n: "scraper-fetch-error-message" },
+                          style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere" },
+                        },
+                        [vm$.state.error],
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            },
+          }),
           ScraperFetchedRawContent({ store: vm$ }),
           ScraperPageResult({ store: vm$ }),
         ]),
@@ -460,26 +498,13 @@ function ScraperContentCard(props) {
       [
         ScraperContentCover({ content }),
         View({ class: "home-content-info" }, [
-          View({ class: "home-badges" }, [
-            View(
-              {
-                class: "home-badge home-badge-primary home-platform-badge",
-              },
-              [
-                Show({
-                  when: content.platform_favicon,
-                  ok() {
-                    return PlatformIcon({
-                      class: "home-platform-favicon",
-                      favicon: content.platform_favicon,
-                      name: "home-platform-favicon",
-                    });
-                  },
-                }),
-                content.platform_name,
-              ],
-            ),
-            View({ class: "home-badge" }, [content.content_type_name]),
+          View({ class: "home-badges", attributes: { n: "scraper-content-tags" } }, [
+            PlatformTag({
+              name: "scraper-content-platform",
+              favicon: content.platform_favicon,
+              label: content.platform_name,
+            }),
+            Tag({ name: "scraper-content-type" }, [content.content_type_name]),
           ]),
           View(
             {
@@ -616,7 +641,7 @@ function ScraperContentRelations(props) {
               View({ class: "home-card-title" }, ["内容关联"]),
             ]),
           ]),
-          View({ class: "home-detail-badge" }, [relations.count_text]),
+          Tag({ name: "home-detail-badge", class: "home-detail-badge" }, [relations.count_text]),
         ]),
         Show({
           when: relations.content_present,
@@ -915,7 +940,7 @@ function ScraperNovelDetails(props) {
               View({ class: "home-detail-card-subtitle" }, [novel.subtitle]),
             ]),
           ]),
-          View({ class: "home-detail-badge" }, [novel.progress_text]),
+          Tag({ name: "home-detail-badge", class: "home-detail-badge" }, [novel.progress_text]),
         ]),
         View({ class: "home-novel-body" }, [
           View({ class: "home-detail-metrics" }, [
@@ -1101,7 +1126,7 @@ function ScraperVideoVariantItem(props) {
       Show({
         when: Boolean(variant.is_default),
         ok() {
-          return View({ class: "home-video-supplement-badge" }, ["默认"]);
+          return Tag({ name: "home-video-supplement-badge", class: "home-video-supplement-badge" }, ["默认"]);
         },
       }),
     ],
@@ -1111,17 +1136,8 @@ function ScraperVideoVariantItem(props) {
 function ScraperContentTextTrackItem(props) {
   const vm$ = props.store;
   const track = props.track || {};
-  const selected_ = computed(vm$.state.selected_text_track_keys, (keys) =>
-    (Array.isArray(keys) ? keys : []).includes(track.track_key),
-  );
-  const checkbox_store = createCheckboxStore({
-    checked: selected_,
-    disabled:
-      vm$.state.text_track_selection_disabled.value || !track.has_sources,
-    onChange(checked) {
-      return vm$.methods.selectTextTrack(track.track_key, checked);
-    },
-  });
+  const checkbox = vm$.methods.createTextTrackCheckbox(track);
+  const selected_ = checkbox.selected;
   return View({ class: "home-video-subtitle-track" }, [
     View(
       {
@@ -1133,15 +1149,13 @@ function ScraperContentTextTrackItem(props) {
       },
       [
         Checkbox({
-          store: checkbox_store,
+          store: checkbox.store,
           class: "home-video-subtitle-checkbox",
           attributes: {
             n: "scraper-text-track-checkbox",
             "aria-label": `下载字幕 ${track.title || track.track_key}`,
           },
-          onUnmounted() {
-            selected_.destroy?.();
-          },
+          onUnmounted: checkbox.dispose,
         }),
         View({ class: "home-video-supplement-main" }, [
           View(
@@ -1155,7 +1169,7 @@ function ScraperContentTextTrackItem(props) {
             track.meta_text || track.track_key,
           ]),
         ]),
-        View({ class: "home-video-supplement-badge" }, [
+        Tag({ name: "home-video-supplement-badge", class: "home-video-supplement-badge" }, [
           `${track.sources.length} 个源`,
         ]),
       ],
@@ -1200,7 +1214,7 @@ function ScraperVideoSupplements(props) {
             View({ class: "home-video-supplement-label" }, [
               "ContentVideoVariant",
             ]),
-            View({ class: "home-video-supplement-count" }, [
+            Tag({ name: "home-video-supplement-count", class: "home-video-supplement-count" }, [
               String(detail.variants.length),
             ]),
           ]),
@@ -1237,7 +1251,7 @@ function ScraperVideoSupplements(props) {
             View({ class: "home-video-supplement-label" }, [
               "ContentTextTrack",
             ]),
-            View({ class: "home-video-supplement-count" }, [
+            Tag({ name: "home-video-supplement-count", class: "home-video-supplement-count" }, [
               String(detail.text_tracks.length),
             ]),
           ]),
@@ -1301,7 +1315,7 @@ function ScraperTypedContentDetail(props) {
             View({ class: "home-detail-card-subtitle" }, [detail.model_name]),
           ]),
         ]),
-        View({ class: "home-detail-badge" }, [detail.type_name]),
+        Tag({ name: "home-detail-badge", class: "home-detail-badge" }, [detail.type_name]),
       ]),
       View({ class: "home-typed-detail-body" }, [
         Show({
@@ -1344,8 +1358,9 @@ function ScraperTypedContentDetail(props) {
                     Show({
                       when: image.is_live_photo,
                       ok() {
-                        return View(
+                        return Tag(
                           {
+                            name: "home-detail-image-live-badge",
                             class: "home-detail-image-live-badge",
                             attributes: { title: "实况图" },
                           },
@@ -1567,7 +1582,7 @@ function ScraperDownloadAssetRelation(props) {
         ]),
       ],
     ),
-    View({ class: "home-download-relation-kind" }, [asset.relation]),
+    Tag({ name: "home-download-relation-kind", class: "home-download-relation-kind" }, [asset.relation]),
   ]);
 }
 
@@ -1629,7 +1644,7 @@ function HomeDownloadSection(props) {
   return View({ class: "home-download-section" }, [
     View({ class: "home-download-section-head" }, [
       View({ class: "home-download-section-title" }, [props.title]),
-      View({ class: "home-download-section-count" }, [props.count]),
+      Tag({ name: "home-download-section-count", class: "home-download-section-count" }, [props.count]),
     ]),
     View({ class: "home-download-section-body" }, props.children || []),
   ]);
@@ -1657,7 +1672,7 @@ function ScraperDownloadInfo(props) {
             Show({
               when: computed(download_info.badge_text, (text) => Boolean(text)),
               ok() {
-                return View({ class: download_info.badge_class }, [
+                return Tag({ name: "scraper-download-preview-status", class: download_info.badge_class }, [
                   download_info.badge_text,
                 ]);
               },
@@ -1720,7 +1735,7 @@ function ScraperDownloadInfo(props) {
                   Show({
                     when: computed(task.status_text, (text) => Boolean(text)),
                     ok() {
-                      return View({ class: "home-download-status" }, [
+                      return Tag({ name: "home-download-status", class: "home-download-status" }, [
                         task.status_text,
                       ]);
                     },
@@ -2094,7 +2109,11 @@ function ScraperPlatformStatus(props) {
             return View(
               {
                 class: "home-platform-status-list",
-                attributes: { role: "list", "aria-label": "平台状态" },
+                attributes: {
+                  n: "platform-status-list",
+                  role: "list",
+                  "aria-label": "平台状态",
+                },
               },
               [
                 For({
@@ -2102,23 +2121,22 @@ function ScraperPlatformStatus(props) {
                   each: status.items,
                   render(item_) {
                     const item = ScraperDetailValue(item_);
-                    return View(
+                    const status_item = View(
                       {
                         class: item.status_class,
                         attributes: {
+                          n: "platform-status-item",
                           role: "listitem",
-                          title: item.has_reason
-                            ? `${item.platform_name}：${item.reason}`
-                            : item.has_status_text
-                              ? `${item.platform_name}：${item.status_text}`
-                              : item.platform_name,
                         },
                       },
                       [
                         View(
                           {
                             class: "home-platform-status-logo-wrap",
-                            attributes: { "aria-hidden": "true" },
+                            attributes: {
+                              n: "platform-status-logo-wrap",
+                              "aria-hidden": "true",
+                            },
                           },
                           [
                             PlatformIcon({
@@ -2126,39 +2144,50 @@ function ScraperPlatformStatus(props) {
                               favicon: item.platform_favicon,
                               name: "platform-status-logo",
                             }),
-                            View({ class: "home-platform-status-dot" }),
+                            View({
+                              class: "home-platform-status-dot",
+                              attributes: { n: "platform-status-dot" },
+                            }),
                           ],
                         ),
-                        View({ class: "home-platform-status-main" }, [
-                          View({ class: "home-platform-status-head" }, [
-                            View({ class: "home-platform-status-name" }, [
+                        View({
+                          class: "home-platform-status-main",
+                          attributes: { n: "platform-status-main" },
+                        }, [
+                          View({
+                            class: "home-platform-status-head",
+                            attributes: { n: "platform-status-head" },
+                          }, [
+                            View({
+                              class: "home-platform-status-name",
+                              attributes: { n: "platform-status-name" },
+                            }, [
                               item.platform_name,
                             ]),
                             Show({
                               when: item.has_status_text,
                               ok() {
                                 return View(
-                                  { class: "home-platform-status-value" },
+                                  {
+                                    class: "home-platform-status-value",
+                                    attributes: { n: "platform-status-value" },
+                                  },
                                   [item.status_text],
                                 );
                               },
                             }),
                           ]),
-                          Show({
-                            when: item.has_reason,
-                            ok() {
-                              return View(
-                                {
-                                  class: "home-platform-status-reason",
-                                  attributes: { title: item.reason },
-                                },
-                                [item.reason],
-                              );
-                            },
-                          }),
                         ]),
                       ],
                     );
+                    return item.has_reason
+                      ? Tooltip({
+                          store: item.tooltip$,
+                          content: item.reason,
+                          onContentMouseEnter: vm$.methods.showPlatformStatusPopover,
+                          onContentMouseLeave: vm$.methods.schedulePlatformStatusPopoverHide,
+                        }, [status_item])
+                      : status_item;
                   },
                 }),
               ],

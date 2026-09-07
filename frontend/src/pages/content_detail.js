@@ -1,6 +1,6 @@
-import { ContentDetailViewModel } from "./content_detail.model.js";
-import { BrandError } from "../dmui.js";
-import { PlatformIcon } from "../components.js";
+import { ContentDetailViewModel, ContentDetailDescriptionModel } from "./content_detail.model.js";
+import { PreviewGalleryMediaView } from "./preview.js";
+import { BrandError, Tag, PlatformTag } from "../dmui.js";
 
 function ContentDetailAction(props) {
   const semantic_name = props.name || "content-detail-action";
@@ -123,22 +123,11 @@ function ContentDetailPlatform(props) {
   const content = props.content;
   const platform_id = String(content.platform_id || "").trim();
   const favicon = (window.PLATFORM_FAVICONS || {})[platform_id] || "";
-  return View({ class: "content-platform" }, [
-    Show({
-      when: favicon,
-      ok() {
-        return PlatformIcon({
-          class: "content-platform-icon",
-          favicon,
-          name: "content-platform-icon",
-        });
-      },
-      else() {
-        return Timeless.Icon({ name: "globe", size: 14 });
-      },
-    }),
-    vm$.methods.platformName(content),
-  ]);
+  return PlatformTag({
+    name: "content-detail-platform",
+    favicon,
+    label: vm$.methods.platformName(content),
+  });
 }
 
 function ContentDetailSection(props) {
@@ -146,7 +135,7 @@ function ContentDetailSection(props) {
     View({ class: "content-detail-section-head" }, [
       View({ class: "content-detail-section-title" }, [props.title]),
       props.count !== undefined
-        ? View({ class: "content-detail-section-count" }, [
+        ? Tag({ name: "content-detail-section-count", class: "content-detail-section-count" }, [
             String(props.count),
           ])
         : null,
@@ -465,219 +454,14 @@ function content_asset_previews(content, vm$) {
   for (const resource of content.resources || []) {
     append_resource(resource);
   }
-  return entries;
-}
-
-function mounted_dom_element(event) {
-  let target = event && event.target ? event.target : event;
-  for (let depth = 0; depth < 4; depth += 1) {
-    if (
-      target &&
-      target.nodeType === 1 &&
-      typeof target.setAttribute === "function"
-    ) {
-      return target;
-    }
-    if (target && typeof target.get$elm === "function") {
-      target = target.get$elm();
-      continue;
-    }
-    if (target && target.$elm) {
-      target = target.$elm;
-      continue;
-    }
-    break;
-  }
-  return null;
-}
-
-function normalized_content_theme(value) {
-  const theme = String(value || "")
-    .trim()
-    .toLowerCase();
-  return theme === "light" || theme === "dark" ? theme : "";
-}
-
-function resolved_content_theme() {
-  const root = document.documentElement;
-  const body = document.body;
-  const explicit_theme =
-    normalized_content_theme(root && root.dataset.theme) ||
-    normalized_content_theme(body && body.dataset.weuiTheme) ||
-    normalized_content_theme(root && root.style.colorScheme);
-  if (explicit_theme) {
-    return explicit_theme;
-  }
-  if (root && root.classList.contains("dark")) {
-    return "dark";
-  }
-  try {
-    return window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-  } catch {
-    return "light";
-  }
-}
-
-function apply_html_document_theme(frame) {
-  const theme = resolved_content_theme();
-  frame.style.colorScheme = theme;
-  frame.dataset.theme = theme;
-  try {
-    const document_ = frame.contentDocument;
-    if (!document_ || !document_.documentElement) {
-      return;
-    }
-    const root = document_.documentElement;
-    root.dataset.theme = theme;
-    root.style.colorScheme = theme;
-    root.classList.toggle("dark", theme === "dark");
-    if (document_.body) {
-      document_.body.dataset.weuiTheme = theme;
-    }
-  } catch (error) {
-    // External documents can deny DOM access; the iframe color-scheme still
-    // supplies the correct prefers-color-scheme value to embedded content.
-    console.debug("unable to sync html preview theme", error);
-  }
-}
-
-function ContentDetailHTMLDocument(props) {
-  const initial_theme = resolved_content_theme();
-  return Timeless.Webview({
-    class: "content-detail-media-document content-detail-media-document-html",
-    href: props.media.url,
-    style: { "color-scheme": initial_theme },
-    attributes: {
-      title: props.media.name,
-      loading: "eager",
-      sandbox: "allow-same-origin",
-      "data-theme": initial_theme,
-    },
-    onMounted(event) {
-      const frame = mounted_dom_element(event);
-      if (!frame) {
-        return undefined;
-      }
-      const apply_theme = () => apply_html_document_theme(frame);
-      const observer = new MutationObserver(apply_theme);
-      const observer_options = {
-        attributes: true,
-        attributeFilter: [
-          "class",
-          "data-theme",
-          "data-weui-theme",
-          "style",
-        ],
-      };
-      observer.observe(document.documentElement, observer_options);
-      if (document.body) {
-        observer.observe(document.body, observer_options);
-      }
-      const media_query = window.matchMedia("(prefers-color-scheme: dark)");
-      if (typeof media_query.addEventListener === "function") {
-        media_query.addEventListener("change", apply_theme);
-      } else if (typeof media_query.addListener === "function") {
-        media_query.addListener(apply_theme);
-      }
-      frame.addEventListener("load", apply_theme);
-      apply_theme();
-      return () => {
-        observer.disconnect();
-        frame.removeEventListener("load", apply_theme);
-        if (typeof media_query.removeEventListener === "function") {
-          media_query.removeEventListener("change", apply_theme);
-        } else if (typeof media_query.removeListener === "function") {
-          media_query.removeListener(apply_theme);
-        }
-      };
-    },
-  });
+  return vm$.methods.sortMediaEntries(entries, content);
 }
 
 function ContentDetailMediaStage(props) {
   const vm$ = props.store;
   const media = props.media;
-  const cover_url = vm$.methods.coverURL(props.content);
-  let player = null;
-  if (!media.available) {
-    player = View({ class: "content-detail-media-file-stage" }, [
-      View({ class: "content-detail-media-file-icon" }, [
-        Timeless.Icon({ name: content_media_type_icon(media.type), size: 48 }),
-      ]),
-      View({ class: "content-detail-media-file-title" }, [media.name]),
-      View({ class: "content-detail-media-file-text" }, [
-        "文件尚未下载、下载未完成，或本地文件已被删除。",
-      ]),
-    ]);
-  } else if (media.type === "video") {
-    player = Timeless.Video({
-      class: "content-detail-media-video",
-      src: media.url,
-      poster: cover_url,
-      controls: true,
-      playsInline: true,
-      preload: "metadata",
-    });
-  } else if (media.type === "audio") {
-    player = View({
-      class: [
-        "content-detail-media-audio-stage",
-        cover_url ? "" : "content-detail-media-audio-stage-no-artwork",
-      ]
-        .filter(Boolean)
-        .join(" "),
-    }, [
-      cover_url
-        ? View({ class: "content-detail-media-artwork" }, [
-            LazyImg({
-              class: "content-detail-media-artwork-image",
-              src: cover_url,
-              alt: "",
-              attributes: { referrerpolicy: "no-referrer" },
-            }),
-            View({ class: "content-detail-media-artwork-fallback" }, [
-              Timeless.Icon({ name: "file-volume", size: 42 }),
-            ]),
-          ])
-        : null,
-      Timeless.Audio({
-        class: "content-detail-media-audio",
-        src: media.url,
-        controls: true,
-        preload: "metadata",
-      }),
-    ].filter(Boolean));
-  } else if (media.type === "image") {
-    player = Img({
-      class: "content-detail-media-image",
-      src: media.url,
-      alt: media.name,
-      attributes: { loading: "eager" },
-    });
-  } else if (media.type === "html") {
-    player = ContentDetailHTMLDocument({ media });
-  } else if (["pdf", "text"].includes(media.type)) {
-    player = Timeless.Webview({
-      class: `content-detail-media-document content-detail-media-document-${media.type}`,
-      href: media.url,
-      attributes: {
-        title: media.name,
-        loading: "eager",
-      },
-    });
-  } else {
-    player = View({ class: "content-detail-media-file-stage" }, [
-      View({ class: "content-detail-media-file-icon" }, [
-        Timeless.Icon({ name: content_media_type_icon(media.type), size: 48 }),
-      ]),
-      View({ class: "content-detail-media-file-title" }, [media.name]),
-      View({ class: "content-detail-media-file-text" }, [
-        "此文件类型无法在浏览器中直接预览，请打开原文件查看。",
-      ]),
-    ]);
-  }
+  const file = vm$.methods.previewFile(media);
+  const player = PreviewGalleryMediaView({ store: vm$.ui.preview$, file });
 
   const size =
     detail_object_value(media.resource, "size", "Size") ||
@@ -692,10 +476,14 @@ function ContentDetailMediaStage(props) {
     .join(" · ");
   return View(
     {
-      class: `content-detail-media-stage content-detail-media-stage-${media.type}`,
+      class: `preview-page content-detail-media-stage content-detail-media-stage-${media.type}`,
+      attributes: { n: "content-detail-media-stage" },
     },
     [
-      View({ class: "content-detail-media-viewport" }, [player]),
+      View({
+        class: "content-detail-media-viewport preview-gallery-viewport",
+        attributes: { n: "content-detail-media-viewport" },
+      }, [player]),
       View({ class: "content-detail-media-caption" }, [
         View({ class: "content-detail-media-caption-icon" }, [
           Timeless.Icon({ name: content_media_type_icon(media.type), size: 16 }),
@@ -878,8 +666,9 @@ function ContentDetailResource(props) {
           : null,
       ].filter(Boolean)),
       deleted
-        ? View(
+        ? Tag(
             {
+              name: "content-detail-status",
               class:
                 "content-detail-status content-detail-status-deleted",
             },
@@ -937,8 +726,9 @@ function ContentDetailTask(props) {
         vm$.methods.formatTime(task.updated_at || task.created_at),
       ]),
     ]),
-    View(
+    Tag(
       {
+        name: "content-detail-status",
         class: `content-detail-status content-detail-status-${status.tone}`,
       },
       [status.label],
@@ -1066,6 +856,38 @@ function ContentDetailRelations(props) {
   ]);
 }
 
+function ContentDetailDescription(props) {
+  const vm$ = ContentDetailDescriptionModel();
+  return View({ attributes: { n: "content-detail-description-section" } }, [
+    View({
+      class: computed(vm$.state.expanded, (expanded) =>
+        `content-detail-description${expanded ? "" : " is-collapsed"}`,
+      ),
+      attributes: { n: "content-detail-description" },
+      onMounted(event) {
+        vm$.methods.mount(event.target.get$elm());
+      },
+      onUnmounted() {
+        vm$.methods.destroy();
+      },
+    }, [props.description]),
+    Show({
+      when: vm$.state.overflowing,
+      ok() {
+        return ContentDetailAction({
+          name: "content-detail-description-toggle",
+          compact: true,
+          label: computed(vm$.state.expanded, (expanded) => expanded ? "收起" : "展开"),
+          attributes: {
+            "aria-expanded": computed(vm$.state.expanded, String),
+          },
+          onClick: vm$.methods.toggle,
+        });
+      },
+    }),
+  ]);
+}
+
 function ContentDetailMain(props) {
   const vm$ = props.store;
   const content = props.content;
@@ -1088,7 +910,7 @@ function ContentDetailMain(props) {
       View({ class: "content-detail-info" }, [
         View({ class: "content-card-tags" }, [
           ContentDetailPlatform({ store: vm$, content }),
-          View({ class: "content-type-badge" }, [
+          Tag({ name: "content-type-badge", class: "content-type-badge" }, [
             vm$.methods.typeLabel(content.content_type),
           ]),
         ]),
@@ -1101,7 +923,7 @@ function ContentDetailMain(props) {
         ),
         ContentDetailAccounts({ content, history: props.history }),
         description
-          ? View({ class: "content-detail-description" }, [description])
+          ? ContentDetailDescription({ description })
           : null,
         View({ class: "content-detail-publish-time" }, [
           Timeless.Icon({ name: "clock3", size: 14 }),
@@ -1225,6 +1047,9 @@ function ContentDetailPageView(props) {
         .join(" "),
       onMounted() {
         vm$.methods.ready();
+      },
+      onUnmounted() {
+        vm$.methods.destroy();
       },
     },
     [

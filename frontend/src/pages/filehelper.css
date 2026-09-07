@@ -128,15 +128,11 @@
 .filehelper-login-eyebrow {
   width: fit-content;
   margin-bottom: var(--dm-space-4);
-  padding: var(--dm-space-1) var(--dm-space-2);
   color: var(--dm-color-primary);
-  font-size: var(--dm-font-size-caption);
-  font-weight: var(--dm-font-weight-semibold);
   letter-spacing: var(--dm-letter-spacing-wide);
   text-transform: uppercase;
   background: var(--dm-color-primary-soft);
   border: var(--dm-border-width) solid var(--dm-color-primary-border);
-  border-radius: var(--dm-radius-badge);
 }
 
 .filehelper-login-title {
@@ -421,12 +417,8 @@
 
 .filehelper-finder-badge {
   margin-left: auto;
-  padding: var(--dm-space-0-5) var(--dm-space-1);
   color: var(--dm-filehelper-green);
-  font-size: var(--dm-font-size-caption);
-  white-space: nowrap;
   background: var(--dm-color-signal-soft);
-  border-radius: var(--dm-radius-badge);
 }
 
 .filehelper-empty {

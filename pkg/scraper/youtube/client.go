@@ -386,7 +386,7 @@ func (c *Client) Extract(ctx context.Context, raw_url string) (*VideoInfo, error
 			UseCookies:     true,
 			GVSRequiresPOT: true,
 		}
-		set_player_response_format_source(&player_response, page_client, page_client_version(ytcfg))
+		set_player_response_source(&player_response, page_client, page_client_version(ytcfg))
 	}
 	player := c.new_player_resolver(ctx, webpage, ytcfg)
 	player_responses := make([]raw_player_response, 0, 4)
@@ -554,7 +554,7 @@ func (c *Client) fetch_player_api(ctx context.Context, video_id string, ytcfg ma
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return raw_player_response{}, err
 	}
-	set_player_response_format_source(&out, innertube_client{
+	set_player_response_source(&out, innertube_client{
 		Name:           "web",
 		HeaderID:       "1",
 		UserAgent:      c.user_agent(),
@@ -640,7 +640,7 @@ func (c *Client) fetch_player_api_for_client(ctx context.Context, video_id strin
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return raw_player_response{}, err
 	}
-	set_player_response_format_source(&out, client, context_client_version(context_value))
+	set_player_response_source(&out, client, context_client_version(context_value))
 	return out, nil
 }
 
@@ -671,6 +671,49 @@ func (c *Client) download_headers(referer string) map[string]string {
 
 func (c *Client) DownloadHeaders(referer string) map[string]string {
 	return c.download_headers(referer)
+}
+
+// CaptionDownloadURL applies subtitle authentication, including to cached tracks.
+// GVS tokens cannot authenticate timedtext requests.
+func (c *Client) CaptionDownloadURL(raw_url string) string {
+	parsed_url, err := url.Parse(raw_url)
+	if err != nil || parsed_url.Path != "/api/timedtext" {
+		return raw_url
+	}
+	host := strings.ToLower(parsed_url.Hostname())
+	if parsed_url.Scheme != "https" || (host != "youtube.com" && !strings.HasSuffix(host, ".youtube.com")) {
+		return raw_url
+	}
+	query := parsed_url.Query()
+	client_name := query.Get("c")
+	if client_name == "" {
+		client_name = "WEB"
+		query.Set("c", client_name)
+	}
+	if po_token := c.po_token_for(client_name, "subs"); po_token != "" {
+		query.Set("pot", po_token)
+	}
+	parsed_url.RawQuery = query.Encode()
+	return parsed_url.String()
+}
+
+// CaptionDownloadHeaders preserves the client that issued the signed caption URL.
+func (c *Client) CaptionDownloadHeaders(raw_url, referer string) map[string]string {
+	parsed_url, err := url.Parse(raw_url)
+	if err == nil {
+		for _, client := range c.requested_innertube_clients() {
+			client_context, _ := client.Context["client"].(map[string]any)
+			if !strings.EqualFold(parsed_url.Query().Get("c"), string_from_map(client_context, "clientName")) {
+				continue
+			}
+			return c.DownloadHeadersForFormat(VideoFormat{
+				SourceClient: client.Name, SourceClientID: client.HeaderID,
+				SourceVersion:   context_client_version(client.Context),
+				SourceUserAgent: client.UserAgent, SourceCookies: client.UseCookies,
+			}, referer)
+		}
+	}
+	return c.DownloadHeaders(referer)
 }
 
 // DownloadHeadersForFormat returns the headers for the Innertube client that
@@ -1062,6 +1105,7 @@ type raw_caption_track struct {
 	LanguageCode   string        `json:"languageCode"`
 	Kind           string        `json:"kind"`
 	IsTranslatable bool          `json:"isTranslatable"`
+	source_client  string
 }
 
 type raw_caption_audio_track struct {
@@ -1232,7 +1276,7 @@ func context_client_version(context_value map[string]any) string {
 	return ""
 }
 
-func set_player_response_format_source(response *raw_player_response, client innertube_client, version string) {
+func set_player_response_source(response *raw_player_response, client innertube_client, version string) {
 	if response == nil {
 		return
 	}
@@ -1248,6 +1292,18 @@ func set_player_response_format_source(response *raw_player_response, client inn
 	}
 	set_source(response.StreamingData.Formats)
 	set_source(response.StreamingData.AdaptiveFormats)
+	client_context, _ := client.Context["client"].(map[string]any)
+	client_name := string_from_map(client_context, "clientName")
+	if client_name == "" {
+		client_name = "WEB"
+	}
+	for index := range response.Captions.Player.CaptionTracks {
+		track := &response.Captions.Player.CaptionTracks[index]
+		track.source_client = client.Name
+		if parsed_url, err := url.Parse(track.BaseURL); err == nil && parsed_url.Query().Get("c") == "" {
+			track.BaseURL = update_url_query(track.BaseURL, map[string]string{"c": client_name})
+		}
+	}
 }
 
 func (r raw_player_response) has_streaming_data() bool {
@@ -1308,16 +1364,22 @@ func merge_player_response_list(responses []raw_player_response) raw_player_resp
 }
 
 func merge_raw_captions(base, next raw_captions) raw_captions {
-	seen_tracks := make(map[string]bool, len(base.Player.CaptionTracks)+len(next.Player.CaptionTracks))
-	for _, track := range base.Player.CaptionTracks {
-		seen_tracks[raw_caption_track_key(track)] = true
+	seen_tracks := make(map[string]int, len(base.Player.CaptionTracks)+len(next.Player.CaptionTracks))
+	for index, track := range base.Player.CaptionTracks {
+		seen_tracks[raw_caption_track_key(track)] = index
 	}
 	for _, track := range next.Player.CaptionTracks {
 		key := raw_caption_track_key(track)
-		if seen_tracks[key] {
+		if index, exists := seen_tracks[key]; exists {
+			// Watch-page URLs can require a Subs PO Token even when the same
+			// track from a native player client works without one. Replace in
+			// place so default/audio caption indices keep their meaning.
+			if caption_source_priority(track) > caption_source_priority(base.Player.CaptionTracks[index]) {
+				base.Player.CaptionTracks[index] = track
+			}
 			continue
 		}
-		seen_tracks[key] = true
+		seen_tracks[key] = len(base.Player.CaptionTracks)
 		base.Player.CaptionTracks = append(base.Player.CaptionTracks, track)
 	}
 	if len(base.Player.AudioTracks) == 0 && len(next.Player.AudioTracks) > 0 {
@@ -1336,6 +1398,17 @@ func merge_raw_captions(base, next raw_captions) raw_captions {
 		base.Player.TranslationLanguages = append(base.Player.TranslationLanguages, language)
 	}
 	return base
+}
+
+func caption_source_priority(track raw_caption_track) int {
+	switch track.source_client {
+	case "visionos", "android_vr":
+		return 2
+	case "", "web":
+		return 0
+	default:
+		return 1
+	}
 }
 
 func raw_caption_track_key(track raw_caption_track) string {
@@ -1479,9 +1552,7 @@ func extract_captions(raw raw_captions, player *player_resolver) ([]CaptionTrack
 			continue
 		}
 		if player != nil && player.client != nil {
-			if po_token := player.client.po_token_for("web", "subs"); po_token != "" {
-				base_url = update_url_query(base_url, map[string]string{"pot": po_token})
-			}
+			base_url = player.client.CaptionDownloadURL(base_url)
 		}
 		tracks = append(tracks, CaptionTrack{
 			BaseURL:        base_url,

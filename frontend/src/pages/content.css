@@ -64,17 +64,8 @@
 
 .content-row-stat {
   flex: 0 0 auto;
-  min-height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--dm-space-1-5);
-  padding: 0 var(--dm-space-2);
   border: var(--dm-border-width) solid var(--dm-content-border);
-  border-radius: var(--dm-radius-badge);
   background: var(--dm-content-panel-soft);
-  font-weight: var(--dm-font-weight-medium);
-  white-space: nowrap;
 }
 
 .content-row-stat-label {

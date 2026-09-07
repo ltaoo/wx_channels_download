@@ -1,5 +1,5 @@
 import { LogsPageViewModel } from "./logs.model.js";
-import { FilePicker } from "../dmui.js";
+import { FilePicker, Tag } from "../dmui.js";
 
 function LogsPageView(props) {
   const vm$ = LogsPageViewModel(props);
@@ -445,7 +445,7 @@ function LogsPageTableColumns(props) {
       width: 76,
       cellClass: "logs-level-cell",
       render(entry) {
-        return View(
+        return Tag(
           {
             class: LogsPageLevelClass(entry.level),
             attributes: { n: "logs-level-badge" },
