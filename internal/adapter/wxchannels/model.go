@@ -88,19 +88,19 @@ func to_content_video_variants(obj *wxchannels.ChannelsObject, video_id string) 
 
 	variants := make([]model.ContentVideoVariant, 0, len(specs)+1)
 	// Temporarily disabled: do not expose the synthetic original-video option.
-	// variants = append(variants, model.ContentVideoVariant{
-	// 	VideoId:    video_id,
-	// 	VariantKey: "default",
-	// 	Spec:       "original",
-	// 	Width:      positive_dimension_pointer(media.Width),
-	// 	Height:     positive_dimension_pointer(media.Height),
-	// 	Size:       int64(media.FileSize),
-	// 	StreamType: model.ContentVideoVariantStreamTypeProgressive,
-	// 	HasVideo:   1,
-	// 	HasAudio:   1,
-	// 	IsDefault:  1,
-	// 	URL:        BuildDownloadURLWithSpec(obj, ""),
-	// })
+	variants = append(variants, model.ContentVideoVariant{
+		VideoId:    video_id,
+		VariantKey: "default",
+		Spec:       "original",
+		Width:      positive_dimension_pointer(media.Width),
+		Height:     positive_dimension_pointer(media.Height),
+		Size:       int64(media.FileSize),
+		StreamType: model.ContentVideoVariantStreamTypeProgressive,
+		HasVideo:   1,
+		HasAudio:   1,
+		IsDefault:  1,
+		URL:        BuildDownloadURLWithSpec(obj, ""),
+	})
 
 	seen_variant_keys := make(map[string]struct{}, len(specs)+1)
 	// seen_variant_keys["default"] = struct{}{}
