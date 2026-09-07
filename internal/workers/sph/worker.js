@@ -70,9 +70,14 @@ function corsHeaders() {
 }
 
 async function authenticateRequest(request, env, url) {
+  // Page and static assets are public; only API endpoints require credentials.
+  if (!url.pathname.startsWith("/api/")) {
+    return null;
+  }
+
   const expected_credential = String(env.ACCESS_CREDENTIAL || "");
   if (!expected_credential) {
-    return authErrorResponse(url, 503, "access credential is not configured", false);
+    return authErrorResponse(url, 503, "access credential is not configured");
   }
 
   const authorization = request.headers.get("Authorization") || "";
@@ -82,7 +87,7 @@ async function authenticateRequest(request, env, url) {
     return null;
   }
 
-  return authErrorResponse(url, 401, "unauthorized", true);
+  return authErrorResponse(url, 401, "unauthorized");
 }
 
 function bearerCredential(authorization) {
@@ -125,7 +130,7 @@ async function credentialsMatch(supplied_credential, expected_credential) {
   return difference === 0;
 }
 
-function authErrorResponse(url, status, message, challenge) {
+function authErrorResponse(url, status, message) {
   const is_api = url.pathname.startsWith("/api/");
   const headers = {
     "Cache-Control": "no-store",
@@ -134,9 +139,6 @@ function authErrorResponse(url, status, message, challenge) {
       ? "application/json; charset=utf-8"
       : "text/plain; charset=utf-8",
   };
-  if (challenge) {
-    headers["WWW-Authenticate"] = `Basic realm="wxchannels", charset="UTF-8"`;
-  }
   const body = is_api ? JSON.stringify({ error: message }) : message;
   return new Response(body, { status, headers });
 }

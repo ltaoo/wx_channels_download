@@ -252,12 +252,8 @@ func CleanVideoURL(video_url string) string {
 	if err != nil {
 		return ""
 	}
-	filekey := u.Query().Get("encfilekey")
-	token := u.Query().Get("token")
-	if filekey != "" && token != "" {
-		new_url := u.Scheme + "://" + u.Host + u.Path
-		new_url += "?encfilekey=" + filekey + "&token=" + token
-		return new_url
-	}
-	return ""
+	q := u.Query()
+	q.Del("X-snsvideoflag")
+	u.RawQuery = q.Encode()
+	return u.String()
 }

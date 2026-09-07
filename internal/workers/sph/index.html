@@ -238,6 +238,16 @@
       >
       <button id="fetchBtn">查询</button>
     </div>
+    <div class="input-row">
+      <input
+        id="credentialInput"
+        type="password"
+        placeholder="访问凭证（调用接口需要）"
+        autocomplete="current-password"
+      >
+      <button id="saveCredentialBtn" type="button">保存凭证</button>
+      <button id="resetCredentialBtn" type="button">重新填写</button>
+    </div>
     <div id="status" class="status" hidden></div>
     <div id="errorDetail" class="error-card" role="alert" hidden>
       <div id="errorTitle" class="error-title"></div>
@@ -258,6 +268,7 @@
         this.listeners = new Set();
         this.state = {
           busy: false,
+          credential: this.loadCredential(),
           status: { message: "", type: "" },
           error: null,
           feed: null,
@@ -274,6 +285,35 @@
       update(patch) {
         this.state = { ...this.state, ...patch };
         this.listeners.forEach((listener) => listener(this.state));
+      }
+
+      loadCredential() {
+        try {
+          return localStorage.getItem("wxchannels_credential") || "";
+        } catch (_) {
+          return "";
+        }
+      }
+
+      saveCredential(value) {
+        const credential = String(value || "").trim();
+        try {
+          if (credential) {
+            localStorage.setItem("wxchannels_credential", credential);
+          } else {
+            localStorage.removeItem("wxchannels_credential");
+          }
+        } catch (_) {}
+        this.update({ credential });
+        return credential;
+      }
+
+      authHeaders() {
+        const headers = { "Content-Type": "application/json" };
+        if (this.state.credential) {
+          headers["Authorization"] = "Bearer " + this.state.credential;
+        }
+        return headers;
       }
 
       async fetchProfile(shareUrl) {
@@ -300,7 +340,7 @@
           const response = await fetch(`${this.apiBase}/fetch_video_profile`, {
             method: "POST",
             credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
+            headers: this.authHeaders(),
             body: JSON.stringify({ url: normalizedUrl }),
           });
           const data = await this.readJson(response);
@@ -349,7 +389,7 @@
             const response = await fetch(`${this.apiBase}/download_feed_zip`, {
               method: "POST",
               credentials: "same-origin",
-              headers: { "Content-Type": "application/json" },
+              headers: this.authHeaders(),
               body: JSON.stringify({ feed }),
             });
             if (!response.ok) {
@@ -398,6 +438,7 @@
         const error = new Error((data && data.error) || response.statusText || `HTTP ${response.status}`);
         error.code = data && data.code;
         error.details = data && data.details;
+        error.status = response.status;
         return error;
       }
 
@@ -408,6 +449,13 @@
             code: error.code || "",
             title: String(details.title),
             content: String(details.content || ""),
+          };
+        }
+        if ((error && error.status) === 401) {
+          return {
+            code: "401",
+            title: "凭证无效",
+            content: "请在上方输入正确的访问凭证并保存后重试。",
           };
         }
         return {
@@ -445,14 +493,8 @@
       rawVideoUrl(url) {
         try {
           const parsedUrl = new URL(decodeURIComponent(url));
-          const filekey = parsedUrl.searchParams.get("encfilekey");
-          const token = parsedUrl.searchParams.get("token");
-          if (filekey && token) {
-            const cleanUrl = new URL(parsedUrl.origin + parsedUrl.pathname);
-            cleanUrl.searchParams.set("encfilekey", filekey);
-            cleanUrl.searchParams.set("token", token);
-            return cleanUrl.toString();
-          }
+          parsedUrl.searchParams.delete("X-snsvideoflag");
+          return parsedUrl.toString();
         } catch (_) {}
         return url;
       }
@@ -480,6 +522,9 @@
         this.model = model;
         this.urlInput = document.getElementById("urlInput");
         this.fetchButton = document.getElementById("fetchBtn");
+        this.credentialInput = document.getElementById("credentialInput");
+        this.saveCredentialButton = document.getElementById("saveCredentialBtn");
+        this.resetCredentialButton = document.getElementById("resetCredentialBtn");
         this.statusElement = document.getElementById("status");
         this.errorElement = document.getElementById("errorDetail");
         this.errorTitleElement = document.getElementById("errorTitle");
@@ -489,14 +534,41 @@
       }
 
       mount() {
+        this.credentialInput.value = this.model.state.credential;
         this.fetchButton.addEventListener("click", () => this.model.fetchProfile(this.urlInput.value));
         this.urlInput.addEventListener("keydown", (event) => {
           if (event.key === "Enter") {
             this.model.fetchProfile(this.urlInput.value);
           }
         });
+        this.saveCredentialButton.addEventListener("click", () => this.saveCredential());
+        this.resetCredentialButton.addEventListener("click", () => this.resetCredential());
+        this.credentialInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            this.saveCredential();
+          }
+        });
         this.resultElement.addEventListener("click", (event) => this.handleResultClick(event));
         this.model.subscribe((state) => this.render(state));
+      }
+
+      saveCredential() {
+        const credential = this.model.saveCredential(this.credentialInput.value);
+        this.model.update({
+          status: {
+            message: credential ? "凭证已保存" : "凭证已清除",
+            type: "",
+          },
+        });
+      }
+
+      resetCredential() {
+        this.credentialInput.value = "";
+        this.model.saveCredential("");
+        this.model.update({
+          status: { message: "已清除，请重新填写凭证", type: "" },
+        });
+        this.credentialInput.focus();
       }
 
       render(state) {
@@ -565,7 +637,9 @@
           html += '</div>';
           if (bestVideoUrl) {
             const attributes = `data-video-url="${this.escape(bestVideoUrl)}" data-desc="${this.escape(feedInfo.description || "")}" data-createtime="${this.escape(feedInfo.createtime || "")}"`;
-            html += `<div><button class="download-btn" data-action="download-video" ${attributes}>下载视频</button> <button class="download-btn" data-action="download-raw-video" ${attributes}>下载原始视频</button></div>`;
+            html += `<div><button class="download-btn" data-action="download-video" ${attributes}>下载视频</button></div>`;
+            // 下载原始视频按钮暂时注释掉：rawVideoUrl 未能正确移除 X-snsvideoflag
+            // html += `<div><button class="download-btn" data-action="download-video" ${attributes}>下载视频</button> <button class="download-btn" data-action="download-raw-video" ${attributes}>下载原始视频</button></div>`;
           } else if (picInfo.length > 0) {
             html += '<div><button class="download-btn" data-action="download-feed-zip">下载图集 ZIP</button></div>';
           }

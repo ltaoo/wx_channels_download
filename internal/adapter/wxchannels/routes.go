@@ -139,15 +139,15 @@ func (r *WebsocketRoutes) HandleParseSph(ctx *gin.Context) {
 	var data map[string]interface{}
 	if err := json.Unmarshal(raw_resp, &data); err == nil {
 		if data_wrap, ok := data["data"].(map[string]interface{}); ok {
-			if feed_info, ok := data_wrap["feedInfo"].(map[string]interface{}); ok {
-				if video_url, ok := feed_info["videoUrl"].(string); ok && video_url != "" {
-					feed_info["originVideoUrl"] = wxchannels.CleanVideoURL(video_url)
-				}
-				// Pre-store a copy of videoUrl for later use
-				if _, ok := feed_info["originVideoUrl"]; !ok {
-					feed_info["originVideoUrl"] = ""
-				}
-			}
+			// if feed_info, ok := data_wrap["feedInfo"].(map[string]interface{}); ok {
+			// 	if video_url, ok := feed_info["videoUrl"].(string); ok && video_url != "" {
+			// 		feed_info["originVideoUrl"] = wxchannels.CleanVideoURL(video_url)
+			// 	}
+			// 	// Pre-store a copy of videoUrl for later use
+			// 	if _, ok := feed_info["originVideoUrl"]; !ok {
+			// 		feed_info["originVideoUrl"] = ""
+			// 	}
+			// }
 		}
 		result.Ok(ctx, data)
 		return
