@@ -2,7 +2,6 @@ package wxchannelsadapter
 
 import (
 	"encoding/json"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -33,19 +32,20 @@ func BuildDownloadURLWithSpec(obj *wxchannels.ChannelsObject, spec string) strin
 	base_url := ObjectURL(obj)
 
 	if spec == "" || spec == "original" {
-		parsed_url, err := url.Parse(base_url)
-		if err != nil {
-			return base_url
-		}
-		base_query := parsed_url.Query()
-		original_query := url.Values{}
-		for _, key := range []string{"encfilekey", "token"} {
-			for _, value := range base_query[key] {
-				original_query.Add(key, value)
-			}
-		}
-		parsed_url.RawQuery = original_query.Encode()
-		return parsed_url.String()
+		return base_url
+		// parsed_url, err := url.Parse(base_url)
+		// if err != nil {
+		// 	return base_url
+		// }
+		// base_query := parsed_url.Query()
+		// original_query := url.Values{}
+		// for _, key := range []string{"encfilekey", "token"} {
+		// 	for _, value := range base_query[key] {
+		// 		original_query.Add(key, value)
+		// 	}
+		// }
+		// parsed_url.RawQuery = original_query.Encode()
+		// return parsed_url.String()
 	}
 
 	return base_url + "&X-snsvideoflag=" + spec

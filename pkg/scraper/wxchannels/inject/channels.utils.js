@@ -752,13 +752,13 @@ var WXBase64 = (() => {
 
     function build_download_menu_items() {
       return [
-        // new Timeless.vm.MenuItemCore({
-        //   label: "原始视频",
-        //   onClick() {
-        //     __wx_channels_handle_click_download__({ spec: "original" });
-        //     close_dropdown();
-        //   },
-        // }),
+        new Timeless.vm.MenuItemCore({
+          label: "原始视频",
+          onClick() {
+            __wx_channels_handle_click_download__({ spec: "original" });
+            close_dropdown();
+          },
+        }),
         ...(() => {
           const [err, feed] = WXU.check_feed_existing({
             silence: true,

@@ -343,7 +343,7 @@ func ToContent(obj *wxchannels.ChannelsObject) (*model.Content, any, error) {
 	c.Type = "video"
 	c.Title = obj.ObjectDesc.Description
 	c.Description = obj.ObjectDesc.Description
-	c.URL = clean_media_url(media.URL) + media.URLToken
+	c.URL = media.URL + media.URLToken
 	c.CoverURL = media.ThumbUrl
 	c.CoverWidth = strconv.Itoa(int(media.Width))
 	c.CoverHeight = strconv.Itoa(int(media.Height))
@@ -649,7 +649,7 @@ func ObjectURL(obj *wxchannels.ChannelsObject) string {
 	if len(obj.ObjectDesc.Media) == 0 {
 		return ""
 	}
-	return clean_media_url(obj.ObjectDesc.Media[0].URL) + obj.ObjectDesc.Media[0].URLToken
+	return obj.ObjectDesc.Media[0].URL + obj.ObjectDesc.Media[0].URLToken
 }
 
 // BuildJumpURLFromParts builds a channels.weixin.qq.com feed page URL from individual fields.
