@@ -70,11 +70,11 @@ func run_reg_command(args ...string) error {
 		return nil
 	}
 
-	// Attempt 2: elevate just this reg command via PowerShell
-	psCmd := "Start-Process -Verb RunAs -Wait -FilePath 'reg'"
-	for _, arg := range args {
-		psCmd += " -ArgumentList " + powershellEscape(arg)
-	}
+	// Attempt 2: elevate just this reg command via PowerShell.
+	// Start-Process accepts -ArgumentList only once, so join the arguments into
+	// a single string, double-quoting each so reg.exe parses them correctly.
+	arg_list := strings.Join(quote_args(args), " ")
+	psCmd := "Start-Process -Verb RunAs -Wait -FilePath 'reg' -ArgumentList " + powershell_escape(arg_list)
 
 	psExec := exec.Command("powershell", "-NoProfile", "-Command", psCmd)
 	output2, err2 := psExec.CombinedOutput()
@@ -88,10 +88,20 @@ func run_reg_command(args ...string) error {
 	return nil
 }
 
-// powershellEscape wraps a string in single quotes for use in PowerShell
+// powershell_escape wraps a string in single quotes for use in PowerShell
 // -ArgumentList, doubling any embedded single quotes per PS escaping rules.
-func powershellEscape(s string) string {
+func powershell_escape(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
+// quote_args double-quotes each argument for Windows command-line parsing,
+// doubling any embedded double quotes.
+func quote_args(args []string) []string {
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = `"` + strings.ReplaceAll(arg, `"`, `""`) + `"`
+	}
+	return quoted
 }
 
 func fetch_cur_proxy(args ProxySettings) (*ProxySettings, error) {
