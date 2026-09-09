@@ -613,6 +613,35 @@ channel.port2.postMessage('ready');
 	}
 }
 
+func TestNamedNodeMapIsIterable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(response_writer, `<!doctype html><html data-a="1" data-b="2"><body><script>
+var attrs = [...document.documentElement.attributes];
+var names = [];
+for (var attr of document.documentElement.attributes) names.push(attr.name);
+document.body.setAttribute('data-attributes', [attrs.length, attrs.map(function(a){return a.name;}).join(','), names.join(','), document.documentElement.attributes instanceof NamedNodeMap, typeof document.documentElement.attributes[Symbol.iterator]].join(':'));
+</script></body></html>`)
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.ScriptFailures) != 0 {
+		t.Fatalf("unexpected script failures: %+v", page.ScriptFailures)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-attributes="2:data-a,data-b:data-a,data-b:true:function"`) {
+		t.Fatalf("NamedNodeMap is not iterable: %s", page.RenderedHTML)
+	}
+}
+
 func TestXMLHttpRequestUsesEventTargetPrototypeChain(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
 		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")

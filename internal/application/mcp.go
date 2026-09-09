@@ -16,6 +16,7 @@ func new_mcp_service(
 	data_service *services.DataQueryService,
 	download_task_service *services.DownloadTaskService,
 	scraper_job_service *services.ScraperJobService,
+	automation_service *services.AutomationService,
 	enabled bool,
 ) (*services.MCPService, error) {
 	cookie_reader := cookies.NewPersistentReader(api_config.WorkDir)
@@ -29,6 +30,7 @@ func new_mcp_service(
 		SphDeployer:         NewMCPSphDeployer(api_config.Original),
 		ZhihuCollections:    zhihu.NewClient(cookie_reader, api_config.Original.Logger()),
 		ZhihuCredentials:    cookie_reader,
+		Automation:          new_mcp_automation_backend(automation_service),
 	}
 	if !enabled {
 		return services.NewLazyMCPService(service_config), nil

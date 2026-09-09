@@ -1,6 +1,9 @@
 import { Tag, PlatformTag } from "../dmui.js";
 import { ContentViewModel } from "./content.model.js";
 import ContentDetailPageView from "./content_detail.js";
+import { TagSelect, ContentTagBadge } from "../components.js";
+
+const Runtime = window.Timeless;
 
 function ContentDetailDrawer(props) {
   const vm$ = props.store;
@@ -288,6 +291,23 @@ function ContentRowStatistics(props) {
 function ContentRowMain(props) {
   const vm$ = props.store;
   const content = props.content;
+  // Per-row reactive tag list, keyed by the content object identity so it
+  // survives re-renders and stays in sync with the TagSelect popover.
+  if (!content.__tag_ref__) {
+    content.__tag_ref__ = ref((content.tags || []).slice());
+  }
+  const tags_ref = content.__tag_ref__;
+
+  function remove_tag(tag) {
+    const next = (tags_ref.value || []).filter((t) => t.id !== tag.id);
+    tags_ref.as(next);
+    window.request
+      .post("/api/tag/content/set", {
+        content_id: content.id,
+        tag_ids: next.map((t) => t.id),
+      })
+      .catch(() => {});
+  }
   const favicon = window.PLATFORM_FAVICONS[content.platform_id] || "";
   const title = content.title || "\u00a0";
   const copied_ = computed(
@@ -394,6 +414,13 @@ function ContentRowMain(props) {
               );
             },
           }),
+          Runtime.For({
+            each: computed(tags_ref, (list) => list),
+            render(tag) {
+              return ContentTagBadge({ tag, onRemove: remove_tag });
+            },
+          }),
+          TagSelect({ contentId: content.id, tagsRef: tags_ref }),
         ],
       ),
     ]),

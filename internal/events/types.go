@@ -14,6 +14,9 @@ const (
 	TypeDownloadTaskDeleted   = "downloadtask.deleted"
 	TypeScraperFetchProgress  = "scraper.fetch_progress"
 	TypePlatformStatusChanged = "platform.status_changed"
+	TypeAutomationRunStarted  = "automation.run_started"
+	TypeAutomationRunCompleted = "automation.run_completed"
+	TypeAutomationRunFailed    = "automation.run_failed"
 )
 
 // ProxyAction represents a command to the proxy service.
@@ -124,3 +127,35 @@ type PlatformStatusChanged struct {
 }
 
 func (e PlatformStatusChanged) Type() string { return TypePlatformStatusChanged }
+
+// AutomationRunStarted is published when a scheduled or manual flow run begins.
+type AutomationRunStarted struct {
+	ScheduleID string `json:"schedule_id,omitempty"`
+	RunID      string `json:"run_id"`
+	FlowID     string `json:"flow_id"`
+	Trigger    string `json:"trigger,omitempty"`
+}
+
+func (e AutomationRunStarted) Type() string { return TypeAutomationRunStarted }
+
+// AutomationRunCompleted is published when a flow run finishes successfully.
+type AutomationRunCompleted struct {
+	ScheduleID string `json:"schedule_id,omitempty"`
+	RunID      string `json:"run_id"`
+	FlowID     string `json:"flow_id"`
+	Trigger    string `json:"trigger,omitempty"`
+}
+
+func (e AutomationRunCompleted) Type() string { return TypeAutomationRunCompleted }
+
+// AutomationRunFailed is published when a flow run ends with an error or is
+// cancelled before completion.
+type AutomationRunFailed struct {
+	ScheduleID string `json:"schedule_id,omitempty"`
+	RunID      string `json:"run_id"`
+	FlowID     string `json:"flow_id"`
+	Trigger    string `json:"trigger,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
+
+func (e AutomationRunFailed) Type() string { return TypeAutomationRunFailed }

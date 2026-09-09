@@ -42,6 +42,8 @@ type APIClient struct {
 	bridge_service              *services.BridgeService
 	certificate_service         *services.CertificateService
 	mcp_service                 *services.MCPService
+	automation_service          *services.AutomationService
+	tag_service                 *services.TagService
 }
 
 func NewAPIClient(
@@ -63,6 +65,8 @@ func NewAPIClient(
 	mcp_service *services.MCPService,
 	application_update_service *services.ApplicationUpdateService,
 	application_restart_service *services.ApplicationRestartService,
+	automation_service *services.AutomationService,
+	tag_service *services.TagService,
 ) *APIClient {
 	logger := parent_logger.With().Str("component", "APIClient").Logger()
 	engine := gin.New()
@@ -93,6 +97,8 @@ func NewAPIClient(
 		bridge_service:              bridge_service,
 		certificate_service:         certificate_service,
 		mcp_service:                 mcp_service,
+		automation_service:          automation_service,
+		tag_service:                 tag_service,
 	}
 
 	// // Set file transfer helper Channels auto-download callback

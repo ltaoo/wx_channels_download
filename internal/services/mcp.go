@@ -23,6 +23,7 @@ type MCPServiceConfig struct {
 	SphDeployer         mcpserver.SphDeployer
 	ZhihuCollections    mcpserver.ZhihuCollectionReader
 	ZhihuCredentials    mcpserver.ZhihuCredentialReader
+	Automation          mcpserver.AutomationBackend
 }
 
 // MCPServiceStatus describes the process-local MCP service state.
@@ -71,6 +72,7 @@ func build_mcp_handler(config MCPServiceConfig) (http.Handler, error) {
 		SphDeployer:         config.SphDeployer,
 		ZhihuCollections:    config.ZhihuCollections,
 		ZhihuCredentials:    config.ZhihuCredentials,
+		Automation:          config.Automation,
 	})
 	if err != nil {
 		return nil, err

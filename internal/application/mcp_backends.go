@@ -8,10 +8,15 @@ import (
 	"strings"
 
 	"wx_channel/internal/config"
+	"wx_channel/internal/database/model"
 	"wx_channel/internal/mcpserver"
 	"wx_channel/internal/services"
 	"wx_channel/internal/workers/sph"
 )
+
+// mcp_automation_max_rows caps how many schedules or runs an MCP listing may
+// return in one call.
+const mcp_automation_max_rows = 200
 
 type mcp_sph_deployer struct {
 	config *config.Config
@@ -257,6 +262,196 @@ func (b *mcp_scraper_job_backend) InterruptScraperJob(job_id string) {
 		return
 	}
 	b.scraper_job_service.Interrupt(job_id)
+}
+
+// mcp_automation_backend adapts the automation service to the MCP consumer
+// interface. The service itself is transport agnostic, so this layer only
+// reshapes models and honours request cancellation.
+type mcp_automation_backend struct {
+	automation_service *services.AutomationService
+}
+
+// new_mcp_automation_backend returns nil when no automation service is
+// configured so the MCP server hides the automation tools instead of exposing
+// ones that can only fail.
+func new_mcp_automation_backend(automation_service *services.AutomationService) mcpserver.AutomationBackend {
+	if automation_service == nil {
+		return nil
+	}
+	return &mcp_automation_backend{automation_service: automation_service}
+}
+
+func (b *mcp_automation_backend) ListSchedules(ctx context.Context) ([]mcpserver.AutomationScheduleSummary, error) {
+	if b == nil || b.automation_service == nil {
+		return nil, fmt.Errorf("自动化服务未初始化")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	schedules, _, err := b.automation_service.ListSchedules(services.ListSchedulesInput{PageSize: mcp_automation_max_rows})
+	if err != nil {
+		return nil, err
+	}
+	summaries := make([]mcpserver.AutomationScheduleSummary, 0, len(schedules))
+	for _, schedule := range schedules {
+		summaries = append(summaries, mcp_automation_schedule_summary(schedule))
+	}
+	return summaries, nil
+}
+
+func (b *mcp_automation_backend) GetSchedule(ctx context.Context, id string) (*mcpserver.AutomationScheduleDetail, error) {
+	if b == nil || b.automation_service == nil {
+		return nil, fmt.Errorf("自动化服务未初始化")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	schedule, err := b.automation_service.GetSchedule(id)
+	if err != nil {
+		return nil, err
+	}
+	return mcp_automation_schedule_detail(schedule), nil
+}
+
+func (b *mcp_automation_backend) CreateSchedule(
+	ctx context.Context,
+	input mcpserver.AutomationCreateScheduleInput,
+) (*mcpserver.AutomationScheduleDetail, error) {
+	if b == nil || b.automation_service == nil {
+		return nil, fmt.Errorf("自动化服务未初始化")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	schedule, err := b.automation_service.CreateSchedule(services.CreateScheduleInput{
+		Name:        input.Name,
+		Description: input.Description,
+		CronExpr:    input.CronExpr,
+		FlowID:      input.FlowID,
+		InitialData: input.InitialData,
+		Enabled:     input.Enabled,
+		TimeoutSec:  input.TimeoutSec,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mcp_automation_schedule_detail(schedule), nil
+}
+
+func (b *mcp_automation_backend) ToggleSchedule(ctx context.Context, id string) (*mcpserver.AutomationScheduleDetail, error) {
+	if b == nil || b.automation_service == nil {
+		return nil, fmt.Errorf("自动化服务未初始化")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	schedule, err := b.automation_service.ToggleSchedule(id)
+	if err != nil {
+		return nil, err
+	}
+	return mcp_automation_schedule_detail(schedule), nil
+}
+
+func (b *mcp_automation_backend) TriggerSchedule(ctx context.Context, id string) (*mcpserver.AutomationRunSummary, error) {
+	if b == nil || b.automation_service == nil {
+		return nil, fmt.Errorf("自动化服务未初始化")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	run, err := b.automation_service.TriggerSchedule(id)
+	if err != nil {
+		return nil, err
+	}
+	return mcp_automation_run_summary(run), nil
+}
+
+func (b *mcp_automation_backend) ListRuns(
+	ctx context.Context,
+	schedule_id string,
+	limit int,
+) ([]mcpserver.AutomationRunSummary, error) {
+	if b == nil || b.automation_service == nil {
+		return nil, fmt.Errorf("自动化服务未初始化")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if limit <= 0 || limit > mcp_automation_max_rows {
+		limit = mcp_automation_max_rows
+	}
+	runs, _, err := b.automation_service.ListRuns(services.ListRunsInput{
+		PageSize:   limit,
+		ScheduleID: schedule_id,
+	})
+	if err != nil {
+		return nil, err
+	}
+	summaries := make([]mcpserver.AutomationRunSummary, 0, len(runs))
+	for index := range runs {
+		if summary := mcp_automation_run_summary(&runs[index]); summary != nil {
+			summaries = append(summaries, *summary)
+		}
+	}
+	return summaries, nil
+}
+
+func mcp_automation_schedule_summary(schedule model.FlowSchedule) mcpserver.AutomationScheduleSummary {
+	return mcpserver.AutomationScheduleSummary{
+		ID:            schedule.ID,
+		Name:          schedule.Name,
+		Description:   schedule.Description,
+		CronExpr:      schedule.CronExpr,
+		FlowID:        schedule.FlowID,
+		Enabled:       schedule.Enabled,
+		NextRunAt:     schedule.NextRunAt,
+		LastRunID:     schedule.LastRunID,
+		LastRunStatus: schedule.LastRunStatus,
+	}
+}
+
+func mcp_automation_schedule_detail(schedule *model.FlowSchedule) *mcpserver.AutomationScheduleDetail {
+	if schedule == nil {
+		return nil
+	}
+	return &mcpserver.AutomationScheduleDetail{
+		AutomationScheduleSummary: mcp_automation_schedule_summary(*schedule),
+		InitialData:               decode_automation_initial_data(schedule.InitialData),
+		TimeoutSec:                schedule.TimeoutSec,
+		CreatedAt:                 schedule.CreatedAt,
+		UpdatedAt:                 schedule.UpdatedAt,
+	}
+}
+
+func mcp_automation_run_summary(run *model.FlowRunRecord) *mcpserver.AutomationRunSummary {
+	if run == nil {
+		return nil
+	}
+	return &mcpserver.AutomationRunSummary{
+		ID:          run.ID,
+		ScheduleID:  run.ScheduleID,
+		FlowID:      run.FlowID,
+		TriggerType: run.TriggerType,
+		Status:      run.Status,
+		CurrentNode: run.CurrentNode,
+		Error:       run.Error,
+		StartedAt:   run.StartedAt,
+		CompletedAt: run.CompletedAt,
+	}
+}
+
+// decode_automation_initial_data surfaces the stored JSON as a plain object.
+// Malformed content is reported as empty rather than failing the whole read.
+func decode_automation_initial_data(raw string) map[string]interface{} {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &data); err != nil {
+		return nil
+	}
+	return data
 }
 
 func mcp_scraper_job(job *services.ScraperFetchJob) (*mcpserver.ScraperJob, error) {

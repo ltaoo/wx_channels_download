@@ -1,4 +1,4 @@
-import { BrandError, BrandLoading, Input, PlatformIcon, Popover } from "./dmui.js";
+import { BrandError, BrandLoading, Input, PlatformIcon, Popover, Tag } from "./dmui.js";
 
 const Runtime = window.Timeless;
 
@@ -1008,3 +1008,267 @@ export function ErrorFallbackView(error, view_name) {
 }
 
 export { PlatformIcon, PlatformTag as TablePlatformBadge } from "./dmui.js";
+
+// --- Tag system -------------------------------------------------------------
+
+// ContentTagBadge renders one user tag as a removable chip in a content row.
+function ContentTagBadge(props) {
+  const tag = props.tag || {};
+  return Tag(
+    {
+      class: "dm-content-tag",
+      attributes: {
+        n: `content-tag-${tag.id}`,
+        title: String(tag.name || ""),
+      },
+    },
+    [
+      String(tag.name || ""),
+      Show({
+        when: typeof props.onRemove === "function",
+        ok() {
+          return View({
+            type: "button",
+            class: "dm-content-tag__remove",
+            attributes: {
+              n: `content-tag-remove-${tag.id}`,
+              type: "button",
+              "aria-label": `移除标签 ${tag.name}`,
+            },
+            onClick(event) {
+              event.preventDefault();
+              event.stopPropagation();
+              props.onRemove(tag);
+            },
+          }, [Runtime.Icon({ name: "x", size: 10 })]);
+        },
+      }),
+    ],
+  );
+}
+
+// TagSelect is an antd Select mode="tags" style control: a "+" trigger opens a
+// popover with a searchable tag list, supports creating a new tag on Enter/Space
+// when there is no exact match, and persists the selection immediately.
+export function TagSelect(props = {}) {
+  const content_id = props.contentId || props.content_id || "";
+  const popover_store = new Runtime.vm.PopoverCore();
+  const selected_ =
+    props.tagsRef && typeof props.tagsRef.as === "function"
+      ? props.tagsRef
+      : Runtime.ref((props.tags || []).slice());
+  const all_tags_ = Runtime.ref([]);
+  const keyword_ = Runtime.ref("");
+
+  const search_input = new Runtime.vm.InputCore({
+    defaultValue: "",
+    placeholder: "搜索或创建标签",
+    allowClear: true,
+    autocomplete: false,
+    onEnter() {
+      const value = String(search_input.value || "").trim();
+      if (!value) return;
+      const match = (all_tags_.value || []).find((t) => t.name === value);
+      if (match) {
+        toggle(match);
+      } else {
+        create_and_toggle(value);
+      }
+    },
+  });
+
+  const tag_list_request = new Runtime.kit.RequestCore(
+    (params) => window.request.get("/api/tag/list", params),
+  );
+  const tag_set_request = new Runtime.kit.RequestCore(
+    (params) => window.request.post("/api/tag/content/set", params),
+  );
+  const tag_create_request = new Runtime.kit.RequestCore(
+    (params) => window.request.post("/api/tag/create", params),
+  );
+
+  async function load_all() {
+    const result = await tag_list_request.run({ keyword: keyword_.value || "" });
+    if (result.error) return;
+    const data = result.data && result.data.data ? result.data.data : Array.isArray(result.data) ? result.data : [];
+    all_tags_.as(Array.isArray(data) ? data : []);
+  }
+
+  async function persist(next) {
+    selected_.as(next || []);
+    const result = await tag_set_request.run({
+      content_id,
+      tag_ids: (next || []).map((t) => t.id),
+    });
+    if (!result.error && typeof props.onChange === "function") {
+      props.onChange(next || []);
+    }
+  }
+
+  function toggle(tag) {
+    const current = selected_.value || [];
+    const next = current.some((t) => t.id === tag.id)
+      ? current.filter((t) => t.id !== tag.id)
+      : current.concat([tag]);
+    persist(next);
+  }
+
+  async function create_and_toggle(name) {
+    const clean = String(name || "").trim();
+    if (!clean) return;
+    const result = await tag_create_request.run({ name: clean });
+    if (result.error) return;
+    const resp = result.data || {};
+    const tag = resp.data ? resp.data : resp;
+    if (tag && tag.id) {
+      const current = selected_.value || [];
+      if (!current.some((t) => t.id === tag.id)) {
+        persist(current.concat([tag]));
+      }
+    }
+    load_all();
+  }
+
+  let popover_was_visible = false;
+  const popover_unlisten = popover_store.onStateChange((state) => {
+    const visible = Boolean(state && state.visible);
+    if (visible && !popover_was_visible) {
+      keyword_.as("");
+      load_all();
+      setTimeout(() => search_input.focus(), 0);
+    }
+    popover_was_visible = visible;
+  });
+  const popover_hide_unlisten = popover_store.onHide(() => {
+    keyword_.as("");
+  });
+
+  const filtered_ = Runtime.combine(
+    { all: all_tags_, kw: keyword_ },
+    (s) =>
+      filter_select_options(
+        (s.all || []).map((t) => ({ label: t.name, value: t.id, name: t.name })),
+        s.kw,
+      ),
+  );
+
+  const selected_ids_ = Runtime.computed(selected_, (list) =>
+    (list || []).map((t) => t.id),
+  );
+
+  const trigger = View(
+    {
+      type: "button",
+      class: "dm-tag-select-trigger",
+      attributes: {
+        n: "tag-select-trigger",
+        type: "button",
+        "aria-label": "管理标签",
+        title: "管理标签",
+      },
+    },
+    [Runtime.Icon({ name: "plus", size: 12 })],
+  );
+
+  const popover = Popover(
+    {
+      store: popover_store,
+      side: "bottom",
+      align: "start",
+      triggerClass: "dm-tag-select-popover-trigger",
+      class: "dm-tag-select-popover",
+      content: [
+        View({ class: "dm-tag-select-search-wrap" }, [
+          Input({
+            store: search_input,
+            rootAttributes: { n: "tag-select-search" },
+            attributes: {
+              n: "tag-select-search-input",
+              type: "search",
+              autocomplete: "off",
+              "aria-label": "搜索或创建标签",
+            },
+            onChange(event) {
+              const value = String(
+                (event && event.target && event.target.value) || "",
+              );
+              keyword_.as(value);
+              load_all();
+            },
+            onKeyDown(event) {
+              if (event.key === "Escape") popover_store.hide();
+            },
+          }),
+        ]),
+        Show({
+          when: Runtime.computed(
+            filtered_,
+            (list) => (list || []).length > 0,
+          ),
+          ok() {
+            return View(
+              {
+                class: "dm-tag-select-list",
+                attributes: { n: "tag-select-list", role: "listbox" },
+              },
+              [
+                Runtime.For({
+                  each: filtered_,
+                  render(entry) {
+                    const tag = { id: entry.value, name: entry.name };
+                    return View(
+                      {
+                        type: "button",
+                        class: select_class_names([
+                          "dm-tag-select-option",
+                          Runtime.computed(selected_ids_, (ids) =>
+                            (ids || []).indexOf(entry.value) >= 0
+                              ? "is-selected"
+                              : "",
+                          ),
+                        ]),
+                        attributes: {
+                          n: `tag-select-option-${entry.value}`,
+                          type: "button",
+                          role: "option",
+                        },
+                        onClick(event) {
+                          event.preventDefault();
+                          toggle(tag);
+                        },
+                      },
+                      [String(entry.name || "")],
+                    );
+                  },
+                }),
+              ],
+            );
+          },
+          else() {
+            return View(
+              { class: "dm-tag-select-empty" },
+              ["没有匹配的标签，回车可创建"],
+            );
+          },
+        }),
+      ],
+      onUnmounted() {
+        if (typeof popover_unlisten === "function") popover_unlisten();
+        if (typeof popover_hide_unlisten === "function") popover_hide_unlisten();
+        popover_store.destroy?.();
+      },
+    },
+    [trigger],
+  );
+
+  return View(
+    {
+      onClick(event) {
+        event.stopPropagation();
+      },
+    },
+    [popover],
+  );
+}
+
+export { ContentTagBadge };

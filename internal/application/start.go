@@ -26,6 +26,7 @@ import (
 	"wx_channel/internal/services"
 	"wx_channel/internal/webassets"
 	"wx_channel/pkg/cache"
+	"wx_channel/pkg/flowengine"
 	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/hermes"
 	"wx_channel/pkg/hermes/protocol"
@@ -152,6 +153,7 @@ func Start(cfg *config.Config) error {
 	task_store := database.NewDBTaskStore(b.DB, logger)
 	account_service := services.NewAccountService(b.DB)
 	content_service := services.NewContentService(b.DB)
+	tag_service := services.NewTagService(b.DB)
 	browse_history_service := services.NewBrowseService(b.DB, *logger)
 	fs_service := services.NewFSService()
 	certificate_service := services.NewCertificateService(cfg)
@@ -230,8 +232,16 @@ func Start(cfg *config.Config) error {
 		LogPath:              api_cfg.LogPath,
 		WorkDir:              api_cfg.WorkDir,
 	})
-	mcp_service, err := new_mcp_service(api_cfg, data_service, download_task_service, scraper_job_service, cfg.GetBool("mcp.enabled"))
+	// --- Workflow automation ---
+	// One flow engine is shared by the automation service and any caller that
+	// registers flow definitions on it.
+	flow_engine := flowengine.NewWorkflowEngine()
+	automation_service := services.NewAutomationService(b.DB, logger, flow_engine, bus)
+	automation_service.Start()
+
+	mcp_service, err := new_mcp_service(api_cfg, data_service, download_task_service, scraper_job_service, automation_service, cfg.GetBool("mcp.enabled"))
 	if err != nil {
+		automation_service.Stop()
 		task_store.Shutdown()
 		return fmt.Errorf("failed to initialize MCP service: %w", err)
 	}
@@ -262,6 +272,8 @@ func Start(cfg *config.Config) error {
 		mcp_service,
 		application_update_service,
 		restart_service,
+		automation_service,
+		tag_service,
 	)
 	bus.Subscribe(events.TypeProxyStatusChanged, func(event events.Event) {
 		status, ok := event.(events.ProxyStatusChanged)
@@ -361,6 +373,7 @@ func Start(cfg *config.Config) error {
 			if bridge_started {
 				bridge_service.Close()
 			}
+			automation_service.Stop()
 			scraper_job_service.InterruptAll()
 			for i := len(adapter_handles) - 1; i >= 0; i-- {
 				adapter_handles[i].Stop()

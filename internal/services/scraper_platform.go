@@ -28,6 +28,7 @@ const (
 	scraper_platform_weibo       = "weibo"
 	scraper_platform_x           = "x"
 	scraper_platform_ucdrive     = "ucdrive"
+	scraper_platform_quark       = "quark"
 	scraper_platform_singlefile  = "singlefile"
 )
 
@@ -149,6 +150,11 @@ var scraper_http_url_rules = []scraper_http_url_rule{
 	{
 		platform_id:   scraper_platform_ucdrive,
 		exact_hosts:   []string{"drive.uc.cn"},
+		path_prefixes: []string{"/s/", "/share/"},
+	},
+	{
+		platform_id:   scraper_platform_quark,
+		exact_hosts:   []string{"pan.quark.cn"},
 		path_prefixes: []string{"/s/", "/share/"},
 	},
 	{

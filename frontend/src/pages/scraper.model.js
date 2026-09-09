@@ -571,6 +571,9 @@ function ScraperPageViewModel(props) {
     ),
     preferred_third_party_resource: preferred_third_party_resource_,
     third_party_download_disabled: third_party_download_disabled_,
+    hide_resources: computed(normalized_content_details_, (details) =>
+      details.items.some((item) => item.kind === "collection"),
+    ),
     loading: download_preview_loading_,
     error: download_preview_error_,
     badge_text: combine(
@@ -3884,6 +3887,11 @@ function normalize_typed_content_detail(
     icon = "file-play";
     title = "直播详情";
     model_name = "ContentLive";
+  } else if (type === "collection") {
+    kind = "collection";
+    icon = "folder";
+    title = "合集详情";
+    model_name = "ContentCollection";
   }
   return {
     key,
@@ -3904,6 +3912,7 @@ function normalize_typed_content_detail(
     text_tracks,
     has_variants: variants.length > 0,
     has_text_tracks: text_tracks.length > 0,
+    is_collection: kind === "collection",
     link_url: String(first_non_empty(data.url, data.stream_url)).trim(),
   };
 }

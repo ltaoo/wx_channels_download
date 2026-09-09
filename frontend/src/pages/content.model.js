@@ -149,6 +149,7 @@ function normalize_content_item(raw) {
     id: first_non_empty(source.id, source.ID),
     platform_id,
     platform_name: first_non_empty(source.platform_name, source.PlatformName),
+    tags: normalize_content_tags(source),
     content_type: first_non_empty(
       source.content_type,
       source.ContentType,
@@ -190,6 +191,22 @@ function normalize_content_item(raw) {
     download_tasks: tasks,
     file_count,
   };
+}
+
+function normalize_content_tags(raw) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const list = Array.isArray(source.tags)
+    ? source.tags
+    : Array.isArray(source.Tags)
+      ? source.Tags
+      : [];
+  return list.map((tag) => {
+    const item = tag && typeof tag === "object" ? tag : {};
+    return {
+      id: number_or_default(first_non_empty(item.id, item.ID), 0),
+      name: first_non_empty(item.name, item.Name, item.tag, item.Tag, ""),
+    };
+  });
 }
 
 function content_platform_name(content) {

@@ -289,3 +289,16 @@ func (runtime *page_runtime) call_event_listener(callback goja.Value, current_ta
 	_, err := runtime.call_javascript(runtime.ctx, handle_event, object, event)
 	return err
 }
+
+// dispatch_submit_event dispatches a trusted "submit" event on the given node.
+// Returns true if the default was NOT prevented (i.e. the form should proceed).
+func (runtime *page_runtime) dispatch_submit_event(node *html.Node) bool {
+	event_init := runtime.vm.NewObject()
+	_ = event_init.Set("bubbles", true)
+	_ = event_init.Set("cancelable", true)
+	event, err := runtime.vm.New(runtime.vm.Get("Event"), runtime.vm.ToValue("submit"), event_init)
+	if err != nil {
+		return true
+	}
+	return runtime.dispatch_node_event_with_trust(node, event, "submit", true)
+}

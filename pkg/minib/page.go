@@ -179,6 +179,8 @@ type Page struct {
 	use_custom_runtime   bool
 	har_data             []byte
 	navigation_url       string
+	navigation_method    string // "GET" or "POST"; empty defaults to GET
+	navigation_body      string // URL-encoded form body for POST
 	navigate_options     NavigateOptions
 }
 
@@ -287,6 +289,7 @@ type page_runtime struct {
 	pending_custom_nodes  []*html.Node
 	custom_reactions      []custom_element_reaction
 	running_reactions     bool
+	dynamic_script_depth  int
 	timers                []*timer_job
 	timer_by_id           map[int64]*timer_job
 	timer_time_ms         int64
@@ -309,6 +312,7 @@ type page_runtime struct {
 	blob_urls             map[string]string
 	next_blob_id          int64
 	use_custom_runtime    bool
+	dom_trace_enabled     bool
 	wait_active           bool
 	wait_matched          bool
 }
@@ -457,6 +461,133 @@ func (b *MiniBrowser) navigate(ctx context.Context, raw_url string, headers http
 	var jobs []script_job
 	if !page.wait_condition_met() {
 		jobs = discover_page_resources(page, base_url, navigate_options)
+		b.download_resources(ctx, page, page_url, document_headers, navigate_options.DisableCache, navigate_options.ResourceTimeout)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := b.execute_page(ctx, page, page_url, jobs, document_headers); err != nil {
+		return nil, err
+	}
+	page.RenderedHTML = render_node(document)
+	if page.navigation_url != "" {
+		if navigation_count == max_redirects {
+			return nil, fmt.Errorf("minib: too many JavaScript navigations")
+		}
+		next_headers := headers.Clone()
+		if next_headers == nil {
+			next_headers = make(http.Header)
+		}
+		next_headers.Set("Referer", page.URL)
+		if page.navigation_method == "POST" {
+			navigated_page, navigate_err := b.navigate_post(ctx, page.navigation_url, page.navigation_body, next_headers, navigate_options, navigation_count+1)
+			if navigate_err != nil {
+				return nil, navigate_err
+			}
+			navigated_page.NavigationHistory = append([]string{page.URL}, navigated_page.NavigationHistory...)
+			navigated_page.NavigationRequests = append(append([]string(nil), page.NavigationRequests...), navigated_page.NavigationRequests...)
+			return navigated_page, nil
+		}
+		navigated_page, navigate_err := b.navigate(ctx, page.navigation_url, next_headers, navigate_options, navigation_count+1)
+		if navigate_err != nil {
+			return nil, navigate_err
+		}
+		navigated_page.NavigationHistory = append([]string{page.URL}, navigated_page.NavigationHistory...)
+		navigated_page.NavigationRequests = append(append([]string(nil), page.NavigationRequests...), navigated_page.NavigationRequests...)
+		return navigated_page, nil
+	}
+	if page.has_wait_condition() && !page.wait_condition_met() {
+		return nil, fmt.Errorf("minib: navigation completed before wait condition matched")
+	}
+	return page, nil
+}
+
+func (b *MiniBrowser) navigate_post(ctx context.Context, raw_url string, body string, headers http.Header, navigate_options NavigateOptions, navigation_count int) (*Page, error) {
+	document_headers := clawreq.DefaultHeaders(clawreq.ProfileChrome)
+	for name, values := range headers {
+		document_headers[name] = append([]string(nil), values...)
+	}
+	document_headers.Set("Content-Type", "application/x-www-form-urlencoded")
+	if navigate_options.DisableCache {
+		disable_cache_headers(document_headers)
+	}
+	response, err := b.Request(with_har_resource_type(ctx, "document"), "POST", raw_url, strings.NewReader(body), document_headers)
+	if err != nil {
+		return nil, fmt.Errorf("minib: POST document: %w", err)
+	}
+	// Follow redirects after POST (302/303 become GET)
+	final_url := raw_url
+	for redirect_count := 0; redirect_count <= max_redirects && is_redirect(response.StatusCode); redirect_count++ {
+		location := strings.TrimSpace(response.Header.Get("Location"))
+		if location == "" {
+			break
+		}
+		current, err := url.Parse(final_url)
+		if err != nil {
+			return nil, err
+		}
+		next, err := current.Parse(location)
+		if err != nil || (next.Scheme != "http" && next.Scheme != "https") {
+			return nil, fmt.Errorf("minib: invalid redirect location %q", location)
+		}
+		if !same_origin(current, next) {
+			document_headers.Del("Authorization")
+			document_headers.Del("Cookie")
+		}
+		document_headers.Set("Referer", current.String())
+		document_headers.Del("Content-Type")
+		final_url = next.String()
+		response, err = b.Get(with_har_resource_type(ctx, "document"), final_url, document_headers)
+		if err != nil {
+			return nil, fmt.Errorf("minib: fetch redirect after POST: %w", err)
+		}
+	}
+	html_text, err := response.Text()
+	if err != nil {
+		return nil, fmt.Errorf("minib: decode document: %w", err)
+	}
+	document, err := html.Parse(strings.NewReader(html_text))
+	if err != nil {
+		return nil, fmt.Errorf("minib: parse document: %w", err)
+	}
+	page_url, err := url.Parse(final_url)
+	if err != nil {
+		return nil, fmt.Errorf("minib: parse final URL: %w", err)
+	}
+	page := &Page{
+		URL:                  final_url,
+		NavigationHistory:    []string{final_url},
+		StatusCode:           response.StatusCode,
+		Headers:              response.Header.Clone(),
+		ContentType:          response.ContentType(),
+		HTML:                 html_text,
+		Document:             document,
+		disable_cache:        navigate_options.DisableCache,
+		disable_subresources: navigate_options.DisableSubresources,
+		disable_css:          navigate_options.DisableCSS,
+		disable_images:       navigate_options.DisableImages,
+		disable_media:        navigate_options.DisableMedia,
+		disable_javascript:   navigate_options.DisableJavaScript,
+		javascript_timeout:   navigate_options.JavaScriptTimeout,
+		resource_timeout:     navigate_options.ResourceTimeout,
+		wait_until:           navigate_options.WaitUntil,
+		wait_for_selector:    navigate_options.WaitForSelector,
+		wait_for_content:     navigate_options.WaitForContent,
+		runtime_initializer:  navigate_options.RuntimeInitializer,
+		runtime_finalizer:    navigate_options.RuntimeFinalizer,
+		runtime_cleanup:      navigate_options.RuntimeCleanup,
+		use_custom_runtime:   navigate_options.UseCustomRuntime,
+		navigate_options:     navigate_options,
+	}
+	if page.wait_for_selector != "" {
+		page.wait_for_matcher, _ = cascadia.ParseGroup(page.wait_for_selector)
+	}
+	base_url := document_base_url(document, page_url)
+	var jobs []script_job
+	if !page.wait_condition_met() {
+		jobs = discover_page_resources(page, base_url, navigate_options)
+	}
+	if !navigate_options.DisableSubresources {
 		b.download_resources(ctx, page, page_url, document_headers, navigate_options.DisableCache, navigate_options.ResourceTimeout)
 	}
 	if err := ctx.Err(); err != nil {
@@ -1006,6 +1137,7 @@ func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *ur
 		javascript_timeout:   page.javascript_timeout,
 		wait_until:           page.wait_until,
 		use_custom_runtime:   page.use_custom_runtime,
+		dom_trace_enabled:    dom_trace_enabled(),
 		wait_active:          page.has_wait_condition(),
 	}
 	b.page_runtime = runtime
@@ -1463,6 +1595,81 @@ TreeWalker.prototype.nextNode = function() {
   }
   return null;
 };
+TreeWalker.prototype.previousNode = function() {
+  var node = this.currentNode;
+  while (node && node !== this.root) {
+    var sibling = node.previousSibling;
+    while (sibling) {
+      node = sibling;
+      var lastChild = node.lastChild;
+      while (lastChild) { node = lastChild; lastChild = node.lastChild; }
+      if (this._accept(node)) { this.currentNode = node; return node; }
+      sibling = node === this.currentNode ? null : node.previousSibling;
+      if (!sibling) { sibling = node.parentNode && node.parentNode !== this.root ? node.parentNode : null; if (sibling && this._accept(sibling)) { this.currentNode = sibling; return sibling; } break; }
+    }
+    if (!sibling) {
+      node = node.parentNode;
+      if (node && node !== this.root && this._accept(node)) { this.currentNode = node; return node; }
+    }
+  }
+  return null;
+};
+TreeWalker.prototype.firstChild = function() {
+  var node = this.currentNode.firstChild;
+  while (node) {
+    if (this._accept(node)) { this.currentNode = node; return node; }
+    if (node.firstChild) { node = node.firstChild; continue; }
+    while (node && !node.nextSibling && node.parentNode !== this.currentNode) node = node.parentNode;
+    node = node ? node.nextSibling : null;
+  }
+  return null;
+};
+TreeWalker.prototype.lastChild = function() {
+  var node = this.currentNode.lastChild;
+  while (node) {
+    if (this._accept(node)) { this.currentNode = node; return node; }
+    if (node.lastChild) { node = node.lastChild; continue; }
+    while (node && !node.previousSibling && node.parentNode !== this.currentNode) node = node.parentNode;
+    node = node ? node.previousSibling : null;
+  }
+  return null;
+};
+TreeWalker.prototype.parentNode = function() {
+  var node = this.currentNode.parentNode;
+  while (node && node !== this.root) {
+    if (this._accept(node)) { this.currentNode = node; return node; }
+    node = node.parentNode;
+  }
+  return null;
+};
+TreeWalker.prototype.nextSibling = function() {
+  var node = this.currentNode;
+  while (node && node !== this.root) {
+    var sibling = node.nextSibling;
+    while (sibling) {
+      if (this._accept(sibling)) { this.currentNode = sibling; return sibling; }
+      if (sibling.firstChild) { sibling = sibling.firstChild; continue; }
+      while (sibling && !sibling.nextSibling && sibling.parentNode !== node.parentNode) sibling = sibling.parentNode;
+      sibling = sibling ? sibling.nextSibling : null;
+    }
+    node = node.parentNode;
+  }
+  return null;
+};
+TreeWalker.prototype.previousSibling = function() {
+  var node = this.currentNode;
+  while (node && node !== this.root) {
+    var sibling = node.previousSibling;
+    while (sibling) {
+      if (this._accept(sibling)) { this.currentNode = sibling; return sibling; }
+      if (sibling.lastChild) { sibling = sibling.lastChild; continue; }
+      while (sibling && !sibling.previousSibling && sibling.parentNode !== node.parentNode) sibling = sibling.parentNode;
+      sibling = sibling ? sibling.previousSibling : null;
+    }
+    node = node.parentNode;
+  }
+  return null;
+};
 function CharacterData() {}
 CharacterData.prototype = Object.create(Node.prototype);
 Object.defineProperty(CharacterData.prototype, 'data', __minibNodeAccessor('data', true));
@@ -1478,10 +1685,10 @@ function DocumentType() {}
 DocumentType.prototype = Object.create(Node.prototype);
 function Element() {}
 Element.prototype = Object.create(Node.prototype);
-['children', 'tagName', 'localName', 'style', 'sheet', 'classList', 'dataset', 'attributes', 'contentWindow', 'contentDocument', 'content', 'shadowRoot', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash', 'origin', 'clientWidth', 'clientHeight', 'offsetWidth', 'offsetHeight', 'scrollWidth', 'scrollHeight'].forEach(function(name) { Object.defineProperty(Element.prototype, name, __minibNodeAccessor(name, false)); });
+['children', 'tagName', 'localName', 'namespaceURI', 'style', 'sheet', 'classList', 'dataset', 'attributes', 'contentWindow', 'contentDocument', 'content', 'shadowRoot', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash', 'origin', 'clientWidth', 'clientHeight', 'offsetWidth', 'offsetHeight', 'scrollWidth', 'scrollHeight'].forEach(function(name) { Object.defineProperty(Element.prototype, name, __minibNodeAccessor(name, false)); });
 ['id', 'className', 'src', 'href', 'value', 'name', 'type', 'rel', 'content', 'charset', 'dir', 'innerHTML', 'scrollTop', 'scrollLeft'].forEach(function(name) { Object.defineProperty(Element.prototype, name, __minibNodeAccessor(name, true)); });
 function __minibMethod(name) { return function() { var own = this['__minib_' + name]; if (typeof own === 'function') return own.apply(this, arguments); return __minib_node_call(this, name, Array.prototype.slice.call(arguments)); }; }
-['appendChild', 'removeChild', 'replaceChild', 'insertBefore', 'cloneNode', 'contains'].forEach(function(name) { Node.prototype[name] = __minibMethod(name); });
+['appendChild', 'removeChild', 'replaceChild', 'insertBefore', 'cloneNode', 'contains', 'compareDocumentPosition'].forEach(function(name) { Node.prototype[name] = __minibMethod(name); });
 Node.prototype.hasChildNodes = function() { return this.firstChild !== null; };
 Node.prototype.getRootNode = function() { var node = this; while (node.parentNode) node = node.parentNode; return node; };
 Node.prototype.isSameNode = function(other) { return this === other; };
@@ -1510,7 +1717,11 @@ Node.prototype.normalize = function() {
 ['insertAdjacentElement', 'getAttribute', 'setAttribute', 'getAttributeNS', 'setAttributeNS', 'removeAttribute', 'removeAttributeNS', 'hasAttribute', 'hasAttributeNS', 'hasAttributes', 'getAttributeNames', 'querySelector', 'querySelectorAll', 'getElementsByTagName', 'getElementsByClassName', 'matches', 'closest', 'attachShadow', 'getBoundingClientRect', 'getClientRects', 'focus', 'blur', 'click', 'getContext', 'toDataURL'].forEach(function(name) { Element.prototype[name] = __minibMethod(name); });
 function HTMLElement() { if (typeof __minib_construct_html_element === 'function') return __minib_construct_html_element(this); }
 HTMLElement.prototype = Object.create(Element.prototype);
+HTMLElement.prototype.submit = __minibMethod('submit');
+HTMLElement.prototype.requestSubmit = __minibMethod('requestSubmit');
 HTMLElement.prototype.select = function() {};
+HTMLElement.prototype.scrollIntoView = function() {};
+HTMLElement.prototype.checkVisibility = function() { return true; };
 function CustomElementRegistry() {}
 function HTMLBodyElement() {}
 HTMLBodyElement.prototype = Object.create(HTMLElement.prototype);
@@ -1617,6 +1828,17 @@ function NodeList() {}
 NodeList.prototype = Object.create(Array.prototype);
 function HTMLCollection() {}
 HTMLCollection.prototype = Object.create(Array.prototype);
+function NamedNodeMap() {}
+NamedNodeMap.prototype.item = function(index) { return index >= 0 && index < this.length ? this[index] : null; };
+NamedNodeMap.prototype.getNamedItem = function(name) { return this[name] || null; };
+NamedNodeMap.prototype.setNamedItem = function(attr) { return this[attr.name] = attr; };
+NamedNodeMap.prototype.removeNamedItem = function(name) { var previous = this[name] || null; delete this[name]; return previous; };
+NamedNodeMap.prototype.forEach = function(callback, thisArg) { for (var index = 0; index < this.length; index++) callback.call(thisArg, this[index], this[index].name, this); };
+NamedNodeMap.prototype.entries = function() { return Array.prototype.slice.call(this).map(function(value, index) { return [value.name, value]; })[Symbol.iterator](); };
+NamedNodeMap.prototype.keys = function() { return Array.prototype.slice.call(this).map(function(value) { return value.name; })[Symbol.iterator](); };
+NamedNodeMap.prototype.values = function() { return Array.prototype.slice.call(this)[Symbol.iterator](); };
+NamedNodeMap.prototype[Symbol.iterator] = NamedNodeMap.prototype.values;
+Object.defineProperty(NamedNodeMap.prototype, Symbol.toStringTag, { configurable: true, value: 'NamedNodeMap' });
 function Location() {}
 Object.defineProperty(Location.prototype, Symbol.toStringTag, { value: 'Location' });
 function FormData() { this._entries = []; }
@@ -1929,7 +2151,7 @@ function fetch(input, init) {
 }
 var Intl = {
   getCanonicalLocales: function(locales) { return Array.isArray(locales) ? locales.map(String) : [String(locales || '')]; },
-  DateTimeFormat: function() { this.format = function(value) { return new Date(value).toString(); }; this.resolvedOptions = function() { return { locale: 'zh-CN', timeZone: 'Asia/Shanghai' }; }; },
+  DateTimeFormat: function() { this.format = function(value) { return new Date(value).toString(); }; this.resolvedOptions = function() { return { locale: 'zh-CN', timeZone: 'Asia/Shanghai' }; }; this.formatToParts = function(value) { return [{type: 'literal', value: this.format(value)}]; }; },
   NumberFormat: function() { this.format = function(value) { return String(value); }; },
   Collator: function() { this.compare = function(left, right) { left = String(left); right = String(right); return left < right ? -1 : left > right ? 1 : 0; }; },
   RelativeTimeFormat: function() { this.format = function(value, unit) { return String(value) + ' ' + unit; }; },
@@ -1946,6 +2168,18 @@ Array.prototype.join = function(separator) {
   finally { __minib_array_join_stack.pop(); }
 };
 if (!Date.prototype.toGMTString) Date.prototype.toGMTString = Date.prototype.toUTCString;
+if (typeof WeakRef === 'undefined') {
+  WeakRef = function(target) { this._target = target; };
+  WeakRef.prototype.deref = function() { return this._target; };
+}
+if (typeof FinalizationRegistry === 'undefined') {
+  FinalizationRegistry = function() {};
+  FinalizationRegistry.prototype.register = function() {};
+  FinalizationRegistry.prototype.unregister = function() {};
+}
+if (typeof Promise.withResolvers !== 'function') {
+  Promise.withResolvers = function() { var resolve, reject; var promise = new Promise(function(res, rej) { resolve = res; reject = rej; }); return { promise: promise, resolve: resolve, reject: reject }; };
+}
 `
 	if _, err := runtime.vm.RunString(constructors); err != nil {
 		return err
@@ -2216,6 +2450,22 @@ if (!Date.prototype.toGMTString) Date.prototype.toGMTString = Date.prototype.toU
 	_ = xhr_prototype.SetPrototype(event_target_prototype)
 	runtime.install_xml_http_request_prototype(xhr_constructor)
 	runtime.install_web_socket(window)
+	_ = window.Set("structuredClone", func(call goja.FunctionCall) goja.Value {
+		value := call.Argument(0)
+		json_stringify, _ := runtime.vm.RunString("JSON.stringify")
+		json_parse, _ := runtime.vm.RunString("JSON.parse")
+		stringify_fn, _ := goja.AssertFunction(json_stringify.ToObject(runtime.vm))
+		parse_fn, _ := goja.AssertFunction(json_parse.ToObject(runtime.vm))
+		serialized, err := stringify_fn(goja.Undefined(), value)
+		if err != nil {
+			panic(runtime.vm.NewTypeError("structuredClone: failed to serialize"))
+		}
+		cloned, err := parse_fn(goja.Undefined(), serialized)
+		if err != nil {
+			panic(runtime.vm.NewTypeError("structuredClone: failed to deserialize"))
+		}
+		return cloned
+	})
 	_ = window.Set("matchMedia", func(query string) map[string]any {
 		return map[string]any{"matches": strings.Contains(query, "hover") || strings.Contains(query, "pointer"), "media": query, "addListener": func(...any) {}, "removeListener": func(...any) {}, "addEventListener": func(...any) {}, "removeEventListener": func(...any) {}}
 	})
@@ -2689,6 +2939,16 @@ func (runtime *page_runtime) request_navigation(raw_url string) {
 	}
 }
 
+func (runtime *page_runtime) request_form_navigation(action string, method string, body string) {
+	next_url, err := runtime.page_url.Parse(strings.TrimSpace(action))
+	if err == nil && (next_url.Scheme == "http" || next_url.Scheme == "https") {
+		runtime.page.navigation_url = next_url.String()
+		runtime.page.navigation_method = strings.ToUpper(method)
+		runtime.page.navigation_body = body
+		runtime.page.NavigationRequests = append(runtime.page.NavigationRequests, next_url.String())
+	}
+}
+
 func (runtime *page_runtime) text_decoder_constructor(call goja.ConstructorCall) *goja.Object {
 	object := call.This
 	_ = object.Set("decode", func(value goja.Value) string {
@@ -3119,7 +3379,8 @@ func (runtime *page_runtime) install_custom_elements(window *goja.Object) {
 		delete(runtime.custom_waiters, name)
 		for _, node := range find_by_tag(runtime.page.Document, name) {
 			if _, err := runtime.construct_custom_element(node); err != nil {
-				panic(err)
+				runtime.fail_script(runtime.page.URL+"#custom-element", err)
+				continue
 			}
 			runtime.connect_custom_elements(node)
 		}
@@ -3539,6 +3800,62 @@ func (runtime *page_runtime) install_node_methods(object *goja.Object, node *htm
 	_ = object.Set("contains", func(call goja.FunctionCall) goja.Value {
 		return runtime.vm.ToValue(contains_node(node, runtime.object_node(call.Argument(0))))
 	})
+	_ = object.Set("compareDocumentPosition", func(call goja.FunctionCall) goja.Value {
+		other := runtime.object_node(call.Argument(0))
+		if other == nil {
+			return runtime.vm.ToValue(0)
+		}
+		if node == other {
+			return runtime.vm.ToValue(0)
+		}
+		// Check containment
+		if contains_node(node, other) {
+			return runtime.vm.ToValue(16 | 4) // CONTAINED_BY | FOLLOWING
+		}
+		if contains_node(other, node) {
+			return runtime.vm.ToValue(8 | 2) // CONTAINS | PRECEDING
+		}
+		// Check document order by walking ancestors
+		node_ancestors := make(map[*html.Node]bool)
+		for a := node; a != nil; a = a.Parent {
+			node_ancestors[a] = true
+		}
+		// Find common ancestor
+		for a := other; a != nil; a = a.Parent {
+			if node_ancestors[a] {
+				// other is after node if node comes first among a's descendants
+				// Walk a's children to find which subtree node and other are in
+				for c := a.FirstChild; c != nil; c = c.NextSibling {
+					if contains_node(c, node) || c == node {
+						return runtime.vm.ToValue(4) // FOLLOWING (other follows node)
+					}
+					if contains_node(c, other) || c == other {
+						return runtime.vm.ToValue(2) // PRECEDING (other precedes node)
+					}
+				}
+				break
+			}
+		}
+		return runtime.vm.ToValue(1) // DISCONNECTED
+	})
+	_ = object.Set("getAttributeNode", func(name string) any {
+		if node.Type != html.ElementNode {
+			return nil
+		}
+		for _, attr := range node.Attr {
+			if attr.Key == name {
+				attrNode := runtime.vm.NewObject()
+				_ = attrNode.Set("name", attr.Key)
+				_ = attrNode.Set("value", attr.Val)
+				_ = attrNode.Set("nodeName", attr.Key)
+				_ = attrNode.Set("nodeValue", attr.Val)
+				_ = attrNode.Set("specified", true)
+				_ = attrNode.Set("ownerElement", runtime.node_object(node))
+				return attrNode
+			}
+		}
+		return nil
+	})
 	runtime.install_node_events(object, node)
 	for _, name := range []string{"appendChild", "removeChild", "replaceChild", "insertBefore", "cloneNode", "contains"} {
 		_ = object.Set("__minib_"+name, object.Get(name))
@@ -3628,6 +3945,15 @@ func (runtime *page_runtime) install_document(object *goja.Object, node *html.No
 func (runtime *page_runtime) install_element(object *goja.Object, node *html.Node) {
 	define_getter(runtime.vm, object, "tagName", func() any { return strings.ToUpper(node.Data) })
 	define_getter(runtime.vm, object, "localName", func() any { return strings.ToLower(node.Data) })
+	define_getter(runtime.vm, object, "namespaceURI", func() any {
+		if node.Namespace == "svg" {
+			return "http://www.w3.org/2000/svg"
+		}
+		if node.Namespace == "math" {
+			return "http://www.w3.org/1998/Math/MathML"
+		}
+		return "http://www.w3.org/1999/xhtml"
+	})
 	define_accessor(runtime.vm, object, "id", func() any { return attribute(node, "id") }, func(value goja.Value) { runtime.set_element_attribute(node, "id", value.String()) })
 	define_accessor(runtime.vm, object, "className", func() any { return attribute(node, "class") }, func(value goja.Value) { runtime.set_element_attribute(node, "class", value.String()) })
 	for _, name := range []string{"src", "href", "value", "name", "type", "rel", "content", "charset"} {
@@ -3880,6 +4206,7 @@ func (runtime *page_runtime) dataset_object(node *html.Node) *goja.Object {
 
 func (runtime *page_runtime) attributes_object(node *html.Node) *goja.Object {
 	object := runtime.vm.NewObject()
+	_ = object.SetPrototype(runtime.vm.Get("NamedNodeMap").ToObject(runtime.vm).Get("prototype").ToObject(runtime.vm))
 	for index, attr := range node.Attr {
 		attribute_object := runtime.vm.NewObject()
 		_ = attribute_object.Set("name", attr.Key)
@@ -3888,17 +4215,10 @@ func (runtime *page_runtime) attributes_object(node *html.Node) *goja.Object {
 		_ = attribute_object.Set("nodeValue", attr.Val)
 		_ = attribute_object.Set("specified", true)
 		_ = attribute_object.Set("expando", false)
-		_ = object.Set(attr.Key, attribute_object)
 		_ = object.Set(fmt.Sprintf("%d", index), attribute_object)
+		_ = object.Set(attr.Key, attribute_object)
 	}
 	_ = object.Set("length", len(node.Attr))
-	_ = object.Set("item", func(index int) any {
-		if index < 0 || index >= len(node.Attr) {
-			return nil
-		}
-		return object.Get(fmt.Sprintf("%d", index))
-	})
-	_ = object.Set("getNamedItem", func(name string) any { return object.Get(name) })
 	return object
 }
 
@@ -4100,7 +4420,12 @@ func (runtime *page_runtime) drain_dynamic_scripts(ctx context.Context, include_
 		if strings.TrimSpace(job.inline) == "" && job.resource_index < 0 {
 			continue
 		}
+		runtime.dynamic_script_depth++
 		runtime.execute_job(ctx, job)
+		runtime.dynamic_script_depth--
+		if runtime.dynamic_script_depth == 0 && len(runtime.custom_reactions) > 0 {
+			runtime.flush_custom_element_reactions()
+		}
 		if runtime.wait_condition_met() {
 			return
 		}

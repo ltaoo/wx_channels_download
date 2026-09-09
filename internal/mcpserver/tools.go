@@ -314,6 +314,7 @@ func tool_definitions() []any {
 	definitions = append(definitions, wxchannels_download_tool_definitions()...)
 	definitions = append(definitions, sph_tool_definitions()...)
 	definitions = append(definitions, zhihu_tool_definitions()...)
+	definitions = append(definitions, automation_tool_definitions()...)
 	return append(definitions, data_tool_definitions()...)
 }
 
@@ -375,6 +376,13 @@ func (s *Server) supports_tool(name string) bool {
 		get_my_zhihu_zvideos_tool_name,
 		get_my_zhihu_columns_tool_name:
 		return s.zhihu_collections != nil && s.zhihu_credentials != nil
+	case list_automation_schedules_tool_name,
+		get_automation_schedule_tool_name,
+		create_automation_schedule_tool_name,
+		toggle_automation_schedule_tool_name,
+		trigger_automation_schedule_tool_name,
+		list_automation_runs_tool_name:
+		return s.automation != nil
 	default:
 		return s.api_client != nil
 	}
@@ -459,6 +467,18 @@ func (s *Server) call_tool(ctx context.Context, params call_tool_params) (map[st
 		return s.get_my_zhihu_zvideos(ctx, params.Arguments)
 	case get_my_zhihu_columns_tool_name:
 		return s.get_my_zhihu_columns(ctx, params.Arguments)
+	case list_automation_schedules_tool_name:
+		return s.list_automation_schedules_tool(ctx)
+	case get_automation_schedule_tool_name:
+		return s.get_automation_schedule_tool(ctx, params.Arguments)
+	case create_automation_schedule_tool_name:
+		return s.create_automation_schedule_tool(ctx, params.Arguments)
+	case toggle_automation_schedule_tool_name:
+		return s.toggle_automation_schedule_tool(ctx, params.Arguments)
+	case trigger_automation_schedule_tool_name:
+		return s.trigger_automation_schedule_tool(ctx, params.Arguments)
+	case list_automation_runs_tool_name:
+		return s.list_automation_runs_tool(ctx, params.Arguments)
 	default:
 		return nil, fmt.Errorf("%w: %s", err_unknown_tool, params.Name)
 	}
