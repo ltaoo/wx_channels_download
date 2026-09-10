@@ -26,6 +26,7 @@ const (
 	bridge_admin_token_binding_name = "BRIDGE_ADMIN_TOKEN"
 	worker_main_module              = "bridge.js"
 	pages_compatibility_date        = "2026-08-19"
+	discovery_compatibility_date    = "2026-09-10"
 	pages_production_branch         = "main"
 	pages_service_binding           = "BRIDGE"
 	worker_deploy_timeout           = 2 * time.Minute
@@ -43,6 +44,7 @@ const (
 	DeployStageWorkerSubdomain DeployStage = "worker_subdomain"
 	DeployStagePagesBuild      DeployStage = "pages_build"
 	DeployStagePagesDeploy     DeployStage = "pages_deploy"
+	DeployStageDiscoveryDeploy DeployStage = "discovery_deploy"
 )
 
 // DeployProgress is emitted before each Bridge deployment phase.
@@ -53,34 +55,40 @@ type DeployProgress struct {
 
 // DeployOptions contains the Cloudflare credentials and Bridge deployment names.
 type DeployOptions struct {
-	AccountID        string
-	AuthToken        string
-	WorkerName       string
-	PagesProjectName string
-	BridgeToken      string
-	AdminToken       string
-	RepositoryDir    string
-	APIBaseURL       string
-	HTTPClient       *http.Client
-	Progress         func(DeployProgress)
+	AccountID            string
+	AuthToken            string
+	WorkerName           string
+	PagesProjectName     string
+	DiscoveryProjectName string
+	BridgeToken          string
+	AdminToken           string
+	RepositoryDir        string
+	APIBaseURL           string
+	HTTPClient           *http.Client
+	Progress             func(DeployProgress)
 }
 
 // DeployResult describes both the Worker and Pages deployment.
 type DeployResult struct {
-	WorkerID           string
-	WorkerName         string
-	WorkerURL          string
-	WorkerURLWarning   string
-	ScriptBytes        int
-	PagesProjectName   string
-	PagesURL           string
-	PagesDeploymentID  string
-	PagesDeploymentURL string
-	PagesFiles         int
+	WorkerID               string
+	WorkerName             string
+	WorkerURL              string
+	WorkerURLWarning       string
+	ScriptBytes            int
+	PagesProjectName       string
+	PagesURL               string
+	PagesDeploymentID      string
+	PagesDeploymentURL     string
+	PagesFiles             int
+	DiscoveryProjectName   string
+	DiscoveryURL           string
+	DiscoveryDeploymentID  string
+	DiscoveryDeploymentURL string
+	DiscoveryFiles         int
 }
 
 // Deploy uploads the Bridge Worker, builds the admin assets, and deploys the
-// Cloudflare Pages management project.
+// Cloudflare Pages management and discovery projects.
 func Deploy(request_context context.Context, options DeployOptions) (*DeployResult, error) {
 	normalized_options, err := normalize_deploy_options(options)
 	if err != nil {
@@ -131,11 +139,12 @@ func Deploy(request_context context.Context, options DeployOptions) (*DeployResu
 	}
 
 	result := &DeployResult{
-		WorkerID:         worker_result.WorkerID,
-		WorkerName:       worker_result.WorkerName,
-		WorkerURL:        fmt.Sprintf("https://%s.<your-subdomain>.workers.dev", worker_result.WorkerName),
-		ScriptBytes:      worker_result.ScriptBytes,
-		PagesProjectName: options.PagesProjectName,
+		WorkerID:             worker_result.WorkerID,
+		WorkerName:           worker_result.WorkerName,
+		WorkerURL:            fmt.Sprintf("https://%s.<your-subdomain>.workers.dev", worker_result.WorkerName),
+		ScriptBytes:          worker_result.ScriptBytes,
+		PagesProjectName:     options.PagesProjectName,
+		DiscoveryProjectName: options.DiscoveryProjectName,
 	}
 
 	notify_progress(options, DeployStageWorkerSubdomain, "正在获取 Worker 访问地址...")
@@ -187,6 +196,28 @@ func Deploy(request_context context.Context, options DeployOptions) (*DeployResu
 	result.PagesDeploymentID = pages_result.DeploymentID
 	result.PagesDeploymentURL = pages_result.DeploymentURL
 	result.PagesFiles = pages_result.Files
+
+	discovery_dir := filepath.Join(options.RepositoryDir, "internal", "workers", "bridge", "discovery")
+	notify_progress(options, DeployStageDiscoveryDeploy, "正在通过 Cloudflare API 部署 RSS 订阅广场...")
+	discovery_context, cancel_discovery := context.WithTimeout(request_context, pages_deploy_timeout)
+	discovery_result, err := pages_api_client.DeployProject(discovery_context, pages.DeployOptions{
+		AccountID:         options.AccountID,
+		AuthToken:         options.AuthToken,
+		ProjectName:       options.DiscoveryProjectName,
+		ProductionBranch:  pages_production_branch,
+		CompatibilityDate: discovery_compatibility_date,
+		Directory:         filepath.Join(discovery_dir, "public"),
+	})
+	cancel_discovery()
+	if err != nil {
+		return result, fmt.Errorf("Bridge Worker 和管理页面已部署，但 RSS 订阅广场部署失败: %w", err)
+	}
+
+	result.DiscoveryProjectName = discovery_result.ProjectName
+	result.DiscoveryURL = discovery_result.ProjectURL
+	result.DiscoveryDeploymentID = discovery_result.DeploymentID
+	result.DiscoveryDeploymentURL = discovery_result.DeploymentURL
+	result.DiscoveryFiles = discovery_result.Files
 	return result, nil
 }
 
@@ -204,6 +235,7 @@ func normalize_deploy_options(options DeployOptions) (DeployOptions, error) {
 	options.AuthToken = strings.TrimSpace(options.AuthToken)
 	options.WorkerName = strings.TrimSpace(options.WorkerName)
 	options.PagesProjectName = strings.TrimSpace(options.PagesProjectName)
+	options.DiscoveryProjectName = strings.TrimSpace(options.DiscoveryProjectName)
 	options.BridgeToken = strings.TrimSpace(options.BridgeToken)
 	options.AdminToken = strings.TrimSpace(options.AdminToken)
 	options.RepositoryDir = strings.TrimSpace(options.RepositoryDir)
@@ -216,6 +248,9 @@ func normalize_deploy_options(options DeployOptions) (DeployOptions, error) {
 	}
 	if options.PagesProjectName == "" {
 		options.PagesProjectName = options.WorkerName + "-admin"
+	}
+	if options.DiscoveryProjectName == "" {
+		options.DiscoveryProjectName = options.WorkerName + "-discovery"
 	}
 	if options.AccountID == "" {
 		return options, errors.New("未配置 cloudflare.accountId")

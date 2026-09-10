@@ -74,6 +74,7 @@ export default [
         Show: "readonly",
         Switch: "readonly",
         Match: "readonly",
+        SplitView: "readonly",
         AspectRatio: "readonly",
         View: "readonly",
         Txt: "readonly",

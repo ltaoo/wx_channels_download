@@ -34,6 +34,7 @@ bridge:
   deploy:
     workerName: "dm-bridge"
     pagesProjectName: "" # 留空时使用 dm-bridge-admin
+    discoveryProjectName: "" # 留空时使用 dm-bridge-discovery
     token: "<只供设备使用的随机高强度 Secret>"
     adminToken: "<与设备 Token 不同的管理员密码>"
 ```
@@ -44,7 +45,26 @@ bridge:
 go run . deploy bridge
 ```
 
-命令会部署单个 Durable Object Bridge Worker 和独立的 Cloudflare Pages 管理项目。重复部署会更新代码并保留该 Bridge 的设备登记和任务数据。
+命令会部署单个 Durable Object Bridge Worker、独立的 Cloudflare Pages 管理项目，以及 RSS 订阅广场 Pages。重复部署会更新代码并保留该 Bridge 的设备登记和任务数据。
+
+也可以分别进入部署单元手动发布。首次用 Wrangler 发布后，再写入对应 Secret：
+
+```bash
+cd internal/workers/bridge/api
+npx wrangler deploy
+npx wrangler secret put BRIDGE_TOKEN
+npx wrangler secret put BRIDGE_ADMIN_TOKEN
+
+cd ../admin
+./build.sh
+npx wrangler pages deploy dist --project-name dm-bridge-admin
+npx wrangler pages secret put BRIDGE_ADMIN_TOKEN --project-name dm-bridge-admin
+
+cd ../discovery
+npx wrangler pages deploy public --project-name dm-bridge-discovery
+```
+
+自定义 Worker 或 Pages 项目名时，同步修改对应子目录的 `wrangler.jsonc`，并确认 Pages 的 `BRIDGE` Service Binding 指向实际 Worker 名称。
 
 - `BRIDGE_TOKEN` 只用于设备连接和设备自身发布调用，不应分发给外部调用者。
 - `BRIDGE_ADMIN_TOKEN` 只用于管理页面、管理 API 和调用 Token 管理。
@@ -117,7 +137,7 @@ GET /api/bridge/status
 
 ## 管理页面
 
-管理页源码位于 `internal/workers/bridge/admin`：
+Bridge API Worker 源码位于 `internal/workers/bridge/api`，管理页源码位于 `internal/workers/bridge/admin`，RSS 订阅广场源码位于 `internal/workers/bridge/discovery`：
 
 - `public/index.html`、`style.css`、`app.js` 是静态源码；
 - `build.sh` 生成被 Git 忽略的 `dist`，并从 `frontend/public/timeless` 复制共享运行时；
@@ -200,7 +220,7 @@ Authorization: Bearer <BRIDGE_ADMIN_TOKEN>
 ./internal/workers/bridge/dev.sh
 ```
 
-Worker 默认监听 `http://127.0.0.1:8787`，Pages 默认监听 `http://127.0.0.1:8788`。管理页用户名为 `admin`，默认本地密码为 `local-bridge-admin-token`。
+Worker 默认监听 `http://127.0.0.1:8787`，管理页默认监听 `http://127.0.0.1:8788`，订阅广场默认监听 `http://127.0.0.1:8789`。管理页用户名为 `admin`，默认本地密码为 `local-bridge-admin-token`。
 
 可以覆盖端口和 Token：
 

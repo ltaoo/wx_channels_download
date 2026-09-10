@@ -1,0 +1,78 @@
+<!doctype html>
+<html data-n="discovery-document" lang="zh-CN">
+<head data-n="discovery-head">
+  <meta data-n="discovery-charset" charset="utf-8">
+  <meta data-n="discovery-viewport" name="viewport" content="width=device-width,initial-scale=1">
+  <meta data-n="discovery-color-scheme" name="color-scheme" content="dark light">
+  <meta data-n="discovery-description" name="description" content="搜索和预览 RSS、Atom 订阅源的信息广场">
+  <title data-n="discovery-title">RSS 订阅广场</title>
+  <link data-n="discovery-stylesheet" rel="stylesheet" href="./style.css">
+</head>
+<body data-n="discovery-body">
+  <header data-n="discovery-header">
+    <a data-n="discovery-home-link" href="./" aria-label="RSS 订阅广场首页">
+      <span data-n="discovery-logo" aria-hidden="true">◆</span>
+      <span data-n="discovery-brand">RSS 订阅广场</span>
+    </a>
+    <form data-n="discovery-search-form" action="./" role="search">
+      <label data-n="discovery-search-label" for="discovery-search-input">搜索订阅源</label>
+      <input data-n="discovery-search-input" id="discovery-search-input" name="q" type="search" autocomplete="off" placeholder="输入关键词，或粘贴 RSS/Atom 链接" required>
+      <button data-n="discovery-search-button" type="submit">搜索</button>
+    </form>
+  </header>
+  <main data-n="discovery-main">
+    <nav data-n="discovery-category-navigation" aria-label="订阅源分类">
+      <p data-n="discovery-category-title">广场分类</p>
+      <div data-n="discovery-category-list" id="discovery-category-list"></div>
+    </nav>
+    <section data-n="discovery-results-section" aria-labelledby="discovery-results-title">
+      <div data-n="discovery-results-heading-group">
+        <h1 data-n="discovery-results-title" id="discovery-results-title">发现订阅源</h1>
+        <p data-n="discovery-results-status" id="discovery-results-status" role="status" aria-live="polite"></p>
+      </div>
+      <div data-n="discovery-feed-list" id="discovery-feed-list"></div>
+      <p data-n="discovery-results-error" id="discovery-results-error" role="alert"></p>
+    </section>
+  </main>
+  <aside data-n="discovery-preview-panel" id="discovery-preview-panel" aria-labelledby="discovery-preview-title" hidden>
+    <header data-n="discovery-preview-header">
+      <div data-n="discovery-preview-heading-group">
+        <p data-n="discovery-preview-eyebrow">内容预览</p>
+        <h2 data-n="discovery-preview-title" id="discovery-preview-title"></h2>
+        <a data-n="discovery-preview-site-link" id="discovery-preview-site-link" href="./" target="_blank" rel="noopener noreferrer"></a>
+      </div>
+      <button data-n="discovery-preview-close-button" id="discovery-preview-close-button" type="button" aria-label="关闭预览">✕</button>
+    </header>
+    <div data-n="discovery-preview-content" id="discovery-preview-content"></div>
+    <footer data-n="discovery-preview-footer">
+      <button data-n="discovery-preview-copy-button" id="discovery-preview-copy-button" type="button">复制订阅地址</button>
+      <span data-n="discovery-preview-copy-status" id="discovery-preview-copy-status" role="status" aria-live="polite"></span>
+    </footer>
+  </aside>
+  <template data-n="discovery-feed-card-template" id="discovery-feed-card-template">
+    <article data-n="discovery-feed-card">
+      <header data-n="discovery-feed-card-header">
+        <span data-n="discovery-feed-initial" aria-hidden="true"></span>
+        <div data-n="discovery-feed-identity">
+          <h2 data-n="discovery-feed-title"></h2>
+          <p data-n="discovery-feed-website"></p>
+        </div>
+      </header>
+      <p data-n="discovery-feed-description"></p>
+      <footer data-n="discovery-feed-card-footer">
+        <div data-n="discovery-feed-metadata">
+          <span data-n="discovery-feed-subscribers"></span>
+          <span data-n="discovery-feed-language"></span>
+          <span data-n="discovery-feed-velocity"></span>
+        </div>
+        <div data-n="discovery-feed-actions">
+          <button data-n="discovery-feed-preview-button" type="button">预览</button>
+          <button data-n="discovery-feed-copy-button" type="button">复制 RSS</button>
+          <a data-n="discovery-feed-open-link" href="./" target="_blank" rel="noopener noreferrer">网站</a>
+        </div>
+      </footer>
+    </article>
+  </template>
+  <script data-n="discovery-application-script" src="./app.js" type="module"></script>
+</body>
+</html>

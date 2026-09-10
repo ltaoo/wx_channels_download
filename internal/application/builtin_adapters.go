@@ -17,8 +17,7 @@ import (
 	_ "wx_channel/internal/adapter/youtube"
 	_ "wx_channel/internal/adapter/zhihu"
 	_ "wx_channel/internal/adapter/instagram"
-	// _ "wx_channel/internal/adapter/feishu"
-	// _ "wx_channel/internal/adapter/ucdrive"
+	_ "wx_channel/internal/adapter/feishu"
+	_ "wx_channel/internal/adapter/ucdrive"
 	_ "wx_channel/internal/adapter/quark"
-	// _ "wx_channel/internal/adapter/webpage"
 )

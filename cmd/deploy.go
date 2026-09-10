@@ -39,8 +39,8 @@ var deploy_sph_cmd = &cobra.Command{
 
 var deploy_bridge_cmd = &cobra.Command{
 	Use:   "bridge",
-	Short: "部署 Durable Objects Bridge 桥接服务和管理页面",
-	Long:  "通过 Cloudflare REST API 部署用于桥接和转发调用的原生 JavaScript Durable Objects Worker 与 Pages 管理页面",
+	Short: "部署 Durable Objects Bridge 桥接服务、管理页面和订阅广场",
+	Long:  "通过 Cloudflare REST API 部署用于桥接和转发调用的原生 JavaScript Durable Objects Worker、Pages 管理页面和 RSS 订阅广场",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		deploy_bridge()
@@ -55,15 +55,16 @@ func init() {
 func deploy_bridge() {
 	pterm.DefaultSection.Println("开始部署 Durable Objects Bridge 桥接服务 (Go + JavaScript + REST API)")
 
-	spinner, _ := pterm.DefaultSpinner.Start("正在部署 Bridge Worker 和 Pages...")
+	spinner, _ := pterm.DefaultSpinner.Start("正在部署 Bridge Worker 和 Pages 项目...")
 	result, err := bridge.Deploy(context.Background(), bridge.DeployOptions{
-		AccountID:        viper.GetString("cloudflare.accountId"),
-		AuthToken:        viper.GetString("cloudflare.apiToken"),
-		WorkerName:       viper.GetString("bridge.deploy.workerName"),
-		PagesProjectName: viper.GetString("bridge.deploy.pagesProjectName"),
-		BridgeToken:      viper.GetString("bridge.deploy.token"),
-		AdminToken:       viper.GetString("bridge.deploy.adminToken"),
-		RepositoryDir:    Cfg.RootDir,
+		AccountID:            viper.GetString("cloudflare.accountId"),
+		AuthToken:            viper.GetString("cloudflare.apiToken"),
+		WorkerName:           viper.GetString("bridge.deploy.workerName"),
+		PagesProjectName:     viper.GetString("bridge.deploy.pagesProjectName"),
+		DiscoveryProjectName: viper.GetString("bridge.deploy.discoveryProjectName"),
+		BridgeToken:          viper.GetString("bridge.deploy.token"),
+		AdminToken:           viper.GetString("bridge.deploy.adminToken"),
+		RepositoryDir:        Cfg.RootDir,
 		Progress: func(progress bridge.DeployProgress) {
 			spinner.UpdateText(progress.Message)
 		},
@@ -78,9 +79,10 @@ func deploy_bridge() {
 		return
 	}
 	spinner.Success(fmt.Sprintf(
-		"Bridge Worker 和 Pages 部署成功：%d 字节 JavaScript，%d 个静态文件",
+		"Bridge Worker 和 Pages 部署成功：%d 字节 JavaScript，管理页 %d 个静态文件，订阅广场 %d 个静态文件",
 		result.ScriptBytes,
 		result.PagesFiles,
+		result.DiscoveryFiles,
 	))
 	if result.WorkerURLWarning != "" {
 		pterm.Warning.Println(result.WorkerURLWarning)
@@ -98,12 +100,15 @@ func deploy_bridge() {
 		{"管理页面", result.PagesURL},
 		{"Pages Deployment", result.PagesDeploymentID},
 		{"管理 API", result.PagesURL + "/admin/api/overview"},
+		{"Discovery Pages", result.DiscoveryProjectName},
+		{"RSS 订阅广场", result.DiscoveryURL},
 		{"WebSocket", result.WorkerURL + "/v1/connect"},
 	}
 	pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(table_data).Render()
 	pterm.Println()
 	pterm.Info.Println("将上面的 URL 和 bridge.deploy.token 写入每台设备的 bridge.url 和 bridge.token。")
 	pterm.Info.Println("管理页面使用用户名 admin 和 bridge.deploy.adminToken 登录。")
+	pterm.Info.Println("RSS 订阅广场无需登录，可直接搜索和预览公网 RSS/Atom 源。")
 }
 
 func deploy_mp() {

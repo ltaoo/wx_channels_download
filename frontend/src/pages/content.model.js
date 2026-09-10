@@ -236,6 +236,20 @@ function content_type_label(value, subtypeValue) {
   );
 }
 
+function content_type_icon(value, subtypeValue) {
+  const type = String(value || "")
+    .trim()
+    .toLowerCase();
+  const subtype = String(subtypeValue || "")
+    .trim()
+    .toLowerCase();
+  const has_icon = (key) =>
+    Object.prototype.hasOwnProperty.call(window.CONTENT_TYPE_ICONS, key);
+  if (has_icon(subtype)) return window.CONTENT_TYPE_ICONS[subtype];
+  if (has_icon(type)) return window.CONTENT_TYPE_ICONS[type];
+  return window.CONTENT_TYPE_ICONS.default;
+}
+
 function content_statistics(content) {
   const source = content && typeof content === "object" ? content : {};
   const tasks = Array.isArray(source.download_tasks)
@@ -261,8 +275,93 @@ function content_statistics(content) {
   };
 }
 
+const saved_filter_fields = [
+  "keyword",
+  "content_type",
+  "platform_id",
+  "account_id",
+  "scope",
+];
+const saved_filters_storage_key = "content.saved_filters";
+const content_layout_storage_key = "content.layout";
+
+function normalize_content_layout(value) {
+  return value === "card" ? "card" : "table";
+}
+
+function load_content_layout() {
+  try {
+    return normalize_content_layout(
+      window.localStorage.getItem(content_layout_storage_key),
+    );
+  } catch {
+    return "table";
+  }
+}
+
+function normalize_saved_filter(raw) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const id = String(source.id || "").trim().slice(0, 100);
+  if (!id) return null;
+
+  const filter = {
+    id,
+    name: String(source.name || "").trim().slice(0, 60) || "未命名筛选器",
+    platform_name: String(source.platform_name || "").trim().slice(0, 60),
+    account_name: String(source.account_name || "").trim().slice(0, 120),
+  };
+  saved_filter_fields.forEach((field) => {
+    filter[field] = String(source[field] || "").trim();
+  });
+  filter.scope = filter.scope === "all" ? "all" : "task";
+  return filter;
+}
+
+function normalize_saved_filters(raw) {
+  if (!Array.isArray(raw)) return [];
+  const filters = [];
+  const ids = new Set();
+  raw.forEach((item) => {
+    const filter = normalize_saved_filter(item);
+    if (filter && !ids.has(filter.id)) {
+      filters.push(filter);
+      ids.add(filter.id);
+    }
+  });
+  return filters;
+}
+
+function saved_filters_match(left, right) {
+  return saved_filter_fields.every((field) => {
+    const left_value = String(left?.[field] || "").trim();
+    const right_value = String(right?.[field] || "").trim();
+    return left_value === right_value;
+  });
+}
+
+function load_saved_filters() {
+  try {
+    return normalize_saved_filters(
+      JSON.parse(window.localStorage.getItem(saved_filters_storage_key) || "[]"),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function persist_saved_filters(filters) {
+  try {
+    window.localStorage.setItem(
+      saved_filters_storage_key,
+      JSON.stringify(filters),
+    );
+  } catch {
+    // Local storage can be unavailable in private modes; quick filters remain usable for this page.
+  }
+}
+
 function ContentViewModel(props) {
-  const PAGE_SIZE_DEFAULT = 50;
+  const PAGE_SIZE_DEFAULT = 48;
   const contents_ = refarr([]);
   const total_ = ref(0);
   const page_ = ref(1);
@@ -277,6 +376,8 @@ function ContentViewModel(props) {
   const error_ = ref("");
   const detail_id_ = ref("");
   const copied_content_id_ = ref("");
+  const saved_filters_ = refarr(load_saved_filters());
+  const layout_ = ref(load_content_layout());
   let request_sequence = 0;
   let account_request_sequence = 0;
   let copy_feedback_timer = null;
@@ -363,6 +464,28 @@ function ContentViewModel(props) {
         return load(1);
       },
     }),
+    input_filter_name$: new Timeless.vm.InputCore({
+      defaultValue: "",
+      placeholder: "筛选器名称",
+      allowClear: true,
+      onEnter() {
+        return save_current_filter();
+      },
+    }),
+    btn_save_filter$: new Timeless.vm.ButtonCore({
+      variant: "outline",
+      size: "sm",
+    }),
+    btn_layout$: new Timeless.vm.ButtonCore({
+      variant: "outline",
+      size: "icon",
+    }),
+    dropdown_layout$: new Timeless.vm.DropdownMenuCore({
+      trigger: "click",
+      side: "bottom",
+      align: "end",
+      items: content_layout_items(),
+    }),
     btn_retry$: new Timeless.vm.ButtonCore({
       disabled: loading_.value,
       variant: "primary",
@@ -389,6 +512,16 @@ function ContentViewModel(props) {
       const checked = value === "all";
       if (ui.checkbox_all$.checked !== checked) {
         ui.checkbox_all$.setValue(checked, { silence: true });
+      }
+    },
+  });
+  layout_.subscribe({
+    onChange(layout) {
+      ui.dropdown_layout$.setItems(content_layout_items());
+      try {
+        window.localStorage.setItem(content_layout_storage_key, layout);
+      } catch {
+        // Layout still works for this page when storage is unavailable.
       }
     },
   });
@@ -459,7 +592,29 @@ function ContentViewModel(props) {
       return state.contents.length > 0 ? "normal" : "empty";
     },
   );
-
+  const active_filter_id_ = combine(
+    {
+      filters: saved_filters_,
+      keyword: keyword_,
+      content_type: content_type_,
+      platform_id: platform_id_,
+      account_id: account_id_,
+      scope: scope_,
+    },
+    (state) => {
+      const current = {
+        keyword: state.keyword,
+        content_type: state.content_type,
+        platform_id: state.platform_id,
+        account_id: state.account_id,
+        scope: state.scope,
+      };
+      return (
+        state.filters.find((filter) => saved_filters_match(filter, current))
+          ?.id || ""
+      );
+    },
+  );
   async function load(targetPage = page_.value) {
     const sequence = ++request_sequence;
     const requestedPage = Math.max(1, Number(targetPage) || 1);
@@ -507,6 +662,18 @@ function ContentViewModel(props) {
     loading_.as(false);
     initial_.as(false);
     return result;
+  }
+
+  function content_layout_items() {
+    return ["table", "card"].map((layout) =>
+      new Timeless.vm.MenuItemCore({
+        label: layout === "table" ? "表格布局" : "卡片布局",
+        shortcut: layout_.value === layout ? "当前" : undefined,
+        onClick() {
+          set_content_layout(layout);
+        },
+      }),
+    );
   }
 
   async function load_accounts() {
@@ -571,9 +738,91 @@ function ContentViewModel(props) {
     ui.select_account$.setValue("", { silence: true });
   }
 
+  function current_filter() {
+    const account_id = String(account_id_.value || "").trim();
+    const platform_id = String(platform_id_.value || "").trim();
+    return {
+      keyword: String(keyword_.value || "").trim(),
+      content_type: String(content_type_.value || "").trim(),
+      platform_id,
+      account_id,
+      scope: scope_.value === "all" ? "all" : "task",
+      platform_name: platform_id
+        ? window.PLATFORM_NAMES?.[platform_id] || platform_id
+        : "",
+      account_name: account_id
+        ? ui.select_account$.state.selectedOption?.label || ""
+        : "",
+    };
+  }
+
+  function save_current_filter() {
+    const name = String(ui.input_filter_name$.value || "").trim();
+    if (!name) return;
+
+    const filter = normalize_saved_filter({
+      ...current_filter(),
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      name,
+    });
+    const filters = [
+      filter,
+      ...saved_filters_.value.filter((item) => item.name !== filter.name),
+    ];
+    saved_filters_.as(filters, { reset: true });
+    persist_saved_filters(filters);
+    ui.input_filter_name$.setValue("", { silence: true });
+  }
+
+  async function apply_saved_filter(raw_filter) {
+    const filter = normalize_saved_filter(raw_filter);
+    if (!filter) return;
+
+    keyword_.as(filter.keyword);
+    content_type_.as(filter.content_type);
+    platform_id_.as(filter.platform_id);
+    account_id_.as(filter.account_id);
+    scope_.as(filter.scope);
+    ui.input_keyword$.setValue(filter.keyword, { silence: true });
+    ui.select_content_type$.setValue(filter.content_type, { silence: true });
+    ui.select_platform$.setValue(filter.platform_id, { silence: true });
+    ui.select_account$.setValue("", { silence: true });
+
+    await load_accounts();
+    return load(1);
+  }
+
+  function delete_saved_filter(filter_id) {
+    const filters = saved_filters_.value.filter(
+      (filter) => filter.id !== filter_id,
+    );
+    saved_filters_.as(filters, { reset: true });
+    persist_saved_filters(filters);
+  }
+
+  function saved_filter_summary(filter) {
+    const items = [];
+    if (filter.keyword) items.push(`关键词：${filter.keyword}`);
+    if (filter.platform_id) {
+      items.push(`平台：${filter.platform_name || filter.platform_id}`);
+    }
+    if (filter.account_id) {
+      items.push(`账号：${filter.account_name || filter.account_id}`);
+    }
+    if (filter.content_type) {
+      items.push(`类型：${content_type_label(filter.content_type)}`);
+    }
+    items.push(filter.scope === "all" ? "范围：所有内容" : "范围：任务内容");
+    return items.join("；");
+  }
+
   function set_all_scope(value) {
     scope_.as(value ? "all" : "task");
     return load(1);
+  }
+
+  function set_content_layout(value) {
+    layout_.as(normalize_content_layout(value));
   }
 
   function change_page(target_page) {
@@ -595,6 +844,11 @@ function ContentViewModel(props) {
     search() {
       return load(1);
     },
+    saveFilter: save_current_filter,
+    applyFilter: apply_saved_filter,
+    deleteFilter: delete_saved_filter,
+    filterSummary: saved_filter_summary,
+    setLayout: set_content_layout,
     setKeyword: set_keyword,
     changePage: change_page,
     previousPage() {
@@ -627,6 +881,7 @@ function ContentViewModel(props) {
     detailHref: content_detail_href,
     platformName: content_platform_name,
     typeLabel: content_type_label,
+    typeIcon: content_type_icon,
     statistics: content_statistics,
     formatTime: window.format_time,
   };
@@ -647,9 +902,22 @@ function ContentViewModel(props) {
     error: error_,
     detail_id: detail_id_,
     copied_content_id: copied_content_id_,
+    saved_filters: saved_filters_,
+    active_filter_id: active_filter_id_,
+    layout: layout_,
   };
 
   return { state, ui, methods };
 }
 
-export { ContentViewModel, content_type_label, normalize_content_item, normalize_content_list_response };
+export {
+  ContentViewModel,
+  content_type_label,
+  normalize_content_item,
+  normalize_content_list_response,
+  normalize_content_layout,
+  content_type_icon,
+  normalize_saved_filter,
+  normalize_saved_filters,
+  saved_filters_match,
+};

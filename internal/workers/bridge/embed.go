@@ -4,7 +4,7 @@ import (
 	_ "embed"
 )
 
-//go:embed index.js
+//go:embed api/index.js
 var bridge_worker_javascript string
 
 // BridgeWorkerJavaScript returns the native JavaScript module deployed by `deploy bridge`.

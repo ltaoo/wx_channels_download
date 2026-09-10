@@ -4,8 +4,11 @@ set -euo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 admin_dir="$script_dir/admin"
+api_dir="$script_dir/api"
+discovery_dir="$script_dir/discovery"
 worker_port=${BRIDGE_WORKER_PORT:-8787}
 pages_port=${BRIDGE_PAGES_PORT:-8788}
+discovery_port=${BRIDGE_DISCOVERY_PORT:-8789}
 wrangler_version=${WRANGLER_VERSION:-latest}
 
 # These predictable values are only for local development. Override them through
@@ -15,6 +18,7 @@ export BRIDGE_ADMIN_TOKEN=${BRIDGE_ADMIN_TOKEN:-local-bridge-admin-token}
 
 worker_pid=""
 pages_pid=""
+discovery_pid=""
 cleaned_up=0
 
 cleanup() {
@@ -24,12 +28,12 @@ cleanup() {
   cleaned_up=1
   trap - INT TERM HUP
 
-  for process_id in "$pages_pid" "$worker_pid"; do
+  for process_id in "$discovery_pid" "$pages_pid" "$worker_pid"; do
     if [[ -n "$process_id" ]] && kill -0 "$process_id" 2>/dev/null; then
       kill "$process_id" 2>/dev/null || true
     fi
   done
-  for process_id in "$pages_pid" "$worker_pid"; do
+  for process_id in "$discovery_pid" "$pages_pid" "$worker_pid"; do
     if [[ -n "$process_id" ]]; then
       wait "$process_id" 2>/dev/null || true
     fi
@@ -75,7 +79,7 @@ npx --yes "wrangler@$wrangler_version" --version >/dev/null
 
 echo "正在启动本地 Worker: http://127.0.0.1:$worker_port"
 (
-  cd "$script_dir"
+  cd "$api_dir"
   exec npx --yes "wrangler@$wrangler_version" dev --config wrangler.jsonc --port "$worker_port"
 ) &
 worker_pid=$!
@@ -93,27 +97,43 @@ echo "正在启动本地 Pages: http://127.0.0.1:$pages_port"
 pages_pid=$!
 
 if ! wait_for_service "http://127.0.0.1:$pages_port/" "$pages_pid"; then
-  echo "错误: 本地 Pages 未能在 30 秒内启动。" >&2
+  echo "错误: 本地管理页未能在 30 秒内启动。" >&2
+  exit 1
+fi
+
+echo "正在启动本地 Discovery Pages: http://127.0.0.1:$discovery_port"
+(
+  cd "$discovery_dir"
+  exec npx --yes "wrangler@$wrangler_version" pages dev --port "$discovery_port"
+) &
+discovery_pid=$!
+
+if ! wait_for_service "http://127.0.0.1:$discovery_port/" "$discovery_pid"; then
+  echo "错误: 本地 RSS 订阅广场未能在 30 秒内启动。" >&2
   exit 1
 fi
 
 echo
 echo "Bridge 本地开发环境已启动："
 echo "  Worker: http://127.0.0.1:$worker_port"
-echo "  Pages:  http://127.0.0.1:$pages_port"
+echo "  Admin Pages: http://127.0.0.1:$pages_port"
+echo "  Discovery: http://127.0.0.1:$discovery_port"
 echo "  管理页用户名: admin"
-echo "按 Ctrl-C 停止两个服务。"
+echo "按 Ctrl-C 停止三个服务。"
 
 exit_status=0
-while kill -0 "$worker_pid" 2>/dev/null && kill -0 "$pages_pid" 2>/dev/null; do
+while kill -0 "$worker_pid" 2>/dev/null && kill -0 "$pages_pid" 2>/dev/null && kill -0 "$discovery_pid" 2>/dev/null; do
   sleep 1
 done
 
 if ! kill -0 "$worker_pid" 2>/dev/null; then
   wait "$worker_pid" || exit_status=$?
   echo "本地 Worker 已退出。" >&2
-else
+elif ! kill -0 "$pages_pid" 2>/dev/null; then
   wait "$pages_pid" || exit_status=$?
-  echo "本地 Pages 已退出。" >&2
+  echo "本地管理页已退出。" >&2
+else
+  wait "$discovery_pid" || exit_status=$?
+  echo "本地 RSS 订阅广场已退出。" >&2
 fi
 exit "$exit_status"

@@ -1,0 +1,2073 @@
+<!DOCTYPE html><html><head><meta charSet="utf-8"/><meta name="description" content="ICE Project"/><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/><link rel="icon" href="//static2.urbanic.com/images/feeds/1689242285512/starlink-favicon.png"/><meta name="ice-meta-count" content="0"/><title></title><link rel="stylesheet" type="text/css" href="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/css/85733.css"/><link rel="stylesheet" type="text/css" href="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/css/main.css"/><link rel="stylesheet" type="text/css" href="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/css/p_layout.css"/><link rel="stylesheet" type="text/css" href="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/css/p_index.css"/><script>window.__WithMeTrackerConfig = {"ingestUrl":"https://melo-center-api.mayfair-inc.com/api/v2/skill-recorder/ax/events"};</script><script>/**
+ * WithMe Tracker - Injected Script
+ *
+ * 采集页面 DOM 交互事件和网络请求（fetch/XHR），批量上报到 ingest 接口。
+ * 设计原则：
+ *  - 旁路采集，不影响原始业务流程
+ *  - 不拦截 SSE（EventSource 不使用 fetch/XHR）
+ *  - 隐私脱敏：URL 去参、敏感输入框检测、Header 白名单
+ *  - 身份采集：从 SSO cookie 提取用户信息
+ *
+ * 此脚本由 zero BFF 服务注入到 HTML 页面中。
+ */
+
+(function () {
+  "use strict";
+
+  // 防止重复注入
+  if (window.__WithMeTrackerLoaded) return;
+  window.__WithMeTrackerLoaded = true;
+
+  // ============================================================
+  // 配置（由服务端注入或使用默认值）
+  // ============================================================
+  const INGEST_URL_TEST =
+    "https://melo-center-api.mayfair-inc.net/api/v2/skill-recorder/ax/events";
+  const INGEST_URL_PROD =
+    "https://melo-center-api.mayfair-inc.com/api/v2/skill-recorder/ax/events";
+
+  // 服务端未注入配置时，按页面环境兜底：.com 域名视为线上，其余走测试。
+  // 正常情况下以服务端注入的 window.__WithMeTrackerConfig.ingestUrl 为准。
+  function defaultIngestUrl() {
+    var hostname = "";
+    try {
+      hostname = (location && location.hostname) || "";
+    } catch (_) {
+      hostname = "";
+    }
+    return /\.com$/.test(hostname) ? INGEST_URL_PROD : INGEST_URL_TEST;
+  }
+
+  const CONFIG = window.__WithMeTrackerConfig || {};
+  const INGEST_URL = CONFIG.ingestUrl || defaultIngestUrl();
+  const DISABLED = CONFIG.disabled === true;
+
+  // 域名级采集黑名单：这些域名（及其子域名）下的页面不做任何采集与上报。
+  // 服务端可通过 window.__WithMeTrackerConfig.blocklist 注入追加条目。
+  const DEFAULT_BLOCKLIST = [
+    "melo.mayfair-inc.com",
+    "melo.mayfair-inc.net",
+  ];
+
+  function resolveBlocklist() {
+    const injected = Array.isArray(CONFIG.blocklist) ? CONFIG.blocklist : [];
+    return DEFAULT_BLOCKLIST.concat(injected);
+  }
+
+  function isBlockedPage() {
+    var hostname = "";
+    try {
+      hostname = (location && location.hostname) || "";
+    } catch (_) {
+      hostname = "";
+    }
+    hostname = String(hostname).toLowerCase();
+    var list = resolveBlocklist();
+    for (var i = 0; i < list.length; i++) {
+      var domain = String(list[i]).toLowerCase();
+      if (!domain) continue;
+      if (hostname === domain || hostname.endsWith("." + domain)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  const MAX_QUEUE_SIZE = 1000;
+  const FLUSH_BATCH_SIZE = 50;
+  const FLUSH_TRIGGER_COUNT = 20;
+  const FLUSH_IDLE_MS = 2000;
+  const FLUSH_RETRY_BASE_MS = 5000;
+  const FLUSH_RETRY_MAX_MS = 60000;
+  const ERROR_COOLDOWN_MS = 60 * 1000;
+  const NETWORK_BODY_MAX_CHUNK_BYTES = 64 * 1024;
+  const NETWORK_BODY_MAX_TOTAL_BYTES = 2 * 1024 * 1024;
+
+  if (DISABLED || isBlockedPage()) return;
+
+  // ============================================================
+  // Source 标识（与 extension 保持一致的 name/version）
+  // ============================================================
+  const SOURCE = {
+    type: "injected_script",
+    name: "withme-recorder",
+    version: "0.1.0",
+    capabilities: ["dom", "selection", "network_stream"],
+  };
+
+  // ============================================================
+  // 隐私与脱敏
+  // ============================================================
+  const SENSITIVE_RE =
+    /password|passwd|token|secret|key|auth|cookie|验证码|密码|令牌|密钥/i;
+  const SAFE_HEADERS = new Set([
+    "accept",
+    "content-length",
+    "content-type",
+    "date",
+    "etag",
+    "last-modified",
+    "server",
+    "x-request-id",
+    "x-trace-id",
+  ]);
+
+  function truncate(value, maxLength) {
+    if (maxLength === undefined) maxLength = 500;
+    if (value == null) return value;
+    var text = String(value);
+    return text.length > maxLength
+      ? text.slice(0, maxLength) + "..."
+      : text;
+  }
+
+  function redactUrl(value) {
+    if (!value) return value;
+    try {
+      var url = new URL(value, "http://placeholder.local");
+      var searchParams = url.searchParams;
+      var redacted = false;
+      var params = [];
+      searchParams.forEach(function (v, k) {
+        if (SENSITIVE_RE.test(k)) {
+          params.push(k + "=[REDACTED]");
+          redacted = true;
+        } else {
+          params.push(k + "=" + v);
+        }
+      });
+      if (redacted) {
+        url.search = params.length ? "?" + params.join("&") : "";
+      }
+      if (url.hash && url.hash.includes("=")) {
+        try {
+          var hashParams = new URLSearchParams(url.hash.slice(1));
+          var hashRedacted = false;
+          var hashParts = [];
+          hashParams.forEach(function (v, k) {
+            if (SENSITIVE_RE.test(k)) {
+              hashParts.push(k + "=[REDACTED]");
+              hashRedacted = true;
+            } else {
+              hashParts.push(k + "=" + v);
+            }
+          });
+          if (hashRedacted) {
+            url.hash = hashParts.length ? hashParts.join("&") : "";
+          }
+        } catch (_) {
+          /* ignore hash parse errors */
+        }
+      }
+      if (value.startsWith("http://") || value.startsWith("https://")) {
+        return url.toString();
+      }
+      return url.pathname + url.search + url.hash;
+    } catch (_) {
+      return truncate(
+        String(value).replace(SENSITIVE_RE, "[REDACTED]"),
+        500
+      );
+    }
+  }
+
+  function sanitizeHeaders(headers) {
+    if (!headers) return {};
+    var output = {};
+    var entries = [];
+    if (typeof headers.forEach === "function") {
+      headers.forEach(function (v, k) {
+        entries.push([k, v]);
+      });
+    } else if (typeof headers === "object") {
+      entries = Object.keys(headers).map(function (k) {
+        return [k, headers[k]];
+      });
+    }
+    for (var i = 0; i < entries.length; i++) {
+      var key = String(entries[i][0]).toLowerCase();
+      var value = entries[i][1];
+      if (SAFE_HEADERS.has(key) && !SENSITIVE_RE.test(key)) {
+        output[key] = truncate(value, 300);
+      }
+    }
+    return output;
+  }
+
+  function isSensitiveTarget(target) {
+    if (!target) return false;
+    if (String(target.inputType || "").toLowerCase() === "password")
+      return true;
+    return [
+      target.name,
+      target.label,
+      target.placeholder,
+      target.domId,
+      target.className,
+    ].some(function (v) {
+      return v && SENSITIVE_RE.test(String(v));
+    });
+  }
+
+  function sanitizeTarget(raw) {
+    if (!raw) return null;
+    var copy = {};
+    var keys = Object.keys(raw);
+    for (var i = 0; i < keys.length; i++) {
+      copy[keys[i]] = raw[keys[i]];
+    }
+    var redactedFields = [];
+    var sensitive = isSensitiveTarget(copy);
+
+    if (copy.href) copy.href = redactUrl(copy.href);
+    if (copy.value != null) copy.value = truncate(copy.value, 500);
+    if (copy.text != null) copy.text = truncate(copy.text, 500);
+    if (copy.name != null) copy.name = truncate(copy.name, 200);
+    if (copy.placeholder != null)
+      copy.placeholder = truncate(copy.placeholder, 200);
+    if (copy.label != null) copy.label = truncate(copy.label, 200);
+
+    if (sensitive && copy.value !== undefined) {
+      copy.value = null;
+      redactedFields.push("target.value");
+    }
+
+    copy.privacy = {
+      redactionApplied: redactedFields.length > 0,
+      redactedFields: redactedFields,
+      sensitiveTarget: sensitive,
+    };
+    return copy;
+  }
+
+  function sanitizeUrlForNetwork(url) {
+    return redactUrl(url);
+  }
+
+  function absoluteUrl(value) {
+    try {
+      return new URL(value, location.href).toString();
+    } catch (_) {
+      return String(value);
+    }
+  }
+
+  function isIngestUrl(url) {
+    try {
+      var current = new URL(url, location.href);
+      var ingest = new URL(INGEST_URL, location.href);
+      return current.origin === ingest.origin && current.pathname === ingest.pathname;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function toBase64(bytes) {
+    var binary = "";
+    var chunkSize = 0x8000;
+    for (var i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode.apply(
+        null,
+        Array.prototype.slice.call(bytes.subarray(i, i + chunkSize))
+      );
+    }
+    return btoa(binary);
+  }
+
+  function encodeText(value) {
+    return new TextEncoder().encode(value);
+  }
+
+  function isReadableStream(value) {
+    return value && typeof value.getReader === "function";
+  }
+
+  function isBinaryBody(value) {
+    return value instanceof ArrayBuffer || ArrayBuffer.isView(value);
+  }
+
+  function headerValue(headers, name) {
+    if (!headers) return "";
+    if (typeof headers.get === "function") return headers.get(name) || "";
+    var lowerName = String(name).toLowerCase();
+    var keys = Object.keys(headers);
+    for (var i = 0; i < keys.length; i++) {
+      if (String(keys[i]).toLowerCase() === lowerName) {
+        return String(headers[keys[i]]);
+      }
+    }
+    return "";
+  }
+
+  function redactObject(value) {
+    var redacted = false;
+
+    function visit(current, key) {
+      if (SENSITIVE_RE.test(key || "")) {
+        redacted = true;
+        return "[REDACTED]";
+      }
+      if (Array.isArray(current)) {
+        return current.map(function (item) {
+          return visit(item, "");
+        });
+      }
+      if (current && typeof current === "object") {
+        var output = {};
+        var keys = Object.keys(current);
+        for (var i = 0; i < keys.length; i++) {
+          output[keys[i]] = visit(current[keys[i]], keys[i]);
+        }
+        return output;
+      }
+      return current;
+    }
+
+    return { value: visit(value, ""), redacted: redacted };
+  }
+
+  function redactUrlEncoded(params) {
+    var redacted = false;
+    var output = new URLSearchParams();
+    params.forEach(function (value, key) {
+      if (SENSITIVE_RE.test(key)) {
+        output.append(key, "[REDACTED]");
+        redacted = true;
+      } else {
+        output.append(key, value);
+      }
+    });
+    return { text: output.toString(), redacted: redacted };
+  }
+
+  function serializeFormData(body) {
+    var fields = [];
+    var redacted = false;
+    body.forEach(function (value, name) {
+      if (typeof Blob !== "undefined" && value instanceof Blob) {
+        fields.push({
+          name: name,
+          type: "file",
+          fileName: value.name || "",
+          mimeType: value.type || "",
+          byteLength: value.size || 0,
+        });
+        return;
+      }
+      var sensitive = SENSITIVE_RE.test(name);
+      fields.push({
+        name: name,
+        type: "text",
+        value: sensitive ? "[REDACTED]" : String(value),
+      });
+      redacted = redacted || sensitive;
+    });
+    return {
+      bytes: encodeText(JSON.stringify({ fields: fields })),
+      bodyFormat: "formdata-json",
+      bodyRedacted: redacted,
+    };
+  }
+
+  function bodyToCapture(body, contentType) {
+    if (body == null) return null;
+    if (isReadableStream(body)) {
+      return { stream: body, bodyFormat: "stream", bodyRedacted: false };
+    }
+    if (body instanceof URLSearchParams) {
+      var encoded = redactUrlEncoded(body);
+      return {
+        bytes: encodeText(encoded.text),
+        bodyFormat: "urlencoded",
+        bodyRedacted: encoded.redacted,
+      };
+    }
+    if (typeof FormData !== "undefined" && body instanceof FormData) {
+      return serializeFormData(body);
+    }
+    if (typeof Blob !== "undefined" && body instanceof Blob && body.stream) {
+      return {
+        stream: body.stream(),
+        bodyFormat: body.type || contentType || "blob",
+        bodyRedacted: false,
+      };
+    }
+    if (isBinaryBody(body)) {
+      var bytes =
+        body instanceof ArrayBuffer
+          ? new Uint8Array(body)
+          : new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+      return { bytes: bytes, bodyFormat: "binary", bodyRedacted: false };
+    }
+
+    var text = String(body);
+    if ((contentType || "").includes("json")) {
+      try {
+        var parsed = JSON.parse(text);
+        var redactedJson = redactObject(parsed);
+        return {
+          bytes: encodeText(JSON.stringify(redactedJson.value)),
+          bodyFormat: "json",
+          bodyRedacted: redactedJson.redacted,
+        };
+      } catch (_) {
+        return { bytes: encodeText(text), bodyFormat: "text", bodyRedacted: false };
+      }
+    }
+    if ((contentType || "").includes("x-www-form-urlencoded")) {
+      var redactedForm = redactUrlEncoded(new URLSearchParams(text));
+      return {
+        bytes: encodeText(redactedForm.text),
+        bodyFormat: "urlencoded",
+        bodyRedacted: redactedForm.redacted,
+      };
+    }
+    return { bytes: encodeText(text), bodyFormat: "text", bodyRedacted: false };
+  }
+
+  function chunkBytes(bytes, maxChunkBytes, onChunk) {
+    var chunks = 0;
+    for (var offset = 0; offset < bytes.byteLength; offset += maxChunkBytes) {
+      var chunk = bytes.subarray(offset, offset + maxChunkBytes);
+      onChunk(chunk, chunks);
+      chunks++;
+    }
+    return chunks;
+  }
+
+  function recordBytesBody(requestId, url, capture, maxChunkBytes, maxTotalBytes) {
+    var bytes = capture.bytes || new Uint8Array(0);
+    var truncated = bytes.byteLength > maxTotalBytes;
+    var capturedBytes = truncated ? bytes.subarray(0, maxTotalBytes) : bytes;
+    var chunks = chunkBytes(capturedBytes, maxChunkBytes, function (chunk, index) {
+      enqueue(
+        buildEvent("network.request.chunk", {
+          network: {
+            requestId: requestId,
+            url: sanitizeUrlForNetwork(url),
+            bodyCaptured: true,
+            bodyFormat: capture.bodyFormat,
+            bodyRedacted: Boolean(capture.bodyRedacted),
+            chunk: {
+              index: index,
+              encoding: "base64",
+              byteLength: chunk.byteLength,
+              data: toBase64(chunk),
+            },
+          },
+          capture: { method: "injected_script", trusted: true, partial: true },
+        })
+      );
+    });
+    enqueue(
+      buildEvent("network.request.completed", {
+        network: {
+          requestId: requestId,
+          url: sanitizeUrlForNetwork(url),
+          bodyCaptured: true,
+          bodyFormat: capture.bodyFormat,
+          bodyRedacted: Boolean(capture.bodyRedacted),
+          chunks: chunks,
+          encodedBytes: capturedBytes.byteLength,
+          truncated: truncated,
+          maxTotalBytes: truncated ? maxTotalBytes : undefined,
+        },
+        capture: { method: "injected_script", trusted: true, partial: false },
+      })
+    );
+  }
+
+  function recordStreamBody(requestId, url, capture, contentType, maxChunkBytes, maxTotalBytes) {
+    var reader = capture.stream.getReader();
+    var index = 0;
+    var totalBytes = 0;
+
+    function pump() {
+      return reader
+        .read()
+        .then(function (result) {
+          if (result.done) {
+            enqueue(
+              buildEvent("network.request.completed", {
+                network: {
+                  requestId: requestId,
+                  url: sanitizeUrlForNetwork(url),
+                  bodyCaptured: true,
+                  bodyFormat: capture.bodyFormat || contentType || "stream",
+                  bodyRedacted: Boolean(capture.bodyRedacted),
+                  chunks: index,
+                  encodedBytes: totalBytes,
+                },
+                capture: { method: "injected_script", trusted: true, partial: false },
+              })
+            );
+            return;
+          }
+          var bytes =
+            result.value instanceof Uint8Array
+              ? result.value
+              : new Uint8Array(result.value);
+          totalBytes += bytes.byteLength;
+          if (totalBytes > maxTotalBytes) {
+            if (reader.cancel) reader.cancel("withme_recorder_max_total_bytes");
+            enqueue(
+              buildEvent("network.request.completed", {
+                network: {
+                  requestId: requestId,
+                  url: sanitizeUrlForNetwork(url),
+                  bodyCaptured: true,
+                  bodyFormat: capture.bodyFormat || contentType || "stream",
+                  bodyRedacted: Boolean(capture.bodyRedacted),
+                  chunks: index,
+                  encodedBytes: totalBytes,
+                  truncated: true,
+                  maxTotalBytes: maxTotalBytes,
+                },
+                capture: { method: "injected_script", trusted: true, partial: false },
+              })
+            );
+            return;
+          }
+          chunkBytes(bytes, maxChunkBytes, function (chunk) {
+            enqueue(
+              buildEvent("network.request.chunk", {
+                network: {
+                  requestId: requestId,
+                  url: sanitizeUrlForNetwork(url),
+                  bodyCaptured: true,
+                  bodyFormat: capture.bodyFormat || contentType || "stream",
+                  bodyRedacted: Boolean(capture.bodyRedacted),
+                  chunk: {
+                    index: index,
+                    encoding: "base64",
+                    byteLength: chunk.byteLength,
+                    data: toBase64(chunk),
+                  },
+                },
+                capture: { method: "injected_script", trusted: true, partial: true },
+              })
+            );
+            index++;
+          });
+          return pump();
+        })
+        .catch(function (error) {
+          enqueue(
+            buildEvent("network.request.error", {
+              network: {
+                requestId: requestId,
+                url: sanitizeUrlForNetwork(url),
+                bodyCaptured: true,
+                error: error && error.message ? error.message : String(error),
+              },
+            })
+          );
+        });
+    }
+
+    return pump();
+  }
+
+  function recordRequestBody(requestId, url, body, contentType) {
+    var capture = bodyToCapture(body, contentType || "");
+    if (!capture) {
+      enqueue(
+        buildEvent("network.request.completed", {
+          network: {
+            requestId: requestId,
+            url: sanitizeUrlForNetwork(url),
+            bodyCaptured: false,
+            skipped: "no_body",
+          },
+        })
+      );
+      return;
+    }
+    if (capture.bytes) {
+      recordBytesBody(
+        requestId,
+        url,
+        capture,
+        NETWORK_BODY_MAX_CHUNK_BYTES,
+        NETWORK_BODY_MAX_TOTAL_BYTES
+      );
+      return;
+    }
+    if (capture.stream) {
+      recordStreamBody(
+        requestId,
+        url,
+        capture,
+        contentType,
+        NETWORK_BODY_MAX_CHUNK_BYTES,
+        NETWORK_BODY_MAX_TOTAL_BYTES
+      );
+    }
+  }
+
+  function isTextXhrResponse(xhr) {
+    try {
+      var responseType = xhr.responseType || "";
+      return responseType === "" || responseType === "text";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function getXhrResponseUrl(xhr, meta) {
+    try {
+      return xhr.responseURL || meta.url;
+    } catch (_) {
+      return meta.url;
+    }
+  }
+
+  function getXhrResponseMimeType(xhr) {
+    try {
+      return (xhr.getResponseHeader("content-type") || "").split(";")[0];
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function recordXhrResponseBody(xhr, meta) {
+    if (meta.responseBodyDone) return;
+    if (!isTextXhrResponse(xhr)) {
+      meta.responseBodySkipped = "unsupported_response_type";
+      meta.responseBodyDone = true;
+      return;
+    }
+
+    var text = "";
+    try {
+      text = xhr.responseText || "";
+    } catch (error) {
+      meta.responseBodySkipped =
+        error && error.message ? error.message : "response_text_unavailable";
+      meta.responseBodyDone = true;
+      return;
+    }
+
+    if (text.length <= meta.responseLastLength) return;
+
+    var nextText = text.slice(meta.responseLastLength);
+    meta.responseLastLength = text.length;
+
+    var bytes = encodeText(nextText);
+    var remainingBytes =
+      NETWORK_BODY_MAX_TOTAL_BYTES - meta.responseEncodedBytes;
+    if (remainingBytes <= 0) {
+      meta.responseTruncated = true;
+      meta.responseBodyDone = true;
+      return;
+    }
+
+    var capturedBytes =
+      bytes.byteLength > remainingBytes
+        ? bytes.subarray(0, remainingBytes)
+        : bytes;
+    if (capturedBytes.byteLength < bytes.byteLength) {
+      meta.responseTruncated = true;
+      meta.responseBodyDone = true;
+    }
+
+    var responseUrl = getXhrResponseUrl(xhr, meta);
+    var mimeType = getXhrResponseMimeType(xhr);
+    var chunks = chunkBytes(
+      capturedBytes,
+      NETWORK_BODY_MAX_CHUNK_BYTES,
+      function (chunk) {
+        enqueue(
+          buildEvent("network.response.chunk", {
+            network: {
+              requestId: meta.requestId,
+              url: sanitizeUrlForNetwork(responseUrl),
+              mimeType: mimeType,
+              bodyCaptured: true,
+              chunk: {
+                index: meta.responseChunkIndex,
+                encoding: "base64",
+                byteLength: chunk.byteLength,
+                data: toBase64(chunk),
+              },
+            },
+            capture: { method: "injected_script", trusted: true, partial: true },
+          })
+        );
+        meta.responseChunkIndex++;
+      }
+    );
+
+    if (chunks > 0) {
+      meta.responseBodyCaptured = true;
+      meta.responseEncodedBytes += capturedBytes.byteLength;
+    }
+  }
+
+  // ============================================================
+  // SSO 身份采集
+  // ============================================================
+  var COOKIE_FIELDS = {
+    "x-sso-user-name": "userName",
+    "x-sso-user-id": "userId",
+    "x-sso-account-name": "accountName",
+    "x-sso-account-id": "accountId",
+    "x-sso-account-type": "accountType",
+  };
+
+  var cachedCookieString = null;
+  var cachedActor = null;
+
+  function safeDecode(value) {
+    try {
+      return decodeURIComponent(String(value).replace(/\+/g, "%20"));
+    } catch (_) {
+      return String(value);
+    }
+  }
+
+  function extractActor() {
+    try {
+      var cookieString = document.cookie || "";
+      if (cookieString === cachedCookieString) return cachedActor;
+      cachedCookieString = cookieString;
+
+      var values = {};
+      var parts = cookieString.split(";");
+      for (var i = 0; i < parts.length; i++) {
+        var trimmed = parts[i].trim();
+        if (!trimmed) continue;
+        var sep = trimmed.indexOf("=");
+        if (sep <= 0) continue;
+        var name = trimmed.slice(0, sep).trim().toLowerCase();
+        values[name] = safeDecode(trimmed.slice(sep + 1).trim());
+      }
+
+      var actor = { source: "sso_cookie" };
+      var found = false;
+      var fieldKeys = Object.keys(COOKIE_FIELDS);
+      for (var j = 0; j < fieldKeys.length; j++) {
+        var cookieName = fieldKeys[j];
+        var actorField = COOKIE_FIELDS[cookieName];
+        var val = values[cookieName];
+        if (val == null || val === "") continue;
+        actor[actorField] = String(val).slice(0, 300);
+        found = true;
+      }
+
+      cachedActor = found ? actor : null;
+      return cachedActor;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ============================================================
+  // Allowlist 过滤
+  // ============================================================
+  var DEFAULT_ALLOWLIST = [
+    "urbanic.cn",
+    "urbanic.net",
+    "mayfair-inc.net",
+    "mayfair-inc.com",
+    "urbanic.com",
+    "urbanic-supplier.cn",
+    "urbanic-supplier.com",
+    "urbanic-cdn.com",
+    "urbanic-supplier.net",
+    "urbanic-cdn.net",
+    "urbanic-cdn.cn",
+    "urbanic.uk",
+    "aquar.com",
+    "savana.com",
+    "mfrcdn.com",
+    "mfrcdn.cn",
+    "mfrcdn.net",
+    "marylebone.info",
+    "urbanic-wms.com",
+    "urbanic-wms.net",
+    "urbanic-wms.cn",
+    "urbanic-cs.net",
+    "urbanic-cs.com",
+    "savana.net",
+    "savana.iq",
+    "fashionoasis.ai",
+    "mayfairgroup.com",
+    "palome.com",
+    "palome.uk",
+  ];
+
+  function isAllowedUrl(url) {
+    if (!url) return false;
+    try {
+      var parsed = new URL(url, location.href);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+        return false;
+      var hostname = parsed.hostname.toLowerCase();
+      for (var i = 0; i < DEFAULT_ALLOWLIST.length; i++) {
+        var domain = DEFAULT_ALLOWLIST[i].toLowerCase();
+        if (
+          hostname === domain ||
+          hostname.endsWith("." + domain)
+        ) {
+          return true;
+        }
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function isAllowedPage() {
+    // 黑名单域名页面不做采集（配置段已提前 return，这里作为双保险）
+    if (isBlockedPage()) return false;
+    return isAllowedUrl(location.href);
+  }
+
+  // ============================================================
+  // Session 管理
+  // ============================================================
+  function createUUID() {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
+      /[xy]/g,
+      function (c) {
+        var r = (Math.random() * 16) | 0;
+        var v = c === "x" ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      }
+    );
+  }
+
+  function getSessionId() {
+    try {
+      var stored = sessionStorage.getItem("__wm_sid");
+      if (stored) return stored;
+      var sid = "web-" + createUUID();
+      sessionStorage.setItem("__wm_sid", sid);
+      return sid;
+    } catch (_) {
+      return "web-" + createUUID();
+    }
+  }
+
+  var sessionId = getSessionId();
+
+  // ============================================================
+  // 序列号
+  // ============================================================
+  var seq = 0;
+
+  function nextSeq() {
+    seq = Math.max(seq + 1, Date.now());
+    return seq;
+  }
+
+  // ============================================================
+  // 页面上下文
+  // ============================================================
+  function pageContext() {
+    var safeUrl = redactUrl(location.href);
+    return {
+      page: {
+        url: safeUrl,
+        origin: location.origin,
+        title: document.title,
+        referrer: (function () {
+          try {
+            return document.referrer
+              ? new URL(document.referrer).origin
+              : "";
+          } catch (_) {
+            return "";
+          }
+        })(),
+        readyState: document.readyState,
+        visibilityState: document.visibilityState,
+        focused: document.hasFocus(),
+      },
+      viewport: {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        devicePixelRatio: window.devicePixelRatio,
+        scrollX: window.scrollX,
+        scrollY: window.scrollY,
+      },
+    };
+  }
+
+  // ============================================================
+  // Target 提取（简化版，与 extension 对齐核心字段）
+  // ============================================================
+  function cssEscape(value) {
+    if (window.CSS && typeof window.CSS.escape === "function")
+      return window.CSS.escape(value);
+    return String(value).replace(/[^a-zA-Z0-9_-]/g, "\\</head>");
+  }
+
+  function cssSelector(element) {
+    if (!(element instanceof Element)) return null;
+    if (element.id) return "#" + cssEscape(element.id);
+    var testId =
+      element.getAttribute("data-testid") ||
+      element.getAttribute("data-test");
+    if (testId) return '[data-testid="' + cssEscape(testId) + '"]';
+    var parts = [];
+    var current = element;
+    while (
+      current &&
+      current.nodeType === Node.ELEMENT_NODE &&
+      parts.length < 5
+    ) {
+      var part = current.localName;
+      if (current.classList && current.classList.length) {
+        var classes = Array.from(current.classList).slice(0, 2);
+        part += "." + classes.map(cssEscape).join(".");
+      }
+      var parent = current.parentElement;
+      if (parent) {
+        var siblings = Array.from(parent.children).filter(function (c) {
+          return c.localName === current.localName;
+        });
+        if (siblings.length > 1) {
+          part += ":nth-of-type(" + (siblings.indexOf(current) + 1) + ")";
+        }
+      }
+      parts.unshift(part);
+      current = parent;
+    }
+    return parts.join(" > ");
+  }
+
+  function roleFor(element) {
+    if (!(element instanceof Element)) return null;
+    var explicit = element.getAttribute("role");
+    if (explicit) return explicit;
+    var tag = element.localName;
+    if (tag === "button") return "button";
+    if (tag === "a") return "link";
+    if (tag === "input")
+      return element.type === "checkbox" ? "checkbox" : "textbox";
+    if (tag === "select") return "combobox";
+    if (tag === "textarea") return "textbox";
+    return tag;
+  }
+
+  function labelFor(element) {
+    if (!(element instanceof Element)) return null;
+    if (element.labels && element.labels.length) {
+      return Array.from(element.labels)
+        .map(function (l) {
+          return l.innerText.trim();
+        })
+        .filter(Boolean)
+        .join(" ");
+    }
+    var id = element.id;
+    if (id) {
+      var labelEl = document.querySelector(
+        'label[for="' + cssEscape(id) + '"]'
+      );
+      if (labelEl) return labelEl.innerText.trim();
+    }
+    return null;
+  }
+
+  function targetFrom(node) {
+    var element =
+      node instanceof Element
+        ? node
+        : node && node.target
+        ? node.target
+        : null;
+    if (!element) return null;
+    var rect = element.getBoundingClientRect();
+    var raw = {
+      role: roleFor(element),
+      name:
+        element.getAttribute("aria-label") ||
+        labelFor(element) ||
+        element.getAttribute("title") ||
+        element.innerText ||
+        element.value ||
+        null,
+      title: element.getAttribute("title"),
+      description: element.getAttribute("aria-description"),
+      value: "value" in element ? element.value : null,
+      placeholder: element.getAttribute("placeholder"),
+      label: labelFor(element),
+      text: element.innerText || element.textContent,
+      tagName: element.localName,
+      inputType: element.getAttribute("type"),
+      domId: element.id || null,
+      className: element.className
+        ? String(element.className).slice(0, 200)
+        : null,
+      cssSelector: cssSelector(element),
+      href: element.href || null,
+      boundingClientRect: {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+      },
+      states: {
+        focused: document.activeElement === element,
+        disabled: Boolean(element.disabled),
+        readonly: Boolean(element.readOnly),
+        required: Boolean(element.required),
+        invalid: element.matches(":invalid"),
+        checked: Boolean(element.checked),
+        expanded: element.getAttribute("aria-expanded"),
+      },
+    };
+    return sanitizeTarget(raw);
+  }
+
+  // ============================================================
+  // 事件构建
+  // ============================================================
+  function buildEvent(kind, payload) {
+    var targetPrivacy = {};
+    if (payload && payload.target && payload.target.privacy) {
+      targetPrivacy = payload.target.privacy;
+      delete payload.target.privacy;
+    }
+    var actor = (payload && payload.actor) || extractActor();
+    var base = {
+      schemaVersion: "1.0",
+      id: nextSeq(),
+      seq: seq,
+      sessionId: sessionId,
+      kind: kind,
+      timestamp: new Date().toISOString(),
+      source: SOURCE,
+    };
+    if (actor) base.actor = actor;
+
+    var pageCtx = pageContext();
+    var result = Object.assign(base, pageCtx);
+
+    if (payload) {
+      var payloadKeys = Object.keys(payload);
+      for (var i = 0; i < payloadKeys.length; i++) {
+        var k = payloadKeys[i];
+        if (k === "actor" && !payload[k]) continue;
+        result[k] = payload[k];
+      }
+    }
+
+    result.privacy = Object.assign(
+      {
+        policy: "default",
+        redactionApplied: Boolean(targetPrivacy.redactionApplied),
+        redactedFields: targetPrivacy.redactedFields || [],
+        sensitiveTarget: Boolean(targetPrivacy.sensitiveTarget),
+      },
+      payload && payload.privacy ? payload.privacy : {}
+    );
+
+    result.capture = Object.assign(
+      {
+        method: "injected_script",
+        trusted: true,
+        partial: false,
+      },
+      payload && payload.capture ? payload.capture : {}
+    );
+
+    return result;
+  }
+
+  // ============================================================
+  // 事件队列与上报
+  // ============================================================
+  var queue = [];
+  var flushTimer = null;
+  var flushInFlight = false;
+  var flushRetryDelayMs = 0;
+  var nextFlushAllowedAt = 0;
+  var lastErrorEventAt = {};
+
+  function enqueue(event) {
+    if (!isAllowedPage()) return;
+    queue.push(event);
+    if (queue.length >= FLUSH_TRIGGER_COUNT) {
+      scheduleFlush();
+    } else if (queue.length === 1) {
+      // 第一条事件进入队列时，设置空闲 flush 定时器
+      resetFlushTimer();
+    }
+  }
+
+  function resetFlushTimer() {
+    if (flushTimer) clearTimeout(flushTimer);
+    var delay = Math.max(FLUSH_IDLE_MS, nextFlushAllowedAt - Date.now());
+    flushTimer = setTimeout(function () {
+      flushTimer = null;
+      doFlush();
+    }, delay);
+  }
+
+  function scheduleFlush() {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    var delay = nextFlushAllowedAt - Date.now();
+    if (delay > 0) {
+      flushTimer = setTimeout(function () {
+        flushTimer = null;
+        doFlush();
+      }, delay);
+      return;
+    }
+    // 使用 microtask 尽快 flush
+    Promise.resolve().then(function () {
+      doFlush();
+    });
+  }
+
+  function scheduleRetryFlush() {
+    flushRetryDelayMs = flushRetryDelayMs
+      ? Math.min(flushRetryDelayMs * 2, FLUSH_RETRY_MAX_MS)
+      : FLUSH_RETRY_BASE_MS;
+    nextFlushAllowedAt = Date.now() + flushRetryDelayMs;
+    if (flushTimer) clearTimeout(flushTimer);
+    flushTimer = setTimeout(function () {
+      flushTimer = null;
+      doFlush();
+    }, flushRetryDelayMs);
+  }
+
+  function markFlushSuccess() {
+    flushRetryDelayMs = 0;
+    nextFlushAllowedAt = 0;
+  }
+
+  function doFlush() {
+    if (flushInFlight) return;
+    if (queue.length === 0) return;
+    var delay = nextFlushAllowedAt - Date.now();
+    if (delay > 0) {
+      if (!flushTimer) {
+        flushTimer = setTimeout(function () {
+          flushTimer = null;
+          doFlush();
+        }, delay);
+      }
+      return;
+    }
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    flushInFlight = true;
+
+    var batch = queue.splice(0, FLUSH_BATCH_SIZE);
+    var payload = JSON.stringify({ events: batch });
+
+    // 常规 flush 使用 fetch，确保能根据 HTTP 状态判断成功并触发重试。
+    // sendBeacon 仅用于 unload/pagehide 这类无法等待响应的场景。
+    var failed = false;
+    var transportFetch = originalFetch || window.fetch;
+    if (!transportFetch) {
+      queue = batch.concat(queue).slice(0, MAX_QUEUE_SIZE);
+      recordError("ingest", new Error("fetch unavailable"), {
+        queuedEvents: queue.length,
+        batchEvents: batch.length,
+      });
+      flushInFlight = false;
+      scheduleRetryFlush();
+      return;
+    }
+
+    // 常规 flush 不使用 keepalive:keepalive 请求受浏览器 64KB body 配额限制,
+    // 超限批次会被浏览器直接拒绝(表现为 Failed to fetch 或永久 pending),
+    // 且该限制在多标签页下全局共享,大批次必然失败并触发无限重试。
+    transportFetch.call(window, INGEST_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: payload,
+    })
+      .then(function (response) {
+        if (!response.ok) {
+          return Promise.reject(
+            new Error("ingest failed: " + response.status)
+          );
+        }
+        markFlushSuccess();
+      })
+      .catch(function (error) {
+        failed = true;
+        // 失败时放回队列头部
+        queue = batch.concat(queue).slice(0, MAX_QUEUE_SIZE);
+        recordError("ingest", error, {
+          queuedEvents: queue.length,
+          batchEvents: batch.length,
+        });
+      })
+      .then(function () {
+        flushInFlight = false;
+        if (queue.length > 0) {
+          if (failed) {
+            scheduleRetryFlush();
+          } else {
+            Promise.resolve().then(function () {
+              doFlush();
+            });
+          }
+        }
+      });
+  }
+
+  function recordError(phase, error, context) {
+    var now = Date.now();
+    var lastAt = lastErrorEventAt[phase] || 0;
+    if (now - lastAt < ERROR_COOLDOWN_MS) return;
+    lastErrorEventAt[phase] = now;
+
+    var errorEvent = buildEvent("recorder.error", {
+      error: {
+        phase: phase,
+        message: error ? error.message || String(error) : "unknown",
+        recoverable: true,
+      },
+      context: context || {},
+    });
+    queue.push(errorEvent);
+  }
+
+  // 页面卸载时使用 sendBeacon 强制 flush。
+  // sendBeacon 同样受浏览器 64KB body 配额限制,超限时调用失败且数据被静默丢弃,
+  // 因此按字节上限切分批次,而不是按固定事件条数。
+  var UNLOAD_BATCH_MAX_BYTES = 60000;
+
+  function enqueueUnloadBatch(batch) {
+    var payload = JSON.stringify({ events: batch });
+    try {
+      var blob = new Blob([payload], { type: "application/json" });
+      navigator.sendBeacon(INGEST_URL, blob);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function flushOnUnload() {
+    if (queue.length === 0) return;
+    var batch = [];
+    var batchBytes = 0;
+    while (queue.length > 0) {
+      var event = queue.shift();
+      var eventBytes = JSON.stringify(event).length + 1;
+      if (batch.length > 0 && batchBytes + eventBytes > UNLOAD_BATCH_MAX_BYTES) {
+        queue.unshift(event);
+        enqueueUnloadBatch(batch);
+        batch = [];
+        batchBytes = 0;
+        continue;
+      }
+      batch.push(event);
+      batchBytes += eventBytes;
+    }
+    if (batch.length > 0) {
+      enqueueUnloadBatch(batch);
+    }
+  }
+
+  // ============================================================
+  // DOM 事件采集
+  // ============================================================
+  function throttle(fn, wait) {
+    var timer = null;
+    var lastArgs = null;
+    return function () {
+      lastArgs = arguments;
+      if (timer) return;
+      timer = setTimeout(function () {
+        timer = null;
+        fn.apply(null, lastArgs);
+      }, wait);
+    };
+  }
+
+  var inputTimers = new WeakMap();
+
+  function sendMouse(kind, event) {
+    if (!isAllowedPage()) return;
+    var target = targetFrom(event.target);
+    enqueue(
+      buildEvent(kind, {
+        target: target,
+        mouse: {
+          button:
+            event.button === 2
+              ? "right"
+              : event.button === 1
+              ? "middle"
+              : "left",
+          clickCount: event.detail || 1,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          pageX: event.pageX,
+          pageY: event.pageY,
+          screenX: event.screenX,
+          screenY: event.screenY,
+        },
+      })
+    );
+  }
+
+  function sendInputChanged(element, kind) {
+    if (!isAllowedPage()) return;
+    if (
+      !(
+        element instanceof HTMLInputElement ||
+        element instanceof HTMLTextAreaElement ||
+        element instanceof HTMLSelectElement
+      )
+    )
+      return;
+    var target = targetFrom(element);
+    var sensitive =
+      target && target.privacy && target.privacy.sensitiveTarget;
+    enqueue(
+      buildEvent(kind || "input.changed", {
+        target: target,
+        keyboard: {
+          text: sensitive ? null : truncate(element.value, 500),
+          textLength: element.value ? element.value.length : 0,
+          redacted: Boolean(sensitive),
+        },
+      })
+    );
+  }
+
+  function handleInput(event) {
+    var element = event.target;
+    if (
+      !(
+        element instanceof HTMLInputElement ||
+        element instanceof HTMLTextAreaElement ||
+        element instanceof HTMLSelectElement
+      )
+    )
+      return;
+    clearTimeout(inputTimers.get(element));
+    inputTimers.set(
+      element,
+      setTimeout(function () {
+        sendInputChanged(element);
+      }, 350)
+    );
+  }
+
+  function isKeyboardShortcut(event) {
+    return event.metaKey || event.ctrlKey || event.shiftKey || event.altKey;
+  }
+
+  function keyboardShortcut(event) {
+    var modifiers = [];
+    if (event.metaKey) modifiers.push("command");
+    if (event.ctrlKey) modifiers.push("control");
+    if (event.shiftKey) modifiers.push("shift");
+    if (event.altKey) modifiers.push("option");
+    if (modifiers.length === 0) return null;
+    return modifiers.join("+") + "+" + event.key;
+  }
+
+  // 注册 DOM 事件监听
+  function setupDOMListeners() {
+    document.addEventListener(
+      "click",
+      function (event) {
+        sendMouse("mouse.click", event);
+      },
+      true
+    );
+
+    document.addEventListener(
+      "dblclick",
+      function (event) {
+        sendMouse("mouse.double_click", event);
+      },
+      true
+    );
+
+    document.addEventListener(
+      "contextmenu",
+      function (event) {
+        sendMouse("mouse.context_menu", event);
+      },
+      true
+    );
+
+    document.addEventListener(
+      "focusin",
+      function (event) {
+        if (!isAllowedPage()) return;
+        enqueue(
+          buildEvent("focus.changed", {
+            target: targetFrom(event.target),
+          })
+        );
+      },
+      true
+    );
+
+    document.addEventListener("input", handleInput, true);
+
+    document.addEventListener(
+      "change",
+      function (event) {
+        sendInputChanged(event.target, "input.changed");
+      },
+      true
+    );
+
+    document.addEventListener(
+      "submit",
+      function (event) {
+        if (!isAllowedPage()) return;
+        enqueue(
+          buildEvent("form.submit", {
+            target: targetFrom(event.target),
+          })
+        );
+      },
+      true
+    );
+
+    document.addEventListener(
+      "keydown",
+      function (event) {
+        if (!isAllowedPage()) return;
+        var target = targetFrom(event.target);
+        var shortcut = keyboardShortcut(event);
+        if (shortcut) {
+          enqueue(
+            buildEvent("keyboard.shortcut", {
+              target: target,
+              keyboard: {
+                keyEquivalent: event.key,
+                modifiers: shortcut.split("+").slice(0, -1),
+              },
+            })
+          );
+        } else if (event.key === "Enter") {
+          enqueue(
+            buildEvent("keyboard.submit", {
+              target: target,
+              keyboard: {
+                keyEquivalent: "return",
+              },
+            })
+          );
+        }
+      },
+      true
+    );
+
+    document.addEventListener(
+      "selectionchange",
+      throttle(function () {
+        if (!isAllowedPage()) return;
+        var selection = document.getSelection();
+        var text = selection ? selection.toString() : "";
+        if (!text) return;
+        enqueue(
+          buildEvent("selection.changed", {
+            target: targetFrom(selection.anchorNode),
+            selection: {
+              selectedText: truncate(text, 500),
+              selectedTextLength: text.length,
+            },
+          })
+        );
+      }, 500),
+      true
+    );
+
+    window.addEventListener(
+      "scroll",
+      throttle(function () {
+        if (!isAllowedPage()) return;
+        enqueue(buildEvent("page.scroll"));
+      }, 500),
+      true
+    );
+
+    document.addEventListener(
+      "visibilitychange",
+      function () {
+        if (!isAllowedPage()) return;
+        enqueue(buildEvent("page.visibility.changed"));
+      },
+      true
+    );
+  }
+
+  // ============================================================
+  // 网络请求拦截（fetch）
+  // ============================================================
+  var networkRequestIdCounter = 0;
+
+  function nextRequestId() {
+    networkRequestIdCounter++;
+    return "net-" + Date.now() + "-" + networkRequestIdCounter;
+  }
+
+  function extractFetchRequestInfo(input, init, body, contentType) {
+    var url = typeof input === "string" ? input : input.url;
+    var method = "GET";
+    var headers = {};
+    if (init) {
+      method = (init.method || "GET").toUpperCase();
+      if (init.headers) {
+        headers = init.headers;
+      }
+    } else if (typeof input !== "string" && input.method) {
+      method = input.method.toUpperCase();
+      if (input.headers) {
+        headers = input.headers;
+      }
+    }
+    return {
+      requestId: nextRequestId(),
+      url: absoluteUrl(url),
+      method: method,
+      resourceType: "fetch",
+      requestHeaders: sanitizeHeaders(headers),
+      hasBody: body != null,
+      bodyCaptured: body != null,
+      contentType: contentType || headerValue(headers, "content-type"),
+    };
+  }
+
+  function prepareFetchBodyCapture(input, init) {
+    var nextInit = init;
+    var body =
+      nextInit && Object.prototype.hasOwnProperty.call(nextInit, "body")
+        ? nextInit.body
+        : undefined;
+    var headers =
+      (nextInit && nextInit.headers) ||
+      (typeof input !== "string" && input && input.headers) ||
+      {};
+    var contentType = headerValue(headers, "content-type");
+
+    if (body == null && typeof input !== "string" && input && input.body) {
+      try {
+        var cloned = input.clone ? input.clone() : null;
+        body = cloned && cloned.body ? cloned.body : input.body;
+      } catch (_) {
+        body = null;
+      }
+    }
+
+    if (
+      body &&
+      isReadableStream(body) &&
+      typeof body.tee === "function" &&
+      nextInit
+    ) {
+      var branches = body.tee();
+      nextInit = Object.assign({}, nextInit, { body: branches[0] });
+      body = branches[1];
+    }
+
+    return {
+      input: input,
+      init: nextInit,
+      body: body,
+      contentType: contentType,
+    };
+  }
+
+  function extractFetchResponseInfo(response, startTime) {
+    var headers = {};
+    try {
+      response.headers.forEach(function (v, k) {
+        headers[k] = v;
+      });
+    } catch (_) {
+      /* ignore */
+    }
+    return {
+      status: response.status,
+      statusText: response.statusText,
+      mimeType: (response.headers.get("content-type") || "").split(";")[0],
+      responseHeaders: sanitizeHeaders(headers),
+      duration: Date.now() - startTime,
+    };
+  }
+
+  var originalFetch = window.fetch;
+
+  window.fetch = function (input, init) {
+    var requestInfo;
+    var prepared = prepareFetchBodyCapture(input, init);
+    try {
+      requestInfo = extractFetchRequestInfo(
+        prepared.input,
+        prepared.init,
+        prepared.body,
+        prepared.contentType
+      );
+    } catch (_) {
+      return originalFetch.call(this, input, init);
+    }
+
+    var shouldRecord = !isIngestUrl(requestInfo.url) && isAllowedUrl(requestInfo.url);
+    if (!shouldRecord) {
+      return originalFetch.call(this, prepared.input, prepared.init);
+    }
+
+    var startTime = Date.now();
+
+    // 发送 network.request 事件（旁路，非阻塞）
+    try {
+      enqueue(
+        buildEvent("network.request", {
+          network: {
+            requestId: requestInfo.requestId,
+            url: sanitizeUrlForNetwork(requestInfo.url),
+            method: requestInfo.method,
+            resourceType: requestInfo.resourceType,
+            requestHeaders: requestInfo.requestHeaders,
+            hasBody: requestInfo.hasBody,
+            bodyCaptured: requestInfo.bodyCaptured,
+          },
+          capture: { method: "injected_script", trusted: true, partial: true },
+        })
+      );
+      if (prepared.body != null) {
+        recordRequestBody(
+          requestInfo.requestId,
+          requestInfo.url,
+          prepared.body,
+          requestInfo.contentType
+        );
+      }
+    } catch (_) {
+      /* 采集失败不影响主流程 */
+    }
+
+    // 调用原始 fetch
+    var promise;
+    try {
+      promise = originalFetch.call(this, prepared.input, prepared.init);
+    } catch (syncError) {
+      // 同步异常：记录并重新抛出
+      try {
+        enqueue(
+          buildEvent("network.error", {
+            network: {
+              requestId: requestInfo.requestId,
+              url: sanitizeUrlForNetwork(requestInfo.url),
+              method: requestInfo.method,
+              error: syncError.message || String(syncError),
+            },
+          })
+        );
+      } catch (_) {
+        /* ignore */
+      }
+      throw syncError;
+    }
+
+    // 异步处理响应（旁路，不阻塞主流程）
+    Promise.resolve(promise)
+      .then(function (response) {
+        try {
+          var responseInfo = extractFetchResponseInfo(response, startTime);
+          enqueue(
+            buildEvent("network.response", {
+              network: {
+                requestId: requestInfo.requestId,
+                url: sanitizeUrlForNetwork(requestInfo.url),
+                method: requestInfo.method,
+                status: responseInfo.status,
+                statusText: responseInfo.statusText,
+                mimeType: responseInfo.mimeType,
+                responseHeaders: responseInfo.responseHeaders,
+                duration: responseInfo.duration,
+              },
+              capture: {
+                method: "injected_script",
+                trusted: true,
+                partial: false,
+              },
+            })
+          );
+
+          // 旁路读取响应体（clone 后异步读取，不影响原始 response）
+          if (response.clone && responseInfo.mimeType) {
+            var isJson =
+              responseInfo.mimeType.includes("json") ||
+              responseInfo.mimeType.includes("javascript") ||
+              responseInfo.mimeType.includes("text");
+            if (isJson) {
+              try {
+                var cloned = response.clone();
+                // 异步读取，不阻塞
+                cloned
+                  .text()
+                  .then(function (body) {
+                    var bytes = encodeText(truncate(body, 64 * 1024));
+                    enqueue(
+                      buildEvent("network.response.chunk", {
+                        network: {
+                          requestId: requestInfo.requestId,
+                          url: sanitizeUrlForNetwork(requestInfo.url),
+                          mimeType: responseInfo.mimeType,
+                          bodyCaptured: true,
+                          chunk: {
+                            index: 0,
+                            encoding: "base64",
+                            byteLength: bytes.byteLength,
+                            data: toBase64(bytes),
+                          },
+                          truncated: body.length > 64 * 1024,
+                        },
+                        capture: {
+                          method: "injected_script",
+                          trusted: true,
+                          partial: true,
+                        },
+                      })
+                    );
+                    enqueue(
+                      buildEvent("network.response.completed", {
+                        network: {
+                          requestId: requestInfo.requestId,
+                          url: sanitizeUrlForNetwork(requestInfo.url),
+                          bodyCaptured: true,
+                          chunks: 1,
+                          encodedBytes: bytes.byteLength,
+                          truncated: body.length > 64 * 1024,
+                        },
+                        capture: {
+                          method: "injected_script",
+                          trusted: true,
+                          partial: false,
+                        },
+                      })
+                    );
+                  })
+                  .catch(function () {
+                    /* clone read failed, ignore */
+                  });
+              } catch (_) {
+                /* clone failed, ignore */
+              }
+            }
+          }
+        } catch (_) {
+          /* 采集响应信息失败不影响主流程 */
+        }
+        return response;
+      })
+      .catch(function (error) {
+        try {
+          enqueue(
+            buildEvent("network.error", {
+              network: {
+                requestId: requestInfo.requestId,
+                url: sanitizeUrlForNetwork(requestInfo.url),
+                method: requestInfo.method,
+                error: error.message || String(error),
+                duration: Date.now() - startTime,
+              },
+            })
+          );
+        } catch (_) {
+          /* ignore */
+        }
+      });
+
+    // 始终返回原始 promise（或包装后的 promise，保持行为一致）
+    return promise;
+  };
+
+  // ============================================================
+  // 网络请求拦截（XMLHttpRequest）
+  // ============================================================
+  var OriginalXHR = window.XMLHttpRequest;
+
+  // 存储 XHR 实例上的采集元数据
+  var xhrMetaMap = new WeakMap();
+
+  var originalOpen = OriginalXHR.prototype.open;
+  OriginalXHR.prototype.open = function (method, url) {
+    var meta = {
+      requestId: nextRequestId(),
+      method: String(method).toUpperCase(),
+      url: absoluteUrl(String(url)),
+      requestHeaders: {},
+      startTime: 0,
+      recorded: false,
+      responseLastLength: 0,
+      responseChunkIndex: 0,
+      responseEncodedBytes: 0,
+      responseBodyCaptured: false,
+      responseTruncated: false,
+      responseBodySkipped: "",
+      responseBodyDone: false,
+    };
+    xhrMetaMap.set(this, meta);
+
+    // 代理 setRequestHeader 以捕获请求头
+    var xhr = this;
+    var originalSetRequestHeader = xhr.setRequestHeader;
+    if (originalSetRequestHeader && !xhr.__wmSetRequestHeaderHooked) {
+      xhr.setRequestHeader = function (name, value) {
+        var m = xhrMetaMap.get(xhr);
+        if (m) {
+          m.requestHeaders[String(name).toLowerCase()] = String(value);
+        }
+        return originalSetRequestHeader.call(xhr, name, value);
+      };
+      xhr.__wmSetRequestHeaderHooked = true;
+    }
+
+    return originalOpen.apply(this, arguments);
+  };
+
+  var originalSend = OriginalXHR.prototype.send;
+  OriginalXHR.prototype.send = function (body) {
+    var meta = xhrMetaMap.get(this);
+    if (!meta) return originalSend.call(this, body);
+
+    var shouldRecord = !isIngestUrl(meta.url) && isAllowedUrl(meta.url);
+    if (!shouldRecord) return originalSend.call(this, body);
+
+    meta.startTime = Date.now();
+    meta.hasBody = body != null;
+    meta.recorded = true;
+    var contentType = headerValue(meta.requestHeaders, "content-type");
+
+    // 发送 network.request 事件
+    try {
+      enqueue(
+        buildEvent("network.request", {
+          network: {
+            requestId: meta.requestId,
+            url: sanitizeUrlForNetwork(meta.url),
+            method: meta.method,
+            resourceType: "xhr",
+            requestHeaders: sanitizeHeaders(meta.requestHeaders),
+            hasBody: meta.hasBody,
+            bodyCaptured: body != null,
+          },
+          capture: { method: "injected_script", trusted: true, partial: true },
+        })
+      );
+      if (body != null) {
+        recordRequestBody(meta.requestId, meta.url, body, contentType);
+      }
+    } catch (_) {
+      /* ignore */
+    }
+
+    // 监听 readyState 变化以采集响应
+    var xhr = this;
+    var responseRecorded = false;
+
+    function onReadyStateChange() {
+      if (xhr.readyState === 2 && !responseRecorded) {
+        // HEADERS_RECEIVED
+        responseRecorded = true;
+        var responseHeaders = {};
+        var responseUrl = getXhrResponseUrl(xhr, meta);
+        var responseMimeType = getXhrResponseMimeType(xhr);
+        try {
+          var headersStr = xhr.getAllResponseHeaders();
+          if (headersStr) {
+            headersStr.split("\r\n").forEach(function (line) {
+              var sep = line.indexOf(": ");
+              if (sep > 0) {
+                responseHeaders[line.slice(0, sep).toLowerCase()] =
+                  line.slice(sep + 2);
+              }
+            });
+          }
+        } catch (_) {
+          /* ignore */
+        }
+        try {
+          enqueue(
+            buildEvent("network.response", {
+              network: {
+                requestId: meta.requestId,
+                url: sanitizeUrlForNetwork(responseUrl),
+                method: meta.method,
+                resourceType: "xhr",
+                status: xhr.status,
+                statusText: xhr.statusText,
+                mimeType: responseMimeType,
+                responseHeaders: sanitizeHeaders(responseHeaders),
+                bodyCaptured: isTextXhrResponse(xhr),
+                duration: Date.now() - meta.startTime,
+              },
+              capture: {
+                method: "injected_script",
+                trusted: true,
+                partial: false,
+              },
+            })
+          );
+        } catch (_) {
+          /* ignore */
+        }
+      }
+
+      if (xhr.readyState === 3 || xhr.readyState === 4) {
+        try {
+          recordXhrResponseBody(xhr, meta);
+        } catch (_) {
+          /* ignore */
+        }
+      }
+
+      if (xhr.readyState === 4) {
+        try {
+          enqueue(
+            buildEvent("network.response.completed", {
+              network: {
+                requestId: meta.requestId,
+                url: sanitizeUrlForNetwork(getXhrResponseUrl(xhr, meta)),
+                method: meta.method,
+                resourceType: "xhr",
+                mimeType: getXhrResponseMimeType(xhr),
+                bodyCaptured:
+                  !meta.responseBodySkipped || meta.responseBodyCaptured,
+                chunks: meta.responseChunkIndex,
+                encodedBytes: meta.responseEncodedBytes,
+                truncated: meta.responseTruncated || undefined,
+                maxTotalBytes: meta.responseTruncated
+                  ? NETWORK_BODY_MAX_TOTAL_BYTES
+                  : undefined,
+                skipped:
+                  !meta.responseBodyCaptured && meta.responseBodySkipped
+                    ? meta.responseBodySkipped
+                    : undefined,
+                duration: Date.now() - meta.startTime,
+              },
+              capture: {
+                method: "injected_script",
+                trusted: true,
+                partial: false,
+              },
+            })
+          );
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    }
+
+    // 使用 addEventListener 而非覆盖 onreadystatechange，避免影响原有逻辑
+    this.addEventListener("readystatechange", onReadyStateChange, {
+      once: false,
+    });
+
+    // 监听错误
+    this.addEventListener(
+      "error",
+      function () {
+        try {
+          enqueue(
+            buildEvent("network.error", {
+              network: {
+                requestId: meta.requestId,
+                url: sanitizeUrlForNetwork(meta.url),
+                method: meta.method,
+                error: "XHR request failed",
+                duration: Date.now() - meta.startTime,
+              },
+            })
+          );
+        } catch (_) {
+          /* ignore */
+        }
+      },
+      { once: true }
+    );
+
+    // 监听 abort
+    this.addEventListener(
+      "abort",
+      function () {
+        try {
+          enqueue(
+            buildEvent("network.error", {
+              network: {
+                requestId: meta.requestId,
+                url: sanitizeUrlForNetwork(meta.url),
+                method: meta.method,
+                error: "XHR request aborted",
+                duration: Date.now() - meta.startTime,
+              },
+            })
+          );
+        } catch (_) {
+          /* ignore */
+        }
+      },
+      { once: true }
+    );
+
+    return originalSend.call(this, body);
+  };
+
+  // ============================================================
+  // SSE 保护：确保 EventSource 不受影响
+  // EventSource 使用独立的 HTTP 连接机制，不经过 fetch/XHR，
+  // 因此上述拦截不会影响 SSE。以下代码显式保留 EventSource 原型。
+  // ============================================================
+  // （无需额外操作，EventSource 与 fetch/XHR 是独立的 API）
+
+  // ============================================================
+  // 初始化
+  // ============================================================
+  function init() {
+    if (DISABLED) return;
+
+    // 设置 DOM 事件监听
+    if (document.readyState !== "loading") {
+      setupDOMListeners();
+    } else {
+      document.addEventListener("DOMContentLoaded", setupDOMListeners, {
+        once: true,
+      });
+    }
+
+    // 页面卸载时 flush
+    window.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "hidden") {
+        flushOnUnload();
+      }
+    });
+    window.addEventListener("pagehide", flushOnUnload, { once: true });
+    window.addEventListener("beforeunload", flushOnUnload, { once: true });
+
+    // 定期 flush（防止长时间无事件导致数据积压）
+    setInterval(function () {
+      if (queue.length > 0) {
+        doFlush();
+      }
+    }, 30000);
+  }
+
+  init();
+})();
+</script>
+</head><body><div class="starlink-skeleton-wrapper"><div class="starlink-skeleton-wrapper-top"><div class="starlink-skeleton-wrapper-logo" title="Starlink"><svg width="195" viewBox="0 0 1265 131" version="1.1" id="svg23"><path data-name="2 1" d="m 0.01,-0.006 h 157.66 c -0.529,11.878 -5.853,19.766 -15.2,22.8 -12.388,9.44 -92.411,4.028 -115.87,3.806 v 26.6 h 131.07 v 77.907 H 0.01 c 0.529,-11.878 5.853,-19.766 15.2,-22.8 12.392,-9.438 92.414,-4.026 115.87,-3.8 V 79.8 H 0.01 Z m 184.254,0 h 157.66 c -0.528,11.878 -7.292,17.177 -11.4,24.7 -21.793,3.875 -38.129,2.191 -53.186,1.9 v 104.51 H 250.746 V 26.6 c -19.735,0.287 -40.58,-0.393 -55.086,-3.8 -5.154,-7.74 -10.317,-10.211 -11.397,-22.806 z m 184.254,0 h 157.66 c -0.53,11.878 -6.478,15.112 -12.637,22.506 -17.43,6.395 -53.316,5 -65.977,5 -12.45,0 -42.246,1.279 -67.65,-4.7 C 374.76,15.06 369.6,12.589 368.517,-0.006 Z m 184.253,0 h 157.66 c 0.834,28.36 -3.337,67.227 -15.2,76.007 -7.876,5.8 -36.133,3.728 -36.09,3.8 -0.042,-0.031 40.352,37.567 49.387,51.3 h -37.99 c -3.758,-5.827 -46.814,-49.313 -51.287,-51.3 h -39.89 v 51.3 H 552.77 V 53.2 c 40.527,0.217 90.3,5.264 127.268,-1.9 l 1.9,-5.7 c 2.54,-3.785 2.1,-12.365 1.9,-19 -38.712,0.3 -87.212,3.642 -119.67,-3.8 C 559.014,15.06 553.85,12.589 552.77,-0.006 Z m 184.254,0 h 26.593 V 104.5 h 131.066 l -1.9,13.3 c -6.11094,3.87808 -11.83701,8.33169 -17.1,13.3 H 737.024 V -0.006 Z m 184.254,0 h 26.593 V 131.106 H 921.278 V -0.006 Z m 184.252,0 h 26.59 v 131.112 h -26.59 c 0.02,-0.113 -77.69,-77.973 -77.88,-77.907 0.27,0.08 0,51.941 0,77.907 h -26.59 V 24.7 c -0.01,0 -24.653,-24.642 -24.7,-24.7 -0.059,0.07 37.836,0 37.986,0 l 91.18,91.208 V -0.006 Z m 119.57,-0.1 c -0.73,-0.27 40.35,-0.27 39.89,0 -0.27,-0.287 -64.52,64.446 -64.58,64.606 0.06,0.075 64.58,66.715 64.58,66.506 H 1225.1 c -21.53,-22.166 -64.64,-66.451 -64.58,-66.506 0.09,0.249 64.56,-64.695 64.58,-64.606 z M 368.517,53.2 h 157.66 v 77.907 H 499.584 V 79.8 H 395.11 v 51.3 h -26.593 z"></path></svg></div></div><div class="starlink-skeleton-wrapper-content"><div class="starlink-skeleton-wrapper-content-left"></div><div class="starlink-skeleton-wrapper-content-right"><div></div><div></div><div></div><div></div><div></div><div></div></div></div></div><script>
+                  if(['/', '/app', '/app/add', '/isolations', '/dns', '/dns/origin-search'].includes(window.location.pathname) || window.location.search.includes('hideMenu')){
+                    document.querySelector('.starlink-skeleton-wrapper-content-left')?.remove();
+                  }
+                  </script><div id="ice-container"></div><script>!(function () {var a = window.__ICE_APP_CONTEXT__ || {};var b = {"appData":null,"loaderData":{"layout":{"pageConfig":{}},"/":{"pageConfig":{}}},"routePath":"/","matchedIds":["layout","/"],"documentOnly":true,"renderMode":"CSR"};for (var k in a) {b[k] = a[k]}window.__ICE_APP_CONTEXT__=b;})();</script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/data-loader.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/a060bfc3.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/5901e6d1.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/f7c5b0c7.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/42021.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/1959.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/80900.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/92384.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/60796.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/69879.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/94828.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/6389.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/7959.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/31258.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/19261.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/95726.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/6623.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/20595.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/3069.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/68587.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/1271.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/61444.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/66890.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/75848.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/4648.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/81208.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/59214.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/68873.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/50121.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/58303.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/43487.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/72912.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/34089.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/65786.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/22754.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/81004.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/40850.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/75576.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/20264.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/75948.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/19440.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/951.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/35194.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/67189.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/1469.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/89397.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/6759.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/19216.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/p_layout.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/15303.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/24755.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/p_index.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/framework.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/b1cd4481.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/ee98635d.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/85733.js"></script><script src="https://static.mfrcdn.com/assets/prod/starlink-ui/0.7.155-20260908154423598/all/sg/js/main.js"></script></body></html>

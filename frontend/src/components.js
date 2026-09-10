@@ -1184,6 +1184,15 @@ export function TagSelect(props = {}) {
         "aria-label": "管理标签",
         title: "管理标签",
       },
+      onPointerDown(event) {
+        event.preventDefault();
+        event.stopPropagation();
+      },
+      onClick(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        popover_store.toggle();
+      },
     },
     [Runtime.Icon({ name: "plus", size: 12 })],
   );
@@ -1194,6 +1203,8 @@ export function TagSelect(props = {}) {
       side: "bottom",
       align: "start",
       triggerClass: "dm-tag-select-popover-trigger",
+      onTriggerMouseEnter() {},
+      onTriggerMouseLeave() {},
       class: "dm-tag-select-popover",
       content: [
         View({ class: "dm-tag-select-search-wrap" }, [

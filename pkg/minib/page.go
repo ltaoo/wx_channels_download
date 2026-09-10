@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	runtime_debug "runtime/debug"
 	"sort"
 	"strings"
@@ -1512,6 +1513,9 @@ func javascript_panic_error(recovered any) error {
 }
 
 func compile_javascript(source_url string, source string) (*goja.Program, error) {
+	// Goja refuses to compile source-map comments it cannot resolve; the map is
+	// irrelevant to execution, so drop the pragma instead of transforming the file.
+	source = source_map_pragma.ReplaceAllString(source, "")
 	program, compile_err := goja.Compile(source_url, source, false)
 	if compile_err == nil {
 		return program, nil
@@ -1539,6 +1543,8 @@ func compile_javascript(source_url string, source string) (*goja.Program, error)
 	transformed_source = strings.ReplaceAll(string(transformed.Code), "import(", "__minib_import(")
 	return goja.Compile(source_url, transformed_source, false)
 }
+
+var source_map_pragma = regexp.MustCompile(`(?m)^//[#@]\s*sourceMappingURL=.*$`)
 
 func (runtime *page_runtime) install() error {
 	constructors := `
@@ -1755,6 +1761,13 @@ Node.prototype.normalize = function() {
   }
 };
 ['insertAdjacentElement', 'getAttribute', 'setAttribute', 'getAttributeNS', 'setAttributeNS', 'removeAttribute', 'removeAttributeNS', 'hasAttribute', 'hasAttributeNS', 'hasAttributes', 'getAttributeNames', 'querySelector', 'querySelectorAll', 'getElementsByTagName', 'getElementsByClassName', 'matches', 'closest', 'attachShadow', 'getBoundingClientRect', 'getClientRects', 'focus', 'blur', 'click', 'getContext', 'toDataURL'].forEach(function(name) { Element.prototype[name] = __minibMethod(name); });
+// ponytail: identity SVG geometry; real matrices need a layout engine
+Element.prototype.createSVGMatrix = function() { return __minib_svg_matrix(); };
+Element.prototype.createSVGPoint = function() { return __minib_svg_point(); };
+Element.prototype.createSVGTransform = function() { return __minib_svg_transform(); };
+Element.prototype.getCTM = function() { return __minib_svg_matrix(); };
+Element.prototype.getScreenCTM = function() { return __minib_svg_matrix(); };
+Element.prototype.getBBox = function() { return __minib_svg_bbox(); };
 function HTMLElement() { if (typeof __minib_construct_html_element === 'function') return __minib_construct_html_element(this); }
 HTMLElement.prototype = Object.create(Element.prototype);
 HTMLElement.prototype.submit = __minibMethod('submit');
@@ -2165,13 +2178,14 @@ AbortController.prototype.abort = function(reason) {
   this.signal.reason = reason === undefined ? new DOMException('This operation was aborted', 'AbortError') : reason;
   this.signal.dispatchEvent(new Event('abort'));
 };
-function Request(input, init) { init = init || {}; this.url = String(input && input.url || input); this.method = String(init.method || input && input.method || 'GET').toUpperCase(); this.headers = new Headers(init.headers || input && input.headers); this.body = init.body == null ? null : init.body; this.signal = init.signal || input && input.signal || null; }
+function Request(input, init) { init = init || {}; this.url = String(input && input.url || input); this.method = String(init.method || input && input.method || 'GET').toUpperCase(); this.headers = new Headers(init.headers || input && input.headers); this.body = init.body == null ? null : init.body; this.signal = init.signal || input && input.signal || null; this.credentials = init.credentials || input && input.credentials || 'same-origin'; }
 function Response(body, init) { init = init || {}; this._body = body == null ? '' : String(body); this.body = body == null ? null : body instanceof ReadableStream ? body : new ReadableStream({ start: function(controller) { controller.enqueue(new TextEncoder().encode(String(body))); controller.close(); } }); this.status = init.status || 200; this.statusText = init.statusText || ''; this.headers = init.headers instanceof Headers ? init.headers : new Headers(init.headers); this.url = init.url || ''; this.ok = this.status >= 200 && this.status < 300; this.redirected = false; this.type = 'basic'; this.bodyUsed = false; }
 Response.prototype.text = function() { this.bodyUsed = true; return Promise.resolve(this._body); };
 Response.prototype.json = function() { this.bodyUsed = true; return Promise.resolve(JSON.parse(this._body)); };
 Response.prototype.clone = function() { return new Response(this._body, { status: this.status, statusText: this.statusText, headers: this.headers, url: this.url }); };
+var __minib_request = Request;
 function fetch(input, init) {
-  var request = input instanceof Request ? input : new Request(input, init);
+  var request = input instanceof __minib_request ? input : new __minib_request(input, init || {});
   return new Promise(function(resolve, reject) {
     if (request.signal && request.signal.aborted) { reject(request.signal.reason); return; }
     var xhr = new XMLHttpRequest();
@@ -2181,6 +2195,7 @@ function fetch(input, init) {
     function abort() { xhr.abort(); finish(reject, request.signal.reason); }
     xhr.__minib_resource_type = 'fetch';
     xhr.open(request.method, request.url, true);
+    xhr.withCredentials = request.credentials === 'include';
     request.headers.forEach(function(value, name) { xhr.setRequestHeader(name, value); });
     xhr.onload = function() { finish(resolve, new Response(xhr.responseText, { status: xhr.status, statusText: xhr.statusText, headers: new Headers(xhr.getAllResponseHeaders()), url: xhr.responseURL })); };
     xhr.onerror = function() { finish(reject, new TypeError('Failed to fetch')); };
@@ -2207,6 +2222,33 @@ Array.prototype.join = function(separator) {
   try { return __minib_native_array_join.call(this, separator); }
   finally { __minib_array_join_stack.pop(); }
 };
+function __minib_svg_matrix() {
+  var from = function(a, b, c, d, e, f) {
+    return {
+      a: a, b: b, c: c, d: d, e: e, f: f,
+      multiply: function(o) { return from(this.a*o.a + this.c*o.b, this.b*o.a + this.d*o.b, this.a*o.c + this.c*o.d, this.b*o.c + this.d*o.d, this.a*o.e + this.c*o.f + this.e, this.b*o.e + this.d*o.f + this.f); },
+      inverse: function() { var det = this.a*this.d - this.b*this.c; return from(this.d/det, -this.b/det, -this.c/det, this.a/det, (this.c*this.f - this.d*this.e)/det, (this.b*this.e - this.a*this.f)/det); },
+      translate: function(x, y) { return this.multiply(from(1, 0, 0, 1, Number(x) || 0, Number(y) || 0)); },
+      scale: function(x, y) { return this.multiply(from(Number(x) || 1, 0, 0, y === undefined ? Number(x) || 1 : Number(y) || 1, 0, 0)); },
+      rotate: function(deg) { var rad = Number(deg)*Math.PI/180, cos = Math.cos(rad), sin = Math.sin(rad); return this.multiply(from(cos, sin, -sin, cos, 0, 0)); },
+      rotateFromVector: function(x, y) { return this.rotate(Math.atan2(Number(y) || 0, Number(x) || 1)*180/Math.PI); },
+      skewX: function(deg) { return this.multiply(from(1, 0, Math.tan(Number(deg)*Math.PI/180), 1, 0, 0)); },
+      skewY: function(deg) { return this.multiply(from(1, Math.tan(Number(deg)*Math.PI/180), 0, 1, 0, 0)); },
+      skew: function(x, y) { return this.skewX(x).skewY(y); },
+      flipX: function() { return this.scale(-1, 1); },
+      flipY: function() { return this.scale(1, -1); },
+      toArray: function() { return [this.a, this.b, this.c, this.d, this.e, this.f]; },
+      toString: function() { return 'matrix(' + this.a + ' ' + this.b + ' ' + this.c + ' ' + this.d + ' ' + this.e + ' ' + this.f + ')'; },
+      clone: function() { return from(this.a, this.b, this.c, this.d, this.e, this.f); }
+    };
+  };
+  return from(1, 0, 0, 1, 0, 0);
+}
+function __minib_svg_point() {
+  return { x: 0, y: 0, matrixTransform: function(m) { return { x: (m ? m.a*this.x + m.c*this.y + m.e : this.x), y: (m ? m.b*this.x + m.d*this.y + m.f : this.y) }; } };
+}
+function __minib_svg_transform() { return { type: 1, matrix: __minib_svg_matrix(), angle: 0 }; }
+function __minib_svg_bbox() { return { x: 0, y: 0, width: 0, height: 0 }; }
 if (!Date.prototype.toGMTString) Date.prototype.toGMTString = Date.prototype.toUTCString;
 if (typeof WeakRef === 'undefined') {
   WeakRef = function(target) { this._target = target; };
@@ -3961,6 +4003,9 @@ func (runtime *page_runtime) install_document(object *goja.Object, node *html.No
 		}
 		return runtime.node_array([]*html.Node{body})
 	})
+	_ = object.Set("queryCommandSupported", func(string) bool { return false })
+	_ = object.Set("queryCommandEnabled", func(string) bool { return false })
+	_ = object.Set("execCommand", func(string, ...bool) bool { return false })
 	_ = object.Set("write", func(markup string) {
 		target := find_element(node, "body")
 		if target != nil {

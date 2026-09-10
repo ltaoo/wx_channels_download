@@ -150,6 +150,72 @@ window.addEventListener('load', function() { document.body.setAttribute('data-lo
 	}
 }
 
+func TestNavigateFetchCredentialsIncludeSendsCrossOriginCookie(t *testing.T) {
+	api_server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(response_writer, `{"cookie":%d}`, len(request.Header.Values("Cookie")))
+	}))
+	defer api_server.Close()
+
+	page_server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprintf(response_writer, `<!doctype html><body><script>
+fetch(%q, {credentials: 'include'}).then(function(r) { return r.json(); }).then(function(r) { document.body.setAttribute('data-include', r.cookie); });
+fetch(%q).then(function(r) { return r.json(); }).then(function(r) { document.body.setAttribute('data-same-origin', r.cookie); });
+</script></body>`, api_server.URL+"/api", api_server.URL+"/api")
+	}))
+	defer page_server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	if err := browser.SetCookieHeader(api_server.URL+"/api", "session=include-cookie"); err != nil {
+		t.Fatal(err)
+	}
+	page, err := browser.Navigate(context.Background(), page_server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-include="1"`) {
+		t.Fatalf(`credentials include did not send cookie: %s`, page.RenderedHTML)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-same-origin="0"`) {
+		t.Fatalf(`default credentials leaked cross-origin cookie: %s`, page.RenderedHTML)
+	}
+}
+
+func TestNavigateFetchAfterPageOverridesRequest(t *testing.T) {
+	api_server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(response_writer, `{"ok":true}`)
+	}))
+	defer api_server.Close()
+
+	page_server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprintf(response_writer, `<!doctype html><body><script>
+function Request(input, init) { this.signal = init.signal; this.url = String(input); }
+fetch(%q).then(function(r) { return r.json(); }).then(function(r) { document.body.setAttribute('data-fetch', r.ok); });
+</script></body>`, api_server.URL+"/api")
+	}))
+	defer page_server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), page_server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-fetch="true"`) {
+		t.Fatalf(`page Request override broke fetch: failures=%+v html=%s`, page.ScriptFailures, page.RenderedHTML)
+	}
+}
+
 func TestNavigateWaitsForSelectorAndContent(t *testing.T) {
 	request_counts := make(map[string]int)
 	var request_mutex sync.Mutex
@@ -1428,4 +1494,39 @@ func TestNavigateZhipin(t *testing.T) {
 		t.Logf("rendered HTML saved to %s", output_path)
 	}
 	t.Logf("runtime=%s title=%q rendered=%d resources=%d scripts=%d xhr=%d", runtime_state.String(), text_content(find_element(page.Document, "title")), len(page.RenderedHTML), len(page.Resources), page.ExecutedScripts, len(page.XHRRequests))
+}
+
+func TestNavigateSVGGeometryAPIs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(response_writer, `<!doctype html><body><script>
+var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+var m = svg.createSVGMatrix().translate(10, 20).multiply(svg.getScreenCTM().inverse());
+var p = svg.createSVGPoint(); p.x = 2; p.y = 3; p.matrixTransform(m);
+document.body.setAttribute('data-svg', m.toArray().join(',') + '|' + svg.getBBox().width + '|' + svg.getCTM().inverse().a);
+</script></body>`)
+	}))
+	defer server.Close()
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-svg="1,0,0,1,10,20|0|1"`) {
+		t.Fatalf("svg geometry failed: failures=%+v html=%s", page.ScriptFailures, page.RenderedHTML)
+	}
+}
+
+func TestCompileJavaScriptStripsUnresolvableSourceMapPragma(t *testing.T) {
+	program, err := compile_javascript("https://example.com/a.js", "var a = 1;\n//# sourceMappingURL=a.js.map\n")
+	if err != nil {
+		t.Fatalf("source map pragma broke compilation: %v", err)
+	}
+	if program == nil {
+		t.Fatal("expected compiled program")
+	}
 }

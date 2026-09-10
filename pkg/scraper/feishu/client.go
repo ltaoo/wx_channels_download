@@ -37,9 +37,11 @@ const (
 )
 
 var (
-	document_path_pattern = regexp.MustCompile(`^/docx/([A-Za-z0-9]+)$`)
+	document_path_pattern = regexp.MustCompile(`^/(?:docx|wiki)/([A-Za-z0-9]+)$`)
 	bootstrap_pattern     = regexp.MustCompile(`\bwindow\.(?:DATA|SERVER_DATA)\s*=`)
 )
+
+var supported_feishu_domains = []string{"feishu.cn", "larkenterprise.com"}
 
 // Asset is one image or attached file discovered in a Feishu document.
 type Asset struct {
@@ -247,6 +249,9 @@ func (c *Client) FetchContext(fetch_context context.Context, raw_url string) (*D
 	if err := validate_client_vars(bootstrap.WindowData.ClientVars, "initial clientVars"); err != nil {
 		return nil, err
 	}
+	if document_token := strings.TrimSpace(bootstrap.WindowData.ClientVars.Data.ID); document_token != "" {
+		token = document_token
+	}
 	pages, err := c.fetch_client_vars_pages(fetch_context, browser, document_url, token, bootstrap.WindowData.ClientVars.Data)
 	if err != nil {
 		return nil, err
@@ -269,21 +274,45 @@ func (c *Client) FetchContext(fetch_context context.Context, raw_url string) (*D
 func parse_document_url(raw_url string) (string, string, string, error) {
 	parsed_url, err := url.Parse(strings.TrimSpace(raw_url))
 	if err != nil || parsed_url.Scheme != "https" || parsed_url.Hostname() == "" {
-		return "", "", "", fmt.Errorf("Feishu URL must be https://<tenant>.feishu.cn/docx/<token>")
+		return "", "", "", err_invalid_document_url()
 	}
 	hostname := strings.ToLower(strings.TrimSuffix(parsed_url.Hostname(), "."))
-	if hostname != "feishu.cn" && !strings.HasSuffix(hostname, ".feishu.cn") {
-		return "", "", "", fmt.Errorf("Feishu URL must be https://<tenant>.feishu.cn/docx/<token>")
+	if !supported_feishu_host(hostname) {
+		return "", "", "", err_invalid_document_url()
 	}
 	match := document_path_pattern.FindStringSubmatch(strings.TrimSuffix(parsed_url.EscapedPath(), "/"))
 	if len(match) != 2 {
-		return "", "", "", fmt.Errorf("Feishu URL must be https://<tenant>.feishu.cn/docx/<token>")
+		return "", "", "", err_invalid_document_url()
 	}
 	parsed_url.RawQuery = ""
 	parsed_url.Fragment = ""
 	parsed_url.Path = strings.TrimSuffix(parsed_url.Path, "/")
 	parsed_url.RawPath = ""
 	return parsed_url.String(), match[1], hostname, nil
+}
+
+func err_invalid_document_url() error {
+	return errors.New("Feishu URL must be https://<tenant>.feishu.cn|larkenterprise.com/docx/<token> or /wiki/<token>")
+}
+
+func supported_feishu_host(hostname string) bool {
+	for _, domain := range supported_feishu_domains {
+		if hostname == domain || strings.HasSuffix(hostname, "."+domain) {
+			return true
+		}
+	}
+	return false
+}
+
+func stream_download_host(origin string) string {
+	if origin_url, err := url.Parse(origin); err == nil && origin_url.Hostname() != "" {
+		origin = origin_url.Hostname()
+	}
+	labels := strings.Split(strings.ToLower(origin), ".")
+	if len(labels) > 2 {
+		labels = labels[1:]
+	}
+	return "internal-api-drive-stream." + strings.Join(labels, ".")
 }
 
 func parse_bootstrap(fetch_context context.Context, browser *minib.MiniBrowser, html_text string) (*bootstrap_export, error) {
@@ -426,6 +455,7 @@ func build_document(document_url string, token string, tenant string, bootstrap 
 	plain_lines := make([]string, 0)
 	assets := make([]Asset, 0)
 	seen_assets := make(map[string]bool)
+	download_host := stream_download_host(tenant)
 	for _, block_id := range order {
 		block, exists := blocks[block_id]
 		if !exists {
@@ -435,7 +465,7 @@ func build_document(document_url string, token string, tenant string, bootstrap 
 		if block.Type != "page" && text != "" {
 			plain_lines = append(plain_lines, text)
 		}
-		asset, exists := block_asset(block)
+		asset, exists := block_asset(block, download_host)
 		if exists && !seen_assets[asset.Token] {
 			assets = append(assets, asset)
 			seen_assets[asset.Token] = true
@@ -490,7 +520,7 @@ func block_text(block block_data) string {
 	return strings.TrimSpace(text_builder.String())
 }
 
-func block_asset(block block_data) (Asset, bool) {
+func block_asset(block block_data, download_host string) (Asset, bool) {
 	asset := block.File
 	kind := "file"
 	if block.Type == "image" {
@@ -517,7 +547,7 @@ func block_asset(block block_data) (Asset, bool) {
 		Height:   int(asset.Height),
 	}
 	if kind == "file" {
-		result.URL = "https://internal-api-drive-stream.feishu.cn/space/api/box/stream/download/all/" + url.PathEscape(asset.Token) + "/?mount_point=docx_file&mount_node_token=" + url.QueryEscape(asset.Token)
+		result.URL = "https://" + download_host + "/space/api/box/stream/download/all/" + url.PathEscape(asset.Token) + "/?mount_point=docx_file&mount_node_token=" + url.QueryEscape(asset.Token)
 		result.RelativePath = asset_relative_path(kind, asset.Token, name, result.MIMEType)
 	}
 	return result, true
@@ -600,15 +630,15 @@ func resolve_file_preview(fetch_context context.Context, browser *minib.MiniBrow
 	if json.Unmarshal(response.Body, &info) != nil || info.Code != 0 {
 		return ""
 	}
-	return file_preview_url(asset, info)
+	return file_preview_url(asset, info, origin)
 }
 
-func file_preview_url(asset Asset, info file_info_response) string {
+func file_preview_url(asset Asset, info file_info_response, origin string) string {
 	if asset.MIMEType == "application/pdf" {
 		if preview, exists := info.Data.PreviewMeta.Data["9"]; !exists || preview.Status != 0 || info.Data.DataVersion == "" {
 			return ""
 		}
-		preview_url := &url.URL{Scheme: "https", Host: "internal-api-drive-stream.feishu.cn", Path: "/space/api/box/stream/download/preview/" + asset.Token}
+		preview_url := &url.URL{Scheme: "https", Host: stream_download_host(origin), Path: "/space/api/box/stream/download/preview/" + asset.Token}
 		query := preview_url.Query()
 		query.Set("preview_type", "9")
 		query.Set("version", info.Data.DataVersion)

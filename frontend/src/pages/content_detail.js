@@ -1,6 +1,11 @@
-import { ContentDetailViewModel, ContentDetailDescriptionModel } from "./content_detail.model.js";
+import {
+  ContentDetailViewModel,
+  ContentDetailDescriptionModel,
+  ContentDetailExtensionModel,
+} from "./content_detail.model.js";
 import { PreviewGalleryMediaView } from "./preview.js";
 import { BrandError, Tag, PlatformTag } from "../dmui.js";
+import { TagSelect, ContentTagBadge } from "../components.js";
 
 function ContentDetailAction(props) {
   const semantic_name = props.name || "content-detail-action";
@@ -116,6 +121,32 @@ function ContentDetailAccounts(props) {
       },
     }),
   ]);
+}
+
+function ContentDetailTags(props) {
+  const vm$ = props.store;
+  return View(
+    {
+      class: "content-detail-tags",
+      attributes: { n: "content-detail-tags", "aria-label": "内容标签" },
+    },
+    [
+      TagSelect({
+        contentId: props.content.id,
+        tagsRef: vm$.state.tags,
+        client: props.client,
+        onChange(next_tags) {
+          vm$.methods.setTags(next_tags);
+        },
+      }),
+      For({
+        each: vm$.state.tags,
+        render(tag) {
+          return ContentTagBadge({ tag });
+        },
+      }),
+    ],
+  );
 }
 
 function ContentDetailPlatform(props) {
@@ -516,24 +547,23 @@ function ContentDetailMediaStage(props) {
 function ContentDetailMediaPicker(props) {
   const vm$ = props.store;
   const media = props.media;
-  const selected_ = props.selected;
   return View(
     {
       type: "button",
-      class: computed(selected_, (selected) =>
+      class: computed(props.selected, (selected) =>
         selected && selected.key === media.key
           ? "content-detail-media-choice dm-focus-ring is-selected"
           : "content-detail-media-choice dm-focus-ring",
       ),
       attributes: {
         type: "button",
-        "aria-pressed": computed(selected_, (selected) =>
+        "aria-pressed": computed(props.selected, (selected) =>
           selected && selected.key === media.key ? "true" : "false",
         ),
         title: `查看 ${media.name}`,
       },
       onClick() {
-        selected_.as(media);
+        props.onSelect(media);
       },
     },
     [
@@ -581,42 +611,85 @@ function ContentDetailExtension(props) {
       ]),
     ]);
   }
-  const selected_ = ref(media.find((item) => item.available) || media[0]);
-  return View({ class: "content-detail-extension" }, [
-    View({ class: "content-detail-media-stage-list" }, [
-      For({
-        each: media,
-        render(item) {
-          return Show({
-            when: computed(selected_, (selected) =>
-              Boolean(selected && selected.key === item.key),
-            ),
-            ok() {
-              return ContentDetailMediaStage({
-                store: vm$,
-                content,
-                media: item,
-              });
-            },
-          });
+  const extension_vm$ = ContentDetailExtensionModel(media);
+  return View(
+    {
+      class: "content-detail-content-block",
+      attributes: { n: "content-detail-content-block" },
+    },
+    [
+      View(
+        {
+          class: "content-detail-extension",
+          attributes: { n: "content-detail-extension" },
         },
-      }),
-    ]),
-    media.length > 1
-      ? View({ class: "content-detail-media-choices" }, [
-          For({
-            each: media,
-            render(item) {
-              return ContentDetailMediaPicker({
-                store: vm$,
-                media: item,
-                selected: selected_,
-              });
+        [
+          View(
+            {
+              class: "content-detail-media-stage-list",
+              attributes: { n: "content-detail-media-stage-list" },
             },
-          }),
-        ])
-      : null,
-  ].filter(Boolean));
+            [
+              For({
+                each: media,
+                render(item) {
+                  return Show({
+                    when: computed(
+                      extension_vm$.state.selected,
+                      (selected) =>
+                        Boolean(selected && selected.key === item.key),
+                    ),
+                    ok() {
+                      return ContentDetailMediaStage({
+                        store: vm$,
+                        content,
+                        media: item,
+                      });
+                    },
+                  });
+                },
+              }),
+            ],
+          ),
+          media.length > 1
+            ? View(
+                {
+                  class: "content-detail-media-choices",
+                  attributes: { n: "content-detail-media-choices" },
+                },
+                [
+                  For({
+                    each: media,
+                    render(item) {
+                      return ContentDetailMediaPicker({
+                        store: vm$,
+                        media: item,
+                        selected: extension_vm$.state.selected,
+                        onSelect: extension_vm$.methods.select,
+                      });
+                    },
+                  }),
+                ],
+              )
+            : null,
+        ].filter(Boolean),
+      ),
+      media.length > 1
+        ? ContentDetailFileNavigationButton({
+            store: extension_vm$,
+            direction: "left",
+            title: "上一个文件",
+          })
+        : null,
+      media.length > 1
+        ? ContentDetailFileNavigationButton({
+            store: extension_vm$,
+            direction: "right",
+            title: "下一个文件",
+          })
+        : null,
+    ],
+  );
 }
 
 function ContentDetailResource(props) {
@@ -888,6 +961,34 @@ function ContentDetailDescription(props) {
   ]);
 }
 
+function ContentDetailFileNavigationButton(props) {
+  const vm$ = props.store;
+  const direction = props.direction === "left" ? "previous" : "next";
+  const semantic_name = `content-detail-${direction}-file-action`;
+  return Button(
+    {
+      store: vm$.ui[`btn_${direction}$`],
+      class: `content-detail-content-nav-button is-${props.direction}`,
+      attributes: {
+        n: semantic_name,
+        type: "button",
+        title: props.title,
+        "aria-label": props.title,
+      },
+      onClick() {
+        vm$.methods[direction]();
+      },
+    },
+    [
+      Timeless.Icon({
+        name: props.direction === "left" ? "chevron-left" : "chevron-right",
+        size: 18,
+        attributes: { n: `${semantic_name}-icon` },
+      }),
+    ],
+  );
+}
+
 function ContentDetailMain(props) {
   const vm$ = props.store;
   const content = props.content;
@@ -917,18 +1018,33 @@ function ContentDetailMain(props) {
         View(
           {
             class: "content-detail-title",
-            attributes: { title: content.title },
+            attributes: { n: "content-detail-title", title: content.title },
           },
           [content.title],
         ),
+        View(
+          {
+            class: "content-detail-publish-time",
+            attributes: { n: "content-detail-publish-time" },
+          },
+          [
+            Timeless.Icon({
+              name: "clock3",
+              size: 14,
+              attributes: { n: "content-detail-publish-time-icon" },
+            }),
+            `发布于 ${vm$.methods.formatTime(content.publish_time)}`,
+          ],
+        ),
         ContentDetailAccounts({ content, history: props.history }),
+        ContentDetailTags({
+          store: vm$,
+          content,
+          client: props.client,
+        }),
         description
           ? ContentDetailDescription({ description })
           : null,
-        View({ class: "content-detail-publish-time" }, [
-          Timeless.Icon({ name: "clock3", size: 14 }),
-          `发布于 ${vm$.methods.formatTime(content.publish_time)}`,
-        ]),
       ].filter(Boolean)),
     ].filter(Boolean)),
     ContentDetailSection({
@@ -1019,6 +1135,7 @@ function ContentDetailBody(props) {
                   content: vm$.state.detail.value,
                   history: props.history,
                   onOpenDetail: props.onOpenDetail,
+                  client: props.client,
                 });
               },
               else() {
@@ -1059,6 +1176,7 @@ function ContentDetailPageView(props) {
         onOpenDetail: props.embedded
           ? (content_id) => vm$.methods.openDetail(content_id)
           : null,
+        client: props.client,
       }),
     ],
   );

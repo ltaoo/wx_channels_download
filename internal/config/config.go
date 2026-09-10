@@ -737,6 +737,14 @@ func (c *Config) LoadConfig() error {
 		Group:       "Bridge",
 	})
 	Register(ConfigField{
+		Key:         "bridge.deploy.discoveryProjectName",
+		Type:        ConfigTypeString,
+		Default:     "",
+		Description: "RSS 订阅广场的 Cloudflare Pages 项目名；留空时使用 <workerName>-discovery",
+		Title:       "Bridge Discovery Pages 项目名",
+		Group:       "Bridge",
+	})
+	Register(ConfigField{
 		Key:         "bridge.deploy.token",
 		Type:        ConfigTypeString,
 		Default:     "",

@@ -105,6 +105,7 @@ bridge:
   deploy:
     workerName: "dm-bridge"
     pagesProjectName: ""
+    discoveryProjectName: ""
     token: ""
     adminToken: ""
   enabled: false

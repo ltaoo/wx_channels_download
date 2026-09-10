@@ -684,7 +684,16 @@ func (runtime *page_runtime) css_style_sheet_object(sheet *css_style_sheet) *goj
 		temporary := runtime.new_css_style_sheet(nil, "", "", "")
 		runtime.append_parsed_css_rules(temporary, parsed.Rules, true)
 		if len(temporary.rules) != 1 {
-			panic(runtime.vm.NewGoError(fmt.Errorf("SyntaxError: unsupported CSS rule")))
+			// ponytail: keep rule indexes stable with a never-matching placeholder; model at-rules if a site needs their cascade
+			placeholder_selector, selector_err := cascadia.Parse("#__minib_unsupported_rule__")
+			if selector_err != nil {
+				panic(runtime.vm.NewGoError(fmt.Errorf("SyntaxError: unsupported CSS rule")))
+			}
+			temporary.rules = []*css_style_rule{{
+				selector_text: "#__minib_unsupported_rule__",
+				selectors:     []css_compiled_selector{{selector: placeholder_selector, specificity: placeholder_selector.Specificity()}},
+				declarations:  runtime.new_css_declaration_block("", false, func() { runtime.styles_dirty = true }),
+			}}
 		}
 		rule := temporary.rules[0]
 		rule.parent_sheet = sheet

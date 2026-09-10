@@ -1,4 +1,4 @@
-import { Tag, PlatformTag } from "../dmui.js";
+import { Tag, PlatformTag, PlatformIcon, IconButton } from "../dmui.js";
 import { ContentViewModel } from "./content.model.js";
 import ContentDetailPageView from "./content_detail.js";
 import { TagSelect, ContentTagBadge } from "../components.js";
@@ -39,10 +39,40 @@ function ContentPageView(props) {
       },
     },
     [
-      View({ class: "content-toolbar-wrap" }, [
-        ContentPageToolbar({ store: vm$ }),
-      ]),
-      ContentPageBody({ store: vm$, client: props.client }),
+      SplitView({
+        class: "content-page-split",
+        attributes: { n: "content-page-split" },
+        panels: [
+          {
+            size: 280,
+            minSize: 220,
+            content() {
+              return ContentSavedFilterPanel({ store: vm$ });
+            },
+          },
+          {
+            size: "auto",
+            content() {
+              return View(
+                {
+                  class: "content-page-results",
+                  attributes: { n: "content-page-results" },
+                },
+                [
+                  View(
+                    {
+                      class: "content-toolbar-wrap",
+                      attributes: { n: "content-toolbar-container" },
+                    },
+                    [ContentPageToolbar({ store: vm$ })],
+                  ),
+                  ContentPageBody({ store: vm$, client: props.client }),
+                ],
+              );
+            },
+          },
+        ],
+      }),
       ContentDetailDrawer({
         store: vm$,
         app: props.app,
@@ -79,6 +109,282 @@ function ContentPageActionButton(props) {
   );
 }
 
+function ContentLayoutMenu(props) {
+  const vm$ = props.store;
+  return DropdownMenu(
+    {
+      store: vm$.ui.dropdown_layout$,
+      attributes: { n: "content-layout-menu" },
+    },
+    [
+      IconButton(
+        {
+          store: vm$.ui.btn_layout$,
+          class: "content-layout-icon-button",
+          attributes: {
+            n: "content-layout-action",
+            type: "button",
+            title: "切换内容布局",
+            "aria-label": "切换内容布局",
+          },
+          },
+          [
+            Show({
+              when: computed(vm$.state.layout, (layout) => layout === "table"),
+              ok() {
+                return Timeless.Icon({
+                  name: "table",
+                  size: 16,
+                  attributes: { n: "content-layout-action-table-icon" },
+                });
+              },
+              else() {
+                return Timeless.Icon({
+                  name: "grid-3x3",
+                  size: 16,
+                  attributes: { n: "content-layout-action-card-icon" },
+                });
+              },
+            }),
+          ],
+      ),
+    ],
+  );
+}
+
+function ContentSavedFilterPanel(props) {
+  const vm$ = props.store;
+  return View(
+    {
+      type: "form",
+      class: "content-saved-filter-panel",
+      attributes: {
+        n: "content-saved-filter-panel",
+        "aria-label": "快捷筛选器",
+      },
+      onSubmit(event) {
+        event.preventDefault();
+        vm$.methods.saveFilter();
+      },
+    },
+    [
+      View(
+        {
+          class: "content-saved-filter-header",
+          attributes: { n: "content-saved-filter-header" },
+        },
+        [
+          View(
+            {
+              as: "h2",
+              class: "content-saved-filter-title",
+              attributes: { n: "content-saved-filter-title" },
+            },
+            ["快捷筛选器"],
+          ),
+          View(
+            {
+              class: "content-saved-filter-description",
+              attributes: { n: "content-saved-filter-description" },
+            },
+            ["保存当前多个筛选条件，一键复用"],
+          ),
+        ],
+      ),
+      View(
+        {
+          class: "content-saved-filter-fields",
+          attributes: {
+            n: "content-saved-filter-fields",
+            role: "group",
+            "aria-label": "当前筛选条件",
+          },
+        },
+        [
+          View(
+            {
+              class: "content-saved-filter-field",
+              attributes: { n: "content-platform-filter-field" },
+            },
+            [
+              PlatformSelect({
+                store: vm$.ui.select_platform$,
+                attributes: {
+                  "aria-label": "按平台筛选内容",
+                },
+              }),
+            ],
+          ),
+          View(
+            {
+              class: "content-saved-filter-field",
+              attributes: { n: "content-type-filter-field" },
+            },
+            [
+              Select({
+                store: vm$.ui.select_content_type$,
+                attributes: {
+                  n: "content-type-filter-select",
+                  "aria-label": "按类型筛选内容",
+                },
+              }),
+            ],
+          ),
+          View(
+            {
+              class: "content-saved-filter-field",
+              attributes: { n: "content-account-filter-field" },
+            },
+            [
+              AccountSelect({
+                store: vm$.ui.select_account$,
+                platform: vm$.state.platform_id,
+                attributes: {
+                  "aria-label": "按账号筛选内容",
+                },
+              }),
+            ],
+          ),
+        ],
+      ),
+      Input({
+        store: vm$.ui.input_filter_name$,
+        rootAttributes: { n: "content-filter-name-control" },
+        attributes: {
+          n: "content-filter-name-input",
+          name: "filter_name",
+          placeholder: "筛选器名称",
+          maxlength: "60",
+          required: true,
+          autocomplete: "off",
+          "aria-label": "筛选器名称",
+        },
+      }),
+      Button(
+        {
+          store: vm$.ui.btn_save_filter$,
+          class: "content-saved-filter-save",
+          attributes: {
+            n: "content-save-filter-action",
+            type: "submit",
+          },
+        },
+        ["保存当前筛选"],
+      ),
+      View(
+        {
+          class: "content-saved-filter-list",
+          attributes: {
+            n: "content-saved-filter-list",
+            role: "list",
+            "aria-label": "已保存筛选器",
+          },
+        },
+        [
+          Show({
+            when: computed(
+              vm$.state.saved_filters,
+              (filters) => filters.length === 0,
+            ),
+            ok() {
+              return View(
+                {
+                  class: "content-saved-filter-empty",
+                  attributes: { n: "content-saved-filter-empty" },
+                },
+                ["暂存筛选器后会显示在这里"],
+              );
+            },
+          }),
+          For({
+            each: vm$.state.saved_filters,
+            render(filter) {
+              const active_ = computed(
+                vm$.state.active_filter_id,
+                (active_id) => active_id === filter.id,
+              );
+              return View(
+                {
+                  class: computed(active_, (active) =>
+                    active
+                      ? "content-saved-filter is-active"
+                      : "content-saved-filter",
+                  ),
+                  attributes: {
+                    n: "content-saved-filter",
+                    role: "listitem",
+                  },
+                },
+                [
+                  View(
+                    {
+                      as: "button",
+                      type: "button",
+                      class: "content-saved-filter-apply dm-focus-ring",
+                      attributes: {
+                        n: "content-saved-filter-apply",
+                        type: "button",
+                        title: vm$.methods.filterSummary(filter),
+                      },
+                      onClick() {
+                        void vm$.methods.applyFilter(filter);
+                      },
+                    },
+                    [
+                      View(
+                        {
+                          class: "content-saved-filter-name",
+                          attributes: { n: "content-saved-filter-name" },
+                        },
+                        [filter.name],
+                      ),
+                      View(
+                        {
+                          class: "content-saved-filter-summary",
+                          attributes: {
+                            n: "content-saved-filter-summary",
+                            title: vm$.methods.filterSummary(filter),
+                          },
+                        },
+                        [vm$.methods.filterSummary(filter)],
+                      ),
+                    ],
+                  ),
+                  View(
+                    {
+                      as: "button",
+                      type: "button",
+                      class: "content-saved-filter-delete dm-focus-ring",
+                      attributes: {
+                        n: "content-saved-filter-delete",
+                        type: "button",
+                        title: "删除筛选器",
+                        "aria-label": `删除筛选器 ${filter.name}`,
+                      },
+                      onClick() {
+                        vm$.methods.deleteFilter(filter.id);
+                      },
+                    },
+                    [
+                      Timeless.Icon({
+                        name: "x",
+                        size: 14,
+                        attributes: {
+                          n: "content-saved-filter-delete-icon",
+                        },
+                      }),
+                    ],
+                  ),
+                ],
+              );
+            },
+          }),
+        ],
+      ),
+    ],
+  );
+}
+
 function ContentPageToolbar(props) {
   const vm$ = props.store;
   return View(
@@ -95,27 +401,9 @@ function ContentPageToolbar(props) {
       View(
         {
           class: "content-filter-fields dm-flex dm-items-center dm-gap-2",
+          attributes: { n: "content-filter-fields" },
         },
         [
-          View({}, [
-            PlatformSelect({
-              store: vm$.ui.select_platform$,
-              // class: "content-filter-select",
-              attributes: {
-                "aria-label": "按平台筛选内容",
-              },
-            }),
-          ]),
-          View({}, [
-            AccountSelect({
-              store: vm$.ui.select_account$,
-              platform: vm$.state.platform_id,
-              style: { width: "180px" },
-              attributes: {
-                "aria-label": "按账号筛选内容",
-              },
-            }),
-          ]),
           View(
             {
               // class: "content-filter-search",
@@ -141,11 +429,6 @@ function ContentPageToolbar(props) {
               }),
             ],
           ),
-          // Select({
-          //   store: vm$.ui.select_content_type$,
-          //   class: "content-type-select content-filter-select",
-          //   attributes: { "aria-label": "筛选内容类型" },
-          // }),
         ],
       ),
       View(
@@ -189,6 +472,7 @@ function ContentPageToolbar(props) {
               }),
             ],
           ),
+          ContentLayoutMenu({ store: vm$ }),
         ],
       ),
     ],
@@ -197,6 +481,17 @@ function ContentPageToolbar(props) {
 
 function content_cover_url(content) {
   return String((content && content.cover_url) || "").trim();
+}
+
+function content_badges_title(vm$, content) {
+  return [
+    vm$.methods.platformName(content),
+    vm$.methods.typeLabel(content.content_type),
+    content.content_subtype,
+    ...(content.tags || []).map((tag) => tag && tag.name),
+  ]
+    .filter(Boolean)
+    .join("、");
 }
 
 function ContentRowCover(props) {
@@ -510,98 +805,528 @@ function ContentSkeletonRow() {
   );
 }
 
+function ContentCardSkeleton() {
+  return View(
+    {
+      class: "content-card content-card-skeleton",
+      attributes: { n: "content-card-skeleton", "aria-hidden": "true" },
+    },
+    [
+      View({
+        class: "content-card-media content-skeleton",
+        attributes: { n: "content-card-skeleton-media" },
+      }),
+      View(
+        {
+          class: "content-card-body",
+          attributes: { n: "content-card-skeleton-body" },
+        },
+        [
+          View({
+            class: "content-skeleton content-skeleton-title",
+            attributes: { n: "content-card-skeleton-title" },
+          }),
+          View({
+            class: "content-skeleton content-skeleton-tag",
+            attributes: { n: "content-card-skeleton-tag" },
+          }),
+          View({
+            class: "content-skeleton content-skeleton-line-short",
+            attributes: { n: "content-card-skeleton-meta" },
+          }),
+        ],
+      ),
+    ],
+  );
+}
+
+function ContentCardAccounts(props) {
+  const accounts = props.content.accounts || [];
+  return Show({
+    when: accounts.length === 0,
+    ok() {
+      return View(
+        {
+          class: "content-card-account",
+          attributes: { n: "content-card-empty-account" },
+        },
+        ["暂无关联账号"],
+      );
+    },
+    else() {
+      return For({
+        each: accounts,
+        render(account_) {
+          const account =
+            account_ && account_.value !== undefined
+              ? account_.value
+              : account_;
+          const name =
+            account.nickname || account.alias || account.external_id || "未知";
+          return View(
+            {
+              class: "content-card-account",
+              attributes: { n: "content-card-account", title: name },
+            },
+            [
+              Show({
+                when: account.avatar_url,
+                ok() {
+                  return LazyImg({
+                    class: "content-row-author-avatar",
+                    src: account.avatar_url,
+                    alt: name,
+                    attributes: {
+                      n: "content-card-account-avatar",
+                      loading: "lazy",
+                      referrerpolicy: "no-referrer",
+                    },
+                  });
+                },
+              }),
+              View(
+                {
+                  class: "content-card-account-name",
+                  attributes: { n: "content-card-account-name" },
+                },
+                [name],
+              ),
+            ],
+          );
+        },
+      });
+    },
+  });
+}
+
+function ContentCard(props) {
+  const vm$ = props.store;
+  const content = props.content;
+  const cover_url = content_cover_url(content);
+  const favicon = window.PLATFORM_FAVICONS[content.platform_id] || "";
+  return View(
+    {
+      as: "button",
+      type: "button",
+      class: "content-card",
+      attributes: {
+        n: "content-card",
+        type: "button",
+        title: "查看内容详情",
+      },
+      onClick() {
+        vm$.methods.openDetail(content);
+      },
+    },
+    [
+      View(
+        {
+          class: "content-card-media",
+          attributes: { n: "content-card-media" },
+        },
+        [
+          Show({
+            when: cover_url,
+            ok() {
+              return LazyImg({
+                class: "content-card-image",
+                src: cover_url,
+                alt: content.title || "内容封面",
+                attributes: {
+                  n: "content-card-image",
+                  loading: "lazy",
+                  referrerpolicy: "no-referrer",
+                },
+              });
+            },
+            else() {
+              return View(
+                {
+                  class: "content-card-media-placeholder",
+                  attributes: {
+                    n: "content-card-media-placeholder",
+                    "aria-hidden": "true",
+                  },
+                },
+                [
+                  PlatformIcon({
+                    class: "content-card-type-icon",
+                    favicon: vm$.methods.typeIcon(
+                      content.content_type,
+                      content.content_subtype,
+                    ),
+                    name: "content-card-media-placeholder-icon",
+                    attributes: { viewBox: "0 0 132 96" },
+                  }),
+                ],
+              );
+            },
+          }),
+          View(
+            {
+              class: "content-card-media-meta",
+              attributes: { n: "content-card-media-meta" },
+            },
+            [
+              View(
+                {
+                  class: "content-card-media-tags",
+                  attributes: { n: "content-card-media-tags" },
+                },
+                [
+                  PlatformTag({
+                    name: "content-card-platform",
+                    favicon,
+                    label: vm$.methods.platformName(content),
+                  }),
+                  Tag(
+                    {
+                      name: "content-card-type",
+                      class: "content-row-type",
+                    },
+                    [vm$.methods.typeLabel(content.content_type)],
+                  ),
+                ],
+              ),
+              View(
+                {
+                  class: "content-card-time",
+                  attributes: { n: "content-card-publish-time" },
+                },
+                [vm$.methods.formatTime(content.publish_time)],
+              ),
+            ],
+          ),
+        ],
+      ),
+      View(
+        {
+          class: "content-card-body",
+          attributes: { n: "content-card-body" },
+        },
+        [
+          View(
+            {
+              as: "h3",
+              class: "content-card-title",
+              attributes: {
+                n: "content-card-title",
+                title: content.title,
+              },
+            },
+            [content.title || "未命名内容"],
+          ),
+          View(
+            {
+              class: "content-card-badges",
+              attributes: {
+                n: "content-card-badges",
+                title: content_badges_title(vm$, content),
+              },
+            },
+            [
+              For({
+                each: content.tags || [],
+                render(tag) {
+                  return ContentTagBadge({ tag });
+                },
+              }),
+            ],
+          ),
+          View(
+            {
+              class: "content-card-accounts",
+              attributes: { n: "content-card-accounts" },
+            },
+            [ContentCardAccounts({ content })],
+          ),
+          View(
+            {
+              class: "content-card-footer",
+              attributes: { n: "content-card-footer" },
+            },
+            [
+              View(
+                {
+                  class: "content-card-statistics",
+                  attributes: { n: "content-card-statistics" },
+                },
+                ContentRowStatistics({
+                  statistics: vm$.methods.statistics(content),
+                }),
+              ),
+              View(
+                {
+                  class: "content-card-created-time",
+                  attributes: { n: "content-card-created-time" },
+                },
+                [vm$.methods.formatTime(content.created_at)],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+function ContentCardState(props) {
+  return View(
+    {
+      class: "content-card-state",
+      attributes: {
+        n: "content-card-state",
+        role: props.error ? "alert" : "status",
+      },
+    },
+    [
+      View(
+        {
+          as: "strong",
+          class: "content-card-state-title",
+          attributes: { n: "content-card-state-title" },
+        },
+        [props.title],
+      ),
+      View(
+        {
+          class: "content-card-state-description",
+          attributes: { n: "content-card-state-description" },
+        },
+        [props.description],
+      ),
+      Show({
+        when: props.retry,
+        ok() {
+          return Button(
+            {
+              store: props.retry,
+              variant: "primary",
+              attributes: {
+                n: "content-card-retry-action",
+                type: "button",
+              },
+            },
+            ["重试"],
+          );
+        },
+      }),
+    ],
+  );
+}
+
+function ContentCardBody(props) {
+  const vm$ = props.store;
+  return View(
+    {
+      class: "content-main container",
+      attributes: { n: "content-card-page-main" },
+    },
+    [
+      Match({
+        when: vm$.state.status,
+        cases: {
+          initial() {
+            return View(
+              {
+                class: "content-card-grid",
+                attributes: {
+                  n: "content-card-skeleton-grid",
+                  "aria-busy": "true",
+                },
+              },
+              Array.from({ length: 12 }, () => ContentCardSkeleton()),
+            );
+          },
+          empty() {
+            return ContentCardState({
+              title: "暂无内容",
+              description: "当前筛选条件下没有内容",
+            });
+          },
+          error() {
+            return ContentCardState({
+              error: true,
+              title: "内容加载失败",
+              description: vm$.state.error,
+              retry: vm$.ui.btn_retry$,
+            });
+          },
+          normal() {
+            return View(
+              {
+                class: "content-card-grid",
+                attributes: {
+                  n: "content-card-grid",
+                  role: "list",
+                  "aria-label": "内容卡片列表",
+                  "aria-busy": computed(vm$.state.loading, Boolean),
+                },
+              },
+              [
+                For({
+                  each: vm$.state.contents,
+                  render(content) {
+                    return View(
+                      {
+                        class: "content-card-item",
+                        attributes: {
+                          n: "content-card-item",
+                          role: "listitem",
+                        },
+                      },
+                      [
+                        ContentCard({
+                          store: vm$,
+                          content,
+                        }),
+                      ],
+                    );
+                  },
+                }),
+                Show({
+                  when: vm$.state.loading,
+                  ok() {
+                    return View(
+                      {
+                        class: "content-card-loading-overlay",
+                        attributes: {
+                          n: "content-card-loading-overlay",
+                          role: "status",
+                          "aria-label": "列表加载中",
+                        },
+                      },
+                      ["加载中…"],
+                    );
+                  },
+                }),
+              ],
+            );
+          },
+        },
+      }),
+      Pagination({
+        class: "container dm-px-4",
+        summary: vm$.state.range_text,
+        page: vm$.state.page,
+        pageCount: vm$.state.page_count,
+        pageSize: vm$.state.page_size,
+        loading: vm$.state.loading,
+        onChange(page) {
+          return vm$.methods.changePage(page);
+        },
+        attributes: { n: "content-card-pagination" },
+      }),
+    ],
+  );
+}
+
 function ContentPageBody(props) {
   const vm$ = props.store;
-  return Table({
-    name: "content-table",
-    containerClass: "content-main container",
-    containerAttributes: { n: "content-page-main" },
-    panelAttributes: { n: "content-table-panel" },
-    columns: [
-      {
-        name: "main",
-        title: "封面 / 标题",
-        width: "minmax(300px, 2fr)",
-        cellClass:
-          "content-row-main-cell dm-flex dm-items-center dm-gap-4 dm-min-w-0",
-        render(content) {
-          return ContentRowMain({ store: vm$, client: props.client, content });
-        },
+  return Match({
+    when: vm$.state.layout,
+    cases: {
+      table() {
+        return Table({
+          name: "content-table",
+          containerClass: "content-main container",
+          containerAttributes: { n: "content-page-main" },
+          panelAttributes: { n: "content-table-panel" },
+          columns: [
+            {
+              name: "main",
+              title: "封面 / 标题",
+              width: "minmax(300px, 2fr)",
+              cellClass:
+                "content-row-main-cell dm-flex dm-items-center dm-gap-4 dm-min-w-0",
+              render(content) {
+                return ContentRowMain({
+                  store: vm$,
+                  client: props.client,
+                  content,
+                });
+              },
+            },
+            {
+              name: "account",
+              title: "账号",
+              width: "minmax(150px, 1fr)",
+              cellClass:
+                "content-row-author dm-flex dm-items-center dm-gap-1-5 dm-min-w-0",
+              render(content) {
+                return ContentRowAccounts({ content });
+              },
+            },
+            {
+              name: "time",
+              title: "时间",
+              width: 240,
+              cellClass:
+                "content-row-meta dm-flex dm-items-center dm-gap-1-5 dm-text-muted dm-text-sm dm-tabular-nums dm-whitespace-nowrap",
+              render(content) {
+                return [
+                  View({ attributes: { n: "content-time" } }, [
+                    View({ attributes: { n: "content-publish-time" } }, [
+                      `发布时间: ${vm$.methods.formatTime(content.publish_time)}`,
+                    ]),
+                    View({ attributes: { n: "content-created-at" } }, [
+                      `创建时间: ${vm$.methods.formatTime(content.created_at)}`,
+                    ]),
+                  ]),
+                ];
+              },
+            },
+            {
+              name: "statistics",
+              title: "统计",
+              width: 200,
+              cellClass: "content-row-stats",
+              render(content) {
+                return ContentRowStatistics({
+                  statistics: vm$.methods.statistics(content),
+                });
+              },
+            },
+          ],
+          rows: vm$.state.contents,
+          pagination: {
+            class: "container dm-px-4",
+            summary: vm$.state.range_text,
+            page: vm$.state.page,
+            pageCount: vm$.state.page_count,
+            pageSize: vm$.state.page_size,
+            loading: vm$.state.initial,
+            onChange(page) {
+              return vm$.methods.changePage(page);
+            },
+          },
+          status: vm$.state.status,
+          loading: vm$.state.loading,
+          error: vm$.state.error,
+          skeletonCount: 8,
+          renderSkeletonRow: ContentSkeletonRow,
+          onRow(content) {
+            const detail_href = vm$.methods.detailHref(content);
+            return {
+              class: detail_href ? "content-row-clickable" : "",
+              attributes: detail_href ? { title: "查看内容详情" } : {},
+              onClick() {
+                vm$.methods.openDetail(content);
+              },
+            };
+          },
+          errorTitle: "内容加载失败",
+          retry: {
+            store: vm$.ui.btn_retry$,
+          },
+          emptyTitle: "暂无内容",
+          emptyDescription: "当前筛选条件下没有内容",
+        });
       },
-      {
-        name: "account",
-        title: "账号",
-        width: "minmax(150px, 1fr)",
-        cellClass:
-          "content-row-author dm-flex dm-items-center dm-gap-1-5 dm-min-w-0",
-        render(content) {
-          return ContentRowAccounts({ content });
-        },
-      },
-      {
-        name: "time",
-        title: "时间",
-        width: 240,
-        cellClass:
-          "content-row-meta dm-flex dm-items-center dm-gap-1-5 dm-text-muted dm-text-sm dm-tabular-nums dm-whitespace-nowrap",
-        render(content) {
-          return [
-            View({ attributes: { n: "content-time" } }, [
-              View({ attributes: { n: "content-publish-time" } }, [
-                `发布时间: ${vm$.methods.formatTime(content.publish_time)}`,
-              ]),
-              View({ attributes: { n: "content-created-at" } }, [
-                `创建时间: ${vm$.methods.formatTime(content.created_at)}`,
-              ]),
-            ]),
-          ];
-        },
-      },
-      {
-        name: "statistics",
-        title: "统计",
-        width: 200,
-        cellClass: "content-row-stats",
-        render(content) {
-          return ContentRowStatistics({
-            statistics: vm$.methods.statistics(content),
-          });
-        },
-      },
-    ],
-    rows: vm$.state.contents,
-    pagination: {
-      class: "container dm-px-4",
-      summary: vm$.state.range_text,
-      page: vm$.state.page,
-      pageCount: vm$.state.page_count,
-      pageSize: vm$.state.page_size,
-      loading: vm$.state.initial,
-      onChange(page) {
-        return vm$.methods.changePage(page);
+      card() {
+        return ContentCardBody({ store: vm$, client: props.client });
       },
     },
-    status: vm$.state.status,
-    loading: vm$.state.loading,
-    error: vm$.state.error,
-    skeletonCount: 8,
-    renderSkeletonRow: ContentSkeletonRow,
-    onRow(content) {
-      const detail_href = vm$.methods.detailHref(content);
-      return {
-        class: detail_href ? "content-row-clickable" : "",
-        attributes: detail_href ? { title: "查看内容详情" } : {},
-        onClick() {
-          vm$.methods.openDetail(content);
-        },
-      };
-    },
-    errorTitle: "内容加载失败",
-    retry: {
-      store: vm$.ui.btn_retry$,
-    },
-    emptyTitle: "暂无内容",
-    emptyDescription: "当前筛选条件下没有内容",
   });
 }
 

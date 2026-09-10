@@ -82,6 +82,7 @@ window.View = Timeless.View;
 window.Fragment = Timeless.Fragment;
 window.Img = Timeless.Img;
 window.Link = Timeless.Link;
+window.SplitView = Timeless.SplitView;
 // Control flow
 window.Show = Timeless.Show;
 window.For = Timeless.For;
@@ -226,6 +227,55 @@ window.CONTENT_TYPE_NAMES = Object.freeze({
   course: "课程",
   comic: "漫画",
   live: "直播",
+  text: "TXT",
+  html: "HTML",
+  pdf: "PDF",
+  conversation: "对话",
+  other: "其他",
+});
+
+const content_type_icon_base = "public/content-type-icons.svg?v=20260910-4#";
+const content_type_icons = Object.freeze({
+  default: `${content_type_icon_base}default`,
+  video: `${content_type_icon_base}video`,
+  long_video: `${content_type_icon_base}long_video`,
+  episode: `${content_type_icon_base}episode`,
+  series: `${content_type_icon_base}series`,
+  collection: `${content_type_icon_base}collection`,
+  short_video: `${content_type_icon_base}short_video`,
+  image: `${content_type_icon_base}image`,
+  image_set: `${content_type_icon_base}image_set`,
+  album: `${content_type_icon_base}album`,
+  article: `${content_type_icon_base}article`,
+  answer: `${content_type_icon_base}answer`,
+  question: `${content_type_icon_base}question`,
+  post: `${content_type_icon_base}post`,
+  blog: `${content_type_icon_base}blog`,
+  webpage: `${content_type_icon_base}webpage`,
+  novel: `${content_type_icon_base}novel`,
+  audio: `${content_type_icon_base}audio`,
+  podcast: `${content_type_icon_base}podcast`,
+  music: `${content_type_icon_base}music`,
+  document: `${content_type_icon_base}document`,
+  course: `${content_type_icon_base}course`,
+  comic: `${content_type_icon_base}comic`,
+  live: `${content_type_icon_base}live`,
+  text: `${content_type_icon_base}text`,
+  txt: `${content_type_icon_base}text`,
+  html: `${content_type_icon_base}html`,
+  pdf: `${content_type_icon_base}pdf`,
+  conversation: `${content_type_icon_base}conversation`,
+  other: `${content_type_icon_base}other`,
+});
+
+window.CONTENT_TYPE_ICONS = new Proxy(content_type_icons, {
+  get(target, property, receiver) {
+    const icon = Reflect.get(target, property, receiver);
+    if (icon !== undefined || typeof property !== "string" || !property) {
+      return icon;
+    }
+    return content_type_icons.default;
+  },
 });
 
 window.CONTENT_RELATION_NAMES = Object.freeze({
