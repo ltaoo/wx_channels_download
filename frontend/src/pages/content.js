@@ -42,7 +42,7 @@ function ContentPageView(props) {
       View({ class: "content-toolbar-wrap" }, [
         ContentPageToolbar({ store: vm$ }),
       ]),
-      ContentPageBody({ store: vm$ }),
+      ContentPageBody({ store: vm$, client: props.client }),
       ContentDetailDrawer({
         store: vm$,
         app: props.app,
@@ -414,13 +414,17 @@ function ContentRowMain(props) {
               );
             },
           }),
+          TagSelect({
+            contentId: content.id,
+            tagsRef: tags_ref,
+            client: props.client,
+          }),
           Runtime.For({
             each: computed(tags_ref, (list) => list),
             render(tag) {
               return ContentTagBadge({ tag, onRemove: remove_tag });
             },
           }),
-          TagSelect({ contentId: content.id, tagsRef: tags_ref }),
         ],
       ),
     ]),
@@ -521,7 +525,7 @@ function ContentPageBody(props) {
         cellClass:
           "content-row-main-cell dm-flex dm-items-center dm-gap-4 dm-min-w-0",
         render(content) {
-          return ContentRowMain({ store: vm$, content });
+          return ContentRowMain({ store: vm$, client: props.client, content });
         },
       },
       {

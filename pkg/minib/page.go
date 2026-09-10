@@ -621,6 +621,34 @@ func (b *MiniBrowser) navigate_post(ctx context.Context, raw_url string, body st
 }
 
 func (b *MiniBrowser) fetch_redirects(ctx context.Context, raw_url string, headers http.Header) (*clawreq.Response, string, error) {
+	response, final_url, err := b.fetch_redirects_once(ctx, raw_url, headers)
+	if err != nil {
+		return nil, "", err
+	}
+	if !is_transient_http_status(response.StatusCode) {
+		return response, final_url, nil
+	}
+	retried_response, retried_url, retry_err := b.fetch_redirects_once(ctx, raw_url, headers)
+	if retry_err != nil {
+		return nil, "", retry_err
+	}
+	if retried_response.StatusCode == 0 {
+		return nil, "", fmt.Errorf("HTTP 0")
+	}
+	return retried_response, retried_url, nil
+}
+
+func is_transient_http_status(status_code int) bool {
+	switch status_code {
+	case 0, http.StatusRequestTimeout, http.StatusTooEarly, http.StatusTooManyRequests,
+		http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
+	}
+}
+
+func (b *MiniBrowser) fetch_redirects_once(ctx context.Context, raw_url string, headers http.Header) (*clawreq.Response, string, error) {
 	current_url := raw_url
 	request_headers := headers.Clone()
 	for redirect_count := 0; redirect_count <= max_redirects; redirect_count++ {
@@ -747,6 +775,12 @@ func discover_page_resources(page *Page, page_url *url.URL, navigate_options Nav
 				}
 			case "link":
 				kind, load := link_resource_kind(node)
+				// Module preloads are only an optimization. The module loader
+				// prefetches the actual import graph concurrently, without making
+				// hundreds of optional preload links a barrier to execution.
+				if load && has_link_relation(node, "modulepreload") {
+					load = false
+				}
 				if navigate_options.DisableSubresources ||
 					(navigate_options.DisableCSS && (kind == StyleResource || kind == FontResource)) ||
 					(navigate_options.DisableImages && kind == ImageResource) ||
@@ -870,6 +904,15 @@ func link_resource_kind(node *html.Node) (ResourceKind, bool) {
 		}
 	}
 	return "", false
+}
+
+func has_link_relation(node *html.Node, relation string) bool {
+	for _, value := range strings.Fields(strings.ToLower(attribute(node, "rel"))) {
+		if value == relation {
+			return true
+		}
+	}
+	return false
 }
 
 func is_javascript_type(value string) bool {
@@ -1312,6 +1355,12 @@ func (runtime *page_runtime) execute_job(ctx context.Context, job script_job) {
 	runtime.current_script = job.node
 	runtime.current_script_url = job.source_url
 	if job.module_script {
+		if err := runtime.prefetch_module_graph(ctx, job.source_url, &source); err != nil {
+			runtime.current_script = nil
+			runtime.current_script_url = ""
+			runtime.fail_script(job.source_url, err)
+			return
+		}
 		_, _, err := runtime.evaluate_module(ctx, job.source_url, &source)
 		runtime.current_script = nil
 		runtime.current_script_url = ""

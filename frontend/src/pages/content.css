@@ -140,17 +140,7 @@
 
 /* --- Tag system ---------------------------------------------------------- */
 .dm-content-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--dm-space-1, 4px);
-  padding: 1px var(--dm-space-1-5, 6px);
-  font-size: var(--dm-font-size-caption);
-  line-height: 1.4;
-  color: var(--dm-color-primary);
-  background: var(--dm-color-primary-soft);
-  border: var(--dm-border-width) solid var(--dm-color-primary-border);
-  border-radius: var(--dm-radius-full, 999px);
-  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .dm-content-tag__remove {
@@ -175,22 +165,18 @@
 }
 
 .dm-tag-select-trigger {
-  display: inline-grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
+  flex: 0 0 auto;
+  width: var(--dm-space-5);
+  min-height: var(--dm-space-5);
   padding: 0;
-  color: var(--dm-content-muted);
-  background: transparent;
-  border: var(--dm-border-width) dashed var(--dm-content-border);
-  border-radius: var(--dm-radius-sm, 6px);
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
 .dm-tag-select-trigger:hover {
   color: var(--dm-color-primary);
-  border-color: var(--dm-color-primary);
+  background: var(--dm-color-primary-soft);
+  border-color: var(--dm-color-primary-border);
 }
 
 .dm-tag-select-popover {
@@ -204,33 +190,47 @@
 
 .dm-tag-select-list {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: flex-start;
   gap: var(--dm-space-1, 4px);
   max-height: 220px;
   overflow-y: auto;
 }
 
 .dm-tag-select-option {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  width: 100%;
-  padding: var(--dm-space-1-5, 6px) var(--dm-space-2);
-  font-size: var(--dm-font-size-sm);
-  color: var(--dm-content-text);
-  text-align: left;
-  background: transparent;
-  border: 0;
-  border-radius: var(--dm-radius-sm, 6px);
+  justify-content: center;
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 100%;
+  min-height: var(--dm-space-5);
+  padding: 0 var(--dm-space-2);
+  font-size: var(--dm-font-size-caption);
+  font-weight: var(--dm-font-weight-semibold);
+  line-height: 1.2;
+  color: var(--dm-color-text-secondary);
+  white-space: nowrap;
+  text-align: center;
+  background: var(--dm-color-bg-interactive);
+  border: var(--dm-border-width) solid var(--dm-color-border);
+  border-radius: var(--dm-radius-badge);
   cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
 .dm-tag-select-option:hover {
-  background: var(--dm-content-panel-soft);
+  color: var(--dm-color-primary);
+  background: var(--dm-color-primary-soft);
+  border-color: var(--dm-color-primary-border);
 }
 
 .dm-tag-select-option.is-selected {
   color: var(--dm-color-primary);
   background: var(--dm-color-primary-soft);
+  border-color: var(--dm-color-primary-border);
 }
 
 .dm-tag-select-empty {

@@ -1,24 +1,25 @@
 import "./wxchannels.crypto.js";
+import {
+  dispose_wxchannels_player_pool,
+  mount_wxchannels_player,
+  prepare_wxchannels_player,
+} from "../player.js";
 
 const WX_CHANNELS_ENCRYPTED_LENGTH = 131072;
-const stream_worker_url = new URL(
-  "../../wxchannels.stream.js",
-  import.meta.url,
-);
 
 export function WxChannelsPlayerViewModel() {
   const Timeless = window.Timeless;
   const url_ = Timeless.ref("");
   const decode_key_ = Timeless.ref("");
   const playback_url_ = Timeless.ref("");
+  const playback_request_ = Timeless.ref(null);
+  const stream_playback_ = Timeless.ref(false);
   const loading_ = Timeless.ref(false);
   const error_ = Timeless.ref("");
   const status_ = Timeless.ref("");
   let request_sequence = 0;
   let abort_controller = null;
-  let playback_token = "";
-  let stream_worker = null;
-  let stream_worker_registration = null;
+  let stream_player_session = null;
   let object_url = "";
 
   const submit_disabled_ = Timeless.combine(
@@ -34,18 +35,14 @@ export function WxChannelsPlayerViewModel() {
   );
 
   function revoke_playback_url() {
+    void unmount_stream_player();
     if (object_url) {
       URL.revokeObjectURL(object_url);
       object_url = "";
     }
     playback_url_.as("");
-    if (playback_token && stream_worker) {
-      stream_worker.postMessage({
-        type: "revoke",
-        token: playback_token,
-      });
-    }
-    playback_token = "";
+    playback_request_.as(null);
+    stream_playback_.as(false);
   }
 
   function parse_inputs() {
@@ -70,50 +67,14 @@ export function WxChannelsPlayerViewModel() {
     return { url: parsed_url.href, key };
   }
 
-  async function ensure_stream_worker() {
-    if (stream_worker_registration) return stream_worker_registration;
-    if (!navigator.serviceWorker) {
-      throw new Error("当前环境不支持 Service Worker");
-    }
-    stream_worker_registration = await navigator.serviceWorker.register(
-      stream_worker_url,
-      { scope: "./" },
-    );
-    await navigator.serviceWorker.ready;
-    stream_worker = stream_worker_registration.active;
-    if (!stream_worker) throw new Error("流式播放 Worker 未激活");
-    stream_worker.addEventListener("message", handle_stream_message);
-    return stream_worker_registration;
-  }
-
-  function handle_stream_message(event) {
-    const message = event.data || {};
-    if (
-      message.type === "error" &&
-      message.token === playback_token &&
-      message.message
-    ) {
-      error_.as(message.message);
-      status_.as("");
-    }
-  }
-
-  async function start_stream_playback(input) {
+  async function start_stream_playback(input, sequence) {
     try {
-      await ensure_stream_worker();
-      playback_token = create_playback_token();
-      stream_worker.postMessage({
-        type: "play",
-        token: playback_token,
-        url: input.url,
-        key: input.key,
-      });
-      const media_url = new URL(
-        `wxchannels-stream/${playback_token}`,
-        stream_worker_url,
-      ).href;
-      playback_url_.as(media_url);
-      status_.as("流式播放中");
+      await prepare_wxchannels_player();
+      if (sequence !== request_sequence) return true;
+      playback_request_.as({ ...input, sequence });
+      stream_playback_.as(true);
+      playback_url_.as(input.url);
+      status_.as("正在初始化流式播放...");
       return true;
     } catch {
       status_.as("流式播放不可用，已回退为完整下载...");
@@ -121,8 +82,74 @@ export function WxChannelsPlayerViewModel() {
     }
   }
 
-  function create_playback_token() {
-    return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+  async function mount_stream_player(event) {
+    const sequence = request_sequence;
+    const input = playback_request_.value;
+    const video = event_target_video(event);
+    if (
+      !video ||
+      sequence !== request_sequence ||
+      !input ||
+      input.sequence !== sequence
+    ) {
+      return null;
+    }
+
+    try {
+      const session = await mount_wxchannels_player(video, input, {
+        onError(error) {
+          handle_stream_player_error(sequence, error);
+        },
+        onFirstSegmentDownload() {
+          if (sequence === request_sequence) {
+            status_.as("已读取视频数据，正在解密...");
+          }
+        },
+        onFirstSegmentRemux() {
+          if (sequence === request_sequence) {
+            status_.as("流式播放中");
+          }
+        },
+      });
+      if (sequence !== request_sequence) {
+        await session.dispose();
+        return null;
+      }
+      stream_player_session = session;
+      return session;
+    } catch (error) {
+      if (sequence === request_sequence) {
+        handle_stream_player_error(sequence, error);
+      }
+      return null;
+    }
+  }
+
+  async function unmount_stream_player() {
+    const session = stream_player_session;
+    stream_player_session = null;
+    await session?.dispose();
+  }
+
+  function handle_stream_player_error(sequence, error) {
+    if (sequence !== request_sequence) return;
+    const error_type = error?.errType || "";
+    if (error_type === "NETWORK_TIMEOUT_RETRY") return;
+
+    const message = error?.errMsg || error?.message || String(error);
+    error_.as(
+      error_type.startsWith("NETWORK")
+        ? `无法流式读取视频：${message || "该地址需要允许浏览器跨域访问（CORS）"}`
+        : `流式播放失败：${message}`,
+    );
+    status_.as("");
+  }
+
+  function event_target_video(event) {
+    const target = event?.target;
+    if (!target) return null;
+    if (typeof target.get$elm === "function") return target.get$elm();
+    return target.tagName === "VIDEO" ? target : null;
   }
 
   async function download_playback(input, sequence) {
@@ -143,6 +170,7 @@ export function WxChannelsPlayerViewModel() {
     );
     const video_blob = new Blob([encrypted_data], { type: "video/mp4" });
     object_url = URL.createObjectURL(video_blob);
+    stream_playback_.as(false);
     playback_url_.as(object_url);
     status_.as("解密完成，可以播放");
     return object_url;
@@ -192,6 +220,7 @@ export function WxChannelsPlayerViewModel() {
     abort_controller?.abort();
     abort_controller = null;
     revoke_playback_url();
+    void dispose_wxchannels_player_pool();
   }
 
   function media_error(event) {
@@ -261,10 +290,18 @@ export function WxChannelsPlayerViewModel() {
       error: error_,
       loading: loading_,
       playback_url: playback_url_,
+      playback_request: playback_request_,
+      stream_playback: stream_playback_,
       status: status_,
       submit_text: submit_text_,
     },
     ui,
-    methods: { destroy, media_error, submit },
+    methods: {
+      destroy,
+      media_error,
+      mount_stream_player,
+      submit,
+      unmount_stream_player,
+    },
   };
 }

@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/dop251/goja"
 	"github.com/evanw/esbuild/pkg/api"
@@ -33,6 +35,14 @@ type module_record struct {
 type import_map_document struct {
 	Imports map[string]string `json:"imports"`
 }
+
+type module_prefetch_result struct {
+	resource      *Resource
+	dependencies  []string
+	context_error error
+}
+
+var module_require_pattern = regexp.MustCompile(`require\(\s*["']([^"']+)["']\s*\)`)
 
 func parse_document_import_map(document *html.Node, document_url *url.URL) map[string]string {
 	imports := make(map[string]string)
@@ -169,6 +179,146 @@ func (runtime *page_runtime) evaluate_module(ctx context.Context, module_url str
 	return module_record_namespace(runtime.vm, record), true, nil
 }
 
+func (runtime *page_runtime) prefetch_module_graph(ctx context.Context, module_url string, source_override *string) error {
+	visited := map[string]bool{module_url: true}
+	wave := []string{module_url}
+	worker_count := resource_concurrency
+
+	for len(wave) > 0 {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		results := make([]module_prefetch_result, len(wave))
+		wait_group := &sync.WaitGroup{}
+		worker_slots := make(chan struct{}, worker_count)
+		for index, current_module_url := range wave {
+			wait_group.Add(1)
+			worker_slots <- struct{}{}
+			go func(result_index int, current_url string, current_source_override *string) {
+				defer wait_group.Done()
+				defer func() { <-worker_slots }()
+				results[result_index] = runtime.prefetch_module(ctx, current_url, current_source_override)
+			}(index, current_module_url, source_override_for_module(module_url, current_module_url, source_override))
+		}
+		wait_group.Wait()
+
+		next_wave_set := make(map[string]bool)
+		for _, result := range results {
+			if result.resource != nil {
+				runtime.page.Resources = append(runtime.page.Resources, *result.resource)
+			}
+			if result.context_error != nil {
+				return result.context_error
+			}
+			for _, dependency_url := range result.dependencies {
+				if visited[dependency_url] || runtime.modules[dependency_url] != nil {
+					continue
+				}
+				visited[dependency_url] = true
+				next_wave_set[dependency_url] = true
+			}
+		}
+		wave = make([]string, 0, len(next_wave_set))
+		for dependency_url := range next_wave_set {
+			wave = append(wave, dependency_url)
+		}
+		sort.Strings(wave)
+	}
+	return nil
+}
+
+func source_override_for_module(root_url string, current_url string, source_override *string) *string {
+	if root_url == current_url {
+		return source_override
+	}
+	return nil
+}
+
+func (runtime *page_runtime) prefetch_module(ctx context.Context, module_url string, source_override *string) module_prefetch_result {
+	result := module_prefetch_result{}
+	var load_error error
+	if err := ctx.Err(); err != nil {
+		result.context_error = err
+		return result
+	}
+
+	source := ""
+	content_type := ""
+	resource_found := false
+	if source_override != nil {
+		source, content_type = *source_override, "application/javascript"
+	} else {
+		for index := range runtime.page.Resources {
+			if runtime.page.Resources[index].URL != module_url {
+				continue
+			}
+			if runtime.page.Resources[index].Err != nil {
+				load_error = runtime.page.Resources[index].Err
+				return result
+			}
+			source, content_type, load_error = runtime.decode_module_resource(module_url, runtime.page.Resources[index])
+			resource_found = true
+			break
+		}
+		if !resource_found && load_error == nil {
+			resource_ctx, cancel := context_with_optional_timeout(ctx, runtime.page.resource_timeout)
+			resource := runtime.browser.download_resource(resource_ctx, runtime.page_url, runtime.request_headers, Resource{
+				URL:            module_url,
+				Kind:           ScriptResource,
+				fetch_priority: default_resource_priority(ScriptResource),
+			}, runtime.page.disable_cache)
+			cancel()
+			resource_copy := resource
+			result.resource = &resource_copy
+			if resource.Err != nil {
+				load_error = resource.Err
+				return result
+			}
+			source, content_type, load_error = runtime.decode_module_resource(module_url, resource)
+		}
+	}
+	if load_error != nil {
+		return result
+	}
+
+	transformed_source, transform_err := transform_module_source(module_url, source, content_type)
+	if transform_err != nil {
+		return result
+	}
+	result.dependencies = runtime.module_dependency_urls(module_url, transformed_source)
+	return result
+}
+
+func (runtime *page_runtime) decode_module_resource(module_url string, resource Resource) (string, string, error) {
+	if len(resource.Body) > max_script_size {
+		return "", "", fmt.Errorf("module %q exceeds %d bytes", module_url, max_script_size)
+	}
+	source, err := clawreq.DecodeText(resource.Body, resource.ContentType)
+	if err != nil {
+		return "", "", fmt.Errorf("decode module %q: %w", module_url, err)
+	}
+	return source, resource.ContentType, nil
+}
+
+func (runtime *page_runtime) module_dependency_urls(module_url string, transformed_source string) []string {
+	matches := module_require_pattern.FindAllStringSubmatch(transformed_source, -1)
+	dependencies := make([]string, 0, len(matches))
+	seen := make(map[string]bool, len(matches))
+	for _, match := range matches {
+		specifier := match[1]
+		if seen[specifier] {
+			continue
+		}
+		seen[specifier] = true
+		dependency_url, err := runtime.resolve_module_specifier(module_url, specifier)
+		if err != nil {
+			continue
+		}
+		dependencies = append(dependencies, dependency_url)
+	}
+	return dependencies
+}
+
 func module_record_namespace(vm *goja.Runtime, record *module_record) *goja.Object {
 	if record == nil || record.module == nil {
 		return nil
@@ -227,6 +377,10 @@ func (runtime *page_runtime) import_module(referrer_url string, specifier string
 		return promise
 	}
 	runtime.queue_host_job(func() {
+		if err := runtime.prefetch_module_graph(runtime.ctx, module_url, nil); err != nil {
+			_ = reject(runtime.vm.NewGoError(err))
+			return
+		}
 		namespace, _, load_err := runtime.evaluate_module(runtime.ctx, module_url, nil)
 		if load_err != nil {
 			_ = reject(runtime.vm.NewGoError(load_err))

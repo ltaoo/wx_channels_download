@@ -164,7 +164,7 @@ func TestReact19SSR(t *testing.T) {
 					}
 				};
 				return JSON.stringify(result);
-			})()`);
+			})()`)
 			if domInspect != nil {
 				t.Logf("DOM Inspection: %s", domInspect.String())
 			}
@@ -177,7 +177,7 @@ func TestReact19SSR(t *testing.T) {
 					var root = document.getElementById('root');
 					if (!root) return 'no root';
 					var keys = Object.keys(root);
-					var reactKeys = keys.filter(function(k) { return k.indexOf('__react') >= 0; });
+					var reactKeys = keys.filter(function(k) { return k.indexOf('__reactFiber') === 0 || k.indexOf('__reactContainer') === 0; });
 					return reactKeys.length > 0 ? reactKeys.join(',') : 'no react keys found, keys: ' + keys.slice(0, 10).join(',');
 				})(),
 				moduleScriptCount: document.querySelectorAll('script[type="module"]').length,

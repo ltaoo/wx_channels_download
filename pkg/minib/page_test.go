@@ -34,6 +34,36 @@ func TestCallJavaScriptHonorsContext(t *testing.T) {
 	}
 }
 
+func TestNavigateRetriesTransientConnectionReset(t *testing.T) {
+	request_count := 0
+	var request_mutex sync.Mutex
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		request_mutex.Lock()
+		request_count++
+		current_request_count := request_count
+		request_mutex.Unlock()
+		if current_request_count == 1 {
+			panic(http.ErrAbortHandler)
+		}
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(response_writer, `<!doctype html><title>recovered</title>`)
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.StatusCode != 200 || !strings.Contains(page.RenderedHTML, "<title>recovered</title>") {
+		t.Fatalf("navigation did not recover: status=%d html=%s", page.StatusCode, page.RenderedHTML)
+	}
+}
+
 func TestJavaScriptEnginePanicsBecomeErrors(t *testing.T) {
 	vm := goja.New()
 	if err := vm.Set("panicHost", func() { panic("host panic") }); err != nil {

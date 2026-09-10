@@ -41,7 +41,7 @@ func TestGitHubHydrationDebug(t *testing.T) {
 								var keys = Object.getOwnPropertyNames(node);
 								for (var i = 0; i < keys.length; i++) {
 									var key = keys[i];
-									if (key.indexOf('__reactFiber') === 0 || key.indexOf('__reactInternalInstance') === 0) {
+									if (key.indexOf('__reactFiber') === 0 || key.indexOf('__reactContainer') === 0 || key.indexOf('__reactInternalInstance') === 0) {
 										var fiber = node[key];
 										var visited = 0;
 										while (fiber && visited < 100) {
@@ -121,7 +121,7 @@ func TestGitHubHydrationDebug(t *testing.T) {
 				var fiberKey = null;
 				var names = Object.getOwnPropertyNames(root);
 				for (var i = 0; i < names.length; i++) {
-					if (names[i].indexOf('__reactFiber') === 0) { fiberKey = names[i]; break; }
+					if (names[i].indexOf('__reactFiber') === 0 || names[i].indexOf('__reactContainer') === 0) { fiberKey = names[i]; break; }
 				}
 				if (!fiberKey) return JSON.stringify({error: 'no fiber key', keys: names.filter(function(k) { return k.indexOf('__') === 0; })});
 

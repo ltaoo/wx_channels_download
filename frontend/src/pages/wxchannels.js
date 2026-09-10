@@ -121,22 +121,61 @@ function WxChannelsPlayerPageView(props) {
         Show({
           when: vm$.state.playback_url,
           ok() {
-            return View({
-              class: "wxchannels-player",
-              attributes: { n: "wxchannels-player" },
-            }, [
-              Timeless.Video({
-                class: "wxchannels-video",
-                src: vm$.state.playback_url.value,
-                controls: true,
-                playsInline: true,
-                preload: "metadata",
-                attributes: { n: "wxchannels-video-media" },
-                onError(event) {
-                  vm$.methods.media_error(event);
+            return [
+              Show({
+                when: vm$.state.stream_playback,
+                ok() {
+                  return View({
+                    class: "wxchannels-player",
+                    attributes: { n: "wxchannels-player" },
+                  }, [
+                    Timeless.Video({
+                      class: "wxchannels-video",
+                      controls: true,
+                      playsInline: true,
+                      preload: "auto",
+                      attributes: { n: "wxchannels-video-media" },
+                      onMounted(event) {
+                        vm$.methods.mount_stream_player(event);
+                      },
+                      onUnmounted() {
+                        vm$.methods.unmount_stream_player();
+                      },
+                      onError(event) {
+                        vm$.methods.media_error(event);
+                      },
+                    }),
+                  ]);
                 },
               }),
-            ]);
+              Show({
+                when: Timeless.combine(
+                  {
+                    playback_url: vm$.state.playback_url,
+                    stream_playback: vm$.state.stream_playback,
+                  },
+                  (state) => Boolean(state.playback_url) && !state.stream_playback,
+                ),
+                ok() {
+                  return View({
+                    class: "wxchannels-player",
+                    attributes: { n: "wxchannels-player" },
+                  }, [
+                    Timeless.Video({
+                      class: "wxchannels-video",
+                      src: vm$.state.playback_url.value,
+                      controls: true,
+                      playsInline: true,
+                      preload: "metadata",
+                      attributes: { n: "wxchannels-video-media" },
+                      onError(event) {
+                        vm$.methods.media_error(event);
+                      },
+                    }),
+                  ]);
+                },
+              }),
+            ];
           },
         }),
       ]),
