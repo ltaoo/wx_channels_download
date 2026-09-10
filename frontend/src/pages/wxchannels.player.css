@@ -1,0 +1,27 @@
+.wxchannels-player {
+  min-width: 0;
+  padding: var(--dm-space-4);
+  border: 1px solid var(--dm-content-border);
+  border-radius: var(--dm-radius-card);
+  background: var(--dm-content-panel);
+}
+
+.wxchannels-status,
+.wxchannels-error {
+  font-size: var(--dm-font-size-sm);
+}
+
+.wxchannels-status {
+  color: var(--dm-content-muted);
+}
+
+.wxchannels-error {
+  color: var(--dm-color-danger, #dc2626);
+}
+
+.wxchannels-video {
+  width: 100%;
+  max-height: 72vh;
+  background: #000;
+  border-radius: var(--dm-radius-content);
+}

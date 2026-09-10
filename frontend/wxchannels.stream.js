@@ -4,7 +4,10 @@ self.importScripts(
 
 const ENCRYPTED_LENGTH = 131072;
 const STREAM_MARKER = "/wxchannels-stream/";
-const streams = new Map();
+const STREAM_CONFIG_URL = new URL(
+  "wxchannels-stream/config",
+  self.location,
+).href;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
@@ -17,24 +20,64 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("message", (event) => {
   const message = event.data || {};
   if (message.type === "play") {
-    streams.set(message.token, message);
+    event.waitUntil(save_stream(message));
   } else if (message.type === "revoke") {
-    streams.delete(message.token);
+    event.waitUntil(revoke_stream(message.token));
   }
 });
 
 self.addEventListener("fetch", (event) => {
-  const stream = stream_for_request(event.request);
-  if (!stream) return;
-  event.respondWith(decrypt_stream_response(event.request, stream));
+  const token = stream_token_for_request(event.request);
+  if (!token) return;
+  event.respondWith(
+    (async () => {
+      const stream = await load_stream(token);
+      if (!stream) {
+        return new Response("WxChannels stream not found", { status: 404 });
+      }
+      return decrypt_stream_response(event.request, stream);
+    })(),
+  );
 });
 
-function stream_for_request(request) {
+function stream_token_for_request(request) {
   if (!["GET", "HEAD"].includes(request.method)) return null;
   const pathname = new URL(request.url).pathname;
   const marker_index = pathname.lastIndexOf(STREAM_MARKER);
   if (marker_index < 0) return null;
-  return streams.get(pathname.slice(marker_index + STREAM_MARKER.length));
+  const token = pathname.slice(marker_index + STREAM_MARKER.length);
+  return token && token !== "config" ? token : null;
+}
+
+async function save_stream(message) {
+  const cache = await caches.open("wxchannels-streams");
+  await cache.put(
+    STREAM_CONFIG_URL,
+    new Response(
+      JSON.stringify({
+        token: message.token,
+        url: message.url,
+        key: message.key.toString(),
+      }),
+      { headers: { "content-type": "application/json" } },
+    ),
+  );
+}
+
+async function load_stream(token) {
+  const cache = await caches.open("wxchannels-streams");
+  const response = await cache.match(STREAM_CONFIG_URL);
+  if (!response) return null;
+  const stream = await response.json();
+  if (stream.token !== token) return null;
+  return { ...stream, key: BigInt(stream.key) };
+}
+
+async function revoke_stream(token) {
+  const stream = await load_stream(token);
+  if (!stream) return;
+  const cache = await caches.open("wxchannels-streams");
+  await cache.delete(STREAM_CONFIG_URL);
 }
 
 async function decrypt_stream_response(request, stream) {
@@ -59,13 +102,7 @@ async function decrypt_stream_response(request, stream) {
       const value = response.headers.get(name);
       if (value) headers.set(name, value);
     }
-    if (
-      !headers.has("accept-ranges") &&
-      response.status === 206 &&
-      request.headers.has("range")
-    ) {
-      headers.set("accept-ranges", "bytes");
-    }
+    headers.set("accept-ranges", "bytes");
     if (request.method === "HEAD" || !response.body) {
       return new Response(null, {
         status: response.status,

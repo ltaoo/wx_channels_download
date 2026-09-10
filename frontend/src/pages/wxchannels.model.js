@@ -46,9 +46,13 @@ export function WxChannelsPlayerViewModel() {
   }
 
   function parse_inputs() {
+    return parse_playback_input(url_.value, decode_key_.value);
+  }
+
+  function parse_playback_input(raw_url, raw_key) {
     let parsed_url;
     try {
-      parsed_url = new URL(url_.value.trim());
+      parsed_url = new URL(String(raw_url || "").trim());
     } catch {
       throw new Error("请输入有效的视频 URL");
     }
@@ -56,7 +60,7 @@ export function WxChannelsPlayerViewModel() {
       throw new Error("视频 URL 仅支持 http 或 https");
     }
 
-    const key_text = decode_key_.value.trim();
+    const key_text = String(raw_key || "").trim();
     if (!/^(?:0x[0-9a-f]+|[0-9]+)$/i.test(key_text)) {
       throw new Error("decodeKey 必须是十进制或 0x 十六进制数字");
     }
@@ -177,11 +181,20 @@ export function WxChannelsPlayerViewModel() {
   }
 
   async function submit() {
+    try {
+      return await play(parse_inputs());
+    } catch (error) {
+      error_.as(error.message || String(error));
+      return null;
+    }
+  }
+
+  async function play(source) {
     if (loading_.value) return null;
 
     let input;
     try {
-      input = parse_inputs();
+      input = parse_playback_input(source.url, source.decode_key ?? source.key);
     } catch (error) {
       error_.as(error.message || String(error));
       return null;
@@ -296,12 +309,6 @@ export function WxChannelsPlayerViewModel() {
       submit_text: submit_text_,
     },
     ui,
-    methods: {
-      destroy,
-      media_error,
-      mount_stream_player,
-      submit,
-      unmount_stream_player,
-    },
+    methods: { destroy, media_error, play, submit },
   };
 }

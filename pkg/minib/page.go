@@ -1646,20 +1646,19 @@ TreeWalker.prototype.nextNode = function() {
 };
 TreeWalker.prototype.previousNode = function() {
   var node = this.currentNode;
-  while (node && node !== this.root) {
+  while (node !== this.root) {
     var sibling = node.previousSibling;
     while (sibling) {
       node = sibling;
-      var lastChild = node.lastChild;
-      while (lastChild) { node = lastChild; lastChild = node.lastChild; }
+      while (node.lastChild) node = node.lastChild;
       if (this._accept(node)) { this.currentNode = node; return node; }
-      sibling = node === this.currentNode ? null : node.previousSibling;
-      if (!sibling) { sibling = node.parentNode && node.parentNode !== this.root ? node.parentNode : null; if (sibling && this._accept(sibling)) { this.currentNode = sibling; return sibling; } break; }
+      sibling = node.previousSibling;
+      if (node === this.currentNode) break;
     }
-    if (!sibling) {
-      node = node.parentNode;
-      if (node && node !== this.root && this._accept(node)) { this.currentNode = node; return node; }
-    }
+    node = this.currentNode.parentNode || node.parentNode;
+    if (!node || node === this.root) return null;
+    if (this._accept(node)) { this.currentNode = node; return node; }
+    this.currentNode = node;
   }
   return null;
 };
@@ -1693,29 +1692,21 @@ TreeWalker.prototype.parentNode = function() {
 };
 TreeWalker.prototype.nextSibling = function() {
   var node = this.currentNode;
-  while (node && node !== this.root) {
-    var sibling = node.nextSibling;
-    while (sibling) {
-      if (this._accept(sibling)) { this.currentNode = sibling; return sibling; }
-      if (sibling.firstChild) { sibling = sibling.firstChild; continue; }
-      while (sibling && !sibling.nextSibling && sibling.parentNode !== node.parentNode) sibling = sibling.parentNode;
-      sibling = sibling ? sibling.nextSibling : null;
-    }
-    node = node.parentNode;
+  if (node === this.root) return null;
+  var sibling = node.nextSibling;
+  while (sibling) {
+    if (this._accept(sibling)) { this.currentNode = sibling; return sibling; }
+    sibling = sibling.nextSibling;
   }
   return null;
 };
 TreeWalker.prototype.previousSibling = function() {
   var node = this.currentNode;
-  while (node && node !== this.root) {
-    var sibling = node.previousSibling;
-    while (sibling) {
-      if (this._accept(sibling)) { this.currentNode = sibling; return sibling; }
-      if (sibling.lastChild) { sibling = sibling.lastChild; continue; }
-      while (sibling && !sibling.previousSibling && sibling.parentNode !== node.parentNode) sibling = sibling.parentNode;
-      sibling = sibling ? sibling.previousSibling : null;
-    }
-    node = node.parentNode;
+  if (node === this.root) return null;
+  var sibling = node.previousSibling;
+  while (sibling) {
+    if (this._accept(sibling)) { this.currentNode = sibling; return sibling; }
+    sibling = sibling.previousSibling;
   }
   return null;
 };

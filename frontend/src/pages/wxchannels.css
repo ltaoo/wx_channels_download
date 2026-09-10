@@ -1,3 +1,5 @@
+@import url("./wxchannels.player.css");
+
 .wxchannels-page {
   min-height: 100%;
   background: var(--dm-content-bg);
@@ -10,8 +12,7 @@
   padding-top: var(--dm-space-8);
 }
 
-.wxchannels-panel,
-.wxchannels-player {
+.wxchannels-panel {
   padding: var(--dm-space-6);
   border: 1px solid var(--dm-content-border);
   border-radius: var(--dm-radius-card);
@@ -58,20 +59,4 @@
 .wxchannels-status,
 .wxchannels-error {
   margin-top: var(--dm-space-4);
-  font-size: var(--dm-font-size-sm);
-}
-
-.wxchannels-status {
-  color: var(--dm-content-muted);
-}
-
-.wxchannels-error {
-  color: var(--dm-color-danger, #dc2626);
-}
-
-.wxchannels-video {
-  width: 100%;
-  max-height: 72vh;
-  background: #000;
-  border-radius: var(--dm-radius-content);
 }

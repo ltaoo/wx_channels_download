@@ -711,6 +711,10 @@ export function ShellViewModel(props) {
     return update$.methods.check();
   }
 
+  function go_home() {
+    return props.history.push("root.shell.download");
+  }
+
   function destroy() {
     certificate_request_sequence += 1;
     if (typeof certificate_request.destroy === "function") {
@@ -750,6 +754,7 @@ export function ShellViewModel(props) {
     },
     methods: {
       destroy,
+      goHome: go_home,
       loadCertificate: load_certificate,
       ready,
     },

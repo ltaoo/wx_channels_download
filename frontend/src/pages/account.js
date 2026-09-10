@@ -1,4 +1,5 @@
 import { AccountViewModel } from "./account.model.js";
+import WxChannelsPlayerView from "./wxchannels.player.js";
 import {
   BrandEmpty,
   BrandError,
@@ -278,7 +279,11 @@ function AccountContentCard(props) {
       attributes: {
         n: "account-content-card",
         type: source_url ? "button" : undefined,
-        title: source_url ? "打开原内容" : undefined,
+        title: source_url
+          ? kind === "video" && content.decode_key
+            ? "在抽屉内播放视频"
+            : "打开原内容"
+          : undefined,
       },
       onClick() {
         if (source_url) vm$.methods.openContent(content);
@@ -306,6 +311,102 @@ function AccountContentCard(props) {
             : null,
         ].filter(Boolean)
       : [AccountContentMedia({ content, coverMeta: cover_meta })],
+  );
+}
+
+function AccountContentPlayer(props) {
+  const vm$ = props.store;
+  const content = props.content;
+  return View(
+    {
+      class: "account-content-player",
+      attributes: {
+        n: "account-content-player",
+        role: "region",
+        "aria-label": "账号视频播放",
+      },
+    },
+    [
+      View(
+        {
+          class: "account-content-player-header",
+          attributes: { n: "account-content-player-header" },
+        },
+        [
+          View({
+            as: "h3",
+            class: "account-content-player-title",
+            attributes: { n: "account-content-player-title" },
+          }, [content.title || content.external_id || "未命名视频"]),
+          View(
+            {
+              class: "account-content-player-actions",
+              attributes: { n: "account-content-player-actions" },
+            },
+            [
+              AccountPageActionButton({
+                name: "account-content-player-download-action",
+                store: vm$.ui.btn_download_player$,
+                icon: "download",
+                label: "下载",
+                title: "创建下载任务",
+              }),
+              View({
+                as: "button",
+                class: "account-content-player-close",
+                attributes: {
+                  n: "account-content-player-close-action",
+                  type: "button",
+                  title: "返回内容列表",
+                },
+                onClick() {
+                  vm$.methods.closeContentPlayer();
+                },
+              }, [
+                Timeless.Icon({
+                  name: "x",
+                  size: 16,
+                  attributes: { n: "account-content-player-close-icon" },
+                }),
+                "返回列表",
+              ]),
+            ],
+          ),
+        ],
+      ),
+      Show({
+        when: vm$.state.drawer_player_download_success,
+        ok() {
+          return View({
+            class: "account-content-player-download-success",
+            attributes: {
+              n: "account-content-player-download-success",
+              role: "status",
+            },
+          }, [vm$.state.drawer_player_download_success]);
+        },
+      }),
+      Show({
+        when: vm$.state.drawer_player_download_error,
+        ok() {
+          return View({
+            class: "account-content-player-download-error",
+            attributes: {
+              n: "account-content-player-download-error",
+              role: "alert",
+            },
+          }, [vm$.state.drawer_player_download_error]);
+        },
+      }),
+      WxChannelsPlayerView({
+        url: content.url,
+        decodeKey: content.decode_key,
+        autoplay: true,
+        class: "account-content-player-media",
+        nodeName: "account-content-player-media",
+        ariaLabel: content.title || "账号视频",
+      }),
+    ],
   );
 }
 
@@ -488,18 +589,37 @@ function AccountContentsDrawer(props) {
           attributes: { n: "account-content-drawer-body" },
         },
         [
-          Tabs(
-            {
-              class: "account-content-tabs",
-              attributes: { n: "account-content-tabs" },
-              each: vm$.state.drawer_tabs,
-              key: "scope",
-              render(tab) {
-                return AccountContentTab({ store: vm$, tab });
-              },
+          Show({
+            when: vm$.state.drawer_player_content,
+            ok() {
+              return AccountContentPlayer({
+                store: vm$,
+                content: vm$.state.drawer_player_content.value,
+              });
             },
-          ),
-          AccountContentsCollection({ store: vm$ }),
+          }),
+          Show({
+            when: computed(
+              vm$.state.drawer_player_content,
+              (content) => !content,
+            ),
+            ok() {
+              return [
+                Tabs(
+                  {
+                    class: "account-content-tabs",
+                    attributes: { n: "account-content-tabs" },
+                    each: vm$.state.drawer_tabs,
+                    key: "scope",
+                    render(tab) {
+                      return AccountContentTab({ store: vm$, tab });
+                    },
+                  },
+                ),
+                AccountContentsCollection({ store: vm$ }),
+              ];
+            },
+          }),
         ],
       ),
     ],

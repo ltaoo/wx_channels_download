@@ -199,6 +199,15 @@ function normalize_home_detail_content(raw, account) {
   const media_token = String(
     first_non_empty(media.urlToken, media.URLToken),
   ).trim();
+  const decode_key = String(
+    first_non_empty(
+      media.decodeKey,
+      media.DecodeKey,
+      media.decode_key,
+      source.decode_key,
+      source.decodeKey,
+    ),
+  ).trim();
   const preview_images = media_list.map((item) => {
     const item_url = String(first_non_empty(item.url, item.URL)).trim();
     const item_token = String(
@@ -259,6 +268,7 @@ function normalize_home_detail_content(raw, account) {
       source.sourceUrl,
       media_url ? `${media_url}${media_token}` : "",
     ),
+    decode_key,
     cover_url: first_non_empty(
       media.thumbUrl,
       media.coverUrl,
@@ -332,6 +342,10 @@ function AccountViewModel(props) {
   const drawer_next_marker_ = ref("");
   const drawer_more_error_ = ref("");
   const drawer_error_ = ref("");
+  const drawer_player_content_ = ref(null);
+  const drawer_player_download_loading_ = ref(false);
+  const drawer_player_download_error_ = ref("");
+  const drawer_player_download_success_ = ref("");
   let request_sequence = 0;
   let drawer_request_sequence = 0;
   let copy_feedback_timer = null;
@@ -347,6 +361,10 @@ function AccountViewModel(props) {
           `/api/account/${encodeURIComponent(request.scope)}/content/list`,
           request.params,
         ),
+        { client: props.client },
+      ),
+      download_create: new Timeless.kit.RequestCore(
+        (body) => window.request.post("/api/v1/download_task/create", body),
         { client: props.client },
       ),
     },
@@ -468,6 +486,12 @@ function AccountViewModel(props) {
         );
       },
     }),
+    btn_download_player$: new Timeless.vm.ButtonCore({
+      variant: "primary",
+      onClick() {
+        return create_player_download_task(drawer_player_content_.value);
+      },
+    }),
   };
 
   keyword_.subscribe({
@@ -491,6 +515,12 @@ function AccountViewModel(props) {
   drawer_loading_.subscribe({
     onChange(loading) {
       ui.btn_drawer_retry$.setLoading(Boolean(loading));
+    },
+  });
+
+  drawer_player_download_loading_.subscribe({
+    onChange(loading) {
+      ui.btn_download_player$.setLoading(Boolean(loading));
     },
   });
   function sync_search_location() {
@@ -632,6 +662,37 @@ function AccountViewModel(props) {
     return result;
   }
 
+  async function create_player_download_task(content) {
+    if (drawer_player_download_loading_.value || !content) return null;
+    drawer_player_download_loading_.as(true);
+    drawer_player_download_error_.as("");
+    drawer_player_download_success_.as("");
+
+    const result = await reqs.account.download_create.run({
+      objects: [{
+        platform: "wxchannels",
+        content,
+        filename: content.title || content.external_id || "",
+      }],
+    });
+    drawer_player_download_loading_.as(false);
+    if (result.error) {
+      drawer_player_download_error_.as(
+        result.error.message || String(result.error),
+      );
+      return result;
+    }
+
+    const task = result.data?.tasks?.[0];
+    if (Number(task?.code) !== 0) {
+      drawer_player_download_error_.as(task?.msg || "下载任务创建失败");
+      return result;
+    }
+    drawer_player_download_success_.as("下载任务创建成功");
+    window.DLUtils?.toast?.("下载任务创建成功");
+    return result;
+  }
+
   const methods = {
     ready() {
       return load(1);
@@ -662,6 +723,7 @@ function AccountViewModel(props) {
       const scope = account_home_default_scope(account);
       selected_account_.as(account);
       drawer_tabs_.as([], { reset: true });
+      drawer_player_content_.as(null);
       drawer_scope_.as(scope);
       ui.account_contents_drawer$.show();
       return load_account_contents(account, scope);
@@ -683,7 +745,21 @@ function AccountViewModel(props) {
       return load_account_contents(account, scope, { append: true, page });
     },
     openContent(content) {
+      const is_playable_video = String(
+        content && content.content_type || "",
+      ).toLowerCase() === "video" &&
+        Boolean(content && content.url && content.decode_key);
+      if (is_playable_video) {
+        drawer_player_content_.as(content);
+        drawer_player_download_error_.as("");
+        drawer_player_download_success_.as("");
+        return null;
+      }
       if (content && content.url) props.app.openWindow(content.url);
+      return null;
+    },
+    closeContentPlayer() {
+      drawer_player_content_.as(null);
     },
     platformName: account_platform_name,
     contentTypeLabel: content_type_label,
@@ -713,6 +789,10 @@ function AccountViewModel(props) {
     drawer_loading_more: drawer_loading_more_,
     drawer_more_error: drawer_more_error_,
     drawer_error: drawer_error_,
+    drawer_player_content: drawer_player_content_,
+    drawer_player_download_error: drawer_player_download_error_,
+    drawer_player_download_loading: drawer_player_download_loading_,
+    drawer_player_download_success: drawer_player_download_success_,
     drawer_status: drawer_status_,
     drawer_empty_description: drawer_empty_description_,
   };
