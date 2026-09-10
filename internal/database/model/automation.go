@@ -4,6 +4,7 @@ package model
 const (
 	FlowRunTriggerCron   = "Cron"
 	FlowRunTriggerAPI    = "API"
+	FlowRunTriggerEvent  = "Event"
 	FlowRunTriggerManual = "Manual"
 )
 
@@ -25,7 +26,7 @@ type FlowSchedule struct {
 	CronExpr      string `gorm:"column:cron_expr;not null" json:"cron_expr"`
 	FlowID        string `gorm:"column:flow_id;not null;index" json:"flow_id"`
 	InitialData   string `gorm:"column:initial_data;type:text" json:"initial_data"`
-	Enabled       bool   `gorm:"not null;default:true" json:"enabled"`
+	Enabled       bool   `gorm:"not null" json:"enabled"`
 	TimeoutSec    int    `gorm:"column:timeout_sec;not null;default:3600" json:"timeout_sec"`
 	NextRunAt     *int64 `gorm:"column:next_run_at;index" json:"next_run_at"`
 	LastRunID     string `gorm:"column:last_run_id" json:"last_run_id"`

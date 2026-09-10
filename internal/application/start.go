@@ -16,6 +16,7 @@ import (
 
 	"wx_channel/frontend"
 	"wx_channel/internal/adapter"
+	wxchannelsadapter "wx_channel/internal/adapter/wxchannels"
 	"wx_channel/internal/api"
 	"wx_channel/internal/buildtags"
 	"wx_channel/internal/config"
@@ -26,8 +27,8 @@ import (
 	"wx_channel/internal/services"
 	"wx_channel/internal/webassets"
 	"wx_channel/pkg/cache"
-	"wx_channel/pkg/flowengine"
 	"wx_channel/pkg/cookies"
+	"wx_channel/pkg/flowengine"
 	"wx_channel/pkg/hermes"
 	"wx_channel/pkg/hermes/protocol"
 	"wx_channel/pkg/system"
@@ -236,6 +237,12 @@ func Start(cfg *config.Config) error {
 	// One flow engine is shared by the automation service and any caller that
 	// registers flow definitions on it.
 	flow_engine := flowengine.NewWorkflowEngine()
+	wxchannels_flows := wxchannelsadapter.GetWXChannelsPostprocessFlows()
+	wxchannels_flow_definitions := make(map[string]flowengine.FlowDefinition, len(wxchannels_flows))
+	for _, flow := range wxchannels_flows {
+		wxchannels_flow_definitions[flow.ID] = flow
+	}
+	flow_engine.SetFlowDefinitions(wxchannels_flow_definitions)
 	automation_service := services.NewAutomationService(b.DB, logger, flow_engine, bus)
 	automation_service.Start()
 

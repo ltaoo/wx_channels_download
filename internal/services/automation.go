@@ -22,6 +22,11 @@ const (
 	default_schedule_timeout_sec = 3600
 	max_schedule_timeout_sec     = 24 * 60 * 60
 
+	// automation_metadata_key stores UI trigger metadata alongside user context.
+	// Keeping it inside initial_data avoids a migration while still allowing a
+	// schedule to select a custom start node and event key.
+	automation_metadata_key = "__automation"
+
 	// automation_tick_interval is how often due schedules are looked up. The
 	// tick drives scheduling; the cron parser only computes the next fire time,
 	// so the effective resolution never exceeds this interval.
@@ -145,7 +150,7 @@ func (s *AutomationService) tick() {
 		go func(schedule model.FlowSchedule) {
 			defer s.wg.Done()
 			defer s.running.Delete(schedule.ID)
-			s.execute_schedule(schedule, model.FlowRunTriggerCron)
+			s.execute_schedule(schedule, model.FlowRunTriggerCron, schedule.CronExpr)
 		}(schedule)
 	}
 }
@@ -224,11 +229,17 @@ func (s *AutomationService) CreateSchedule(input CreateScheduleInput) (*model.Fl
 	if err != nil {
 		return nil, err
 	}
+	metadata := automation_schedule_metadata(model.FlowSchedule{
+		InitialData: initial_data,
+	})
 
 	now := time.Now().UnixMilli()
-	enabled := true
+	enabled := metadata.Type == model.FlowRunTriggerCron
 	if input.Enabled != nil {
 		enabled = *input.Enabled
+	}
+	if enabled && metadata.Type != model.FlowRunTriggerCron {
+		return nil, fmt.Errorf("%s 触发的流程不能启用 Cron 调度", metadata.Type)
 	}
 	schedule := &model.FlowSchedule{
 		ID:          fmt.Sprintf("sched-%d", time.Now().UnixNano()),
@@ -312,6 +323,16 @@ func (s *AutomationService) UpdateSchedule(id string, input UpdateScheduleInput)
 		enabled = *input.Enabled
 		enabled_changed = true
 		updates["enabled"] = enabled
+	}
+	initial_data := schedule.InitialData
+	if value, exists := updates["initial_data"]; exists {
+		initial_data, _ = value.(string)
+	}
+	metadata := automation_schedule_metadata(model.FlowSchedule{
+		InitialData: initial_data,
+	})
+	if enabled && metadata.Type != model.FlowRunTriggerCron {
+		return nil, fmt.Errorf("%s 触发的流程不能启用 Cron 调度", metadata.Type)
 	}
 	if input.CronExpr != nil || enabled_changed {
 		next_run, err := s.next_run_at(cron_expr, time.Now())
@@ -422,6 +443,10 @@ func (s *AutomationService) ToggleSchedule(id string) (*model.FlowSchedule, erro
 		return nil, err
 	}
 	enabled := !schedule.Enabled
+	metadata := automation_schedule_metadata(*schedule)
+	if enabled && metadata.Type != model.FlowRunTriggerCron {
+		return nil, fmt.Errorf("%s 触发的流程不能启用 Cron 调度", metadata.Type)
+	}
 	updates := map[string]interface{}{
 		"enabled":    enabled,
 		"updated_at": time.Now().UnixMilli(),
@@ -443,8 +468,15 @@ func (s *AutomationService) ToggleSchedule(id string) (*model.FlowSchedule, erro
 	return s.GetSchedule(id)
 }
 
-// TriggerSchedule runs a schedule immediately, outside its cron plan.
+// TriggerSchedule runs a schedule immediately as a manual trigger.
 func (s *AutomationService) TriggerSchedule(id string) (*model.FlowRunRecord, error) {
+	return s.TriggerScheduleAs(id, model.FlowRunTriggerManual, "")
+}
+
+// TriggerScheduleAs runs a schedule immediately with an explicit trigger type.
+// It lets the HTTP API distinguish an event trigger from a button-driven
+// manual trigger while sharing the same concurrency and persistence path.
+func (s *AutomationService) TriggerScheduleAs(id string, trigger_type string, trigger_key string) (*model.FlowRunRecord, error) {
 	schedule, err := s.GetSchedule(id)
 	if err != nil {
 		return nil, err
@@ -452,11 +484,22 @@ func (s *AutomationService) TriggerSchedule(id string) (*model.FlowRunRecord, er
 	if s.flow_engine == nil {
 		return nil, fmt.Errorf("流程引擎未初始化")
 	}
+	metadata := automation_schedule_metadata(*schedule)
+	switch trigger_type {
+	case model.FlowRunTriggerManual, model.FlowRunTriggerEvent:
+	case model.FlowRunTriggerCron:
+		return nil, fmt.Errorf("Cron 触发由调度器执行")
+	default:
+		return nil, fmt.Errorf("不支持的触发类型: %s", trigger_type)
+	}
+	if trigger_key == "" {
+		trigger_key = metadata.EventKey
+	}
 	if _, claimed := s.running.LoadOrStore(schedule.ID, struct{}{}); claimed {
 		return nil, fmt.Errorf("定时任务 %s 正在执行中", schedule.ID)
 	}
 	defer s.running.Delete(schedule.ID)
-	return s.execute_schedule(*schedule, model.FlowRunTriggerManual), nil
+	return s.execute_schedule(*schedule, trigger_type, trigger_key), nil
 }
 
 // ListRuns returns one page of run history and the total matching count.
@@ -547,7 +590,7 @@ func (s *AutomationService) CancelRun(id string) error {
 // execute_schedule runs one flow for a schedule and persists the outcome. It
 // never returns nil for a schedule that could be started; callers own the
 // concurrency guard around it.
-func (s *AutomationService) execute_schedule(schedule model.FlowSchedule, trigger_type string) *model.FlowRunRecord {
+func (s *AutomationService) execute_schedule(schedule model.FlowSchedule, trigger_type string, trigger_key string) *model.FlowRunRecord {
 	now := time.Now()
 	now_millis := now.UnixMilli()
 	started_at := now_millis
@@ -556,7 +599,7 @@ func (s *AutomationService) execute_schedule(schedule model.FlowSchedule, trigge
 		ScheduleID:  schedule.ID,
 		FlowID:      schedule.FlowID,
 		TriggerType: trigger_type,
-		TriggerKey:  schedule.CronExpr,
+		TriggerKey:  trigger_key,
 		Status:      model.FlowRunStatusRunning,
 		StartedAt:   &started_at,
 		Timestamps: model.Timestamps{
@@ -576,7 +619,7 @@ func (s *AutomationService) execute_schedule(schedule model.FlowSchedule, trigge
 		Trigger:    trigger_type,
 	})
 
-	instance_id, status, error_text := s.run_flow(schedule, trigger_type)
+	instance_id, status, error_text := s.run_flow(schedule, trigger_type, trigger_key)
 	run.Status = status
 	run.Error = error_text
 
@@ -636,19 +679,22 @@ func (s *AutomationService) execute_schedule(schedule model.FlowSchedule, trigge
 
 // run_flow starts the flow and translates the engine outcome into the engine
 // instance id, a run status, and error text.
-func (s *AutomationService) run_flow(schedule model.FlowSchedule, trigger_type string) (string, string, string) {
+func (s *AutomationService) run_flow(schedule model.FlowSchedule, trigger_type string, trigger_key string) (string, string, string) {
 	if s.flow_engine == nil {
 		return "", model.FlowRunStatusFailed, "流程引擎未初始化"
 	}
+	metadata := automation_schedule_metadata(schedule)
+	initial_data := flow_initial_data(schedule)
 	instance_id, run_err := s.flow_engine.StartFlowWithOptions(
 		schedule.FlowID,
-		decode_initial_data(schedule.InitialData),
+		initial_data,
 		flowengine.StartFlowOptions{
 			Trigger: flowengine.TriggerInfo{
 				Type:   flowengine.TriggerType(trigger_type),
-				Key:    schedule.CronExpr,
+				Key:    trigger_key,
 				Source: schedule.ID,
 			},
+			StartNodeID: metadata.StartNodeID,
 		},
 	)
 	if run_err != nil {
@@ -757,6 +803,37 @@ func normalize_automation_page(page int, page_size int) (int, int, error) {
 		return 0, 0, fmt.Errorf("page_size 必须在 1 到 %d 之间", max_automation_page_size)
 	}
 	return page, page_size, nil
+}
+
+type automation_schedule_config struct {
+	Type        string
+	StartNodeID string
+	EventKey    string
+}
+
+func automation_schedule_metadata(schedule model.FlowSchedule) automation_schedule_config {
+	raw, _ := decode_initial_data(schedule.InitialData)[automation_metadata_key].(map[string]interface{})
+	config := automation_schedule_config{
+		Type: model.FlowRunTriggerCron,
+	}
+	if raw == nil {
+		return config
+	}
+	if value, _ := raw["type"].(string); value != "" {
+		switch value {
+		case model.FlowRunTriggerCron, model.FlowRunTriggerEvent, model.FlowRunTriggerManual:
+			config.Type = value
+		}
+	}
+	config.StartNodeID, _ = raw["start_node"].(string)
+	config.EventKey, _ = raw["event_key"].(string)
+	return config
+}
+
+func flow_initial_data(schedule model.FlowSchedule) map[string]interface{} {
+	data := decode_initial_data(schedule.InitialData)
+	delete(data, automation_metadata_key)
+	return data
 }
 
 func marshal_initial_data(initial_data map[string]interface{}) (string, error) {

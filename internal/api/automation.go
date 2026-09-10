@@ -1,12 +1,15 @@
 package api
 
 import (
+	"errors"
+	"io"
 	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	result "wx_channel/internal/apiresult"
+	"wx_channel/internal/database/model"
 	"wx_channel/internal/services"
 )
 
@@ -18,6 +21,11 @@ type automation_schedule_create_body struct {
 	InitialData map[string]interface{} `json:"initial_data"`
 	Enabled     *bool                  `json:"enabled"`
 	TimeoutSec  int                    `json:"timeout_sec"`
+}
+
+type automation_schedule_trigger_body struct {
+	TriggerType string `json:"trigger_type"`
+	EventKey    string `json:"event_key"`
 }
 
 type automation_schedule_update_body struct {
@@ -186,7 +194,16 @@ func (c *APIClient) handle_trigger_automation_schedule(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	run, err := service.TriggerSchedule(ctx.Param("id"))
+	var body automation_schedule_trigger_body
+	if err := ctx.ShouldBindJSON(&body); err != nil && !errors.Is(err, io.EOF) {
+		result.Err(ctx, api_code_invalid_params, "请求参数无效")
+		return
+	}
+	trigger_type := strings.TrimSpace(body.TriggerType)
+	if trigger_type == "" {
+		trigger_type = model.FlowRunTriggerManual
+	}
+	run, err := service.TriggerScheduleAs(ctx.Param("id"), trigger_type, strings.TrimSpace(body.EventKey))
 	if err != nil {
 		result.Err(ctx, api_code_invalid_params, err.Error())
 		return

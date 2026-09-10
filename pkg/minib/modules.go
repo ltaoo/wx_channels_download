@@ -113,7 +113,7 @@ func resolve_module_url(referrer_url string, specifier string) (string, bool) {
 		return "", false
 	}
 	target_url, err := base_url.Parse(specifier)
-	if err != nil || (target_url.Scheme != "http" && target_url.Scheme != "https") {
+	if err != nil || !is_page_url_scheme(target_url.Scheme) {
 		return "", false
 	}
 	target_url.Fragment = ""

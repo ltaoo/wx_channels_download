@@ -8,6 +8,7 @@ import (
 	"github.com/ltaoo/velo"
 
 	"wx_channel/internal/adapter"
+	wxchannelsadapter "wx_channel/internal/adapter/wxchannels"
 	"wx_channel/internal/api"
 	"wx_channel/internal/config"
 	"wx_channel/internal/database"
@@ -162,6 +163,12 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 
 	// --- Workflow automation ---
 	flow_engine := flowengine.NewWorkflowEngine()
+	wxchannels_flows := wxchannelsadapter.GetWXChannelsPostprocessFlows()
+	wxchannels_flow_definitions := make(map[string]flowengine.FlowDefinition, len(wxchannels_flows))
+	for _, flow := range wxchannels_flows {
+		wxchannels_flow_definitions[flow.ID] = flow
+	}
+	flow_engine.SetFlowDefinitions(wxchannels_flow_definitions)
 	automation_service := services.NewAutomationService(app.DB, logger, flow_engine, bus)
 	automation_service.Start()
 

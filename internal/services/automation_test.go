@@ -51,6 +51,7 @@ func new_verify_automation_service(t *testing.T) *AutomationService {
 			StartNodeID: "n1",
 			Nodes: map[string]engine.NodeDefinition{
 				"n1": {ID: "n1", Type: "verify"},
+				"n2": {ID: "n2", Type: "verify"},
 			},
 		},
 	})
@@ -143,6 +144,51 @@ func TestAutomationServiceScheduleLifecycle(t *testing.T) {
 	}
 	if total != 0 || len(schedules) != 0 {
 		t.Fatalf("expected no schedules after deletion, got total=%d len=%d", total, len(schedules))
+	}
+}
+
+func TestAutomationServiceEventTriggerUsesConfiguredStartNode(t *testing.T) {
+	service := new_verify_automation_service(t)
+	defer service.Stop()
+
+	schedule, err := service.CreateSchedule(CreateScheduleInput{
+		Name:     "feed event",
+		CronExpr: "@daily",
+		FlowID:   "flow-verify",
+		InitialData: map[string]interface{}{
+			"__automation": map[string]interface{}{
+				"type":       model.FlowRunTriggerEvent,
+				"start_node": "n2",
+				"event_key":  "channels.feed.received",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateSchedule failed: %v", err)
+	}
+	if schedule.Enabled || schedule.NextRunAt != nil {
+		t.Fatalf("expected an event flow to disable cron scheduling, got enabled=%v next=%v", schedule.Enabled, schedule.NextRunAt)
+	}
+
+	run, err := service.TriggerScheduleAs(schedule.ID, model.FlowRunTriggerEvent, "")
+	if err != nil {
+		t.Fatalf("TriggerScheduleAs failed: %v", err)
+	}
+	if run.TriggerType != model.FlowRunTriggerEvent {
+		t.Fatalf("expected an event trigger, got %s", run.TriggerType)
+	}
+	if run.TriggerKey != "channels.feed.received" {
+		t.Fatalf("expected the configured event key, got %s", run.TriggerKey)
+	}
+	if run.Status != model.FlowRunStatusCompleted {
+		t.Fatalf("expected a completed run, got %s (%s)", run.Status, run.Error)
+	}
+	if run.CurrentNode != "n2" {
+		t.Fatalf("expected the run to start at n2, got %s", run.CurrentNode)
+	}
+
+	if _, err := service.ToggleSchedule(schedule.ID); err == nil {
+		t.Fatal("expected enabling an event flow through cron scheduling to be rejected")
 	}
 }
 

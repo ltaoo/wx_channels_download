@@ -1545,6 +1545,16 @@ var wxchannels_output_flow = flowengine.FlowDefinition{
 	},
 }
 
+// GetWXChannelsPostprocessFlows returns the executable Channels postprocess
+// definitions shared with the automation scheduler.
+func GetWXChannelsPostprocessFlows() []flowengine.FlowDefinition {
+	return []flowengine.FlowDefinition{
+		wxchannels_postprocess_main_flow,
+		wxchannels_postprocess_flow,
+		wxchannels_output_flow,
+	}
+}
+
 // GetWXChannelsPostprocessFlowVisualization returns a read-only flow graph payload
 // for frontend visualization.
 func GetWXChannelsPostprocessFlowVisualization(flow_id string) (*WXChannelsPostprocessFlowVisualizationPayload, error) {

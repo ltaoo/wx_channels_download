@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	douyin_scraper "wx_channel/pkg/scraper/douyin"
+	feishu_scraper "wx_channel/pkg/scraper/feishu"
 	instagram_scraper "wx_channel/pkg/scraper/instagram"
 	kuaishou_scraper "wx_channel/pkg/scraper/kuaishou"
 	weibo_scraper "wx_channel/pkg/scraper/weibo"
@@ -52,6 +53,10 @@ type scraper_http_url_rule struct {
 }
 
 var scraper_raw_url_rules = []scraper_raw_url_rule{
+	{
+		platform_id: feishu_scraper.PlatformID,
+		match:       feishu_scraper.IsDocumentURL,
+	},
 	{
 		platform_id: instagram_scraper.PlatformID,
 		match: func(raw_url string) bool {

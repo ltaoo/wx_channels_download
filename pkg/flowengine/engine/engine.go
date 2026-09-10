@@ -17,8 +17,9 @@ const (
 )
 
 type StartFlowOptions struct {
-	Trigger TriggerInfo
-	Async   bool
+	Trigger     TriggerInfo
+	Async       bool
+	StartNodeID string
 }
 
 type FlowDefinition struct {
@@ -171,6 +172,13 @@ func (e *FlowEngine) StartFlowWithOptions(flow_id string, initial_data map[strin
 	if !ok {
 		return "", errors.New("flow not found")
 	}
+	start_node_id := ref_flow.StartNodeID
+	if options.StartNodeID != "" {
+		if _, exists := ref_flow.Nodes[options.StartNodeID]; !exists {
+			return "", errors.New("start node not found: " + options.StartNodeID)
+		}
+		start_node_id = options.StartNodeID
+	}
 
 	trigger := options.Trigger
 	if trigger.Type == "" {
@@ -233,7 +241,7 @@ func (e *FlowEngine) StartFlowWithOptions(flow_id string, initial_data map[strin
 	}
 
 	exec := func() error {
-		err := e.driveFlow(ctx, []string{ref_flow.StartNodeID})
+		err := e.driveFlow(ctx, []string{start_node_id})
 		e.persistContext(ctx)
 		if err != nil {
 			e.update_run_record(ctx, RunStatusFailed, err)

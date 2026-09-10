@@ -37,11 +37,17 @@ const (
 )
 
 var (
-	document_path_pattern = regexp.MustCompile(`^/(?:docx|wiki)/([A-Za-z0-9]+)$`)
+	document_path_pattern = regexp.MustCompile(`^/docx/([A-Za-z0-9]+)$`)
+	wiki_path_pattern     = regexp.MustCompile(`^/wiki/([A-Za-z0-9]+)$`)
 	bootstrap_pattern     = regexp.MustCompile(`\bwindow\.(?:DATA|SERVER_DATA)\s*=`)
+	// Feishu serves tenant subdomains of feishu.cn, the international Lark
+	// domains, and private larkenterprise.com deployments with the same web
+	// application and internal APIs.
+	feishu_tenant_domains = []string{"feishu.cn", "larksuite.com", "larkenterprise.com"}
 )
 
 var supported_feishu_domains = []string{"feishu.cn", "larkenterprise.com"}
+const feishu_url_error = "Feishu URL must be https://<tenant>.feishu.cn|larksuite.com|larkenterprise.com/docx/<token> or /wiki/<token>"
 
 // Asset is one image or attached file discovered in a Feishu document.
 type Asset struct {
@@ -214,7 +220,7 @@ func (c *Client) FetchContext(fetch_context context.Context, raw_url string) (*D
 	if fetch_context == nil {
 		fetch_context = context.Background()
 	}
-	document_url, token, tenant, err := parse_document_url(raw_url)
+	location, err := parse_document_url(raw_url)
 	if err != nil {
 		return nil, err
 	}
@@ -224,39 +230,31 @@ func (c *Client) FetchContext(fetch_context context.Context, raw_url string) (*D
 	}
 	defer browser.Close()
 
-	page, err := browser.Navigate(fetch_context, document_url, http.Header{
-		"Accept-Language": []string{"zh-CN,zh;q=0.9,en;q=0.8"},
-	}, minib.NavigateOptions{
-		DisableSubresources: true,
-		DisableCSS:          true,
-		DisableImages:       true,
-		DisableMedia:        true,
-		DisableJavaScript:   true,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("fetch Feishu document page: %w", err)
-	}
-	if page.StatusCode < http.StatusOK || page.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("Feishu document page returned HTTP %d", page.StatusCode)
-	}
-	if page_url, parse_err := url.Parse(page.URL); parse_err == nil && page_url.Hostname() != tenant {
-		return nil, fmt.Errorf("Feishu document redirected to %s and is not publicly readable", page_url.Hostname())
-	}
-	bootstrap, err := parse_bootstrap(fetch_context, browser, page.HTML)
-	if err != nil {
-		return nil, err
+	var page *minib.Page
+	var bootstrap *bootstrap_export
+	if location.is_wiki {
+		page, bootstrap, location, err = c.fetch_wiki_bootstrap(fetch_context, browser, location)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		page, err = fetch_document_page(fetch_context, browser, location.request_url, location.tenant, "Feishu document page")
+		if err != nil {
+			return nil, err
+		}
+		bootstrap, err = parse_bootstrap(fetch_context, browser, page.HTML)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := validate_client_vars(bootstrap.WindowData.ClientVars, "initial clientVars"); err != nil {
 		return nil, err
 	}
-	if document_token := strings.TrimSpace(bootstrap.WindowData.ClientVars.Data.ID); document_token != "" {
-		token = document_token
-	}
-	pages, err := c.fetch_client_vars_pages(fetch_context, browser, document_url, token, bootstrap.WindowData.ClientVars.Data)
+	pages, err := c.fetch_client_vars_pages(fetch_context, browser, location.request_url, location.token, bootstrap.WindowData.ClientVars.Data)
 	if err != nil {
 		return nil, err
 	}
-	document, err := build_document(document_url, token, tenant, bootstrap, pages)
+	document, err := build_document(location.request_url, location.token, location.tenant, bootstrap, pages)
 	if err != nil {
 		return nil, err
 	}
@@ -271,24 +269,204 @@ func (c *Client) FetchContext(fetch_context context.Context, raw_url string) (*D
 	return document, nil
 }
 
-func parse_document_url(raw_url string) (string, string, string, error) {
+// document_location is one normalized Feishu document or wiki-node URL.
+type document_location struct {
+	request_url string
+	token       string
+	tenant      string
+	is_wiki     bool
+}
+
+// IsDocumentURL reports whether raw_url points to a Feishu docx document or a
+// wiki node on one of the supported Feishu/Lark tenant domains.
+func IsDocumentURL(raw_url string) bool {
+	_, err := parse_document_url(raw_url)
+	return err == nil
+}
+
+func parse_document_url(raw_url string) (document_location, error) {
 	parsed_url, err := url.Parse(strings.TrimSpace(raw_url))
 	if err != nil || parsed_url.Scheme != "https" || parsed_url.Hostname() == "" {
-		return "", "", "", err_invalid_document_url()
+		return document_location{}, errors.New(feishu_url_error)
 	}
 	hostname := strings.ToLower(strings.TrimSuffix(parsed_url.Hostname(), "."))
-	if !supported_feishu_host(hostname) {
-		return "", "", "", err_invalid_document_url()
+	if !is_feishu_tenant_host(hostname) {
+		return document_location{}, errors.New(feishu_url_error)
 	}
-	match := document_path_pattern.FindStringSubmatch(strings.TrimSuffix(parsed_url.EscapedPath(), "/"))
-	if len(match) != 2 {
-		return "", "", "", err_invalid_document_url()
+	path := strings.TrimSuffix(parsed_url.EscapedPath(), "/")
+	location := document_location{tenant: hostname}
+	if match := document_path_pattern.FindStringSubmatch(path); len(match) == 2 {
+		location.token = match[1]
+	} else if match := wiki_path_pattern.FindStringSubmatch(path); len(match) == 2 {
+		location.token = match[1]
+		location.is_wiki = true
+	} else {
+		return document_location{}, errors.New(feishu_url_error)
 	}
 	parsed_url.RawQuery = ""
 	parsed_url.Fragment = ""
 	parsed_url.Path = strings.TrimSuffix(parsed_url.Path, "/")
 	parsed_url.RawPath = ""
-	return parsed_url.String(), match[1], hostname, nil
+	location.request_url = parsed_url.String()
+	return location, nil
+}
+
+func is_feishu_tenant_host(hostname string) bool {
+	for _, domain := range feishu_tenant_domains {
+		if hostname == domain || strings.HasSuffix(hostname, "."+domain) {
+			return true
+		}
+	}
+	return false
+}
+
+func feishu_navigate_options() minib.NavigateOptions {
+	return minib.NavigateOptions{
+		DisableSubresources: true,
+		DisableCSS:          true,
+		DisableImages:       true,
+		DisableMedia:        true,
+		DisableJavaScript:   true,
+	}
+}
+
+func validate_document_page(page *minib.Page, tenant string) error {
+	if page.StatusCode < http.StatusOK || page.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("Feishu document page returned HTTP %d", page.StatusCode)
+	}
+	if page_url, parse_err := url.Parse(page.URL); parse_err == nil && page_url.Hostname() != tenant {
+		return fmt.Errorf("Feishu page redirected to %s; the document is not readable with the current cookies", page_url.Hostname())
+	}
+	return nil
+}
+
+func fetch_document_page(fetch_context context.Context, browser *minib.MiniBrowser, raw_url string, tenant string, name string) (*minib.Page, error) {
+	page, err := browser.Navigate(fetch_context, raw_url, http.Header{
+		"Accept-Language": []string{"zh-CN,zh;q=0.9,en;q=0.8"},
+	}, feishu_navigate_options())
+	if err != nil {
+		return nil, fmt.Errorf("fetch %s: %w", name, err)
+	}
+	if err := validate_document_page(page, tenant); err != nil {
+		return nil, err
+	}
+	return page, nil
+}
+
+type wiki_tree_response struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Msg     string `json:"msg"`
+	Data    struct {
+		Tree struct {
+			Nodes map[string]wiki_tree_node `json:"nodes"`
+		} `json:"tree"`
+	} `json:"data"`
+}
+
+type wiki_tree_node struct {
+	WikiToken string          `json:"wiki_token"`
+	ObjToken  string          `json:"obj_token"`
+	ObjType   json.RawMessage `json:"obj_type"`
+}
+
+// fetch_wiki_bootstrap opens a wiki node and extracts the embedded document
+// bootstrap. Modern wiki pages inline the mounted docx clientVars directly;
+// when they do not, the node is resolved through the tree API and the docx
+// page is fetched instead.
+func (c *Client) fetch_wiki_bootstrap(fetch_context context.Context, browser *minib.MiniBrowser, location document_location) (*minib.Page, *bootstrap_export, document_location, error) {
+	wiki_page, err := fetch_document_page(fetch_context, browser, location.request_url, location.tenant, "Feishu wiki page")
+	if err != nil {
+		return nil, nil, location, err
+	}
+	bootstrap, bootstrap_err := parse_bootstrap(fetch_context, browser, wiki_page.HTML)
+	if bootstrap_err == nil {
+		if obj_token := strings.TrimSpace(bootstrap.WindowData.ClientVars.Data.ID); obj_token != "" {
+			location.token = obj_token
+			return wiki_page, bootstrap, location, nil
+		}
+	}
+	resolved, err := c.resolve_wiki_document(fetch_context, browser, location)
+	if err != nil {
+		return nil, nil, location, err
+	}
+	document_page, err := fetch_document_page(fetch_context, browser, resolved.request_url, resolved.tenant, "Feishu document page")
+	if err != nil {
+		return nil, nil, resolved, err
+	}
+	bootstrap, err = parse_bootstrap(fetch_context, browser, document_page.HTML)
+	if err != nil {
+		return nil, nil, resolved, err
+	}
+	return document_page, bootstrap, resolved, nil
+}
+
+// resolve_wiki_document maps a wiki node token to the docx document behind it.
+// Wiki URLs identify a node in a knowledge base, while the block APIs used
+// below require the mounted document token.
+func (c *Client) resolve_wiki_document(fetch_context context.Context, browser *minib.MiniBrowser, location document_location) (document_location, error) {
+	parsed_url, err := url.Parse(location.request_url)
+	if err != nil {
+		return location, err
+	}
+	info_url := &url.URL{Scheme: parsed_url.Scheme, Host: parsed_url.Host, Path: "/space/api/wiki/v2/tree/get_info"}
+	query := info_url.Query()
+	query.Set("token", location.token)
+	info_url.RawQuery = query.Encode()
+	response, err := browser.Get(fetch_context, info_url.String(), http.Header{
+		"Accept":  []string{"application/json, text/plain, */*"},
+		"Referer": []string{location.request_url},
+	})
+	if err != nil {
+		return location, fmt.Errorf("resolve Feishu wiki node: %w", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		return location, fmt.Errorf("Feishu wiki node info returned HTTP %d", response.StatusCode)
+	}
+	var tree wiki_tree_response
+	if err := json.Unmarshal(response.Body, &tree); err != nil {
+		return location, fmt.Errorf("decode Feishu wiki node info: %w", err)
+	}
+	if tree.Code != 0 {
+		message := first_non_empty(tree.Message, tree.Msg, "unknown error")
+		return location, fmt.Errorf("Feishu wiki node info failed with code %d: %s", tree.Code, message)
+	}
+	node, exists := tree.Data.Tree.Nodes[location.token]
+	if !exists {
+		return location, fmt.Errorf("Feishu wiki node %s was not found in the tree", location.token)
+	}
+	obj_type := wiki_obj_type(node.ObjType)
+	if obj_type == "" {
+		obj_type = "unknown"
+	}
+	if obj_type != "docx" {
+		return location, fmt.Errorf("Feishu wiki node type %q is not supported; only docx documents can be fetched", obj_type)
+	}
+	if obj_token := strings.TrimSpace(node.ObjToken); obj_token != "" {
+		return document_location{
+			request_url: parsed_url.Scheme + "://" + parsed_url.Host + "/docx/" + obj_token,
+			token:       obj_token,
+			tenant:      location.tenant,
+		}, nil
+	}
+	return location, errors.New("Feishu wiki node info is missing its document token")
+}
+
+// wiki_obj_type normalizes the node obj type. Feishu web APIs return either a
+// string ("docx") or the internal numeric enum (22 for docx documents).
+func wiki_obj_type(raw_obj_type json.RawMessage) string {
+	var type_text string
+	if err := json.Unmarshal(raw_obj_type, &type_text); err == nil {
+		return strings.ToLower(strings.TrimSpace(type_text))
+	}
+	var type_number json.Number
+	if err := json.Unmarshal(raw_obj_type, &type_number); err == nil {
+		if type_number.String() == "22" {
+			return "docx"
+		}
+		return type_number.String()
+	}
+	return ""
 }
 
 func err_invalid_document_url() error {

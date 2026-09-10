@@ -718,7 +718,7 @@ func document_base_url(document *html.Node, page_url *url.URL) *url.URL {
 			continue
 		}
 		resolved_url, err := page_url.Parse(href)
-		if err == nil && (resolved_url.Scheme == "http" || resolved_url.Scheme == "https") {
+		if err == nil && is_page_url_scheme(resolved_url.Scheme) {
 			resolved_url.Fragment = ""
 			return resolved_url
 		}
@@ -931,7 +931,7 @@ func resolve_resource_url(base_url *url.URL, raw_url string) (string, bool) {
 		return "", false
 	}
 	resolved_url := base_url.ResolveReference(parsed_url)
-	if resolved_url.Scheme != "http" && resolved_url.Scheme != "https" {
+	if !is_page_url_scheme(resolved_url.Scheme) {
 		return "", false
 	}
 	resolved_url.Fragment = ""
@@ -1519,6 +1519,12 @@ func compile_javascript(source_url string, source string) (*goja.Program, error)
 	program, compile_err := goja.Compile(source_url, source, false)
 	if compile_err == nil {
 		return program, nil
+	}
+	if compatible_source, changed := normalize_goja_destructured_vars(source); changed {
+		compatible_program, compatible_err := goja.Compile(source_url, compatible_source, false)
+		if compatible_err == nil {
+			return compatible_program, nil
+		}
 	}
 	transform_options := api.TransformOptions{
 		Sourcefile: source_url,
@@ -3015,7 +3021,7 @@ func (runtime *page_runtime) location_object(parsed_url *url.URL) *goja.Object {
 
 func (runtime *page_runtime) request_navigation(raw_url string) {
 	next_url, err := runtime.page_url.Parse(strings.TrimSpace(raw_url))
-	if err == nil && (next_url.Scheme == "http" || next_url.Scheme == "https") {
+	if err == nil && is_page_url_scheme(next_url.Scheme) {
 		runtime.page.navigation_url = next_url.String()
 		runtime.page.NavigationRequests = append(runtime.page.NavigationRequests, next_url.String())
 	}
@@ -3023,7 +3029,7 @@ func (runtime *page_runtime) request_navigation(raw_url string) {
 
 func (runtime *page_runtime) request_form_navigation(action string, method string, body string) {
 	next_url, err := runtime.page_url.Parse(strings.TrimSpace(action))
-	if err == nil && (next_url.Scheme == "http" || next_url.Scheme == "https") {
+	if err == nil && is_page_url_scheme(next_url.Scheme) {
 		runtime.page.navigation_url = next_url.String()
 		runtime.page.navigation_method = strings.ToUpper(method)
 		runtime.page.navigation_body = body
