@@ -2,15 +2,8 @@ import * as dmui from "./dmui.js";
 import * as components from "./components.js";
 import * as store from "./store.js";
 
-const {
-  app$,
-  history$,
-  hls_player$,
-  http_client$,
-  router,
-  router$,
-  storage$,
-} = store;
+const { app$, history$, hls_player$, http_client$, router, router$, storage$ } =
+  store;
 
 const Timeless = window.Timeless;
 
@@ -22,57 +15,6 @@ Timeless.ui.ScrollViewPrimitive.setScrollViewProvider(Timeless.web);
 Timeless.ui.InputPrimitive.setInputProvider(Timeless.web);
 
 window.config = window.__d_config || {};
-
-window.format_time = function format_time(
-  value,
-  fallback_message = "时间未知",
-  format_options = {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  },
-) {
-  const timestamp = Number(value);
-  let date;
-  if (Number.isFinite(timestamp)) {
-    if (timestamp <= 0) {
-      return fallback_message;
-    }
-    const normalized =
-      timestamp < 1000000000000 ? timestamp * 1000 : timestamp;
-    date = new Date(normalized);
-  } else {
-    date = new Date(value);
-  }
-  return Number.isNaN(date.getTime())
-    ? fallback_message
-    : new Intl.DateTimeFormat("zh-CN", format_options).format(date);
-};
-
-window.request = Timeless.kit.request_factory({
-  headers: { "Content-Type": "application/json" },
-  process(response) {
-    if (response.error) {
-      return Timeless.Result.Err(response.error);
-    }
-    const payload = response.data || {};
-    if (typeof payload.code === "undefined") {
-      return Timeless.Result.Ok(payload);
-    }
-    if (payload.code !== 0) {
-      return Timeless.Result.Err(
-        payload.msg || "请求失败",
-        payload.code,
-        payload.data,
-      );
-    }
-    return Timeless.Result.Ok(payload.data || {});
-  },
-});
-
 window.__store = store;
 
 Object.assign(window, dmui, components);
@@ -171,6 +113,7 @@ window.PLATFORM_NAMES = Object.freeze({
   x: "X",
   weibo: "微博",
   zhihu: "知乎",
+  feishu: "飞书",
   // juejin: "掘金",
   // jianshu: "简书",
   // webpage: "网页",

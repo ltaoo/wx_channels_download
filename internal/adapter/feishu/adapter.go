@@ -345,8 +345,12 @@ func validate_document(document *feishu.Document) (*feishu.Document, error) {
 }
 
 func document_content(document *feishu.Document) *model.Content {
-	metadata, _ := json.Marshal(map[string]any{"tenant": document.Tenant, "block_count": document.BlockCount, "asset_count": len(document.Assets)})
+	metadata, _ := json.Marshal(map[string]any{"tenant": document.Tenant, "author": document.Author, "block_count": document.BlockCount, "asset_count": len(document.Assets)})
 	now := util.NowMillis()
+	var publish_time *int64
+	if document.PublishTime > 0 {
+		publish_time = &document.PublishTime
+	}
 	return &model.Content{
 		Id:          PlatformID + ":" + document.Token,
 		PlatformId:  PlatformID,
@@ -356,6 +360,7 @@ func document_content(document *feishu.Document) *model.Content {
 		Description: truncate_text(document.Text, 280),
 		URL:         document.URL,
 		SourceURL:   document.URL,
+		PublishTime: publish_time,
 		Metadata:    string(metadata),
 		Timestamps:  model.Timestamps{CreatedAt: now, UpdatedAt: now},
 	}
@@ -364,11 +369,14 @@ func document_content(document *feishu.Document) *model.Content {
 func document_account(document *feishu.Document) *model.Account {
 	now := util.NowMillis()
 	origin := "https://" + document.Tenant + "/"
+	// The meta API exposes the document owner, so the account represents the
+	// author when available and falls back to the tenant host otherwise.
+	external_id := first_non_empty(document.OwnerID, document.Author, document.Tenant)
 	return &model.Account{
-		Id:         PlatformID + ":" + document.Tenant,
+		Id:         PlatformID + ":" + external_id,
 		PlatformId: PlatformID,
-		ExternalId: document.Tenant,
-		Nickname:   document.Tenant,
+		ExternalId: external_id,
+		Nickname:   first_non_empty(document.Author, document.Tenant),
 		AvatarURL:  origin + "favicon.ico",
 		ProfileURL: origin,
 		Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},

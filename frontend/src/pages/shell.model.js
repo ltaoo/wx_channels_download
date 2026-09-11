@@ -1,3 +1,6 @@
+import { request } from "@/biz/request.js";
+import { format_time } from "@/utils.js";
+
 const Timeless = window.Timeless;
 
 const UPDATE_POLL_INTERVAL = 250;
@@ -96,10 +99,7 @@ function createUpdateModel(options = {}) {
     Boolean(snapshot.available),
   );
   const published_text_ = computed(snapshot_, (snapshot) =>
-    window.format_time(
-      snapshot.published_at,
-      String(snapshot.published_at || ""),
-    ),
+    format_time(snapshot.published_at, String(snapshot.published_at || "")),
   );
   const progress_text_ = computed(snapshot_, (snapshot) => {
     const downloaded = format_bytes(snapshot.downloaded);
@@ -418,15 +418,13 @@ function create_mcp_settings_model(client) {
   let request_sequence = 0;
   const status_request = new Timeless.kit.RequestCore(
     function () {
-      return window.request.get("/api/mcp/status");
+      return request.get("/api/mcp/status");
     },
     { client },
   );
   const update_request = new Timeless.kit.RequestCore(
     function (enabled) {
-      return window.request.post(
-        enabled ? "/api/mcp/enable" : "/api/mcp/disable",
-      );
+      return request.post(enabled ? "/api/mcp/enable" : "/api/mcp/disable");
     },
     { client },
   );
@@ -555,7 +553,8 @@ export function ShellViewModel(props) {
       icon: "history",
     },
     { title: "账号", name: "root.shell.account", icon: "user" },
-    { title: "视频号", name: "root.shell.wxchannels", icon: "play" },
+    // { title: "视频号", name: "root.shell.wxchannels", icon: "play" },
+    { title: "自动化", name: "root.shell.automation", icon: "robot-arm" },
     // { title: "日志", name: "root.shell.logs", icon: "user" },
   ];
   const menu$ = Timeless.kit.RouteMenusModel({
@@ -573,13 +572,13 @@ export function ShellViewModel(props) {
   const certificate_error_ = Timeless.ref("");
   const certificate_request = new Timeless.kit.RequestCore(
     function () {
-      return window.request.get("/api/proxy/certificate/status");
+      return request.get("/api/proxy/certificate/status");
     },
     { client: props.client },
   );
   const certificate_uninstall_request = new Timeless.kit.RequestCore(
     function () {
-      return window.request.post("/api/proxy/certificate/uninstall");
+      return request.post("/api/proxy/certificate/uninstall");
     },
     { client: props.client },
   );

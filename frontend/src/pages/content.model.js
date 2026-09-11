@@ -1,4 +1,6 @@
+import { request } from "@/biz/request.js";
 import { proxy_image_url } from "@/image-proxy.model.js";
+
 import { task_status } from "./content_detail.model.js";
 
 function number_or_default(value, fallback) {
@@ -64,7 +66,9 @@ function select_search(placeholder) {
 }
 
 function content_detail_href(content) {
-  const id = String(first_non_empty(content && content.id, content && content.ID)).trim();
+  const id = String(
+    first_non_empty(content && content.id, content && content.ID),
+  ).trim();
   return id ? `/content/detail?id=${encodeURIComponent(id)}` : "";
 }
 
@@ -301,14 +305,23 @@ function load_content_layout() {
 
 function normalize_saved_filter(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
-  const id = String(source.id || "").trim().slice(0, 100);
+  const id = String(source.id || "")
+    .trim()
+    .slice(0, 100);
   if (!id) return null;
 
   const filter = {
     id,
-    name: String(source.name || "").trim().slice(0, 60) || "未命名筛选器",
-    platform_name: String(source.platform_name || "").trim().slice(0, 60),
-    account_name: String(source.account_name || "").trim().slice(0, 120),
+    name:
+      String(source.name || "")
+        .trim()
+        .slice(0, 60) || "未命名筛选器",
+    platform_name: String(source.platform_name || "")
+      .trim()
+      .slice(0, 60),
+    account_name: String(source.account_name || "")
+      .trim()
+      .slice(0, 120),
   };
   saved_filter_fields.forEach((field) => {
     filter[field] = String(source[field] || "").trim();
@@ -342,7 +355,9 @@ function saved_filters_match(left, right) {
 function load_saved_filters() {
   try {
     return normalize_saved_filters(
-      JSON.parse(window.localStorage.getItem(saved_filters_storage_key) || "[]"),
+      JSON.parse(
+        window.localStorage.getItem(saved_filters_storage_key) || "[]",
+      ),
     );
   } catch {
     return [];
@@ -538,7 +553,7 @@ function ContentViewModel(props) {
   });
 
   const list_request = new Timeless.kit.RequestCore(
-    (params) => window.request.get("/api/content/list", params),
+    (params) => request.get("/api/content/list", params),
     {
       client: props.client,
       process(response) {
@@ -556,7 +571,7 @@ function ContentViewModel(props) {
     },
   );
   const account_list_request = new Timeless.kit.RequestCore(
-    (params) => window.request.get("/api/account/list", params),
+    (params) => request.get("/api/account/list", params),
     { client: props.client },
   );
 
@@ -665,14 +680,15 @@ function ContentViewModel(props) {
   }
 
   function content_layout_items() {
-    return ["table", "card"].map((layout) =>
-      new Timeless.vm.MenuItemCore({
-        label: layout === "table" ? "表格布局" : "卡片布局",
-        shortcut: layout_.value === layout ? "当前" : undefined,
-        onClick() {
-          set_content_layout(layout);
-        },
-      }),
+    return ["table", "card"].map(
+      (layout) =>
+        new Timeless.vm.MenuItemCore({
+          label: layout === "table" ? "表格布局" : "卡片布局",
+          shortcut: layout_.value === layout ? "当前" : undefined,
+          onClick() {
+            set_content_layout(layout);
+          },
+        }),
     );
   }
 

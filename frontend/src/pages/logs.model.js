@@ -1,3 +1,5 @@
+import { request } from "@/biz/request.js";
+
 const LOG_LEVEL_OPTIONS = [
   { value: "info", label: "Info" },
   { value: "error", label: "Error" },
@@ -643,7 +645,7 @@ function LogsPageViewModel(props) {
   let request_sequence = 0;
 
   const logs_request_core = new Timeless.kit.RequestCore(
-    (params) => window.request.get("/api/logs", params),
+    (params) => request.get("/api/logs", params),
     {
       client: props.client,
       process(response) {
@@ -657,7 +659,7 @@ function LogsPageViewModel(props) {
     },
   );
   const clear_logs_request_core = new Timeless.kit.RequestCore(
-    () => window.request.post("/api/logs/clear"),
+    () => request.post("/api/logs/clear"),
     { client: props.client },
   );
 

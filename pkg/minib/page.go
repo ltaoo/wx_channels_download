@@ -40,7 +40,18 @@ const (
 	max_dynamic_resources = 256
 	max_event_loop_rounds = 32
 	max_call_stack_depth  = 1024
-	max_timer_time_ms     = 1000
+	// Virtual time granted to timers per event loop pump. Animation tweens
+	// commonly run for 600-1000ms, so the budget has to exceed one tween even
+	// when the tween starts after other timers have already advanced the clock.
+	max_timer_time_ms = 2000
+	// Each emulated animation frame advances the virtual clock by one 60Hz step.
+	animation_frame_step_ms = 16
+	// Animation frames are also allowed after the virtual clock budget is spent,
+	// up to this many frames per pump. A single 900ms tween needs about 57
+	// frames, but the budget is shared by every animating component on the page
+	// and the last pump is the only one a late-starting tween gets, so it has to
+	// cover a full page of concurrent animations rather than just one tween.
+	max_animation_frames_per_pump = 512
 )
 
 // NavigateOptions controls one navigation without changing browser-wide state.
@@ -71,6 +82,10 @@ type NavigateOptions struct {
 	// WaitUntil controls which lifecycle milestone completes navigation. The
 	// zero value is WaitUntilLoad for backward compatibility.
 	WaitUntil NavigationWaitUntil
+	// LocalStorage pre-seeds window.localStorage before page scripts run, so a
+	// navigation can present the same stored state as a returning browser
+	// profile (feature flags, "dialog already shown" markers, and so on).
+	LocalStorage map[string]string
 	// WaitForSelector returns as soon as the DOM matches this CSS selector.
 	// If WaitForContent is also set, both conditions must match.
 	WaitForSelector string
@@ -204,6 +219,10 @@ type timer_job struct {
 	interval_ms int64
 	repeating   bool
 	canceled    bool
+	// animation_frame marks a requestAnimationFrame callback. Those receive the
+	// current virtual clock as a DOMHighResTimeStamp, matching the timestamp
+	// origin used by performance.now().
+	animation_frame bool
 }
 
 type event_listener struct {
@@ -263,6 +282,8 @@ type page_runtime struct {
 	nodes                 map[*html.Node]*goja.Object
 	object_nodes          map[*goja.Object]*html.Node
 	fragments             map[*html.Node]bool
+	iframe_documents      map[*html.Node]*html.Node
+	iframe_windows        map[*html.Node]*goja.Object
 	shadow_roots          map[*html.Node]*html.Node
 	shadow_hosts          map[*html.Node]*html.Node
 	shadow_modes          map[*html.Node]string
@@ -294,6 +315,9 @@ type page_runtime struct {
 	timers                []*timer_job
 	timer_by_id           map[int64]*timer_job
 	timer_time_ms         int64
+	// Animation frames are budgeted by frame count instead of virtual time, so
+	// a tween that starts after the timer clock budget is spent still runs.
+	animation_frames_left int64
 	host_jobs             []func()
 	next_timer_id         int64
 	current_script        *html.Node
@@ -1148,6 +1172,8 @@ func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *ur
 		nodes:                make(map[*html.Node]*goja.Object),
 		object_nodes:         make(map[*goja.Object]*html.Node),
 		fragments:            make(map[*html.Node]bool),
+		iframe_documents:     make(map[*html.Node]*html.Node),
+		iframe_windows:       make(map[*html.Node]*goja.Object),
 		shadow_roots:         make(map[*html.Node]*html.Node),
 		shadow_hosts:         make(map[*html.Node]*html.Node),
 		shadow_modes:         make(map[*html.Node]string),
@@ -1788,6 +1814,9 @@ Object.defineProperty(HTMLBodyElement.prototype, Symbol.toStringTag, { value: 'H
 function HTMLHtmlElement() {}
 HTMLHtmlElement.prototype = Object.create(HTMLElement.prototype);
 Object.defineProperty(HTMLHtmlElement.prototype, Symbol.toStringTag, { value: 'HTMLHtmlElement' });
+function HTMLHeadElement() {}
+HTMLHeadElement.prototype = Object.create(HTMLElement.prototype);
+Object.defineProperty(HTMLHeadElement.prototype, Symbol.toStringTag, { value: 'HTMLHeadElement' });
 function HTMLImageElement() {}
 HTMLImageElement.prototype = Object.create(HTMLElement.prototype);
 Object.defineProperty(HTMLImageElement.prototype, Symbol.toStringTag, { value: 'HTMLImageElement' });
@@ -2103,6 +2132,28 @@ ReadableStreamDefaultReader.prototype.read = function() {
 };
 ReadableStreamDefaultReader.prototype.cancel = function(reason) { var stream = this._stream; if (!stream) return Promise.reject(new TypeError('Reader has no stream')); stream._queue.length = 0; stream._state = 'closed'; if (stream._closedResolve) stream._closedResolve(); return Promise.resolve(typeof stream._source.cancel === 'function' ? stream._source.cancel(reason) : undefined); };
 ReadableStreamDefaultReader.prototype.releaseLock = function() { if (this._stream) { this._stream._reader = null; this._stream = null; } };
+function TransformStream(transformer) {
+  transformer = transformer || {};
+  var read_controller = null;
+  var transform = typeof transformer.transform === 'function' ? transformer.transform : function(chunk, controller) { controller.enqueue(chunk); };
+  var flush = typeof transformer.flush === 'function' ? transformer.flush : null;
+  this.readable = new ReadableStream({ start: function(controller) { read_controller = controller; } });
+  this.writable = { getWriter: function() {
+    return {
+      write: function(chunk) { return Promise.resolve(transform(chunk, read_controller)); },
+      close: function() { if (flush) flush(read_controller); read_controller.close(); return Promise.resolve(); },
+      abort: function(reason) { read_controller.error(reason); return Promise.resolve(); },
+      releaseLock: function() {},
+      ready: Promise.resolve(),
+      closed: Promise.resolve()
+    };
+  } };
+}
+function TextDecoderStream(label) {
+  var decoder = new TextDecoder(label);
+  TransformStream.call(this, { transform: function(chunk, controller) { controller.enqueue(decoder.decode(chunk)); } });
+}
+TextDecoderStream.prototype = Object.create(TransformStream.prototype);
 function URLSearchParams(init) {
   this._pairs = [];
   this.__minib_onchange = null;
@@ -2141,7 +2192,7 @@ URLSearchParams.prototype.values = function() { return this._pairs.map(function(
 URLSearchParams.prototype.toString = function() { function encode(value) { return encodeURIComponent(value).replace(/%20/g, '+').replace(/[!'()~]/g, function(character) { return '%' + character.charCodeAt(0).toString(16).toUpperCase(); }); } return this._pairs.map(function(pair) { return encode(pair[0]) + '=' + encode(pair[1]); }).join('&'); };
 URLSearchParams.prototype[Symbol.iterator] = URLSearchParams.prototype.entries;
 Object.defineProperty(URLSearchParams.prototype, 'size', { configurable: true, enumerable: true, get: function() { return this._pairs.length; } });
-[Window, Node, CharacterData, Text, Comment, CDATASection, ProcessingInstruction, DocumentType, Element, HTMLElement, HTMLBodyElement, HTMLHtmlElement, HTMLImageElement, HTMLIFrameElement, HTMLTemplateElement, HTMLMediaElement, HTMLAudioElement, HTMLVideoElement, SVGElement, Document, DOMParser, HTMLDocument, DocumentFragment, ShadowRoot, UIEvent, MouseEvent, KeyboardEvent, FocusEvent, InputEvent, WheelEvent, PointerEvent, CustomEvent, MessageEvent, PromiseRejectionEvent, ErrorEvent, StyleSheet, CSSStyleSheet, MediaList, StyleSheetList, CSSRuleList, CSSRule, CSSStyleRule, CSSMediaRule, CSSStyleDeclaration, File, TextEncoder, ReadableStream, ReadableStreamDefaultController, ReadableStreamDefaultReader, ResizeObserver, ResizeObserverEntry, PerformanceObserver, AbortSignal, AbortController, URLSearchParams].forEach(function(constructor) {
+[Window, Node, CharacterData, Text, Comment, CDATASection, ProcessingInstruction, DocumentType, Element, HTMLElement, HTMLBodyElement, HTMLHtmlElement, HTMLHeadElement, HTMLImageElement, HTMLIFrameElement, HTMLTemplateElement, HTMLMediaElement, HTMLAudioElement, HTMLVideoElement, SVGElement, Document, DOMParser, HTMLDocument, DocumentFragment, ShadowRoot, UIEvent, MouseEvent, KeyboardEvent, FocusEvent, InputEvent, WheelEvent, PointerEvent, CustomEvent, MessageEvent, PromiseRejectionEvent, ErrorEvent, StyleSheet, CSSStyleSheet, MediaList, StyleSheetList, CSSRuleList, CSSRule, CSSStyleRule, CSSMediaRule, CSSStyleDeclaration, File, TextEncoder, ReadableStream, ReadableStreamDefaultController, ReadableStreamDefaultReader, TransformStream, TextDecoderStream, ResizeObserver, ResizeObserverEntry, PerformanceObserver, AbortSignal, AbortController, URLSearchParams].forEach(function(constructor) {
   Object.defineProperty(constructor.prototype, 'constructor', { configurable: true, writable: true, value: constructor });
 });
 function Headers(init) {
@@ -2220,6 +2271,7 @@ var Intl = {
 };
 [Intl.DateTimeFormat, Intl.NumberFormat, Intl.Collator, Intl.RelativeTimeFormat, Intl.PluralRules].forEach(function(constructor) {
   constructor.supportedLocalesOf = function(locales) { return Intl.getCanonicalLocales(locales); };
+  constructor.prototype.resolvedOptions = function() { return { locale: 'zh-CN', timeZone: 'Asia/Shanghai' }; };
 });
 var __minib_native_array_join = Array.prototype.join, __minib_array_join_stack = [];
 Array.prototype.join = function(separator) {
@@ -2227,6 +2279,50 @@ Array.prototype.join = function(separator) {
   __minib_array_join_stack.push(this);
   try { return __minib_native_array_join.call(this, separator); }
   finally { __minib_array_join_stack.pop(); }
+};
+function __minib_named_groups(source) {
+  var names = [], in_class = false, escaped = false;
+  for (var index = 0; index < source.length; index++) {
+    var char = source[index];
+    if (escaped) { escaped = false; continue; }
+    if (char === '\\') { escaped = true; continue; }
+    if (in_class) { if (char === ']') in_class = false; continue; }
+    if (char === '[') { in_class = true; continue; }
+    if (char !== '(') continue;
+    if (source[index + 1] === '?') {
+      if (source[index + 2] === '<' && source[index + 3] !== '=' && source[index + 3] !== '!') {
+        var end = source.indexOf('>', index + 3);
+        names.push(source.slice(index + 3, end));
+        index = end;
+      } else if (source[index + 2] === 'P' && source[index + 3] === '<') {
+        var p_end = source.indexOf('>', index + 4);
+        names.push(source.slice(index + 4, p_end));
+        index = p_end;
+      }
+    } else names.push(undefined);
+  }
+  return names;
+}
+// ponytail: goja parses named captures but never fills match.groups; patch exec
+// enough for match/exec consumers, not replace/matchAll backreferences
+var __minib_regexp_exec = RegExp.prototype.exec;
+RegExp.prototype.exec = function(string) {
+  var result = __minib_regexp_exec.call(this, string);
+  if (!result) return result;
+  var names = this.__minib_group_names;
+  if (names === undefined) {
+    names = __minib_named_groups(this.source);
+    this.__minib_group_names = names;
+  }
+  var groups = Object.create(null);
+  for (var index = 0; index < names.length; index++) if (names[index]) groups[names[index]] = result[index + 1];
+  Object.defineProperty(result, 'groups', { value: groups, configurable: true });
+  return result;
+};
+var __minib_string_match = String.prototype.match;
+String.prototype.match = function(regexp) {
+  if (regexp instanceof RegExp && !regexp.global) return regexp.exec(this);
+  return __minib_string_match.call(this, regexp);
 };
 function __minib_svg_matrix() {
   var from = function(a, b, c, d, e, f) {
@@ -2390,14 +2486,18 @@ if (typeof Promise.withResolvers !== 'function') {
 		return runtime.vm.NewArray(values...)
 	}
 	performance := runtime.vm.NewObject()
+	// performance.now() shares the virtual timer clock with requestAnimationFrame
+	// timestamps and setTimeout scheduling. Real wall-clock time would barely
+	// advance while the event loop drains timers instantly, which makes every
+	// rAF-driven tween compute a zero-length first frame and stall.
 	_ = performance.Set("now", func() float64 {
-		return float64(time.Now().UnixNano())/float64(time.Millisecond) - float64(performance_time)
+		return float64(runtime.timer_time_ms)
 	})
 	_ = performance.Set("timeOrigin", performance_time)
 	_ = performance.Set("timing", map[string]int64{"navigationStart": performance_time, "responseStart": performance_time})
 	_ = performance.Set("navigation", map[string]int{"type": 0})
 	_ = performance.Set("mark", func(name string) map[string]any {
-		entry := map[string]any{"name": name, "entryType": "mark", "startTime": float64(time.Now().UnixMilli() - performance_time), "duration": 0}
+		entry := map[string]any{"name": name, "entryType": "mark", "startTime": float64(runtime.timer_time_ms), "duration": 0}
 		performance_entries = append(performance_entries, entry)
 		return entry
 	})
@@ -2466,8 +2566,8 @@ if (typeof Promise.withResolvers !== 'function') {
 	_ = history.Set("forward", func() {})
 	_ = history.Set("go", func(...any) {})
 	_ = window.Set("history", history)
-	_ = window.Set("localStorage", runtime.storage_object())
-	_ = window.Set("sessionStorage", runtime.storage_object())
+	_ = window.Set("localStorage", runtime.storage_object(runtime.page.navigate_options.LocalStorage))
+	_ = window.Set("sessionStorage", runtime.storage_object(nil))
 	_ = window.Set("getComputedStyle", func(call goja.FunctionCall) goja.Value {
 		return runtime.computed_style_object(runtime.object_node(call.Argument(0)))
 	})
@@ -2977,8 +3077,11 @@ func (runtime *page_runtime) console_object() *goja.Object {
 	return object
 }
 
-func (runtime *page_runtime) storage_object() *goja.Object {
-	values := make(map[string]string)
+func (runtime *page_runtime) storage_object(seed map[string]string) *goja.Object {
+	values := make(map[string]string, len(seed))
+	for key, value := range seed {
+		values[key] = value
+	}
 	object := runtime.vm.NewObject()
 	_ = object.Set("getItem", func(key string) any {
 		value, ok := values[key]
@@ -3171,7 +3274,7 @@ func (runtime *page_runtime) url_constructor(call goja.ConstructorCall) *goja.Ob
 }
 
 func (runtime *page_runtime) install_timers(window *goja.Object) {
-	add_timer := func(call goja.FunctionCall, repeating bool) goja.Value {
+	add_timer := func(call goja.FunctionCall, repeating bool, animation_frame bool) goja.Value {
 		callback, ok := goja.AssertFunction(call.Argument(0))
 		if !ok {
 			return runtime.vm.ToValue(0)
@@ -3189,12 +3292,13 @@ func (runtime *page_runtime) install_timers(window *goja.Object) {
 			args = append(args, call.Arguments[2:]...)
 		}
 		timer := &timer_job{
-			id:          runtime.next_timer_id,
-			callback:    callback,
-			args:        args,
-			due_at_ms:   runtime.timer_time_ms + delay_ms,
-			interval_ms: delay_ms,
-			repeating:   repeating,
+			id:              runtime.next_timer_id,
+			callback:        callback,
+			args:            args,
+			due_at_ms:       runtime.timer_time_ms + delay_ms,
+			interval_ms:     delay_ms,
+			repeating:       repeating,
+			animation_frame: animation_frame,
 		}
 		runtime.timers = append(runtime.timers, timer)
 		runtime.timer_by_id[timer.id] = timer
@@ -3206,12 +3310,12 @@ func (runtime *page_runtime) install_timers(window *goja.Object) {
 			delete(runtime.timer_by_id, id)
 		}
 	}
-	_ = window.Set("setTimeout", func(call goja.FunctionCall) goja.Value { return add_timer(call, false) })
-	_ = window.Set("setInterval", func(call goja.FunctionCall) goja.Value { return add_timer(call, true) })
+	_ = window.Set("setTimeout", func(call goja.FunctionCall) goja.Value { return add_timer(call, false, false) })
+	_ = window.Set("setInterval", func(call goja.FunctionCall) goja.Value { return add_timer(call, true, false) })
 	_ = window.Set("clearTimeout", clear_timer)
 	_ = window.Set("clearInterval", clear_timer)
 	_ = window.Set("requestAnimationFrame", func(call goja.FunctionCall) goja.Value {
-		return add_timer(goja.FunctionCall{Arguments: []goja.Value{call.Argument(0), runtime.vm.ToValue(16)}}, false)
+		return add_timer(goja.FunctionCall{Arguments: []goja.Value{call.Argument(0), runtime.vm.ToValue(animation_frame_step_ms)}}, false, true)
 	})
 	_ = window.Set("cancelAnimationFrame", clear_timer)
 }
@@ -3228,20 +3332,46 @@ func (runtime *page_runtime) run_timers(ctx context.Context, timer_deadline_ms i
 			}
 			return runtime.timers[left].due_at_ms < runtime.timers[right].due_at_ms
 		})
+		timer_index := 0
 		timer := runtime.timers[0]
 		if timer.due_at_ms > timer_deadline_ms {
-			break
+			// Ordinary timers stop at the virtual clock budget, but animation
+			// frames keep going while frame budget remains so late-starting
+			// tweens can still settle instead of freezing at their initial
+			// value. A frame can be queued behind an ordinary timer that is
+			// itself past the budget, so promote the earliest pending frame.
+			timer_index = -1
+			for index, candidate := range runtime.timers {
+				if candidate.animation_frame && !candidate.canceled {
+					timer_index = index
+					break
+				}
+			}
+			if timer_index < 0 || runtime.animation_frames_left <= 0 {
+				break
+			}
+			timer = runtime.timers[timer_index]
 		}
-		runtime.timers = runtime.timers[1:]
+		runtime.timers = append(runtime.timers[:timer_index], runtime.timers[timer_index+1:]...)
 		if timer.canceled {
 			continue
+		}
+		if timer.animation_frame {
+			runtime.animation_frames_left--
 		}
 		runtime.timer_time_ms = timer.due_at_ms
 		if !timer.repeating {
 			delete(runtime.timer_by_id, timer.id)
 		}
 		ran_callback = true
-		if _, err := runtime.call_javascript(ctx, timer.callback, runtime.vm.GlobalObject(), timer.args...); err != nil {
+		callback_args := timer.args
+		if timer.animation_frame {
+			frame_args := make([]goja.Value, 0, len(timer.args)+1)
+			frame_args = append(frame_args, runtime.vm.ToValue(float64(runtime.timer_time_ms)))
+			frame_args = append(frame_args, timer.args...)
+			callback_args = frame_args
+		}
+		if _, err := runtime.call_javascript(ctx, timer.callback, runtime.vm.GlobalObject(), callback_args...); err != nil {
 			runtime.fail_script(runtime.page.URL+"#timer", err)
 		}
 		if runtime.wait_condition_met() {
@@ -3283,6 +3413,7 @@ func (runtime *page_runtime) run_host_jobs(ctx context.Context) {
 
 func (runtime *page_runtime) pump_event_loop(ctx context.Context) {
 	timer_deadline_ms := runtime.timer_time_ms + max_timer_time_ms
+	runtime.animation_frames_left = max_animation_frames_per_pump
 	for round := 0; round < max_event_loop_rounds && ctx.Err() == nil; round++ {
 		if runtime.wait_condition_met() {
 			return
@@ -3664,6 +3795,8 @@ func (runtime *page_runtime) set_node_prototype(object *goja.Object, node *html.
 			constructor_name = "HTMLBodyElement"
 		} else if strings.EqualFold(node.Data, "html") {
 			constructor_name = "HTMLHtmlElement"
+		} else if strings.EqualFold(node.Data, "head") {
+			constructor_name = "HTMLHeadElement"
 		} else if strings.EqualFold(node.Data, "img") {
 			constructor_name = "HTMLImageElement"
 		} else if strings.EqualFold(node.Data, "iframe") {
@@ -4033,6 +4166,41 @@ func (runtime *page_runtime) install_document(object *goja.Object, node *html.No
 	}
 }
 
+// iframe_document lazily builds the isolated content document for an iframe.
+// Real browsers give every iframe its own document; aliasing the main
+// document let iframe-scoped measurement probes (font enumeration,
+// text-size calibration) write their helper nodes into the visible page DOM
+// where they survive the iframe removal and pollute the rendered HTML.
+func (runtime *page_runtime) iframe_document(iframe *html.Node) *html.Node {
+	if document := runtime.iframe_documents[iframe]; document != nil {
+		return document
+	}
+	document, err := html.Parse(strings.NewReader("<!doctype html><html><head></head><body></body></html>"))
+	if err != nil || document == nil {
+		document = &html.Node{Type: html.DocumentNode, Data: "#document"}
+	}
+	runtime.iframe_documents[iframe] = document
+	return document
+}
+
+// iframe_window returns a window-like object for an iframe. Its prototype is
+// the main window, so globals (timers, navigator, Math) stay reachable, while
+// document/parent/top resolve the way a real same-origin iframe window would.
+func (runtime *page_runtime) iframe_window(iframe *html.Node) *goja.Object {
+	if window := runtime.iframe_windows[iframe]; window != nil {
+		return window
+	}
+	document := runtime.iframe_document(iframe)
+	window := runtime.vm.NewObject()
+	_ = window.SetPrototype(runtime.vm.GlobalObject())
+	define_getter(runtime.vm, window, "document", func() any { return runtime.node_object(document) })
+	define_getter(runtime.vm, window, "parent", func() any { return runtime.vm.GlobalObject() })
+	define_getter(runtime.vm, window, "top", func() any { return runtime.vm.GlobalObject() })
+	define_getter(runtime.vm, window, "self", func() any { return window })
+	runtime.iframe_windows[iframe] = window
+	return window
+}
+
 func (runtime *page_runtime) install_element(object *goja.Object, node *html.Node) {
 	define_getter(runtime.vm, object, "tagName", func() any { return strings.ToUpper(node.Data) })
 	define_getter(runtime.vm, object, "localName", func() any { return strings.ToLower(node.Data) })
@@ -4068,8 +4236,8 @@ func (runtime *page_runtime) install_element(object *goja.Object, node *html.Nod
 	define_getter(runtime.vm, object, "dataset", func() any { return runtime.dataset_object(node) })
 	define_getter(runtime.vm, object, "attributes", func() any { return runtime.attributes_object(node) })
 	if strings.EqualFold(node.Data, "iframe") {
-		define_getter(runtime.vm, object, "contentWindow", func() any { return runtime.vm.GlobalObject() })
-		define_getter(runtime.vm, object, "contentDocument", func() any { return runtime.node_object(runtime.page.Document) })
+		define_getter(runtime.vm, object, "contentWindow", func() any { return runtime.iframe_window(node) })
+		define_getter(runtime.vm, object, "contentDocument", func() any { return runtime.node_object(runtime.iframe_document(node)) })
 	}
 	if strings.EqualFold(node.Data, "template") {
 		define_getter(runtime.vm, object, "content", func() any { return runtime.node_object(runtime.template_content(node)) })

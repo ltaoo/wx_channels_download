@@ -1,3 +1,5 @@
+import { request } from "@/biz/request.js";
+
 function number_or_default(value, fallback) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -92,10 +94,7 @@ function normalize_browse_history_item(raw) {
       source.content_url,
       source.ContentURL,
     ),
-    source_url: first_non_empty(
-      source.source_url,
-      source.SourceURL,
-    ),
+    source_url: first_non_empty(source.source_url, source.SourceURL),
     visited_times: number_or_default(
       first_non_empty(
         source.visited_times,
@@ -205,10 +204,7 @@ function BrowseHistoryViewModel(props) {
         autocomplete: false,
       }),
       position: "popper",
-      options: [
-        ["", "全部平台"],
-        ...Object.entries(window.PLATFORM_NAMES),
-      ].map(
+      options: [["", "全部平台"], ...Object.entries(window.PLATFORM_NAMES)].map(
         ([value, label]) => new Timeless.vm.SelectItemCore({ label, value }),
       ),
       onChange(value) {
@@ -261,8 +257,7 @@ function BrowseHistoryViewModel(props) {
   });
 
   const list_request = new Timeless.kit.RequestCore(
-    (params) =>
-      window.request.post("/api/browse_history/list", params),
+    (params) => request.post("/api/browse_history/list", params),
     {
       client: props.client,
       process(response) {
@@ -343,7 +338,9 @@ function BrowseHistoryViewModel(props) {
 
     const data = result.data;
     error_.as("");
-    histories_.as(data.list.map(normalize_browse_history_item), { reset: true });
+    histories_.as(data.list.map(normalize_browse_history_item), {
+      reset: true,
+    });
     total_.as(data.total);
     page_.as(data.page || requestedPage);
     page_size_.as(data.page_size);

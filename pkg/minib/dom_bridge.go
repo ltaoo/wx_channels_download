@@ -224,12 +224,12 @@ func (runtime *page_runtime) shared_node_property(node *html.Node, name string) 
 		return runtime.node_object(root)
 	case "contentWindow":
 		if strings.EqualFold(node.Data, "iframe") {
-			return runtime.vm.GlobalObject()
+			return runtime.iframe_window(node)
 		}
 		return nil
 	case "contentDocument":
 		if strings.EqualFold(node.Data, "iframe") {
-			return runtime.node_object(runtime.page.Document)
+			return runtime.node_object(runtime.iframe_document(node))
 		}
 		return nil
 	case "protocol", "host", "hostname", "port", "pathname", "search", "hash", "origin":

@@ -65,17 +65,20 @@ type Asset struct {
 
 // Document is the normalized result of one Feishu docx fetch.
 type Document struct {
-	Token      string  `json:"token"`
-	URL        string  `json:"url"`
-	Tenant     string  `json:"tenant"`
-	Title      string  `json:"title"`
-	Text       string  `json:"text"`
-	HTML       string  `json:"html"`
-	WordCount  int     `json:"word_count"`
-	BlockCount int     `json:"block_count"`
-	Assets     []Asset `json:"assets"`
-	root_id    string
-	blocks     map[string]block_data
+	Token       string  `json:"token"`
+	URL         string  `json:"url"`
+	Tenant      string  `json:"tenant"`
+	Title       string  `json:"title"`
+	Author      string  `json:"author,omitempty"`
+	OwnerID     string  `json:"owner_id,omitempty"`
+	PublishTime int64   `json:"publish_time,omitempty"` // milliseconds
+	Text        string  `json:"text"`
+	HTML        string  `json:"html"`
+	WordCount   int     `json:"word_count"`
+	BlockCount  int     `json:"block_count"`
+	Assets      []Asset `json:"assets"`
+	root_id     string
+	blocks      map[string]block_data
 }
 
 // Client fetches documents with persisted Feishu cookies and caches decrypted images.
@@ -257,6 +260,7 @@ func (c *Client) FetchContext(fetch_context context.Context, raw_url string) (*D
 	if err != nil {
 		return nil, err
 	}
+	c.fetch_document_meta(fetch_context, browser, location, document)
 	c.resolve_document_files(fetch_context, browser, document)
 	if err := c.cache_document_images(fetch_context, browser, document); err != nil {
 		return nil, err
@@ -449,6 +453,53 @@ func (c *Client) resolve_wiki_document(fetch_context context.Context, browser *m
 		}, nil
 	}
 	return location, errors.New("Feishu wiki node info is missing its document token")
+}
+
+type document_meta_response struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data struct {
+		OwnerUserName string `json:"owner_user_name"`
+		OwnerID       string `json:"owner_id"`
+		CreateTime    int64  `json:"create_time"` // seconds
+	} `json:"data"`
+}
+
+// fetch_document_meta retrieves the document owner (作者) and creation time
+// (发布时间) through the drive meta API. Failures are non-fatal: the document
+// is still returned without author or publish time.
+func (c *Client) fetch_document_meta(fetch_context context.Context, browser *minib.MiniBrowser, location document_location, document *Document) {
+	parsed_url, err := url.Parse(location.request_url)
+	if err != nil {
+		return
+	}
+	meta_url := &url.URL{Scheme: parsed_url.Scheme, Host: parsed_url.Host, Path: "/space/api/meta/"}
+	query := meta_url.Query()
+	query.Set("token", location.token)
+	query.Set("type", "22")
+	query.Add("need_extra_fields", "1")
+	query.Add("need_extra_fields", "3")
+	meta_url.RawQuery = query.Encode()
+	response, err := browser.Get(fetch_context, meta_url.String(), http.Header{
+		"Accept":  []string{"application/json, text/plain, */*"},
+		"Referer": []string{location.request_url},
+	})
+	if err != nil || response.StatusCode != http.StatusOK {
+		return
+	}
+	var meta document_meta_response
+	if err := json.Unmarshal(response.Body, &meta); err != nil || meta.Code != 0 {
+		return
+	}
+	if author := strings.TrimSpace(meta.Data.OwnerUserName); author != "" {
+		document.Author = author
+	}
+	if owner_id := strings.TrimSpace(meta.Data.OwnerID); owner_id != "" {
+		document.OwnerID = owner_id
+	}
+	if meta.Data.CreateTime > 0 {
+		document.PublishTime = meta.Data.CreateTime * 1000
+	}
 }
 
 // wiki_obj_type normalizes the node obj type. Feishu web APIs return either a

@@ -1,3 +1,5 @@
+import { request } from "./biz/request.js";
+
 import {
   BrandError,
   BrandLoading,
@@ -1083,19 +1085,19 @@ export function TagSelect(props = {}) {
 
   const tag_list_request = new Runtime.kit.RequestCore(
     (params) => {
-      return window.request.get("/api/tag/list", params);
+      return request.get("/api/tag/list", params);
     },
     { client: props.client },
   );
   const tag_set_request = new Runtime.kit.RequestCore(
     (params) => {
-      return window.request.post("/api/tag/content/set", params);
+      return request.post("/api/tag/content/set", params);
     },
     { client: props.client },
   );
   const tag_create_request = new Runtime.kit.RequestCore(
     (params) => {
-      window.request.post("/api/tag/create", params);
+      request.post("/api/tag/create", params);
     },
     { client: props.client },
   );

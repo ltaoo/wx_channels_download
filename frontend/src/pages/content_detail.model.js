@@ -1,3 +1,5 @@
+import { request } from "@/biz/request.js";
+
 import { PreviewViewModel, normalize_file } from "./preview.model.js";
 
 function first_non_empty(...values) {
@@ -61,10 +63,7 @@ function normalize_embedded_content(raw) {
     raw_content && typeof raw_content === "object" ? raw_content : {};
   return {
     ...source,
-    relation_type: first_non_empty(
-      source.relation_type,
-      source.RelationType,
-    ),
+    relation_type: first_non_empty(source.relation_type, source.RelationType),
     sort_order: number_or_default(
       first_non_empty(source.sort_order, source.SortOrder),
       0,
@@ -140,10 +139,7 @@ function normalize_content_detail(raw) {
     ...source,
     id: first_non_empty(source.id, source.ID),
     platform_id: first_non_empty(source.platform_id, source.PlatformID),
-    platform_name: first_non_empty(
-      source.platform_name,
-      source.PlatformName,
-    ),
+    platform_name: first_non_empty(source.platform_name, source.PlatformName),
     content_type: first_non_empty(
       source.content_type,
       source.ContentType,
@@ -322,22 +318,20 @@ function platform_name(content) {
 }
 
 function content_type_label(value) {
-  const type = String(value || "").trim().toLowerCase();
+  const type = String(value || "")
+    .trim()
+    .toLowerCase();
   return window.CONTENT_TYPE_NAMES[type] || type || "内容";
 }
 
 function normalize_task_status(status) {
-  const value = String(status ?? "").trim().toLowerCase();
+  const value = String(status ?? "")
+    .trim()
+    .toLowerCase();
   if (
-    [
-      "1",
-      "2",
-      "4",
-      "preparing",
-      "downloading",
-      "merging",
-      "running",
-    ].includes(value)
+    ["1", "2", "4", "preparing", "downloading", "merging", "running"].includes(
+      value,
+    )
   ) {
     return "running";
   }
@@ -348,9 +342,16 @@ function normalize_task_status(status) {
     return "finished";
   }
   if (
-    ["6", "7", "failed", "fail", "failure", "error", "cancelled", "canceled"].includes(
-      value,
-    )
+    [
+      "6",
+      "7",
+      "failed",
+      "fail",
+      "failure",
+      "error",
+      "cancelled",
+      "canceled",
+    ].includes(value)
   ) {
     return "failed";
   }
@@ -500,11 +501,14 @@ function sort_content_media_entries(entries, content) {
   if (!["album", "image_set"].includes(content.content_type)) return entries;
   // Follow the API's ordered resource list after gathering linked and legacy assets.
   const resource_order = new Map(
-    content.resources.map((resource, index) => [String(resource.id ?? resource.ID), index]),
+    content.resources.map((resource, index) => [
+      String(resource.id ?? resource.ID),
+      index,
+    ]),
   );
-  const order = (entry) => resource_order.get(
-    String(entry.resource.id ?? entry.resource.ID),
-  ) ?? Infinity;
+  const order = (entry) =>
+    resource_order.get(String(entry.resource.id ?? entry.resource.ID)) ??
+    Infinity;
   return [...entries].sort((left, right) => order(left) - order(right));
 }
 
@@ -631,7 +635,7 @@ function ContentDetailViewModel(props) {
   let request_sequence = 0;
 
   const request_ = new Timeless.kit.RequestCore(
-    (params) => window.request.get("/api/content/detail", params),
+    (params) => request.get("/api/content/detail", params),
     {
       client: props.client,
       process(response) {
@@ -645,7 +649,7 @@ function ContentDetailViewModel(props) {
 
   const check_files_request_ = new Timeless.kit.RequestCore(
     (files) =>
-      window.request.post("/api/v1/download_task/check_files", {
+      request.post("/api/v1/download_task/check_files", {
         files,
       }),
     { client: props.client },

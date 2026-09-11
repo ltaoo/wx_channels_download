@@ -65,7 +65,7 @@ func NewAutomationService(
 	flow_engine *flowengine.FlowEngine,
 	event_bus events.Publisher,
 ) *AutomationService {
-	return &AutomationService{
+	service := &AutomationService{
 		db:          db,
 		logger:      logger,
 		flow_engine: flow_engine,
@@ -75,6 +75,8 @@ func NewAutomationService(
 		cron_parser: cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor),
 		stop:        make(chan struct{}),
 	}
+	service.load_user_flows()
+	return service
 }
 
 // FlowEngine exposes the shared engine so callers can register flow

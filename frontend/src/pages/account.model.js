@@ -1,8 +1,7 @@
+import { request } from "@/biz/request.js";
 import { proxy_image_url } from "@/image-proxy.model.js";
-import {
-  content_type_label,
-  normalize_content_item,
-} from "./content.model.js";
+
+import { content_type_label, normalize_content_item } from "./content.model.js";
 
 function first_non_empty(...values) {
   for (const value of values) {
@@ -32,9 +31,7 @@ function select_search(placeholder) {
 }
 
 function account_search_from_query(query = {}) {
-  const account_id = String(
-    first_non_empty(query.id, query.account_id),
-  ).trim();
+  const account_id = String(first_non_empty(query.id, query.account_id)).trim();
   return {
     keyword: String(first_non_empty(query.keyword, account_id)),
     account_id,
@@ -131,7 +128,7 @@ function format_content_count(value) {
 }
 
 function account_home_default_scope(account) {
-  const platform_id = String(account && account.platform_id || "").trim();
+  const platform_id = String((account && account.platform_id) || "").trim();
   if (platform_id === "zhihu") return "answers";
   if (platform_id === "bilibili") return "video";
   if (platform_id === "douyin") return "posts";
@@ -155,7 +152,9 @@ function normalize_home_tab(raw) {
       ),
     ).trim(),
     content_types: Array.isArray(source.content_types)
-      ? source.content_types.map((item) => String(item || "").trim()).filter(Boolean)
+      ? source.content_types
+          .map((item) => String(item || "").trim())
+          .filter(Boolean)
       : [],
   };
 }
@@ -167,13 +166,13 @@ function normalize_home_detail_content(raw, account) {
     source.object_desc,
     source.ObjectDesc,
   );
-  const object_desc = object_desc_source && typeof object_desc_source === "object"
-    ? object_desc_source
-    : {};
+  const object_desc =
+    object_desc_source && typeof object_desc_source === "object"
+      ? object_desc_source
+      : {};
   const media_list = Array.isArray(object_desc.media) ? object_desc.media : [];
-  const media = media_list[0] && typeof media_list[0] === "object"
-    ? media_list[0]
-    : {};
+  const media =
+    media_list[0] && typeof media_list[0] === "object" ? media_list[0] : {};
   const media_type = number_or_default(
     first_non_empty(object_desc.mediaType, media.mediaType),
     0,
@@ -187,14 +186,18 @@ function normalize_home_detail_content(raw, account) {
       source.type,
       source.Type,
     ),
-  ).trim().toLowerCase();
-  const content_type = declared_type || (media_type === 2
-    ? "album"
-    : media_type === 9
-      ? "live"
-      : media_list.length > 0
-        ? "video"
-        : "text");
+  )
+    .trim()
+    .toLowerCase();
+  const content_type =
+    declared_type ||
+    (media_type === 2
+      ? "album"
+      : media_type === 9
+        ? "live"
+        : media_list.length > 0
+          ? "video"
+          : "text");
   const media_url = String(first_non_empty(media.url, media.URL)).trim();
   const media_token = String(
     first_non_empty(media.urlToken, media.URLToken),
@@ -208,22 +211,24 @@ function normalize_home_detail_content(raw, account) {
       source.decodeKey,
     ),
   ).trim();
-  const preview_images = media_list.map((item) => {
-    const item_url = String(first_non_empty(item.url, item.URL)).trim();
-    const item_token = String(
-      first_non_empty(item.urlToken, item.URLToken),
-    ).trim();
-    return proxy_image_url(
-      account && account.platform_id,
-      first_non_empty(
-        item.thumbUrl,
-        item.coverUrl,
-        item.thumb_url,
-        item.cover_url,
-        item_url ? `${item_url}${item_token}` : "",
-      ),
-    );
-  }).filter(Boolean);
+  const preview_images = media_list
+    .map((item) => {
+      const item_url = String(first_non_empty(item.url, item.URL)).trim();
+      const item_token = String(
+        first_non_empty(item.urlToken, item.URLToken),
+      ).trim();
+      return proxy_image_url(
+        account && account.platform_id,
+        first_non_empty(
+          item.thumbUrl,
+          item.coverUrl,
+          item.thumb_url,
+          item.cover_url,
+          item_url ? `${item_url}${item_token}` : "",
+        ),
+      );
+    })
+    .filter(Boolean);
   const fallback_cover_url = proxy_image_url(
     account && account.platform_id,
     first_non_empty(
@@ -286,15 +291,10 @@ function normalize_home_detail_content(raw, account) {
       source.publish_time,
     ),
     preview_images,
-    preview_aspect_ratio: media_width > 0 && media_height > 0
-      ? media_width / media_height
-      : 0,
+    preview_aspect_ratio:
+      media_width > 0 && media_height > 0 ? media_width / media_height : 0,
     duration: number_or_default(
-      first_non_empty(
-        media.videoPlayLen,
-        media.duration,
-        source.duration,
-      ),
+      first_non_empty(media.videoPlayLen, media.duration, source.duration),
       0,
     ),
     account_name: first_non_empty(
@@ -310,9 +310,7 @@ function normalize_home_details_response(data) {
     scopes: Array.isArray(source.scopes) ? source.scopes : [],
     scope: String(first_non_empty(source.scope, source.Scope)).trim(),
     contents: Array.isArray(source.contents) ? source.contents : [],
-    next_marker: String(
-      first_non_empty(source.next_marker, source.nextMarker),
-    ),
+    next_marker: String(first_non_empty(source.next_marker, source.nextMarker)),
   };
 }
 
@@ -353,18 +351,20 @@ function AccountViewModel(props) {
   const reqs = {
     account: {
       list: new Timeless.kit.RequestCore(
-        (params) => window.request.get("/api/account/list", params),
+        (params) => request.get("/api/account/list", params),
         { client: props.client },
       ),
       details: new Timeless.kit.RequestCore(
-        (request) => window.request.get(
-          `/api/account/${encodeURIComponent(request.scope)}/content/list`,
-          request.params,
-        ),
+        (request) => {
+          return request.get(
+            `/api/account/${encodeURIComponent(request.scope)}/content/list`,
+            request.params,
+          );
+        },
         { client: props.client },
       ),
       download_create: new Timeless.kit.RequestCore(
-        (body) => window.request.post("/api/v1/download_task/create", body),
+        (body) => request.post("/api/v1/download_task/create", body),
         { client: props.client },
       ),
     },
@@ -414,9 +414,8 @@ function AccountViewModel(props) {
       return state.count === 0 ? "empty" : "normal";
     },
   );
-  const drawer_empty_description_ = computed(
-    drawer_scope_,
-    (scope) => scope ? "该分类暂未返回内容" : "点击上方 tab 获取对应内容",
+  const drawer_empty_description_ = computed(drawer_scope_, (scope) =>
+    scope ? "该分类暂未返回内容" : "点击上方 tab 获取对应内容",
   );
 
   const ui = {
@@ -619,9 +618,7 @@ function AccountViewModel(props) {
       scope: String(scope),
       params: {
         id: account.id,
-        page: String(
-          options.page || (append ? drawer_next_marker_.value : ""),
-        ),
+        page: String(options.page || (append ? drawer_next_marker_.value : "")),
       },
     });
     if (sequence !== drawer_request_sequence) return result;
@@ -644,7 +641,7 @@ function AccountViewModel(props) {
     );
     drawer_scope_.as(details.scope || String(scope));
     const loaded_contents = details.contents.map((content) =>
-      normalize_home_detail_content(content, account)
+      normalize_home_detail_content(content, account),
     );
     const contents = append
       ? [...drawer_contents_.value, ...loaded_contents]
@@ -669,11 +666,13 @@ function AccountViewModel(props) {
     drawer_player_download_success_.as("");
 
     const result = await reqs.account.download_create.run({
-      objects: [{
-        platform: "wxchannels",
-        content,
-        filename: content.title || content.external_id || "",
-      }],
+      objects: [
+        {
+          platform: "wxchannels",
+          content,
+          filename: content.title || content.external_id || "",
+        },
+      ],
     });
     drawer_player_download_loading_.as(false);
     if (result.error) {
@@ -730,25 +729,22 @@ function AccountViewModel(props) {
     },
     selectHomeTab(tab) {
       const scope = String((tab && tab.scope) || "").trim();
-      if (
-        !scope ||
-        drawer_loading_.value ||
-        drawer_loading_more_.value
-      ) return null;
+      if (!scope || drawer_loading_.value || drawer_loading_more_.value)
+        return null;
       return load_account_contents(selected_account_.value, scope);
     },
     loadMoreAccountContents() {
       const account = selected_account_.value;
       const scope = drawer_scope_.value;
       const page = drawer_next_marker_.value;
-      if (!account || !scope || !page || drawer_loading_more_.value) return null;
+      if (!account || !scope || !page || drawer_loading_more_.value)
+        return null;
       return load_account_contents(account, scope, { append: true, page });
     },
     openContent(content) {
-      const is_playable_video = String(
-        content && content.content_type || "",
-      ).toLowerCase() === "video" &&
-        Boolean(content && content.url && content.decode_key);
+      const is_playable_video =
+        String((content && content.content_type) || "").toLowerCase() ===
+          "video" && Boolean(content && content.url && content.decode_key);
       if (is_playable_video) {
         drawer_player_content_.as(content);
         drawer_player_download_error_.as("");

@@ -1203,7 +1203,7 @@ document.body.setAttribute('data-browser-api', detached.title + ':' + typeof new
 document.body.setAttribute('data-canvas-api', (canvas.getContext('webgl') === null) + ':' + (document.location === location));
 var iframe = document.createElement('iframe');
 document.body.appendChild(iframe);
-document.body.setAttribute('data-native-dom', [new TextDecoder().decode(new Uint8Array([111, 107])), new TextDecoder().decode() === '', document instanceof HTMLDocument, document.body instanceof HTMLBodyElement, document.documentElement instanceof HTMLHtmlElement, new Image() instanceof HTMLImageElement, iframe instanceof HTMLIFrameElement, new Audio() instanceof HTMLAudioElement, new Audio().canPlayType('audio/mpeg'), document.createElement('video') instanceof HTMLVideoElement, document.createElement('video').canPlayType('video/mp4'), document.createTextNode('x') instanceof CharacterData, location instanceof Location, iframe.contentWindow === window, document.createElement('div') instanceof HTMLDivElement, document.body.isConnected, document.createElement('div').isConnected, typeof Node.prototype.appendChild === 'function', Element.prototype.getAttribute.call(probe, 'onsubmit') === 'test', Object.getOwnPropertyDescriptor(Node.prototype, 'firstChild').get.call(document.body) === document.body.firstChild, Node.prototype.constructor === Node, Element.prototype.constructor === Element, HTMLElement.prototype.constructor === HTMLElement, CustomEvent.prototype.constructor === CustomEvent].join(':'));
+document.body.setAttribute('data-native-dom', [new TextDecoder().decode(new Uint8Array([111, 107])), new TextDecoder().decode() === '', document instanceof HTMLDocument, document.body instanceof HTMLBodyElement, document.documentElement instanceof HTMLHtmlElement, new Image() instanceof HTMLImageElement, iframe instanceof HTMLIFrameElement, new Audio() instanceof HTMLAudioElement, new Audio().canPlayType('audio/mpeg'), document.createElement('video') instanceof HTMLVideoElement, document.createElement('video').canPlayType('video/mp4'), document.createTextNode('x') instanceof CharacterData, location instanceof Location, iframe.contentWindow !== window, iframe.contentWindow.parent === window, iframe.contentDocument === iframe.contentWindow.document, iframe.contentDocument !== document, iframe.contentDocument.body !== document.body, document.createElement('div') instanceof HTMLDivElement, document.body.isConnected, document.createElement('div').isConnected, typeof Node.prototype.appendChild === 'function', Element.prototype.getAttribute.call(probe, 'onsubmit') === 'test', Object.getOwnPropertyDescriptor(Node.prototype, 'firstChild').get.call(document.body) === document.body.firstChild, Node.prototype.constructor === Node, Element.prototype.constructor === Element, HTMLElement.prototype.constructor === HTMLElement, CustomEvent.prototype.constructor === CustomEvent].join(':'));
 var bodyRect = document.body.getBoundingClientRect();
 document.body.setAttribute('data-layout', bodyRect.right + ':' + bodyRect.bottom + ':' + document.createElement('div').getBoundingClientRect().right + ':' + document.body.getClientRects().length + ':' + document.createElement('div').getClientRects().length);
 new IntersectionObserver(function(entries) { document.body.setAttribute('data-intersection', entries[0].isIntersecting + ':' + entries[0].target.tagName); }).observe(document.body);
@@ -1357,7 +1357,7 @@ fetch('/fetch-api?source=fetch', { method: 'POST', headers: { 'Content-Type': 'a
 	if !strings.Contains(page.RenderedHTML, `data-navigator-prototype="true:true"`) {
 		t.Fatalf("navigator prototype semantics missing from rendered HTML: %s", page.RenderedHTML)
 	}
-	if !strings.Contains(page.RenderedHTML, `external-inline`) || !strings.Contains(page.RenderedHTML, `data-initial-script-load="done"`) || !strings.Contains(page.RenderedHTML, `data-written="done"`) || !strings.Contains(page.RenderedHTML, `data-apply-null="0"`) || !strings.Contains(page.RenderedHTML, `data-single-argument-timer="done"`) || !strings.Contains(page.RenderedHTML, `data-dynamic="done"`) || !strings.Contains(page.RenderedHTML, `data-dynamic-style="loaded"`) || !strings.Contains(page.RenderedHTML, `data-dynamic-image="loaded"`) || !strings.Contains(page.RenderedHTML, `data-defer-saw-body="yes"`) || !strings.Contains(page.RenderedHTML, `data-anchor="/jobs?q=go#details"`) || !strings.Contains(page.RenderedHTML, `data-attribute="test"`) || !strings.Contains(page.RenderedHTML, `data-has-attributes="true:false"`) || !strings.Contains(page.RenderedHTML, `data-class-list="one,two"`) || !strings.Contains(page.RenderedHTML, `data-event-prototype="ready"`) || !strings.Contains(page.RenderedHTML, `data-wrapped-event="wrapped"`) || !strings.Contains(page.RenderedHTML, `data-invalid-event="true"`) || !strings.Contains(page.RenderedHTML, `data-adjacent="done"`) || !strings.Contains(page.RenderedHTML, `data-module="done"`) || !strings.Contains(page.RenderedHTML, `data-named-global="done"`) || !strings.Contains(page.RenderedHTML, `data-browser-api="detached:function"`) || !strings.Contains(page.RenderedHTML, `data-youtube-apis="true:en-US:en-US:click:Enter:detail:0 0 1 1:true:false:true:true:true:16px:true"`) || !strings.Contains(page.RenderedHTML, `data-custom-elements="true:upgraded:yes:true:yes:on&gt;null:true:true:true"`) || !strings.Contains(page.RenderedHTML, `data-template-inert="0:1"`) || !strings.Contains(page.RenderedHTML, `data-upgraded="yes"`) || !strings.Contains(page.RenderedHTML, `data-connect-order="parent,child"`) || !strings.Contains(page.RenderedHTML, `data-wrapped-import="BODY"`) || !strings.Contains(page.RenderedHTML, `data-message-channel="ready"`) || !strings.Contains(page.RenderedHTML, `<strong data-n="template-clone">template</strong>`) || !strings.Contains(page.RenderedHTML, `data-fragment-query="nested:1"`) || !strings.Contains(page.RenderedHTML, `<b data-n="nested-template-content">nested</b>`) || !strings.Contains(page.RenderedHTML, `<em data-n="fragment-insert-child"></em><b data-n="fragment-replace-child"></b>`) || !strings.Contains(page.RenderedHTML, `<i data-n="range-fragment">range</i>`) || !strings.Contains(page.RenderedHTML, `data-canvas-api="true:true"`) || !strings.Contains(page.RenderedHTML, `data-native-dom="ok:true:true:true:true:true:true:true:probably:true:probably:true:true:true:true:true:false:true:true:true:true:true:true:true"`) || !strings.Contains(page.RenderedHTML, `data-layout="100:20:0:1:0"`) || !strings.Contains(page.RenderedHTML, `data-intersection="true:BODY"`) || !strings.Contains(page.RenderedHTML, `data-mutation="sync,after,observer"`) || !strings.Contains(page.RenderedHTML, `data-xhr="200:{&#34;ok&#34;:true}"`) || !strings.Contains(page.RenderedHTML, `data-promise-xhr="200"`) || !strings.Contains(page.RenderedHTML, `data-axios-xhr="200:{&#34;axios&#34;:true}"`) || !strings.Contains(page.RenderedHTML, `data-async-finally="mounted"`) || !strings.Contains(page.RenderedHTML, `data-delayed-xhr="done"`) || !strings.Contains(page.RenderedHTML, `data-kv-xhr="ready"`) || !strings.Contains(page.RenderedHTML, `data-fetch="true"`) || !strings.Contains(page.RenderedHTML, `<span>fragment</span>`) {
+	if !strings.Contains(page.RenderedHTML, `external-inline`) || !strings.Contains(page.RenderedHTML, `data-initial-script-load="done"`) || !strings.Contains(page.RenderedHTML, `data-written="done"`) || !strings.Contains(page.RenderedHTML, `data-apply-null="0"`) || !strings.Contains(page.RenderedHTML, `data-single-argument-timer="done"`) || !strings.Contains(page.RenderedHTML, `data-dynamic="done"`) || !strings.Contains(page.RenderedHTML, `data-dynamic-style="loaded"`) || !strings.Contains(page.RenderedHTML, `data-dynamic-image="loaded"`) || !strings.Contains(page.RenderedHTML, `data-defer-saw-body="yes"`) || !strings.Contains(page.RenderedHTML, `data-anchor="/jobs?q=go#details"`) || !strings.Contains(page.RenderedHTML, `data-attribute="test"`) || !strings.Contains(page.RenderedHTML, `data-has-attributes="true:false"`) || !strings.Contains(page.RenderedHTML, `data-class-list="one,two"`) || !strings.Contains(page.RenderedHTML, `data-event-prototype="ready"`) || !strings.Contains(page.RenderedHTML, `data-wrapped-event="wrapped"`) || !strings.Contains(page.RenderedHTML, `data-invalid-event="true"`) || !strings.Contains(page.RenderedHTML, `data-adjacent="done"`) || !strings.Contains(page.RenderedHTML, `data-module="done"`) || !strings.Contains(page.RenderedHTML, `data-named-global="done"`) || !strings.Contains(page.RenderedHTML, `data-browser-api="detached:function"`) || !strings.Contains(page.RenderedHTML, `data-youtube-apis="true:en-US:en-US:click:Enter:detail:0 0 1 1:true:false:true:true:true:16px:true"`) || !strings.Contains(page.RenderedHTML, `data-custom-elements="true:upgraded:yes:true:yes:on&gt;null:true:true:true"`) || !strings.Contains(page.RenderedHTML, `data-template-inert="0:1"`) || !strings.Contains(page.RenderedHTML, `data-upgraded="yes"`) || !strings.Contains(page.RenderedHTML, `data-connect-order="parent,child"`) || !strings.Contains(page.RenderedHTML, `data-wrapped-import="BODY"`) || !strings.Contains(page.RenderedHTML, `data-message-channel="ready"`) || !strings.Contains(page.RenderedHTML, `<strong data-n="template-clone">template</strong>`) || !strings.Contains(page.RenderedHTML, `data-fragment-query="nested:1"`) || !strings.Contains(page.RenderedHTML, `<b data-n="nested-template-content">nested</b>`) || !strings.Contains(page.RenderedHTML, `<em data-n="fragment-insert-child"></em><b data-n="fragment-replace-child"></b>`) || !strings.Contains(page.RenderedHTML, `<i data-n="range-fragment">range</i>`) || !strings.Contains(page.RenderedHTML, `data-canvas-api="true:true"`) || !strings.Contains(page.RenderedHTML, `data-native-dom="ok:true:true:true:true:true:true:true:probably:true:probably:true:true:true:true:true:true:true:true:true:false:true:true:true:true:true:true:true"`) || !strings.Contains(page.RenderedHTML, `data-layout="100:20:0:1:0"`) || !strings.Contains(page.RenderedHTML, `data-intersection="true:BODY"`) || !strings.Contains(page.RenderedHTML, `data-mutation="sync,after,observer"`) || !strings.Contains(page.RenderedHTML, `data-xhr="200:{&#34;ok&#34;:true}"`) || !strings.Contains(page.RenderedHTML, `data-promise-xhr="200"`) || !strings.Contains(page.RenderedHTML, `data-axios-xhr="200:{&#34;axios&#34;:true}"`) || !strings.Contains(page.RenderedHTML, `data-async-finally="mounted"`) || !strings.Contains(page.RenderedHTML, `data-delayed-xhr="done"`) || !strings.Contains(page.RenderedHTML, `data-kv-xhr="ready"`) || !strings.Contains(page.RenderedHTML, `data-fetch="true"`) || !strings.Contains(page.RenderedHTML, `<span>fragment</span>`) {
 		t.Fatalf("script DOM changes missing from rendered HTML: %s", page.RenderedHTML)
 	}
 	if !strings.Contains(page.RenderedHTML, `data-event-dispatch="ready:true:true:true:true"`) || !strings.Contains(page.RenderedHTML, `data-event-result="false"`) {
@@ -1528,5 +1528,56 @@ func TestCompileJavaScriptStripsUnresolvableSourceMapPragma(t *testing.T) {
 	}
 	if program == nil {
 		t.Fatal("expected compiled program")
+	}
+}
+
+func TestNavigateRegExpNamedGroups(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(response_writer, `<!doctype html><body><script>
+var selector = /(?<tag>[\w\-]+)?(?:#(?<id>[\w\-]+))?(?<class>(?:\.(?:[\w\-]+))*)/.exec('div.monaco-diff-editor.side-by-side');
+var color = 'rgba(1, 2, 3, 0.5)'.match(/rgba\((?<r>\d+), *(?<g>\d+), *(?<b>\d+), *(?<a>[\d.]+)\)/);
+var unmatched = /(?<x>a)(?<y>b)/.exec('zz');
+document.body.setAttribute('data-groups', selector.groups.tag + '|' + selector.groups.id + '|' + selector.groups.class + '|' + color.groups.g + '|' + color.groups.a + '|' + String(unmatched === null));
+</script></body>`)
+	}))
+	defer server.Close()
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-groups="div|undefined|.monaco-diff-editor.side-by-side|2|0.5|true"`) {
+		t.Fatalf("named capture groups failed: failures=%+v html=%s", page.ScriptFailures, page.RenderedHTML)
+	}
+}
+
+func TestNavigateVarHoistedIIFEExportsPattern(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(response_writer, `<!doctype html><body><script>
+var e = {}; var writes = []; var stored;
+Object.defineProperty(e, 'P', { configurable: true, enumerable: true, get: function() { return stored; }, set: function(v) { writes.push(typeof v); stored = v; } });
+e.P = void 0;
+(function(Q, ex) { "use strict"; ex.A = ex.P = void 0; var o; (function(v) { v.x = 1; })(o || (ex.P = o = {})); ex.done = o; })(null, e);
+document.body.setAttribute('data-iife', typeof e.P + ':' + writes.join(',') + ':' + String(e.P && e.P.x === 1) + ':' + typeof e.done);
+</script></body>`)
+	}))
+	defer server.Close()
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-iife="object:undefined,undefined,object:true:object"`) {
+		t.Fatalf("var-hoisted IIFE exports pattern failed: failures=%+v html=%s", page.ScriptFailures, page.RenderedHTML)
 	}
 }

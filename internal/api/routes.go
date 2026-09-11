@@ -159,6 +159,15 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/api/v1/automation/runs", c.handle_list_automation_runs)
 	c.engine.GET("/api/v1/automation/runs/:id", c.handle_get_automation_run)
 	c.engine.POST("/api/v1/automation/runs/:id/cancel", c.handle_cancel_automation_run)
+	// User-defined pipelines
+	c.engine.GET("/api/v1/automation/flows", c.handle_list_user_flows)
+	c.engine.POST("/api/v1/automation/flows", c.handle_create_user_flow)
+	c.engine.GET("/api/v1/automation/flows/node-catalog", c.handle_get_user_flow_node_catalog)
+	c.engine.GET("/api/v1/automation/flows/graph", c.handle_get_user_flow_graph)
+	c.engine.GET("/api/v1/automation/flows/:id", c.handle_get_user_flow)
+	c.engine.PUT("/api/v1/automation/flows/:id", c.handle_update_user_flow)
+	c.engine.DELETE("/api/v1/automation/flows/:id", c.handle_delete_user_flow)
+	c.engine.POST("/api/v1/automation/flows/:id/trigger", c.handle_trigger_user_flow)
 }
 
 func (c *APIClient) handle_wecom_callback(ctx *gin.Context) {
