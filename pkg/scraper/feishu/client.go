@@ -46,7 +46,6 @@ var (
 	feishu_tenant_domains = []string{"feishu.cn", "larksuite.com", "larkenterprise.com"}
 )
 
-var supported_feishu_domains = []string{"feishu.cn", "larkenterprise.com"}
 const feishu_url_error = "Feishu URL must be https://<tenant>.feishu.cn|larksuite.com|larkenterprise.com/docx/<token> or /wiki/<token>"
 
 // Asset is one image or attached file discovered in a Feishu document.
@@ -467,19 +466,6 @@ func wiki_obj_type(raw_obj_type json.RawMessage) string {
 		return type_number.String()
 	}
 	return ""
-}
-
-func err_invalid_document_url() error {
-	return errors.New("Feishu URL must be https://<tenant>.feishu.cn|larkenterprise.com/docx/<token> or /wiki/<token>")
-}
-
-func supported_feishu_host(hostname string) bool {
-	for _, domain := range supported_feishu_domains {
-		if hostname == domain || strings.HasSuffix(hostname, "."+domain) {
-			return true
-		}
-	}
-	return false
 }
 
 func stream_download_host(origin string) string {
