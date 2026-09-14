@@ -98,11 +98,11 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 			if settings.DebugShowError {
 				append_scripts(url_build("/inject/error.js", version_query))
 			}
-			append_scripts(url_build("/public/timeless/0.33.0/timeless.umd.min.js", version_query))
-			append_stylesheets(url_build("/public/timeless/0.33.0/timeless.weui.css", version_query))
-			append_scripts(url_build("/public/timeless/0.33.0/timeless.weui.umd.min.js", version_query))
-			append_scripts(url_build("/public/timeless/0.33.0/timeless.dom.umd.min.js", version_query))
-			append_scripts(url_build("/public/timeless/0.33.0/timeless.web.umd.min.js", version_query))
+			append_scripts(url_build("/public/timeless/0.33.1/timeless.umd.min.js", version_query))
+			append_stylesheets(url_build("/public/timeless/0.33.1/timeless.weui.css", version_query))
+			append_scripts(url_build("/public/timeless/0.33.1/timeless.weui.umd.min.js", version_query))
+			append_scripts(url_build("/public/timeless/0.33.1/timeless.dom.umd.min.js", version_query))
+			append_scripts(url_build("/public/timeless/0.33.1/timeless.web.umd.min.js", version_query))
 			append_stylesheets(url_build("/inject/components.css"))
 			frontend_config := make(map[string]any, len(variables)+2)
 			cfg_byte, _ := json.Marshal(settings)
