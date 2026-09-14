@@ -1,3 +1,5 @@
+@import url("./wxchannels.player.css");
+
 .content-page.account-page {
   height: 100vh;
   min-height: 0;
@@ -155,7 +157,83 @@
   display: flex;
   flex-direction: column;
   gap: var(--dm-space-4);
+  min-height: 0;
   overflow: hidden;
+}
+
+.account-content-player {
+  min-height: 0;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: var(--dm-space-3);
+}
+
+.account-content-player-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dm-space-3);
+}
+
+.account-content-player-title {
+  min-width: 0;
+  overflow: hidden;
+  margin: 0;
+  color: var(--dm-content-text);
+  font-size: var(--dm-font-size-base);
+  font-weight: var(--dm-font-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-content-player-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--dm-space-2);
+}
+
+.account-content-player-close {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--dm-space-1);
+  color: var(--dm-content-muted);
+  font-size: var(--dm-font-size-sm);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.account-content-player-close:hover,
+.account-content-player-close:focus-visible {
+  color: var(--dm-color-primary);
+  outline: none;
+}
+
+.account-content-player-download-success,
+.account-content-player-download-error {
+  font-size: var(--dm-font-size-sm);
+}
+
+.account-content-player-download-success {
+  color: var(--dm-color-success);
+}
+
+.account-content-player-download-error {
+  color: var(--dm-color-danger);
+}
+
+.account-content-player-media {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.account-content-player-media .wxchannels-video {
+  max-height: min(72vh, calc(100vh - 220px));
 }
 
 .account-content-tabs {

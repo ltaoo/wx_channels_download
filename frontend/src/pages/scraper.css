@@ -1,3 +1,5 @@
+@import url("./tree.css");
+
 .home-page {
   min-height: 100%;
   background: var(--dm-content-bg);
@@ -1783,6 +1785,15 @@
   font-size: var(--dm-font-size-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.scraper-tree-file {
+  grid-template-columns: 18px 20px minmax(0, 1fr) auto auto;
+}
+
+.scraper-tree-file button {
+  flex: 0 0 auto;
+  margin-left: var(--dm-space-1);
 }
 
 .home-download-relations {
