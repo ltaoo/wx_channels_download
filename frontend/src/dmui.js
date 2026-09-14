@@ -957,6 +957,9 @@ export function Select(props = {}) {
     ...trigger_props
   } = rest;
   const store = require_store("Select", provided_store, vm.SelectCore);
+  // Conditional children can finish mounting after the root starts unmounting.
+  // Keep every derived Select state null-safe because refobj.destroy() clears
+  // its snapshot before those queued computations have necessarily completed.
   const state_ = refobj(store.state);
   const unlisten = store.onStateChange((state) => state_.as(state));
   let suppress_next_click = false;
@@ -1017,8 +1020,8 @@ export function Select(props = {}) {
             "dm-field dm-select",
             computed(state_, (state) =>
               static_classes([
-                state.open ? "is-open" : "",
-                state.disabled ? "is-disabled" : "",
+                state?.open ? "is-open" : "",
+                state?.disabled ? "is-disabled" : "",
               ]),
             ),
             extra_class,
@@ -1053,7 +1056,7 @@ export function Select(props = {}) {
         },
         [
           Show({
-            when: computed(state_, (state) => state.search),
+            when: computed(state_, (state) => Boolean(state?.search)),
             ok() {
               return ui.SelectPrimitive.Search({
                 store,
@@ -1067,16 +1070,16 @@ export function Select(props = {}) {
                   class: class_names([
                     "dm-select-value",
                     computed(state_, (state) =>
-                      state.selectedOption ? "has-value" : "is-placeholder",
+                      state?.selectedOption ? "has-value" : "is-placeholder",
                     ),
                   ]),
                   attributes: { n: "select-value" },
                 },
                 [
                   computed(state_, (state) =>
-                    state.selectedOption?.label ??
-                    state.selectedOption?.value ??
-                    state.placeholder ??
+                    state?.selectedOption?.label ??
+                    state?.selectedOption?.value ??
+                    state?.placeholder ??
                     "请选择",
                   ),
                 ],
@@ -1123,7 +1126,7 @@ export function Select(props = {}) {
                 attributes: { n: "select-chevron-icon" },
                 class: class_names([
                   computed(state_, (state) =>
-                    state.open ? "is-open" : "",
+                    state?.open ? "is-open" : "",
                   ),
                 ]),
               }),
@@ -1132,7 +1135,7 @@ export function Select(props = {}) {
         ],
       ),
       Show({
-        when: computed(state_, (state) => state.open),
+        when: computed(state_, (state) => Boolean(state?.open)),
         ok() {
           return ui.SelectPrimitive.Content(
             {
@@ -1153,7 +1156,7 @@ export function Select(props = {}) {
                 },
                 [
                   Show({
-                    when: computed(state_, (state) => state.loading),
+                    when: computed(state_, (state) => Boolean(state?.loading)),
                     ok() {
                       return View(
                         {
@@ -1168,7 +1171,7 @@ export function Select(props = {}) {
                         when: computed(
                           state_,
                           (state) =>
-                            (state.options || store.raw_options || []).length >
+                            (state?.options || store.raw_options || []).length >
                             0,
                         ),
                         ok() {
@@ -1176,7 +1179,7 @@ export function Select(props = {}) {
                             each: computed(
                               state_,
                               (state) =>
-                                state.options || store.raw_options || [],
+                                state?.options || store.raw_options || [],
                             ),
                             render(entry) {
                               return select_entry(store, entry);
@@ -1210,14 +1213,14 @@ export function Select(props = {}) {
         computed(state_, (state) =>
           static_classes([
             "dm-select-root",
-            state.allowClear &&
-            state.value !== null &&
-            !state.loading &&
-            !state.disabled
+            state?.allowClear &&
+            state?.value !== null &&
+            !state?.loading &&
+            !state?.disabled
               ? "can-clear"
               : "",
-            state.open ? "is-open" : "",
-            state.disabled ? "is-disabled" : "",
+            state?.open ? "is-open" : "",
+            state?.disabled ? "is-disabled" : "",
           ]),
         ),
         root_class,
