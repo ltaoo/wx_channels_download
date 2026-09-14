@@ -198,12 +198,11 @@ func (r *WebsocketRoutes) HandleFetchLiveReplayList(ctx *gin.Context) {
 
 // HandleFetchLiveProfile fetches a live profile through the frontend joinLive API.
 func (r *WebsocketRoutes) HandleFetchLiveProfile(ctx *gin.Context) {
-	username := ctx.Query("username")
 	oid := ctx.Query("oid")
 	nid := ctx.Query("nid")
 	live_id := ctx.Query("id")
 
-	resp, err := r.client.FetchLiveProfile(username, oid, nid, live_id)
+	resp, err := r.client.FetchLiveProfile(oid, nid, live_id)
 	if err != nil {
 		result.Err(ctx, 400, err.Error())
 		return

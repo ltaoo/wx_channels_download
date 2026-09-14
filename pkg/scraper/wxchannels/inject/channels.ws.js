@@ -118,12 +118,12 @@ async function fetchFeedProfileWith(data) {
 
 function ChannelsWebsocketClient() {
   const WEBSOCKET_RETRY_INTERVAL = 5000;
-  const state = {
-    connection_status: "disconnected",
-  };
   let websocket_ = null;
   let connection_promise_ = null;
   let retry_timer_ = null;
+  const state = {
+    connection_status: "disconnected",
+  };
 
   function set_connection_status(status) {
     state.connection_status = status;
@@ -384,14 +384,13 @@ function ChannelsWebsocketClient() {
       }
       if (key === "key:channels:live_profile") {
         var payload = {
-          clientStatus: {
-            videoDecoderSupportMask: 1,
-          },
-          finderUsername: data.username,
           liveId: data.id,
           objectId: data.oid,
           objectNonceId: data.nid,
           scene: 2,
+          clientStatus: {
+            videoDecoderSupportMask: 1,
+          },
         };
         var liveAPI = WXU.LiveAPI;
         if (!liveAPI || typeof liveAPI.joinLive !== "function") {
