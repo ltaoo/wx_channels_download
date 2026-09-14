@@ -56,6 +56,23 @@ http://127.0.0.1:2022/mcp
 
 所有数据查询工具均为只读。`get_download_tasks` 支持按状态、父任务和根任务筛选；`get_accounts` 支持账号 ID 和关键词；`get_browse_history` 支持平台、关联账号和关键词；`get_logs` 支持日志级别、来源和关键词。列表工具默认分页，并限制单页最大返回量。
 
+## CLI 直接调用
+
+MCP、自动化流程节点和 CLI 共用同一个 service tool 注册表。下载器 API 启动后，可直接查看当前工具的描述与参数 schema：
+
+```sh
+wx_video_download tool list
+```
+
+按工具名称调用时，通过 `--arguments`（或 `-a`）传入 JSON 对象：
+
+```sh
+wx_video_download tool call get_wxchannels_account_videos \
+  --arguments '{"username":"example@finder","next_marker":""}'
+```
+
+需要连接其他实例时，可增加 `--api-base-url http://127.0.0.1:2022`。CLI 会直接调用进程内 tool service，不需要封装 MCP JSON-RPC 请求。
+
 ## stdio
 
 使用 stdio MCP 前先启动下载器：

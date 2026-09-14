@@ -3,6 +3,7 @@ package api
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -30,6 +31,7 @@ func (c *APIClient) handle_content_list_with_type(ctx *gin.Context, force_conten
 		ContentType *string `form:"content_type"`
 		Scope       *string `form:"scope"`
 		Keyword     *string `form:"keyword"`
+		TagIDs      *string `form:"tag_ids"`
 		StartAt     *int64  `form:"start_at"`
 		EndAt       *int64  `form:"end_at"`
 		Page        *int    `form:"page"`
@@ -91,12 +93,26 @@ func (c *APIClient) handle_content_list_with_type(ctx *gin.Context, force_conten
 		keyword = *body.Keyword
 	}
 
+	var tag_ids []int
+	if body.TagIDs != nil {
+		for _, part := range strings.Split(strings.TrimSpace(*body.TagIDs), ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if id, err := strconv.Atoi(part); err == nil {
+				tag_ids = append(tag_ids, id)
+			}
+		}
+	}
+
 	page_result, err := c.content_service.ListContents(services.ContentListOptions{
 		AccountID:  account_id,
 		PlatformID: platform_id,
 		Type:       content_type,
 		Scope:      scope,
 		Keyword:    keyword,
+		TagIDs:     tag_ids,
 		StartAt:    body.StartAt,
 		EndAt:      body.EndAt,
 		Page:       page,
@@ -129,6 +145,15 @@ func (c *APIClient) handle_content_detail(ctx *gin.Context) {
 	}
 
 	// Enrich resources with local file info.
+	content_tags := make([]services.ContentTagRecord, 0)
+	if c.tag_service != nil {
+		if tag_models, err := c.tag_service.GetContentTags(contentID); err == nil {
+			for _, tag := range tag_models {
+				content_tags = append(content_tags, services.ContentTagRecord{ID: tag.Id, Name: tag.Name})
+			}
+		}
+	}
+
 	type resourceWithFile struct {
 		services.ContentResourceRecord
 		LocalPath string `json:"local_path"`
@@ -175,6 +200,7 @@ func (c *APIClient) handle_content_detail(ctx *gin.Context) {
 		"detail":            item.Detail,
 		"embedded_contents": item.EmbeddedContents,
 		"relations":         item.Relations,
+		"tags":             content_tags,
 	})
 }
 

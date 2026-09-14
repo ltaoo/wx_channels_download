@@ -44,6 +44,8 @@ func NewAPIServer(
 	mcp_service *services.MCPService,
 	application_update_service *services.ApplicationUpdateService,
 	restart_service *services.ApplicationRestartService,
+	automation_service *services.AutomationService,
+	tag_service *services.TagService,
 ) *APIServer {
 	client := NewAPIClient(
 		cfg,
@@ -64,6 +66,8 @@ func NewAPIServer(
 		mcp_service,
 		application_update_service,
 		restart_service,
+		automation_service,
+		tag_service,
 	)
 	logger.Info().
 		Str("listen_addr", cfg.Hostname+":"+strconv.Itoa(cfg.Port)).

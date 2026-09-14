@@ -16,6 +16,7 @@ import (
 
 	"wx_channel/frontend"
 	"wx_channel/internal/adapter"
+	wxchannelsadapter "wx_channel/internal/adapter/wxchannels"
 	"wx_channel/internal/api"
 	"wx_channel/internal/buildtags"
 	"wx_channel/internal/config"
@@ -27,6 +28,7 @@ import (
 	"wx_channel/internal/webassets"
 	"wx_channel/pkg/cache"
 	"wx_channel/pkg/cookies"
+	"wx_channel/pkg/flowengine"
 	"wx_channel/pkg/hermes"
 	"wx_channel/pkg/hermes/protocol"
 	"wx_channel/pkg/system"
@@ -152,6 +154,7 @@ func Start(cfg *config.Config) error {
 	task_store := database.NewDBTaskStore(b.DB, logger)
 	account_service := services.NewAccountService(b.DB)
 	content_service := services.NewContentService(b.DB)
+	tag_service := services.NewTagService(b.DB)
 	browse_history_service := services.NewBrowseService(b.DB, *logger)
 	fs_service := services.NewFSService()
 	certificate_service := services.NewCertificateService(cfg)
@@ -230,12 +233,24 @@ func Start(cfg *config.Config) error {
 		LogPath:              api_cfg.LogPath,
 		WorkDir:              api_cfg.WorkDir,
 	})
-	mcp_service, err := new_mcp_service(api_cfg, data_service, download_task_service, scraper_job_service, cfg.GetBool("mcp.enabled"))
+	// --- Workflow automation ---
+	// One flow engine is shared by the automation service and any caller that
+	// registers flow definitions on it.
+	flow_engine := flowengine.NewWorkflowEngine()
+	wxchannels_flows := wxchannelsadapter.GetWXChannelsPostprocessFlows()
+	wxchannels_flow_definitions := make(map[string]flowengine.FlowDefinition, len(wxchannels_flows))
+	for _, flow := range wxchannels_flows {
+		wxchannels_flow_definitions[flow.ID] = flow
+	}
+	flow_engine.SetFlowDefinitions(wxchannels_flow_definitions)
+	automation_service := services.NewAutomationService(b.DB, logger, flow_engine, bus)
+
+	mcp_service, err := new_mcp_service(api_cfg, data_service, download_task_service, scraper_job_service, automation_service, cfg.GetBool("mcp.enabled"))
 	if err != nil {
+		automation_service.Stop()
 		task_store.Shutdown()
 		return fmt.Errorf("failed to initialize MCP service: %w", err)
 	}
-
 	// --- API service ---
 	restart_service := services.NewApplicationRestartService(services.ApplicationRestartServiceOptions{
 		RequestRestart: func() error {
@@ -262,6 +277,8 @@ func Start(cfg *config.Config) error {
 		mcp_service,
 		application_update_service,
 		restart_service,
+		automation_service,
+		tag_service,
 	)
 	bus.Subscribe(events.TypeProxyStatusChanged, func(event events.Event) {
 		status, ok := event.(events.ProxyStatusChanged)
@@ -291,6 +308,17 @@ func Start(cfg *config.Config) error {
 			api.BroadcastPlatformStatus(&status)
 		}
 	})
+	for _, event_type := range []string{
+		events.TypeAutomationRunStarted,
+		events.TypeAutomationRunCompleted,
+		events.TypeAutomationRunFailed,
+		events.TypeAutomationRunWaiting,
+		events.TypeAutomationNodeStatus,
+		events.TypeAutomationNodeLog,
+	} {
+		bus.Subscribe(event_type, api.BroadcastAutomationEvent)
+	}
+	automation_service.Start()
 	bus.Subscribe(events.TypeServiceCommand, func(event events.Event) {
 		command, ok := event.(events.ServiceCommand)
 		if !ok || command.Name != "api" {
@@ -361,6 +389,7 @@ func Start(cfg *config.Config) error {
 			if bridge_started {
 				bridge_service.Close()
 			}
+			automation_service.Stop()
 			scraper_job_service.InterruptAll()
 			for i := len(adapter_handles) - 1; i >= 0; i-- {
 				adapter_handles[i].Stop()

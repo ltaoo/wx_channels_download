@@ -1,6 +1,6 @@
 .app-shell {
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
+  grid-template-columns: 88px minmax(0, 1fr);
   width: 100%;
   height: 100%;
   background: var(--dm-content-bg);
@@ -21,8 +21,9 @@
 .app-brand {
   display: flex;
   align-items: center;
-  gap: var(--dm-space-3);
-  padding: 0 var(--dm-space-1-5) var(--dm-space-4);
+  flex-direction: column;
+  gap: var(--dm-space-2);
+  padding: 0 var(--dm-space-1-5) var(--dm-space-4) ;
   border-bottom: var(--dm-border-width) solid var(--dm-color-sidebar-border);
 }
 
@@ -61,8 +62,8 @@
 }
 
 .app-brand {
-  gap: var(--dm-space-3);
-  padding: 0 var(--dm-space-2);
+  gap: var(--dm-space-2);
+  padding: 0 var(--dm-space-2) var(--dm-space-4) var(--dm-space-2);
 }
 
 .app-brand__logo {
@@ -71,8 +72,22 @@
   max-width: 100%;
   height: 52px;
   object-fit: contain;
-  object-position: left center;
+  object-position: center;
   user-select: none;
+}
+
+.app-brand__logo-action {
+  display: block;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: var(--dm-radius-content);
+  cursor: pointer;
+}
+
+.app-brand__logo-action:focus-visible {
+  outline: 0;
+  box-shadow: var(--dm-focus-ring);
 }
 
 .app-menu__icon {
@@ -87,6 +102,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.app-menu .dm-button--sidebar-nav {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--dm-space-0-5);
+  padding: var(--dm-space-1-5) var(--dm-space-1);
+  font-size: var(--dm-font-size-sm);
+  text-align: center;
 }
 
 .app-menu {
@@ -105,8 +130,10 @@
 
 .app-brand__version {
   position: relative;
+  width: fit-content;
   min-width: 0;
   flex: 0 0 auto;
+  margin: 0 auto;
   color: var(--dm-brand-sidebar-muted);
   font-family: var(--dm-font-family-mono);
   font-size: var(--dm-font-size-caption);
@@ -115,7 +142,7 @@
 }
 
 .app-brand__version-text {
-  max-width: 88px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
