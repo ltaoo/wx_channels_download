@@ -138,6 +138,35 @@ func SelectDownloadTaskResources(info *adapter.DownloadTaskResult, resource_inde
 	return nil
 }
 
+func validate_download_task_endpoints(info *adapter.DownloadTaskResult) error {
+	if info == nil {
+		return fmt.Errorf("下载任务为空")
+	}
+	for _, resource_info := range info.Resources {
+		if len(resource_info.Endpoints) == 0 {
+			return fmt.Errorf("资源 %s 没有下载端点", resource_info.Resource.Name)
+		}
+		for _, endpoint := range resource_info.Endpoints {
+			if strings.TrimSpace(endpoint.URL) == "" {
+				return fmt.Errorf("资源 %s 的下载端点缺少 URL", resource_info.Resource.Name)
+			}
+		}
+	}
+	return nil
+}
+
+func prepare_download_task_resources(
+	h adapter.AdapterHandler,
+	content any,
+	resource_indexes []int,
+) (any, error) {
+	preparer, ok := h.(adapter.FetchDownloadTaskResourcePreparer)
+	if !ok {
+		return content, nil
+	}
+	return preparer.PrepareDownloadTaskResources(content, resource_indexes)
+}
+
 type TaskV1IDBody struct {
 	TaskID int `json:"task_id"`
 }
@@ -633,12 +662,23 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 
 	stage = "build_platform_task"
 	var info *adapter.DownloadTaskResult
+	build_content := any(body.Content)
 	if body.BuildFromFetch {
+		// ponytail: resolve signed URLs at creation; move into StartCreatedTask if expiry causes queue failures.
+		prepared_content, err := prepare_download_task_resources(
+			h,
+			body.Content,
+			body.ResourceIndexes,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("准备下载资源失败: %w", err)
+		}
+		build_content = prepared_content
 		fetch_builder, ok := h.(adapter.FetchDownloadTaskBuilder)
 		if !ok {
 			return nil, fmt.Errorf("平台 %s 不支持从抓取结果构建下载任务", body.Platform)
 		}
-		info, err = fetch_builder.BuildDownloadTaskFromFetch(body.Content, json.RawMessage(config_json))
+		info, err = fetch_builder.BuildDownloadTaskFromFetch(build_content, json.RawMessage(config_json))
 	} else {
 		info, err = h.BuildDownloadTask(body.Content, json.RawMessage(config_json))
 	}
@@ -672,10 +712,10 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 	resource_infos := info.Resources
 	s.logger.Info().Str("file", "/services/download_task.go").Str("platform", body.Platform).Str("task_name", info.Task.Name).Int("resource_count", len(resource_infos)).Msg("platform download task built successfully")
 	endpoint_count := 0
+	if err := validate_download_task_endpoints(info); err != nil {
+		return nil, err
+	}
 	for _, ri := range resource_infos {
-		if len(ri.Endpoints) == 0 {
-			return nil, fmt.Errorf("资源 %s 没有下载端点", ri.Resource.Name)
-		}
 		endpoint_count += len(ri.Endpoints)
 	}
 
