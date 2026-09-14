@@ -7,6 +7,18 @@ import {
   is_download_waiting_status,
   normalize_download_status,
 } from "./downloadv2.model.js";
+import {
+  resource_file_icon,
+  format_file_size,
+  build_resource_tree,
+  count_tree_files,
+  count_tree_children,
+  assign_tree_paths,
+  clone_tree_nodes,
+  flatten_tree,
+  tree_compare,
+  mounted_element,
+} from "./tree.js";
 
 const OVERWRITE_ACTION_ITEMS = [
   {
@@ -62,14 +74,7 @@ function task_has_content(raw) {
 }
 
 function DownloadV2ActionButton(props) {
-  const {
-    attributes,
-    icon,
-    iconSize: icon_size,
-    label,
-    store,
-    title,
-  } = props;
+  const { attributes, icon, iconSize: icon_size, label, store, title } = props;
   const semantic_name = props.name || "download-action";
   return Button(
     {
@@ -295,14 +300,17 @@ function DownloadV2TaskCover(props) {
       (state) => !state.is_live_stream && (state.is_running || state.is_paused),
     ),
     ok() {
-      return View({
-        class: "dl-page-task-cover-progress",
-        attributes: { n: "download-task-cover-progress" },
-      }, [
-        DownloadV2Number({
-          value: computed(state_, (state) => state.progress_text),
-        }),
-      ]);
+      return View(
+        {
+          class: "dl-page-task-cover-progress",
+          attributes: { n: "download-task-cover-progress" },
+        },
+        [
+          DownloadV2Number({
+            value: computed(state_, (state) => state.progress_text),
+          }),
+        ],
+      );
     },
   });
   const fallback = () =>
@@ -317,23 +325,26 @@ function DownloadV2TaskCover(props) {
   return Show({
     when: computed(raw_, (raw) => Boolean(vm$.methods.taskCoverURL(raw))),
     ok() {
-      return View({
-        class: "dl-page-task-cover-wrap",
-        attributes: { n: "download-task-cover-wrap" },
-      }, [
-        fallback(),
-        LazyImg({
-          class: "dl-page-task-cover",
-          src: computed(raw_, vm$.methods.taskCoverURL),
-          alt: task$.state.name,
-          attributes: {
-            n: "download-task-cover-image",
-            loading: "lazy",
-            referrerpolicy: "no-referrer",
-          },
-        }),
-        progress,
-      ]);
+      return View(
+        {
+          class: "dl-page-task-cover-wrap",
+          attributes: { n: "download-task-cover-wrap" },
+        },
+        [
+          fallback(),
+          LazyImg({
+            class: "dl-page-task-cover",
+            src: computed(raw_, vm$.methods.taskCoverURL),
+            alt: task$.state.name,
+            attributes: {
+              n: "download-task-cover-image",
+              loading: "lazy",
+              referrerpolicy: "no-referrer",
+            },
+          }),
+          progress,
+        ],
+      );
     },
   });
 }
@@ -343,10 +354,7 @@ function DownloadV2TaskActionButton(props) {
   return View(
     {
       type: "button",
-      class: [
-        "dl-page-task-action",
-        danger ? "dl-page-task-action-danger" : "",
-      ]
+      class: ["dl-page-task-action", danger ? "dl-page-task-action-danger" : ""]
         .filter(Boolean)
         .join(" "),
       attributes: {
@@ -489,9 +497,7 @@ export function DownloadV2TaskMain(props) {
                   vm$.methods.requestTaskPreview(task$);
                 },
               },
-              [
-                computed(task$.state.name, (name) => name || "未命名任务"),
-              ],
+              [computed(task$.state.name, (name) => name || "未命名任务")],
             ),
             Show({
               when: computed(state_, (state) => state.is_live_stream),
@@ -771,35 +777,32 @@ function DownloadV2StatusCounts(props) {
 function DownloadV2StatusActions(props) {
   const { store: vm$ } = props;
 
-  return View(
-    { class: "dl-page-status-actions dl-v2-page-status-actions" },
-    [
-      DownloadV2ActionButton({
-        name: "download-refresh-action",
-        store: vm$.ui.btn_refresh_tasks$,
-        icon: "refresh-cw",
-        label: "刷新",
-      }),
-      DownloadV2ActionButton({
-        name: "download-start-all-action",
-        store: vm$.ui.btn_start_all_tasks$,
-        icon: "play",
-        label: "全部开始",
-      }),
-      DownloadV2ActionButton({
-        name: "download-pause-all-action",
-        store: vm$.ui.btn_pause_all_tasks$,
-        icon: "pause",
-        label: "全部暂停",
-      }),
-      DownloadV2ActionButton({
-        name: "download-clear-action",
-        store: vm$.ui.btn_clear_tasks$,
-        icon: "trash2",
-        label: "清空记录",
-      }),
-    ],
-  );
+  return View({ class: "dl-page-status-actions dl-v2-page-status-actions" }, [
+    DownloadV2ActionButton({
+      name: "download-refresh-action",
+      store: vm$.ui.btn_refresh_tasks$,
+      icon: "refresh-cw",
+      label: "刷新",
+    }),
+    DownloadV2ActionButton({
+      name: "download-start-all-action",
+      store: vm$.ui.btn_start_all_tasks$,
+      icon: "play",
+      label: "全部开始",
+    }),
+    DownloadV2ActionButton({
+      name: "download-pause-all-action",
+      store: vm$.ui.btn_pause_all_tasks$,
+      icon: "pause",
+      label: "全部暂停",
+    }),
+    DownloadV2ActionButton({
+      name: "download-clear-action",
+      store: vm$.ui.btn_clear_tasks$,
+      icon: "trash2",
+      label: "清空记录",
+    }),
+  ]);
 }
 
 export function DownloadV2StatusBar(props) {
@@ -1048,144 +1051,54 @@ function preview_value(value, fallback = "-") {
   return String(value);
 }
 
-function resource_file_icon(name) {
-  const extension = String(name || "")
-    .split(".")
-    .pop()
-    .toLowerCase();
-  if (/^(jpe?g|png|gif|webp|svg|bmp|ico)$/.test(extension)) {
-    return "file-image";
-  }
-  if (/^(mp4|avi|mkv|mov|webm|flv|wmv|m4v)$/.test(extension)) {
-    return "file-play";
-  }
-  if (/^(mp3|wav|aac|flac|ogg|wma|m4a)$/.test(extension)) {
-    return "file-volume";
-  }
-  if (/^(html?|css|js|json|xml)$/.test(extension)) return "file-code";
-  return "file";
-}
-
-function build_preview_tree(preview) {
-  if (preview && preview.tree && typeof preview.tree === "object") {
-    return preview.tree;
-  }
-  const resources =
-    preview && Array.isArray(preview.resources) ? preview.resources : [];
-  const root = { type: "directory", name: "", children: [] };
-
-  resources.forEach((resource, index) => {
-    const name = preview_value(
-      resource &&
-        (resource.name ||
-          resource.filename ||
-          resource.file_name ||
-          resource.title),
-      `资源 ${index + 1}`,
-    );
-    const parts = name.split("/").filter(Boolean);
-    const file_name = parts.pop() || name;
-    let parent = root;
-
-    parts.forEach((part) => {
-      let directory = parent.children.find((node) => {
-        return node.type === "directory" && node.name === part;
-      });
-      if (!directory) {
-        directory = { type: "directory", name: part, children: [] };
-        parent.children.push(directory);
-      }
-      parent = directory;
-    });
-    parent.children.push({
-      type: "file",
-      name: file_name,
-      kind: resource && resource.kind,
-      endpoints: resource && resource.endpoints,
-    });
-  });
-  return root;
-}
-
-function count_preview_tree_files(node) {
-  if (!node || node.type !== "directory") return node ? 1 : 0;
-  return (node.children || []).reduce((count, child) => {
-    return count + count_preview_tree_files(child);
-  }, 0);
-}
-
-function PreviewResourceNode(props) {
-  const { level, node } = props;
-  const indent = `${Math.min((Number(level) || 0) * 18, 90)}px`;
+function PreviewResourceRow(props) {
+  const { row, collapsed_, onToggle } = props;
+  const { node, depth } = row;
   const is_directory = node && node.type === "directory";
+  const is_collapsed = is_directory && collapsed_.value.has(node._path);
+  const indent_px = `${Math.min(depth * 18, 180)}px`;
 
   if (is_directory) {
-    return View({
-      class: "dl-preview-tree-item",
-      style: { "margin-left": indent },
-    }, [
-      View(
-        {
-          class: "dl-preview-tree-row is-directory",
-        },
-        [
-          View(
-            {
-              class: "dl-preview-tree-icon",
-              attributes: { n: "preview-directory-icon" },
-            },
-            [Timeless.Icon({ name: "folder", size: 16 })],
-          ),
-          View(
-            {
-              class: "dm-truncate",
-            },
-            [node.name || "根目录"],
-          ),
-        ],
-      ),
-      View({ class: "dl-preview-tree-children" }, [
-        For({
-          each: node.children || [],
-          render(child) {
-            return PreviewResourceNode({ node: child, level: level + 1 });
-          },
-        }),
-      ]),
-    ]);
-  }
-
-  return View({
-    class: "dl-preview-tree-item",
-    style: { "margin-left": indent },
-  }, [
-    View(
+    return View(
       {
-        class: "dl-preview-tree-row",
+        class: "file-tree-row is-directory",
+        style: { "padding-left": indent_px },
+        attributes: { n: "preview-tree-dir", title: node._path || node.name },
+        onClick() {
+          onToggle(node._path);
+        },
       },
       [
-        View(
-          {
-            class: "dl-preview-tree-icon",
-            attributes: { n: "preview-resource-icon" },
-          },
-          [
-            Timeless.Icon({
-              name: resource_file_icon(node && node.name),
-              size: 16,
-            }),
-          ],
-        ),
-        View(
-          {
-            class: "dm-truncate",
-            attributes: { title: (node && node.name) || "文件" },
-          },
-          [(node && node.name) || "文件"],
-        ),
+        View({ class: "file-tree-caret" }, [is_collapsed ? "›" : "⌄"]),
+        View({ class: "file-tree-icon" }, [
+          Timeless.Icon({ name: "folder", size: 16 }),
+        ]),
+        View({ class: "file-tree-name dm-truncate" }, [node.name || "根目录"]),
+        View({ class: "file-tree-meta" }, [`${count_tree_children(node)} 项`]),
       ],
-    ),
-  ]);
+    );
+  }
+
+  return View(
+    {
+      class: "file-tree-row",
+      style: { "padding-left": indent_px },
+      attributes: { n: "preview-tree-file", title: node._path || node.name },
+    },
+    [
+      View({ class: "file-tree-caret" }),
+      View({ class: "file-tree-icon" }, [
+        Timeless.Icon({
+          name: resource_file_icon(node && node.name),
+          size: 16,
+        }),
+      ]),
+      View({ class: "file-tree-name dm-truncate" }, [
+        (node && node.name) || "文件",
+      ]),
+      View({ class: "file-tree-meta" }, [format_file_size(node && node.size)]),
+    ],
+  );
 }
 
 function PreviewDetailRow(props) {
@@ -1208,13 +1121,48 @@ function PreviewDetailRow(props) {
 
 function PreviewResourceList(props) {
   const { preview: preview_ } = props;
-  const tree_ = computed(preview_, (preview) => build_preview_tree(preview));
+  const tree_ = computed(preview_, (preview) => build_resource_tree(preview));
   const tree_nodes_ = computed(tree_, (tree) => {
     return tree && Array.isArray(tree.children) ? tree.children : [];
   });
   const resource_count_ = computed(tree_, (tree) => {
-    return count_preview_tree_files(tree);
+    return count_tree_files(tree);
   });
+
+  const collapsed_ = ref(new Set());
+
+  const assigned_nodes_ = computed(tree_nodes_, (nodes) => {
+    const copy = clone_tree_nodes(nodes);
+    assign_tree_paths(copy, "");
+    return copy;
+  });
+
+  const flat_rows_ = refarr([]);
+  combine(
+    { nodes: assigned_nodes_, collapsed: collapsed_ },
+    ({ nodes, collapsed }) => {
+      const rows = flatten_tree(
+        nodes.slice().sort(tree_compare),
+        collapsed,
+        0,
+        [],
+      );
+      flat_rows_.as(rows, { reset: true });
+    },
+  );
+
+  const scroll_top_ = ref(0);
+  const viewport_height_ = ref(320);
+
+  function onToggle(path) {
+    const next = new Set(collapsed_.value);
+    if (next.has(path)) {
+      next.delete(path);
+    } else {
+      next.add(path);
+    }
+    collapsed_.value = next;
+  }
 
   return Show({
     when: computed(tree_nodes_, (nodes) => nodes.length > 0),
@@ -1229,12 +1177,47 @@ function PreviewResourceList(props) {
             computed(resource_count_, (count) => String(count)),
             " 项）",
           ]),
-          For({
-            each: tree_nodes_,
-            render(node) {
-              return PreviewResourceNode({ node, level: 0 });
+          View(
+            {
+              class: "dl-preview-resource-scroll",
+              onScroll(event) {
+                scroll_top_.value = event.target.scrollTop;
+              },
+              onMounted(event) {
+                const el = mounted_element(event);
+                if (!el) return;
+                if (el.clientHeight) {
+                  viewport_height_.value = el.clientHeight;
+                }
+                if (typeof ResizeObserver !== "undefined") {
+                  const ro = new ResizeObserver((entries) => {
+                    for (const entry of entries) {
+                      viewport_height_.value = entry.contentRect.height;
+                    }
+                  });
+                  ro.observe(el);
+                }
+              },
             },
-          }),
+            [
+              VirtualListView({
+                class: "dl-preview-tree-virtual",
+                attributes: { n: "preview-tree-virtual" },
+                style: { "min-height": "100%", overflow: "visible" },
+                each: flat_rows_,
+                key: "path",
+                size: 20,
+                buffer: 6,
+                itemHeight: 32,
+                externalScroll: true,
+                scrollTop: scroll_top_,
+                viewportHeight: viewport_height_,
+                render(row) {
+                  return PreviewResourceRow({ row, collapsed_, onToggle });
+                },
+              }),
+            ],
+          ),
         ],
       );
     },
