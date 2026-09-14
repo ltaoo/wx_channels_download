@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	servicetools "wx_channel/internal/services/tools"
 )
 
 const (
@@ -43,6 +45,7 @@ type Config struct {
 	SphDeployer         SphDeployer
 	ZhihuCollections    ZhihuCollectionReader
 	ZhihuCredentials    ZhihuCredentialReader
+	Automation          AutomationBackend
 }
 
 // Server implements the MCP stdio transport and exposes the tools supported by
@@ -56,6 +59,8 @@ type Server struct {
 	sph_deployer          SphDeployer
 	zhihu_collections     ZhihuCollectionReader
 	zhihu_credentials     ZhihuCredentialReader
+	automation            AutomationBackend
+	tool_service          *servicetools.Service
 	input                 io.Reader
 	output                io.Writer
 	error_output          io.Writer
@@ -129,10 +134,10 @@ func NewServer(config Config) (*Server, error) {
 	if (config.ZhihuCollections == nil) != (config.ZhihuCredentials == nil) {
 		return nil, fmt.Errorf("知乎 MCP 工具需要同时配置收藏夹读取器和凭证读取器")
 	}
-	if client == nil && config.DataReader == nil && config.ScraperJobs == nil && config.DownloadTaskCreator == nil && config.DownloadTaskDeleter == nil && config.SphDeployer == nil && config.ZhihuCollections == nil {
+	if client == nil && config.DataReader == nil && config.ScraperJobs == nil && config.DownloadTaskCreator == nil && config.DownloadTaskDeleter == nil && config.SphDeployer == nil && config.ZhihuCollections == nil && config.Automation == nil {
 		return nil, fmt.Errorf("至少需要配置一种工具后端")
 	}
-	return &Server{
+	server := &Server{
 		api_client:            client,
 		data_reader:           config.DataReader,
 		scraper_jobs:          config.ScraperJobs,
@@ -141,12 +146,19 @@ func NewServer(config Config) (*Server, error) {
 		sph_deployer:          config.SphDeployer,
 		zhihu_collections:     config.ZhihuCollections,
 		zhihu_credentials:     config.ZhihuCredentials,
+		automation:            config.Automation,
 		input:                 config.Input,
 		output:                config.Output,
 		error_output:          config.ErrorOutput,
 		version:               config.Version,
 		pending:               make(map[string]context.CancelFunc),
-	}, nil
+	}
+	tool_service, err := servicetools.NewBuiltin(server.supports_tool, server.execute_tool)
+	if err != nil {
+		return nil, fmt.Errorf("初始化工具服务失败: %w", err)
+	}
+	server.tool_service = tool_service
+	return server, nil
 }
 
 // Serve reads newline-delimited JSON-RPC messages until input closes.
