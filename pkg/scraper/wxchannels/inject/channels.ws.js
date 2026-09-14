@@ -382,7 +382,7 @@ function ChannelsWebsocketClient() {
         }
         return;
       }
-      if (key === "key:channels:live_info") {
+      if (key === "key:channels:live_profile") {
         var payload = {
           clientStatus: {
             videoDecoderSupportMask: 1,

@@ -2,7 +2,6 @@ package api
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -27,7 +26,6 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/scraper/fetch", c.handle_scraper_fetch)
 	// GET remains available for callers migrating from the former synchronous API.
 	c.engine.GET("/api/scraper/fetch", c.handle_scraper_fetch)
-	c.engine.POST("/api/wecom/callback", c.handle_wecom_callback)
 	c.engine.GET("/api/scraper/job", c.handle_scraper_job)
 	c.engine.GET("/api/scraper/platform/status", c.handle_scraper_platform_status)
 	c.engine.POST("/api/scraper/fetch/interrupt", c.handle_scraper_fetch_interrupt)
@@ -141,17 +139,6 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/proxy/certificate/uninstall", c.handle_proxy_certificate_uninstall)
 	c.engine.POST("/api/proxy/certificate/uninstall_by_name", c.handle_proxy_certificate_uninstall_by_name)
 	c.engine.POST("/api/cookies/update", c.handle_cookie_update)
-}
-
-func (c *APIClient) handle_wecom_callback(ctx *gin.Context) {
-	body, err := io.ReadAll(ctx.Request.Body)
-	if err != nil {
-		c.logger.Error().Err(err).Msg("failed to read WeCom callback body")
-		ctx.Status(http.StatusInternalServerError)
-		return
-	}
-	fmt.Printf("[WECOM CALLBACK] body: %s\n", body)
-	ctx.String(http.StatusOK, "success")
 }
 
 func (c *APIClient) handle_favicon(ctx *gin.Context) {
