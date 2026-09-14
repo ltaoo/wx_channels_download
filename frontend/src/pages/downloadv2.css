@@ -1,4 +1,5 @@
 @import url("./preview.css");
+@import url("./tree.css");
 
 .download-skeleton {
   position: relative;
@@ -274,34 +275,6 @@
   user-select: none;
 }
 
-.dl-preview-tree-item {
-  margin-bottom: var(--dm-space-0-5);
-}
-
-.dl-preview-tree-row {
-  display: flex;
-  align-items: center;
-  gap: var(--dm-space-1-5);
-  padding: 3px var(--dm-space-1-5);
-  color: var(--dm-color-text-primary);
-  font-size: var(--dm-font-size-sm);
-  border-radius: var(--dm-radius-content);
-}
-
-.dl-preview-tree-row.is-directory {
-  color: var(--dm-color-text-secondary);
-  font-weight: var(--dm-font-weight-semibold);
-}
-
-.dl-preview-tree-icon {
-  width: 18px;
-  flex-shrink: 0;
-}
-
-.dl-preview-tree-children {
-  margin-left: var(--dm-space-1-5);
-}
-
 .dl-preview-detail-row {
   display: grid;
   grid-template-columns: 104px minmax(0, 1fr);
@@ -325,6 +298,13 @@
   background: var(--dm-color-bg-subtle);
   border: var(--dm-border-width) solid var(--dm-color-border-translucent);
   border-radius: var(--dm-radius-card);
+}
+
+.dl-preview-resource-scroll {
+  max-height: 360px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
 }
 
 .dl-page-list {

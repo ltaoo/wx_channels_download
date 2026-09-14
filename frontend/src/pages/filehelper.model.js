@@ -1,3 +1,5 @@
+import { request } from "@/biz/request.js";
+
 function error_message(error, fallback) {
   if (error && error.message) {
     return error.message;
@@ -115,7 +117,9 @@ function FileHelperViewModel(props) {
   const login_stage_ = ref("loading");
   const qrcode_url_ = ref("");
   const scanned_avatar_ = ref("");
-  const login_tip_ = ref("请使用微信扫描二维码登录\n登录后可同步接收和发送消息");
+  const login_tip_ = ref(
+    "请使用微信扫描二维码登录\n登录后可同步接收和发送消息",
+  );
   const channels_status_ = ref("idle");
   const messages_ = refarr([]);
   const message_text_ = ref("");
@@ -245,35 +249,35 @@ function FileHelperViewModel(props) {
   });
 
   const status_request = new Timeless.kit.RequestCore(
-    () => window.request.get("/api/filehelper/status"),
+    () => request.get("/api/filehelper/status"),
     { client: props.client },
   );
   const qrcode_request = new Timeless.kit.RequestCore(
-    () => window.request.get("/api/filehelper/qrcode"),
+    () => request.get("/api/filehelper/qrcode"),
     { client: props.client },
   );
   const login_wait_request = new Timeless.kit.RequestCore(
-    () => window.request.get("/api/filehelper/login/wait"),
+    () => request.get("/api/filehelper/login/wait"),
     { client: props.client },
   );
   const channels_status_request = new Timeless.kit.RequestCore(
-    () => window.request.get("/api/status"),
+    () => request.get("/api/status"),
     { client: props.client },
   );
   const sync_check_request = new Timeless.kit.RequestCore(
-    () => window.request.get("/api/filehelper/synccheck"),
+    () => request.get("/api/filehelper/synccheck"),
     { client: props.client },
   );
   const sync_request = new Timeless.kit.RequestCore(
-    () => window.request.get("/api/filehelper/sync"),
+    () => request.get("/api/filehelper/sync"),
     { client: props.client },
   );
   const send_request = new Timeless.kit.RequestCore(
-    (params) => window.request.post("/api/filehelper/send", params),
+    (params) => request.post("/api/filehelper/send", params),
     { client: props.client },
   );
   const logout_request = new Timeless.kit.RequestCore(
-    () => window.request.post("/api/filehelper/logout"),
+    () => request.post("/api/filehelper/logout"),
     { client: props.client },
   );
 
@@ -355,9 +359,7 @@ function FileHelperViewModel(props) {
       channels_status_.as("error");
       return result;
     }
-    channels_status_.as(
-      channels.available ? "available" : "unavailable",
-    );
+    channels_status_.as(channels.available ? "available" : "unavailable");
     return result;
   }
 
@@ -374,9 +376,7 @@ function FileHelperViewModel(props) {
     login_stage_.as("loading");
     qrcode_url_.as("");
     scanned_avatar_.as("");
-    login_tip_.as(
-      "请使用微信扫描二维码登录\n登录后可同步接收和发送消息",
-    );
+    login_tip_.as("请使用微信扫描二维码登录\n登录后可同步接收和发送消息");
 
     const result = await qrcode_request.run();
     if (!active || sequence !== qrcode_sequence || logged_in_.value) {
@@ -609,10 +609,7 @@ function FileHelperViewModel(props) {
   }
 
   async function logout() {
-    if (
-      logout_loading_.value ||
-      !window.confirm("确定要退出登录吗？")
-    ) {
+    if (logout_loading_.value || !window.confirm("确定要退出登录吗？")) {
       return null;
     }
     logout_loading_.as(true);
@@ -720,7 +717,4 @@ function FileHelperViewModel(props) {
   return { state, ui, methods };
 }
 
-export {
-  FileHelperViewModel,
-  event_target_element,
-};
+export { FileHelperViewModel, event_target_element };
