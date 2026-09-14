@@ -34,6 +34,9 @@ func (n *WorkflowNode) Execute(ctx *engine.ProcessContext) (bool, []string, erro
 		InstanceID: ctx.InstanceID + ":sub:" + n.Id,
 		FlowID:     wf.ID,
 		Data:       ctx.Data,
+		Inputs:     ctx.Inputs,
+		Outputs:    ctx.Outputs,
+		Globals:    ctx.Globals,
 		NodeStates: map[string]engine.NodeState{},
 		EngineRef:  ctx.EngineRef,
 	}

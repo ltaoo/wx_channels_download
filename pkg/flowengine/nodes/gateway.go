@@ -22,8 +22,9 @@ func (n *GatewayNode) Type() string { return "GatewayNode" }
 
 func (n *GatewayNode) Execute(ctx *engine.ProcessContext) (bool, []string, error) {
 	gatewayType, _ := n.Config["gateway_type"].(string)
+	isJoining, _ := n.Config["is_joining"].(bool)
 
-	if n.Config["is_joining"].(bool) {
+	if isJoining {
 		// --- 汇聚逻辑 (Joining) ---
 		return n.handleMerge(ctx)
 	}
@@ -45,8 +46,12 @@ func (n *GatewayNode) Execute(ctx *engine.ProcessContext) (bool, []string, error
 
 	case "Exclusive":
 		// 遍历 rules，找到第一个条件满足的 target_id 并返回
-		for _, rule := range n.Config["rules"].([]map[string]interface{}) {
-			condition := rule["condition"].(string)
+		rules, err := gateway_rules(n.Config["rules"])
+		if err != nil {
+			return false, nil, err
+		}
+		for _, rule := range rules {
+			condition, _ := rule["condition"].(string)
 			ok, err := n.evaluateCondition(ctx, condition)
 			if err != nil {
 				return false, nil, err
@@ -97,6 +102,29 @@ func (n *GatewayNode) handleMerge(ctx *engine.ProcessContext) (bool, []string, e
 		return true, ids, nil
 	}
 	return true, nil, nil
+}
+
+// gateway_rules normalizes the Exclusive gateway rules into the slice-of-maps
+// shape the node iterates over. Programmatic configs already provide
+// []map[string]interface{}; JSON-decoded configs produce []interface{} of
+// map[string]interface{}, which is converted here so both paths run safely.
+func gateway_rules(value interface{}) ([]map[string]interface{}, error) {
+	switch rules := value.(type) {
+	case []map[string]interface{}:
+		return rules, nil
+	case []interface{}:
+		converted := make([]map[string]interface{}, 0, len(rules))
+		for _, raw := range rules {
+			rule, ok := raw.(map[string]interface{})
+			if !ok {
+				return nil, errors.New("GatewayNode: rule must be an object")
+			}
+			converted = append(converted, rule)
+		}
+		return converted, nil
+	default:
+		return nil, errors.New("GatewayNode: rules must be an array")
+	}
 }
 
 // evaluateCondition 负责解析和执行条件表达式

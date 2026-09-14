@@ -26,18 +26,22 @@ const (
 
 // Flow types
 type (
-	FlowDefinition   = engine.FlowDefinition
-	FlowEngine       = engine.FlowEngine
-	ProcessContext   = engine.ProcessContext
-	TargetNode       = engine.TargetNode
-	FieldSchema      = engine.FieldSchema
-	StartFlowOptions = engine.StartFlowOptions
+	FlowDefinition             = engine.FlowDefinition
+	FlowEngine                 = engine.FlowEngine
+	ProcessContext             = engine.ProcessContext
+	TargetNode                 = engine.TargetNode
+	FieldSchema                = engine.FieldSchema
+	StartFlowOptions           = engine.StartFlowOptions
+	NodeExecutionLog           = engine.NodeExecutionLog
+	NodeExecutionLogHandler    = engine.NodeExecutionLogHandler
+	NodeExecutionStatus        = engine.NodeExecutionStatus
+	NodeExecutionStatusHandler = engine.NodeExecutionStatusHandler
 )
 
 // Run status types
 type (
-	RunStatus  = engine.RunStatus
-	RunRecord  = engine.RunRecord
+	RunStatus   = engine.RunStatus
+	RunRecord   = engine.RunRecord
 	RetryPolicy = engine.RetryPolicy
 	TriggerInfo = engine.TriggerInfo
 	TriggerType = engine.TriggerType
