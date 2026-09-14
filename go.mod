@@ -39,6 +39,7 @@ require (
 	github.com/ltaoo/velo v1.1.2
 	github.com/pterm/pterm v0.12.50
 	github.com/qtgolang/SunnyNet v1.4.0
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/rs/zerolog v1.34.0
 	github.com/samber/lo v1.39.0
 	github.com/spf13/cobra v1.8.0

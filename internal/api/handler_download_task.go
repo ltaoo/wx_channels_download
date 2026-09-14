@@ -1259,6 +1259,9 @@ func (c *APIClient) handle_list_download_task(ctx *gin.Context) {
 	if root_task_id, err := strconv.Atoi(ctx.Query("root_task_id")); err == nil && root_task_id > 0 {
 		query = query.Where("root_task_id = ?", root_task_id)
 	}
+	if content_id := strings.TrimSpace(ctx.Query("content_id")); content_id != "" {
+		query = query.Where("content_id = ?", content_id)
+	}
 	statuses := make([]int, 0)
 	if status_filter != "" {
 		parts := strings.Split(status_filter, ",")
@@ -1327,7 +1330,7 @@ func download_task_stats_total(stats map[int]int64, statuses []int) int64 {
 }
 
 // query_task_stats returns a map of status -> count for download tasks, respecting
-// parent_task_id and root_task_id filters (but not status filter).
+// parent_task_id, root_task_id and content_id filters (but not status filter).
 func (c *APIClient) query_task_stats(ctx *gin.Context) (map[int]int64, error) {
 	query := c.db.Model(&model.DownloadTask{}).Where("deleted_at IS NULL")
 	if parent_task_id, err := strconv.Atoi(ctx.Query("parent_task_id")); err == nil && parent_task_id > 0 {
@@ -1335,6 +1338,9 @@ func (c *APIClient) query_task_stats(ctx *gin.Context) (map[int]int64, error) {
 	}
 	if root_task_id, err := strconv.Atoi(ctx.Query("root_task_id")); err == nil && root_task_id > 0 {
 		query = query.Where("root_task_id = ?", root_task_id)
+	}
+	if content_id := strings.TrimSpace(ctx.Query("content_id")); content_id != "" {
+		query = query.Where("content_id = ?", content_id)
 	}
 
 	type status_count struct {

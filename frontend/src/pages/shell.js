@@ -10,6 +10,10 @@ if (!Timeless) {
   throw new Error("应用无法启动：Timeless 运行时未加载");
 }
 
+function sidebar_menu_id(menu) {
+  return `app-menu-${menu.name.split(".").pop()}`;
+}
+
 export default function SiderLayoutView(props) {
   var model = ShellViewModel(props);
 
@@ -24,57 +28,102 @@ export default function SiderLayoutView(props) {
       },
     },
     [
-      View({ as: "aside", class: "app-sider dm-flex dm-flex-col" }, [
-        View({ class: "app-brand" }, [
-          Img({
-            class: "app-brand__logo",
-            src: "public/logo.png?v=logo-only-v4",
-            alt: "D&M",
-            attributes: {
-              draggable: "false",
-            },
-          }),
-          View({ class: "app-brand__version" }, [
-            Show({
-              when: model.models.update.state.notice_visible,
-              ok() {
-                var current_version =
-                  model.models.update.state.current_version.value;
-                var latest_version =
-                  model.models.update.state.latest_version.value;
-                return [
-                  Button(
-                    {
-                      store: model.models.update.ui.notice_button$,
-                      class: "dm-button--version",
-                      attributes: {
-                        n: "app-version-update-action",
-                        type: "button",
-                        title: `当前版本 ${current_version}，发现新版本 ${latest_version}`,
-                        "aria-label": `当前版本 ${current_version}，发现新版本 ${latest_version}，点击查看`,
-                      },
+      View(
+        {
+          as: "aside",
+          class: "app-sider dm-flex dm-flex-col",
+          attributes: { n: "app-sider" },
+        },
+        [
+          View(
+            { class: "app-brand", attributes: { n: "app-brand" } },
+            [
+              View(
+                {
+                  as: "button",
+                  class: "app-brand__logo-action",
+                  attributes: {
+                    n: "app-brand-logo-action",
+                    type: "button",
+                    title: "返回首页",
+                    "aria-label": "返回首页",
+                  },
+                  onClick() {
+                    return model.methods.goHome();
+                  },
+                },
+                [
+                  Img({
+                    class: "app-brand__logo",
+                    src: "public/logo.png?v=logo-only-v4",
+                    alt: "D&M",
+                    attributes: {
+                      n: "app-brand-logo",
+                      draggable: "false",
                     },
-                    [current_version],
-                  ),
-                  View({
-                    class: "app-brand__version-dot",
-                    attributes: { "aria-hidden": "true" },
                   }),
-                ];
-              },
-              else() {
-                return View({ class: "app-brand__version-text" }, [
-                  model.models.update.state.current_version.value,
-                ]);
-              },
-            }),
-          ]),
-        ]),
+                ],
+              ),
+              View(
+                {
+                  class: "app-brand__version",
+                  attributes: { n: "app-brand-version" },
+                },
+                [
+                  Show({
+                    when: model.models.update.state.notice_visible,
+                    ok() {
+                      var current_version =
+                        model.models.update.state.current_version.value;
+                      var latest_version =
+                        model.models.update.state.latest_version.value;
+                      return [
+                        Button(
+                          {
+                            store: model.models.update.ui.notice_button$,
+                            class: "dm-button--version",
+                            attributes: {
+                              n: "app-version-update-action",
+                              type: "button",
+                              title:
+                                `当前版本 ${current_version}，发现新版本 ${latest_version}`,
+                              "aria-label":
+                                `当前版本 ${current_version}，发现新版本 ${latest_version}，点击查看`,
+                            },
+                          },
+                          [current_version],
+                        ),
+                        View({
+                          class: "app-brand__version-dot",
+                          attributes: {
+                            n: "app-brand-version-dot",
+                            "aria-hidden": "true",
+                          },
+                        }),
+                      ];
+                    },
+                    else() {
+                      return View(
+                        {
+                          class: "app-brand__version-text",
+                          attributes: { n: "app-brand-version-text" },
+                        },
+                        [
+                          model.models.update.state.current_version.value,
+                        ],
+                      );
+                    },
+                  }),
+                ],
+              ),
+            ],
+          ),
         View(
           {
             as: "nav",
             class: "app-menu dm-flex dm-flex-col dm-gap-1",
             ariaLabel: "页面导航",
+            attributes: { n: "app-menu" },
           },
           [
             For({
@@ -95,14 +144,24 @@ export default function SiderLayoutView(props) {
                         },
                       ),
                     ]),
+                    attributes: { n: sidebar_menu_id(menu) },
                   },
                   [
-                    View({ class: "app-menu__icon" }, [
-                      Timeless.Icon({ name: menu.icon, size: 17 }),
-                    ]),
-                    View({ as: "span", class: "app-menu__label" }, [
-                      menu.title,
-                    ]),
+                    View(
+                      {
+                        class: "app-menu__icon",
+                        attributes: { n: `${sidebar_menu_id(menu)}-icon` },
+                      },
+                      [Timeless.Icon({ name: menu.icon, size: 17 })],
+                    ),
+                    View(
+                      {
+                        as: "span",
+                        class: "app-menu__label",
+                        attributes: { n: `${sidebar_menu_id(menu)}-label` },
+                      },
+                      [menu.title],
+                    ),
                   ],
                 );
               },
@@ -124,10 +183,13 @@ export default function SiderLayoutView(props) {
                     },
                   },
                   [
-                    View({ class: "app-menu__icon" }, [
-                      Timeless.Icon({ name: "settings", size: 17 }),
-                    ]),
-                    View({ as: "span", class: "app-menu__label" }, ["设置"]),
+                    View(
+                      {
+                        class: "app-menu__icon",
+                        attributes: { n: "app-settings-action-icon" },
+                      },
+                      [Timeless.Icon({ name: "settings", size: 17 })],
+                    ),
                   ],
                 ),
               ],
