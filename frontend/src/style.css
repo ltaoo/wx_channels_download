@@ -173,7 +173,7 @@ body {
 .content-main {
   flex: 1 1 auto;
   min-width: 0;
-  padding: var(--dm-space-4) var(--dm-space-4) var(--dm-space-4);
+  /* padding: var(--dm-space-4) var(--dm-space-4) var(--dm-space-4); */
 }
 
 .route-loading,

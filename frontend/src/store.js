@@ -2,8 +2,7 @@ import SiderLayoutView from "./pages/shell.js";
 
 const storage_key = "wx_channels_download";
 const legacy_scraper_job_key = "scraper.active_scraper_job_id";
-const legacy_downloader_key =
-  "wx_channels_download.third_party_downloader.v1";
+const legacy_downloader_key = "wx_channels_download.third_party_downloader.v1";
 
 function read_json(client, key) {
   try {
@@ -232,6 +231,12 @@ const routes_configure = {
         component: lazy("src/pages/account.js", "src/pages/account.css"),
         // options: animated_route_options,
       },
+      automation: {
+        title: "自动化",
+        pathname: "/automation",
+        component: lazy("src/pages/automation.js", "src/pages/automation.css"),
+        // options: animated_route_options,
+      },
       logs: {
         title: "日志",
         pathname: "/logs",
@@ -239,6 +244,18 @@ const routes_configure = {
         // options: animated_route_options,
       },
     },
+  },
+  flow_detail: {
+    title: "Pipeline 详情",
+    pathname: "/automation/detail",
+    component: lazy("src/pages/flow_detail.js", "src/pages/automation.css"),
+    // options: animated_route_options,
+  },
+  flow_edit: {
+    title: "编辑 Pipeline",
+    pathname: "/automation/edit",
+    component: lazy("src/pages/flow_edit.js", "src/pages/automation.css"),
+    // options: animated_route_options,
   },
 };
 
