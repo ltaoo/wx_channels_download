@@ -11,9 +11,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	servicetools "wx_channel/internal/services/tools"
 )
 
-var err_unknown_tool = errors.New("未知工具")
+var err_unknown_tool = servicetools.ErrUnknownTool
+
+type ToolDefinition = servicetools.Definition
+type ToolFormField = servicetools.FormField
+type ToolFormOption = servicetools.FormOption
 
 type tool_execution_error struct {
 	message string
@@ -93,261 +99,63 @@ func tool_error_result(err error) map[string]any {
 	}
 }
 
-func tool_definitions() []any {
-	definitions := []any{
-		map[string]any{
-			"name":        "get_config",
-			"title":       "获取应用配置",
-			"description": "获取 config.yaml 的可配置字段、类型、说明、当前值和解析后的生效值。application_fields 是 internal/config/config.go 注册的应用配置，plugin_fields 是 adapter 插件配置，fields 是两者的兼容合集。敏感字段只返回是否已配置，不返回明文。修改前应先调用此工具确认字段名称和允许值。",
-			"inputSchema": map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-			},
-			"annotations": map[string]any{
-				"readOnlyHint":    true,
-				"destructiveHint": false,
-				"idempotentHint":  true,
-				"openWorldHint":   false,
-			},
-		},
-		map[string]any{
-			"name":        "update_config",
-			"title":       "修改应用配置并重启",
-			"description": "批量修改 get_config 返回的非只读配置字段。配置保存成功后只代表重启已安排，不代表重启已完成；必须保存返回的 restart_token，在连接恢复后调用 get_restart_status，且仅当 status=completed、restart_completed=true、config_applied=true 时才能告诉用户重启完成且配置生效。当前 MCP 连接可能短暂断开；相同值不会触发重启。",
-			"inputSchema": map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"values": map[string]any{
-						"type":                 "object",
-						"description":          "配置键到新值的映射；键必须来自 get_config，值必须符合对应字段类型。",
-						"additionalProperties": true,
-						"minProperties":        1,
-					},
-				},
-				"required": []string{"values"},
-			},
-			"annotations": map[string]any{
-				"readOnlyHint":    false,
-				"destructiveHint": true,
-				"idempotentHint":  true,
-				"openWorldHint":   false,
-			},
-		},
-		map[string]any{
-			"name":        "get_restart_status",
-			"title":       "确认应用重启与配置生效",
-			"description": "使用 update_config 返回的 restart_token 确认重启结果。status=pending 表示仍是旧进程，必须在连接恢复后重试；status=failed 表示重启请求失败；status=config_mismatch 表示已重启但配置不一致；只有 status=completed、restart_completed=true、config_applied=true 才能向用户确认重启完成且新配置已生效。",
-			"inputSchema": map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"restart_token": map[string]any{
-						"type":        "string",
-						"description": "update_config 返回的重启确认令牌。",
-					},
-				},
-				"required": []string{"restart_token"},
-			},
-			"annotations": map[string]any{
-				"readOnlyHint":    true,
-				"destructiveHint": false,
-				"idempotentHint":  true,
-				"openWorldHint":   false,
-			},
-		},
-		map[string]any{
-			"name":        "get_platform_status",
-			"title":       "获取平台状态",
-			"description": "获取下载器当前支持的抓取平台及各平台可用状态。解析或下载链接前可先调用此工具。",
-			"inputSchema": map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-			},
-			"annotations": map[string]any{
-				"readOnlyHint":    true,
-				"destructiveHint": false,
-				"idempotentHint":  true,
-				"openWorldHint":   false,
-			},
-		},
-		map[string]any{
-			"name":        "fetch_content",
-			"title":       "获取链接内容",
-			"description": "解析受支持的平台链接并返回规范化内容、账号、内容详情、缓存条目和下载预览。微信视频号结果会额外提供 download_resources，其中包含可交给 aria2 等下载器的 download_url 和可选 decode_key。返回的 job_id 可传给 download_content，避免再次解析链接。",
-			"inputSchema": map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"url": map[string]any{
-						"type":        "string",
-						"format":      "uri",
-						"description": "要解析的平台内容链接。",
-					},
-					"force_refresh": map[string]any{
-						"type":        "boolean",
-						"default":     false,
-						"description": "忽略抓取缓存并重新获取。",
-					},
-					"timeout_seconds": map[string]any{
-						"type":        "integer",
-						"minimum":     1,
-						"maximum":     3600,
-						"default":     300,
-						"description": "等待链接解析完成的最长秒数。",
-					},
-				},
-				"required": []string{"url"},
-			},
-			"annotations": map[string]any{
-				"readOnlyHint":    true,
-				"destructiveHint": false,
-				"idempotentHint":  true,
-				"openWorldHint":   true,
-			},
-		},
-		map[string]any{
-			"name":        "download_content",
-			"title":       "下载内容",
-			"description": "根据 fetch_content 返回的 job_id 创建并启动下载任务；也可直接传 url，此时会先解析链接。默认在任务启动后返回，设置 wait_for_completion 可等待文件下载完成。此工具会写入下载目录。",
-			"inputSchema": map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"job_id": map[string]any{
-						"type":        "string",
-						"description": "fetch_content 返回的 job_id；优先使用它以复用解析结果。",
-					},
-					"fetch_id": map[string]any{
-						"type":        "string",
-						"description": "job_id 的旧名称，仅用于兼容已有调用。",
-						"deprecated":  true,
-					},
-					"url": map[string]any{
-						"type":        "string",
-						"format":      "uri",
-						"description": "未提供 job_id 时，要解析并下载的平台内容链接。",
-					},
-					"download_dir": map[string]any{
-						"type":        "string",
-						"description": "下载目录；留空时使用应用配置。",
-					},
-					"filename": map[string]any{
-						"type":        "string",
-						"description": "可选的自定义文件名。",
-					},
-					"force_refresh": map[string]any{
-						"type":        "boolean",
-						"default":     false,
-						"description": "直接传 url 时忽略抓取缓存。",
-					},
-					"existing_action": map[string]any{
-						"type":        "string",
-						"enum":        []string{"error", "skip", "overwrite", "duplicate"},
-						"default":     "error",
-						"description": "遇到相同任务时的处理方式。overwrite 会覆盖已有任务及文件。",
-					},
-					"video_variant_key": map[string]any{
-						"type":        "string",
-						"description": "可选的视频规格 variant_key。",
-					},
-					"video_variant_spec": map[string]any{
-						"type":        "string",
-						"description": "可选的视频规格名称；同时兼容适配器的 spec 配置。",
-					},
-					"wait_for_completion": map[string]any{
-						"type":        "boolean",
-						"default":     false,
-						"description": "是否等待实际下载结束后再返回。",
-					},
-					"timeout_seconds": map[string]any{
-						"type":        "integer",
-						"minimum":     1,
-						"maximum":     86400,
-						"default":     300,
-						"description": "解析链接以及可选等待下载完成的最长秒数。",
-					},
-				},
-				"anyOf": []any{
-					map[string]any{"required": []string{"job_id"}},
-					map[string]any{"required": []string{"fetch_id"}},
-					map[string]any{"required": []string{"url"}},
-				},
-			},
-			"annotations": map[string]any{
-				"readOnlyHint":    false,
-				"destructiveHint": true,
-				"idempotentHint":  false,
-				"openWorldHint":   true,
-			},
-		},
-		map[string]any{
-			"name":        "decrypt_wxchannels_video",
-			"title":       "解密微信视频号视频",
-			"description": "原地解密已经下载到本机的微信视频号视频。file_path 必须是运行下载器服务的同一台机器上的绝对路径；仅当 fetch_content 返回的 download_resources 项中 requires_decryption 为 true 时调用，并原样传入 decode_key。",
-			"inputSchema": map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"file_path": map[string]any{
-						"type":        "string",
-						"description": "第三方下载器已下载完成的视频绝对路径。文件会被原地覆盖为解密后内容。",
-					},
-					"key": map[string]any{
-						"type":        "string",
-						"pattern":     "^[1-9][0-9]*$",
-						"description": "fetch_content 返回的 decode_key，使用字符串传递以避免整数精度丢失。",
-					},
-				},
-				"required": []string{"file_path", "key"},
-			},
-			"annotations": map[string]any{
-				"readOnlyHint":    false,
-				"destructiveHint": true,
-				"idempotentHint":  false,
-				"openWorldHint":   false,
-			},
-		},
-	}
-	definitions = append(definitions, scraper_job_tool_definitions()...)
-	definitions = append(definitions, wxchannels_tool_definitions()...)
-	definitions = append(definitions, wxchannels_download_tool_definitions()...)
-	definitions = append(definitions, sph_tool_definitions()...)
-	definitions = append(definitions, zhihu_tool_definitions()...)
-	return append(definitions, data_tool_definitions()...)
-}
-
 // ToolNames returns the MCP tool names exposed by this server.
 func ToolNames() []string {
-	definitions := tool_definitions()
-	names := make([]string, 0, len(definitions))
-	for _, definition := range definitions {
-		tool, ok := definition.(map[string]any)
-		if !ok {
-			continue
-		}
-		name, _ := tool["name"].(string)
-		if name != "" {
-			names = append(names, name)
-		}
+	catalog := ToolCatalog()
+	names := make([]string, 0, len(catalog))
+	for _, definition := range catalog {
+		names = append(names, definition.Name)
 	}
 	return names
 }
 
-func (s *Server) tool_definitions() []any {
-	definitions := tool_definitions()
-	filtered := make([]any, 0, len(definitions))
-	for _, definition := range definitions {
-		tool, ok := definition.(map[string]any)
-		if !ok {
-			continue
-		}
-		name, _ := tool["name"].(string)
-		if s.supports_tool(name) {
-			filtered = append(filtered, definition)
-		}
+// ToolCatalog returns every tool registered by tools.go and its extension
+// definition files. It is used by the automation editor to configure service
+// nodes without maintaining a second tool list.
+func ToolCatalog() []ToolDefinition {
+	return servicetools.BuiltinCatalog()
+}
+
+// ToolCatalog returns the tools enabled by this server's configured service
+// backends. CLI and other process-local callers use the same catalog as MCP.
+func (s *Server) ToolCatalog() []ToolDefinition {
+	if s == nil || s.tool_service == nil {
+		return []ToolDefinition{}
 	}
-	return filtered
+	return s.tool_service.Definitions()
+}
+
+// ToolNames returns the tools enabled by this server's tool service.
+func (s *Server) ToolNames() []string {
+	if s == nil || s.tool_service == nil {
+		return []string{}
+	}
+	return s.tool_service.Names()
+}
+
+// ToolService exposes the transport-neutral registry used internally by MCP.
+// Process-local adapters such as the CLI can invoke it without speaking MCP.
+func (s *Server) ToolService() *servicetools.Service {
+	if s == nil {
+		return nil
+	}
+	return s.tool_service
+}
+
+// ExecuteTool invokes an MCP tool directly and returns its structured result.
+// This shares the exact same validation and dispatch path as tools/call.
+func (s *Server) ExecuteTool(ctx context.Context, name string, arguments map[string]any) (any, error) {
+	if s == nil || s.tool_service == nil {
+		return nil, errors.New("工具服务未初始化")
+	}
+	return s.tool_service.Execute(ctx, name, arguments)
+}
+
+func (s *Server) tool_definitions() []any {
+	if s == nil || s.tool_service == nil {
+		return []any{}
+	}
+	return s.tool_service.MCPDefinitions()
 }
 
 func (s *Server) supports_tool(name string) bool {
@@ -365,6 +173,8 @@ func (s *Server) supports_tool(name string) bool {
 		return s.data_reader != nil || s.api_client != nil
 	case "delete_download_tasks":
 		return s.download_task_deleter != nil
+	case "create_download_task":
+		return s.download_task_creator != nil || s.api_client != nil
 	case "deploy_sph_worker":
 		return s.sph_deployer != nil
 	case get_zhihu_credential_status_tool_name,
@@ -375,92 +185,117 @@ func (s *Server) supports_tool(name string) bool {
 		get_my_zhihu_zvideos_tool_name,
 		get_my_zhihu_columns_tool_name:
 		return s.zhihu_collections != nil && s.zhihu_credentials != nil
+	case list_automation_schedules_tool_name,
+		get_automation_schedule_tool_name,
+		create_automation_schedule_tool_name,
+		toggle_automation_schedule_tool_name,
+		trigger_automation_schedule_tool_name,
+		list_automation_runs_tool_name:
+		return s.automation != nil
 	default:
 		return s.api_client != nil
 	}
 }
 
 func (s *Server) call_tool(ctx context.Context, params call_tool_params) (map[string]any, error) {
-	if !s.supports_tool(params.Name) {
-		return nil, fmt.Errorf("%w: %s", err_unknown_tool, params.Name)
+	if s == nil || s.tool_service == nil {
+		return nil, errors.New("工具服务未初始化")
 	}
-	switch params.Name {
+	return s.tool_service.Call(ctx, params.Name, params.Arguments)
+}
+
+func (s *Server) execute_tool(ctx context.Context, name string, raw_arguments json.RawMessage) (map[string]any, error) {
+	switch name {
 	case "get_config":
 		return s.get_config(ctx)
 	case "update_config":
-		return s.update_config(ctx, params.Arguments)
+		return s.update_config(ctx, raw_arguments)
 	case "get_restart_status":
-		return s.get_restart_status(ctx, params.Arguments)
+		return s.get_restart_status(ctx, raw_arguments)
 	case "get_platform_status":
 		return s.get_platform_status(ctx)
 	case "fetch_content":
-		return s.fetch_content(ctx, params.Arguments)
+		return s.fetch_content(ctx, raw_arguments)
 	case "create_scraper_job":
-		return s.create_scraper_job_tool(ctx, params.Arguments)
+		return s.create_scraper_job_tool(ctx, raw_arguments)
 	case "get_scraper_job":
-		return s.get_scraper_job_tool(ctx, params.Arguments)
+		return s.get_scraper_job_tool(ctx, raw_arguments)
 	case "download_content":
-		return s.download_content(ctx, params.Arguments)
+		return s.download_content(ctx, raw_arguments)
 	case "decrypt_wxchannels_video":
-		return s.decrypt_wxchannels_video(ctx, params.Arguments)
+		return s.decrypt_wxchannels_video(ctx, raw_arguments)
 	case "get_wxchannels_status":
 		return s.get_wxchannels_status(ctx)
 	case "search_wxchannels_accounts":
-		return s.search_wxchannels_accounts(ctx, params.Arguments)
+		return s.search_wxchannels_accounts(ctx, raw_arguments)
 	case "get_wxchannels_account_videos":
-		return s.get_wxchannels_account_videos(ctx, params.Arguments)
+		return s.get_wxchannels_account_videos(ctx, raw_arguments)
 	case "get_wxchannels_live_replays":
-		return s.get_wxchannels_live_replays(ctx, params.Arguments)
+		return s.get_wxchannels_live_replays(ctx, raw_arguments)
 	case "get_wxchannels_live_profile":
-		return s.get_wxchannels_live_profile(ctx, params.Arguments)
+		return s.get_wxchannels_live_profile(ctx, raw_arguments)
 	case "get_wxchannels_interacted_videos":
-		return s.get_wxchannels_interacted_videos(ctx, params.Arguments)
+		return s.get_wxchannels_interacted_videos(ctx, raw_arguments)
 	case "get_wxchannels_followed_accounts":
-		return s.get_wxchannels_followed_accounts(ctx, params.Arguments)
+		return s.get_wxchannels_followed_accounts(ctx, raw_arguments)
 	case "get_wxchannels_play_history":
-		return s.get_wxchannels_play_history(ctx, params.Arguments)
+		return s.get_wxchannels_play_history(ctx, raw_arguments)
 	case "get_wxchannels_video_profile":
-		return s.get_wxchannels_video_profile(ctx, params.Arguments)
+		return s.get_wxchannels_video_profile(ctx, raw_arguments)
 	case "get_wxchannels_video_comments":
-		return s.get_wxchannels_video_comments(ctx, params.Arguments)
+		return s.get_wxchannels_video_comments(ctx, raw_arguments)
 	case "get_wxchannels_video_share_url":
-		return s.get_wxchannels_video_share_url(ctx, params.Arguments)
+		return s.get_wxchannels_video_share_url(ctx, raw_arguments)
 	case "download_wxchannels_live":
-		return s.download_wxchannels_live(ctx, params.Arguments)
+		return s.download_wxchannels_live(ctx, raw_arguments)
 	case "download_wxchannels_video":
-		return s.download_wxchannels_video(ctx, params.Arguments)
+		return s.download_wxchannels_video(ctx, raw_arguments)
 	case "get_download_tasks":
-		return s.get_download_tasks(ctx, params.Arguments)
+		return s.get_download_tasks(ctx, raw_arguments)
 	case "get_download_task_detail":
-		return s.get_download_task_detail(ctx, params.Arguments)
+		return s.get_download_task_detail(ctx, raw_arguments)
 	case "delete_download_tasks":
-		return s.delete_download_tasks(ctx, params.Arguments)
+		return s.delete_download_tasks(ctx, raw_arguments)
+	case "create_download_task":
+		return s.create_download_task_tool(ctx, raw_arguments)
 	case "get_accounts":
-		return s.get_accounts(ctx, params.Arguments)
+		return s.get_accounts(ctx, raw_arguments)
 	case "get_browse_history":
-		return s.get_browse_history(ctx, params.Arguments)
+		return s.get_browse_history(ctx, raw_arguments)
 	case "get_logs":
-		return s.get_logs(ctx, params.Arguments)
+		return s.get_logs(ctx, raw_arguments)
 	case "get_certificate_status":
 		return s.get_certificate_status(ctx)
 	case "deploy_sph_worker":
-		return s.deploy_sph_worker(ctx, params.Arguments)
+		return s.deploy_sph_worker(ctx, raw_arguments)
 	case get_zhihu_credential_status_tool_name:
-		return s.get_zhihu_credential_status(ctx, params.Arguments)
+		return s.get_zhihu_credential_status(ctx, raw_arguments)
 	case get_my_zhihu_collections_tool_name:
-		return s.get_my_zhihu_collections(ctx, params.Arguments)
+		return s.get_my_zhihu_collections(ctx, raw_arguments)
 	case get_zhihu_collection_contents_tool_name:
-		return s.get_zhihu_collection_contents(ctx, params.Arguments)
+		return s.get_zhihu_collection_contents(ctx, raw_arguments)
 	case get_my_zhihu_answers_tool_name:
-		return s.get_my_zhihu_answers(ctx, params.Arguments)
+		return s.get_my_zhihu_answers(ctx, raw_arguments)
 	case get_my_zhihu_posts_tool_name:
-		return s.get_my_zhihu_posts(ctx, params.Arguments)
+		return s.get_my_zhihu_posts(ctx, raw_arguments)
 	case get_my_zhihu_zvideos_tool_name:
-		return s.get_my_zhihu_zvideos(ctx, params.Arguments)
+		return s.get_my_zhihu_zvideos(ctx, raw_arguments)
 	case get_my_zhihu_columns_tool_name:
-		return s.get_my_zhihu_columns(ctx, params.Arguments)
+		return s.get_my_zhihu_columns(ctx, raw_arguments)
+	case list_automation_schedules_tool_name:
+		return s.list_automation_schedules_tool(ctx)
+	case get_automation_schedule_tool_name:
+		return s.get_automation_schedule_tool(ctx, raw_arguments)
+	case create_automation_schedule_tool_name:
+		return s.create_automation_schedule_tool(ctx, raw_arguments)
+	case toggle_automation_schedule_tool_name:
+		return s.toggle_automation_schedule_tool(ctx, raw_arguments)
+	case trigger_automation_schedule_tool_name:
+		return s.trigger_automation_schedule_tool(ctx, raw_arguments)
+	case list_automation_runs_tool_name:
+		return s.list_automation_runs_tool(ctx, raw_arguments)
 	default:
-		return nil, fmt.Errorf("%w: %s", err_unknown_tool, params.Name)
+		return nil, fmt.Errorf("%w: %s", err_unknown_tool, name)
 	}
 }
 

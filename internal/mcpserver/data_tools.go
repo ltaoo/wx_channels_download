@@ -26,6 +26,7 @@ type DownloadTaskListQuery struct {
 	Statuses     []int
 	ParentTaskID int
 	RootTaskID   int
+	ContentID    string
 }
 
 // AccountListQuery describes a read-only account query.
@@ -105,11 +106,12 @@ type DownloadTaskCreator interface {
 }
 
 type download_task_list_arguments struct {
-	Page         int   `json:"page"`
-	PageSize     int   `json:"page_size"`
-	Statuses     []int `json:"statuses"`
-	ParentTaskID int   `json:"parent_task_id"`
-	RootTaskID   int   `json:"root_task_id"`
+	Page         int    `json:"page"`
+	PageSize     int    `json:"page_size"`
+	Statuses     []int  `json:"statuses"`
+	ParentTaskID int    `json:"parent_task_id"`
+	RootTaskID   int    `json:"root_task_id"`
+	ContentID    string `json:"content_id"`
 }
 
 type download_task_detail_arguments struct {
@@ -119,6 +121,19 @@ type download_task_detail_arguments struct {
 type delete_download_tasks_arguments struct {
 	TaskIDs     []int `json:"task_ids"`
 	DeleteFiles bool  `json:"delete_files"`
+}
+
+type create_download_task_arguments struct {
+	Platform        string          `json:"platform"`
+	Content         json.RawMessage `json:"content"`
+	BuildFromFetch  bool            `json:"build_from_fetch"`
+	ResourceIndexes []int           `json:"resource_indexes"`
+	DownloadDir     string          `json:"download_dir"`
+	Filename        string          `json:"filename"`
+	Config          map[string]any  `json:"config"`
+	AutoStart       *bool           `json:"auto_start"`
+	ParentTaskID    *int            `json:"parent_task_id"`
+	RelationType    string          `json:"relation_type"`
 }
 
 type account_list_arguments struct {
@@ -145,197 +160,6 @@ type log_list_arguments struct {
 	Levels   []string `json:"levels"`
 }
 
-func data_tool_definitions() []any {
-	return []any{
-		data_tool_definition(
-			"get_download_tasks",
-			"获取下载任务",
-			"分页查询下载任务及状态统计，可按任务状态、父任务或根任务筛选。状态值：0 等待、1 准备、2 下载中、3 暂停、4 合并、5 完成、6 失败、7 取消。",
-			map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"page":      data_page_schema(1, 1000000, 1, "页码，从 1 开始。"),
-					"page_size": data_page_schema(1, 100, 20, "每页任务数。"),
-					"statuses": map[string]any{
-						"type":        "array",
-						"description": "可选的任务状态列表。",
-						"uniqueItems": true,
-						"items": map[string]any{
-							"type":    "integer",
-							"minimum": 0,
-							"maximum": 7,
-						},
-					},
-					"parent_task_id": data_positive_id_schema("只返回该父任务的直接子任务。"),
-					"root_task_id":   data_positive_id_schema("只返回属于该根任务的任务。"),
-				},
-			},
-		),
-		data_tool_definition(
-			"get_download_task_detail",
-			"获取下载任务详情",
-			"按下载任务 ID 获取任务、文件、进度、关联内容和账号详情。",
-			map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"id": data_positive_id_schema("下载任务 ID。"),
-				},
-				"required": []string{"id"},
-			},
-		),
-		map[string]any{
-			"name":        "delete_download_tasks",
-			"title":       "删除下载任务",
-			"description": "用户明确确认后，停止并软删除指定下载任务。delete_files 默认为 false，仅删除任务记录；设为 true 时同时安全删除关联的最终文件、临时文件和直播录制目录。每个任务独立返回删除结果。",
-			"inputSchema": map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"task_ids": map[string]any{
-						"type":        "array",
-						"description": "要删除的下载任务 ID。",
-						"minItems":    1,
-						"uniqueItems": true,
-						"items":       data_positive_id_schema("下载任务 ID。"),
-					},
-					"delete_files": map[string]any{
-						"type":        "boolean",
-						"default":     false,
-						"description": "是否同时删除任务关联的本地文件。",
-					},
-				},
-				"required": []string{"task_ids"},
-			},
-			"annotations": map[string]any{
-				"readOnlyHint":    false,
-				"destructiveHint": true,
-				"idempotentHint":  true,
-				"openWorldHint":   false,
-			},
-		},
-		data_tool_definition(
-			"get_accounts",
-			"获取账号列表",
-			"分页查询已保存的平台账号，可按账号 ID 精确筛选，或按 ID、平台外部 ID、别名和昵称模糊搜索。",
-			map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"page":      data_page_schema(1, 1000000, 1, "页码，从 1 开始。"),
-					"page_size": data_page_schema(1, 200, 24, "每页账号数。"),
-					"keyword": map[string]any{
-						"type":        "string",
-						"description": "账号搜索关键词。",
-					},
-					"account_id": map[string]any{
-						"type":        "string",
-						"description": "可选的数据库账号 ID。",
-					},
-				},
-			},
-		),
-		data_tool_definition(
-			"get_browse_history",
-			"获取浏览记录",
-			"分页查询已保存的浏览记录，可按平台、关联账号和关键词筛选。username 对应账号的数据库 ID。",
-			map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"page":      data_page_schema(1, 1000000, 1, "页码，从 1 开始。"),
-					"page_size": data_page_schema(1, 200, 20, "每页记录数。"),
-					"keyword": map[string]any{
-						"type":        "string",
-						"description": "匹配标题、内容 ID、链接或关联账号的关键词。",
-					},
-					"username": map[string]any{
-						"type":        "string",
-						"description": "关联账号的数据库 ID，例如 wxchannels:xxx。",
-					},
-					"platform_ids": map[string]any{
-						"type":        "array",
-						"description": "平台 ID 列表；留空时查询常用平台。",
-						"uniqueItems": true,
-						"items":       map[string]any{"type": "string", "minLength": 1},
-					},
-				},
-			},
-		),
-		data_tool_definition(
-			"get_logs",
-			"获取应用日志",
-			"分页读取应用日志，可按级别、来源和关键词过滤。默认最多从日志末尾读取 2 MB。",
-			map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"page":      data_page_schema(1, 1000000, 1, "页码，从 1 开始。"),
-					"page_size": data_page_schema(1, max_log_page_size, default_log_page_size, "每页日志条数。"),
-					"max_bytes": data_page_schema(64*1024, max_log_max_bytes, default_log_max_bytes, "从每个日志文件末尾读取的最大字节数。"),
-					"keyword": map[string]any{
-						"type":        "string",
-						"description": "不区分大小写的日志关键词。",
-					},
-					"source": map[string]any{
-						"type":        "string",
-						"description": "日志来源、文件或组件筛选。",
-					},
-					"levels": map[string]any{
-						"type":        "array",
-						"description": "日志级别列表，例如 debug、info、warn、error。",
-						"uniqueItems": true,
-						"items":       map[string]any{"type": "string", "minLength": 1},
-					},
-				},
-			},
-		),
-		data_tool_definition(
-			"get_certificate_status",
-			"获取代理证书状态",
-			"获取当前代理根证书的来源、安装和信任状态、证书详情及风险提示。",
-			map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-			},
-		),
-	}
-}
-
-func data_tool_definition(name string, title string, description string, input_schema map[string]any) map[string]any {
-	return map[string]any{
-		"name":        name,
-		"title":       title,
-		"description": description,
-		"inputSchema": input_schema,
-		"annotations": map[string]any{
-			"readOnlyHint":    true,
-			"destructiveHint": false,
-			"idempotentHint":  true,
-			"openWorldHint":   false,
-		},
-	}
-}
-
-func data_page_schema(minimum int, maximum int, default_value int, description string) map[string]any {
-	return map[string]any{
-		"type":        "integer",
-		"minimum":     minimum,
-		"maximum":     maximum,
-		"default":     default_value,
-		"description": description,
-	}
-}
-
-func data_positive_id_schema(description string) map[string]any {
-	return map[string]any{
-		"type":        "integer",
-		"minimum":     1,
-		"description": description,
-	}
-}
-
 func (s *Server) get_download_tasks(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments download_task_list_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
@@ -359,6 +183,7 @@ func (s *Server) get_download_tasks(ctx context.Context, raw_arguments json.RawM
 		Statuses:     arguments.Statuses,
 		ParentTaskID: arguments.ParentTaskID,
 		RootTaskID:   arguments.RootTaskID,
+		ContentID:    strings.TrimSpace(arguments.ContentID),
 	}
 	if s.data_reader != nil {
 		value, read_err := s.data_reader.ListDownloadTasks(ctx, query)
@@ -376,6 +201,9 @@ func (s *Server) get_download_tasks(ctx context.Context, raw_arguments json.RawM
 	}
 	if query.RootTaskID > 0 {
 		values.Set("root_task_id", strconv.Itoa(query.RootTaskID))
+	}
+	if query.ContentID != "" {
+		values.Set("content_id", query.ContentID)
 	}
 	if len(query.Statuses) > 0 {
 		values.Set("status", join_ints(query.Statuses))
@@ -423,6 +251,50 @@ func (s *Server) delete_download_tasks(ctx context.Context, raw_arguments json.R
 		return nil, err
 	}
 	return successful_tool_result(map[string]any{"results": results})
+}
+
+func (s *Server) create_download_task_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+	var arguments create_download_task_arguments
+	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
+		return nil, err
+	}
+	platform := strings.TrimSpace(arguments.Platform)
+	if platform == "" {
+		return nil, fmt.Errorf("platform 不能为空")
+	}
+	if !has_json_value(arguments.Content) {
+		return nil, fmt.Errorf("content 不能为空")
+	}
+	create_result, err := s.create_download_task(ctx, DownloadTaskCreateRequest{
+		Platform:        platform,
+		Content:         arguments.Content,
+		BuildFromFetch:  arguments.BuildFromFetch,
+		ResourceIndexes: arguments.ResourceIndexes,
+		DownloadDir:     strings.TrimSpace(arguments.DownloadDir),
+		Filename:        strings.TrimSpace(arguments.Filename),
+		Config:          arguments.Config,
+		AutoStart:       arguments.AutoStart,
+		ParentTaskID:    arguments.ParentTaskID,
+		RelationType:    strings.TrimSpace(arguments.RelationType),
+	}, "创建下载任务失败")
+	if err != nil {
+		return nil, err
+	}
+	if create_result.Skipped {
+		return successful_tool_result(map[string]any{
+			"created":       false,
+			"started":       false,
+			"skipped":       true,
+			"existing_task": create_result.Task,
+		})
+	}
+	return successful_tool_result(map[string]any{
+		"created": true,
+		"started": true,
+		"skipped": false,
+		"task":    create_result.Task,
+		"ids":     create_result.IDs,
+	})
 }
 
 func (s *Server) get_accounts(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
