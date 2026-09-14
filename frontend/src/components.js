@@ -1,4 +1,13 @@
-import { BrandError, BrandLoading, Input, PlatformIcon, Popover } from "./dmui.js";
+import { request } from "./biz/request.js";
+
+import {
+  BrandError,
+  BrandLoading,
+  Input,
+  PlatformIcon,
+  Popover,
+  Tag,
+} from "./dmui.js";
 
 const Runtime = window.Timeless;
 
@@ -10,18 +19,15 @@ const { Show, View } = Runtime;
 
 const legacy_select_primitive = Runtime.ui && Runtime.ui.SelectPrimitive;
 const select_primitive = {
-  SelectRoot:
-    Runtime.primitive?.SelectRoot || legacy_select_primitive?.Root,
+  SelectRoot: Runtime.primitive?.SelectRoot || legacy_select_primitive?.Root,
   SelectTrigger:
     Runtime.primitive?.SelectTrigger || legacy_select_primitive?.Trigger,
-  SelectIcon:
-    Runtime.primitive?.SelectIcon || legacy_select_primitive?.Icon,
+  SelectIcon: Runtime.primitive?.SelectIcon || legacy_select_primitive?.Icon,
   SelectContent:
     Runtime.primitive?.SelectContent || legacy_select_primitive?.Content,
   SelectViewport:
     Runtime.primitive?.SelectViewport || legacy_select_primitive?.Viewport,
-  SelectItem:
-    Runtime.primitive?.SelectItem || legacy_select_primitive?.Item,
+  SelectItem: Runtime.primitive?.SelectItem || legacy_select_primitive?.Item,
   SelectItemText:
     Runtime.primitive?.SelectItemText || legacy_select_primitive?.ItemText,
   SelectItemIndicator:
@@ -40,9 +46,9 @@ function select_static_classes(values) {
 function is_select_source(value) {
   return Boolean(
     value &&
-      typeof value === "object" &&
-      "value" in value &&
-      typeof value.subscribe === "function",
+    typeof value === "object" &&
+    "value" in value &&
+    typeof value.subscribe === "function",
   );
 }
 
@@ -253,202 +259,199 @@ function EntitySelect(props, render_label, render_value) {
     return suppressed;
   }
 
-  const primitive_select = primitives.SelectRoot(
-    { store },
-    [
-      primitives.SelectTrigger(
-        {
-          store,
-          class: select_class_names([
-            "dm-field dm-select",
-            Runtime.computed(state_, (state) =>
-              select_static_classes([
-                state.open ? "is-open" : "",
-                state.disabled ? "is-disabled" : "",
-              ]),
-            ),
-            props.class,
-          ]),
-          attributes: {
-            n: `${semantic_name}-trigger`,
-            type: "button",
-            ...(props.attributes || {}),
-          },
-          onPointerDown(event) {
-            event.preventDefault();
-            event.stopPropagation();
-            event.stopImmediatePropagation?.();
-            ensure_select_trigger_reference(store, event);
-            suppress_click_once();
-            store.handleClickTrigger();
-          },
-          onClick(event) {
-            if (consume_click_suppression()) return;
-            event.preventDefault();
-            event.stopPropagation();
-            ensure_select_trigger_reference(store, event);
-            store.handleClickTrigger();
-          },
+  const primitive_select = primitives.SelectRoot({ store }, [
+    primitives.SelectTrigger(
+      {
+        store,
+        class: select_class_names([
+          "dm-field dm-select",
+          Runtime.computed(state_, (state) =>
+            select_static_classes([
+              state.open ? "is-open" : "",
+              state.disabled ? "is-disabled" : "",
+            ]),
+          ),
+          props.class,
+        ]),
+        attributes: {
+          n: `${semantic_name}-trigger`,
+          type: "button",
+          ...(props.attributes || {}),
         },
-        [
-          View(
-            {
+        onPointerDown(event) {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation?.();
+          ensure_select_trigger_reference(store, event);
+          suppress_click_once();
+          store.handleClickTrigger();
+        },
+        onClick(event) {
+          if (consume_click_suppression()) return;
+          event.preventDefault();
+          event.stopPropagation();
+          ensure_select_trigger_reference(store, event);
+          store.handleClickTrigger();
+        },
+      },
+      [
+        View(
+          {
+            class: select_class_names([
+              "dm-select-value",
+              Runtime.computed(state_, (state) =>
+                state.selectedOption ? "has-value" : "is-placeholder",
+              ),
+            ]),
+            attributes: { n: `${semantic_name}-value` },
+          },
+          render_value
+            ? [render_value(state_, semantic_name)]
+            : [
+                Runtime.computed(
+                  state_,
+                  (state) =>
+                    state.selectedOption?.label ??
+                    state.selectedOption?.value ??
+                    state.placeholder ??
+                    "请选择",
+                ),
+              ],
+        ),
+        primitives.SelectIcon(
+          {
+            store,
+            class: "dm-select-action dm-select-chevron",
+            attributes: { n: `${semantic_name}-chevron` },
+          },
+          [
+            Runtime.Icon({
+              name: "chevron-down",
+              size: 14,
+              attributes: { n: `${semantic_name}-chevron-icon` },
               class: select_class_names([
-                "dm-select-value",
                 Runtime.computed(state_, (state) =>
-                  state.selectedOption ? "has-value" : "is-placeholder",
+                  state.open ? "is-open" : "",
                 ),
               ]),
-              attributes: { n: `${semantic_name}-value` },
+            }),
+          ],
+        ),
+      ],
+    ),
+    Show({
+      when: Runtime.computed(state_, (state) => state.open),
+      ok() {
+        return primitives.SelectContent(
+          {
+            store,
+            class: select_class_names([
+              "dm-select-content dm-entity-select-content",
+              props.contentClass,
+            ]),
+            attributes: {
+              n: `${semantic_name}-popup`,
+              role: "listbox",
             },
-            render_value
-              ? [render_value(state_, semantic_name)]
-              : [
-                  Runtime.computed(
-                    state_,
-                    (state) =>
-                      state.selectedOption?.label ??
-                      state.selectedOption?.value ??
-                      state.placeholder ??
-                      "请选择",
-                  ),
-                ],
-          ),
-          primitives.SelectIcon(
-            {
-              store,
-              class: "dm-select-action dm-select-chevron",
-              attributes: { n: `${semantic_name}-chevron` },
-            },
-            [
-              Runtime.Icon({
-                name: "chevron-down",
-                size: 14,
-                attributes: { n: `${semantic_name}-chevron-icon` },
-                class: select_class_names([
-                  Runtime.computed(state_, (state) =>
-                    state.open ? "is-open" : "",
-                  ),
-                ]),
-              }),
-            ],
-          ),
-        ],
-      ),
-      Show({
-        when: Runtime.computed(state_, (state) => state.open),
-        ok() {
-          return primitives.SelectContent(
-            {
-              store,
-              class: select_class_names([
-                "dm-select-content dm-entity-select-content",
-                props.contentClass,
-              ]),
-              attributes: {
-                n: `${semantic_name}-popup`,
-                role: "listbox",
+            animation: { in: "is-entering", out: "is-exiting" },
+          },
+          () => [
+            Show({
+              when: Runtime.computed(state_, (state) => state.search),
+              ok() {
+                return View(
+                  {
+                    class: "dm-entity-select-search-wrap",
+                    attributes: { n: `${semantic_name}-search-wrap` },
+                  },
+                  [
+                    select_search_input({
+                      store,
+                      name: semantic_name,
+                      label: search_placeholder,
+                      onKeyDown(event) {
+                        switch (event.key) {
+                          case "ArrowDown":
+                            event.preventDefault();
+                            store.focusNextOption();
+                            break;
+                          case "ArrowUp":
+                            event.preventDefault();
+                            store.focusPrevOption();
+                            break;
+                          case "Enter":
+                            event.preventDefault();
+                            store.selectFocusedOption();
+                            break;
+                          case "Escape":
+                            event.preventDefault();
+                            store.hide();
+                            break;
+                          default:
+                            break;
+                        }
+                      },
+                    }),
+                  ],
+                );
               },
-              animation: { in: "is-entering", out: "is-exiting" },
-            },
-            () => [
-              Show({
-                when: Runtime.computed(state_, (state) => state.search),
-                ok() {
-                  return View(
-                    {
-                      class: "dm-entity-select-search-wrap",
-                      attributes: { n: `${semantic_name}-search-wrap` },
-                    },
-                    [
-                      select_search_input({
-                        store,
-                        name: semantic_name,
-                        label: search_placeholder,
-                        onKeyDown(event) {
-                          switch (event.key) {
-                            case "ArrowDown":
-                              event.preventDefault();
-                              store.focusNextOption();
-                              break;
-                            case "ArrowUp":
-                              event.preventDefault();
-                              store.focusPrevOption();
-                              break;
-                            case "Enter":
-                              event.preventDefault();
-                              store.selectFocusedOption();
-                              break;
-                            case "Escape":
-                              event.preventDefault();
-                              store.hide();
-                              break;
-                            default:
-                              break;
-                          }
-                        },
-                      }),
-                    ],
-                  );
-                },
-              }),
-              primitives.SelectViewport(
-                {
-                  store,
-                  class: "dm-select-viewport",
-                  attributes: { n: `${semantic_name}-options` },
-                },
-                [
-                  Show({
-                    when: Runtime.computed(state_, (state) => state.loading),
-                    ok() {
-                      return View(
-                        {
-                          class: "dm-select-state",
-                          attributes: { n: `${semantic_name}-loading-state` },
-                        },
-                        ["加载中…"],
-                      );
-                    },
-                    else() {
-                      return Show({
-                        when: Runtime.computed(
-                          options_,
-                          (options) => options.length > 0,
-                        ),
-                        ok() {
-                          return Runtime.For({
-                            each: options_,
-                            render(entry) {
-                              return select_entry(
-                                store,
-                                entry,
-                                render_label,
-                                semantic_name,
-                              );
-                            },
-                          });
-                        },
-                        else() {
-                          return View(
-                            {
-                              class: "dm-select-state",
-                              attributes: { n: `${semantic_name}-empty-state` },
-                            },
-                            [props.emptyText || "暂无选项"],
-                          );
-                        },
-                      });
-                    },
-                  }),
-                ],
-              ),
-            ],
-          );
-        },
-      }),
-    ],
-  );
+            }),
+            primitives.SelectViewport(
+              {
+                store,
+                class: "dm-select-viewport",
+                attributes: { n: `${semantic_name}-options` },
+              },
+              [
+                Show({
+                  when: Runtime.computed(state_, (state) => state.loading),
+                  ok() {
+                    return View(
+                      {
+                        class: "dm-select-state",
+                        attributes: { n: `${semantic_name}-loading-state` },
+                      },
+                      ["加载中…"],
+                    );
+                  },
+                  else() {
+                    return Show({
+                      when: Runtime.computed(
+                        options_,
+                        (options) => options.length > 0,
+                      ),
+                      ok() {
+                        return Runtime.For({
+                          each: options_,
+                          render(entry) {
+                            return select_entry(
+                              store,
+                              entry,
+                              render_label,
+                              semantic_name,
+                            );
+                          },
+                        });
+                      },
+                      else() {
+                        return View(
+                          {
+                            class: "dm-select-state",
+                            attributes: { n: `${semantic_name}-empty-state` },
+                          },
+                          [props.emptyText || "暂无选项"],
+                        );
+                      },
+                    });
+                  },
+                }),
+              ],
+            ),
+          ],
+        );
+      },
+    }),
+  ]);
 
   return View(
     {
@@ -494,33 +497,30 @@ function platform_selected_value(state_, semantic_name) {
       state.placeholder ??
       "请选择",
   );
-  return View(
-    { class: "dm-entity-select-value" },
-    [
-      Show({
-        when: has_favicon_,
-        ok() {
-          return Runtime.SVG.SVG(
-            {
-              class: "dm-entity-select-value__icon",
-              attributes: {
-                n: `${semantic_name}-value-icon`,
-                viewBox: "0 0 32 32",
-                "aria-hidden": "true",
-                focusable: "false",
-              },
+  return View({ class: "dm-entity-select-value" }, [
+    Show({
+      when: has_favicon_,
+      ok() {
+        return Runtime.SVG.SVG(
+          {
+            class: "dm-entity-select-value__icon",
+            attributes: {
+              n: `${semantic_name}-value-icon`,
+              viewBox: "0 0 32 32",
+              "aria-hidden": "true",
+              focusable: "false",
             },
-            [
-              Runtime.SVG.Use({
-                attributes: { href: favicon_ },
-              }),
-            ],
-          );
-        },
-      }),
-      View({ class: "dm-entity-select-value__label" }, [label_]),
-    ],
-  );
+          },
+          [
+            Runtime.SVG.Use({
+              attributes: { href: favicon_ },
+            }),
+          ],
+        );
+      },
+    }),
+    View({ class: "dm-entity-select-value__label" }, [label_]),
+  ]);
 }
 
 function PlatformPopoverItem(props) {
@@ -582,8 +582,7 @@ function PlatformPopoverSelect(props) {
   const semantic_name = props.name || "platform-select";
   const store = require_select_store(semantic_name, props.store);
   const state_ = Runtime.refobj(store.state);
-  const popover_store =
-    props.popoverStore || new Runtime.vm.PopoverCore();
+  const popover_store = props.popoverStore || new Runtime.vm.PopoverCore();
   const owns_popover_store = !props.popoverStore;
   const popover_state_ = Runtime.refobj(popover_store.state);
   const trigger_active_ = Runtime.ref(false);
@@ -610,9 +609,7 @@ function PlatformPopoverSelect(props) {
   const unlistens = [
     store.onStateChange((state) => state_.as(state)),
     popover_store.onStateChange((state) => popover_state_.as(state)),
-    store.onSearchChange?.((value) =>
-      search_keyword_.as(String(value || "")),
-    ),
+    store.onSearchChange?.((value) => search_keyword_.as(String(value || ""))),
     popover_store.onHide(reset_search),
   ];
 
@@ -781,52 +778,48 @@ function account_option_label(entry) {
   const platform_name =
     (window.PLATFORM_NAMES || {})[platform_id] || platform_id;
   const description = platform_name || (!entry.value ? "所有平台" : "");
-  return View(
-    { class: "dm-entity-select-option" },
-    [
-      View(
-        {
-          class: "dm-entity-select-option__avatar",
-          attributes: { "aria-hidden": "true" },
-        },
-        [
-          Show({
-            when: account.avatar_url,
-            ok() {
-              return Runtime.Img({
-                class: "dm-entity-select-option__image",
-                src: account.avatar_url,
-                attributes: {
-                  alt: "",
-                  loading: "lazy",
-                  referrerpolicy: "no-referrer",
-                },
-              });
-            },
-            else() {
-              return Runtime.Icon({
-                name: "user",
-                size: 15,
-                class: "dm-entity-select-option__avatar-fallback",
-              });
-            },
-          }),
-        ],
-      ),
-      View({ class: "dm-entity-select-option__body" }, [
-        View({ class: "dm-entity-select-option__label" }, [entry.label]),
+  return View({ class: "dm-entity-select-option" }, [
+    View(
+      {
+        class: "dm-entity-select-option__avatar",
+        attributes: { "aria-hidden": "true" },
+      },
+      [
         Show({
-          when: description,
+          when: account.avatar_url,
           ok() {
-            return View(
-              { class: "dm-entity-select-option__description" },
-              [description],
-            );
+            return Runtime.Img({
+              class: "dm-entity-select-option__image",
+              src: account.avatar_url,
+              attributes: {
+                alt: "",
+                loading: "lazy",
+                referrerpolicy: "no-referrer",
+              },
+            });
+          },
+          else() {
+            return Runtime.Icon({
+              name: "user",
+              size: 15,
+              class: "dm-entity-select-option__avatar-fallback",
+            });
           },
         }),
-      ]),
-    ],
-  );
+      ],
+    ),
+    View({ class: "dm-entity-select-option__body" }, [
+      View({ class: "dm-entity-select-option__label" }, [entry.label]),
+      Show({
+        when: description,
+        ok() {
+          return View({ class: "dm-entity-select-option__description" }, [
+            description,
+          ]);
+        },
+      }),
+    ]),
+  ]);
 }
 
 function account_selected_value(state_, semantic_name) {
@@ -843,39 +836,36 @@ function account_selected_value(state_, semantic_name) {
       "请选择",
   );
 
-  return View(
-    { class: "dm-entity-select-value" },
-    [
-      Show({
-        when: Runtime.computed(avatar_, Boolean),
-        ok() {
-          return Runtime.Img({
-            class: "dm-entity-select-value__avatar",
-            src: avatar_,
-            attributes: {
-              n: `${semantic_name}-value-avatar`,
-              alt: "",
-              loading: "lazy",
-              referrerpolicy: "no-referrer",
-            },
-          });
-        },
-        else() {
-          return Runtime.Icon({
-            name: "user",
-            size: 20,
-            class:
-              "dm-entity-select-value__avatar dm-entity-select-value__avatar--fallback",
-            attributes: {
-              n: `${semantic_name}-value-avatar-fallback`,
-              "aria-hidden": "true",
-            },
-          });
-        },
-      }),
-      View({ class: "dm-entity-select-value__label" }, [label_]),
-    ],
-  );
+  return View({ class: "dm-entity-select-value" }, [
+    Show({
+      when: Runtime.computed(avatar_, Boolean),
+      ok() {
+        return Runtime.Img({
+          class: "dm-entity-select-value__avatar",
+          src: avatar_,
+          attributes: {
+            n: `${semantic_name}-value-avatar`,
+            alt: "",
+            loading: "lazy",
+            referrerpolicy: "no-referrer",
+          },
+        });
+      },
+      else() {
+        return Runtime.Icon({
+          name: "user",
+          size: 20,
+          class:
+            "dm-entity-select-value__avatar dm-entity-select-value__avatar--fallback",
+          attributes: {
+            n: `${semantic_name}-value-avatar-fallback`,
+            "aria-hidden": "true",
+          },
+        });
+      },
+    }),
+    View({ class: "dm-entity-select-value__label" }, [label_]),
+  ]);
 }
 
 export function PlatformSelect(props = {}) {
@@ -893,9 +883,7 @@ export function AccountSelect(props = {}) {
   const platform_source = props.platform;
 
   function account_platform(entry) {
-    return String(
-      entry.account?.platform_id || entry.platform_id || "",
-    ).trim();
+    return String(entry.account?.platform_id || entry.platform_id || "").trim();
   }
 
   function filter_accounts(options, platform) {
@@ -919,9 +907,7 @@ export function AccountSelect(props = {}) {
   }
 
   clear_mismatched_account(
-    is_select_source(platform_source)
-      ? platform_source.value
-      : platform_source,
+    is_select_source(platform_source) ? platform_source.value : platform_source,
   );
   const platform_unlisten = is_select_source(platform_source)
     ? platform_source.subscribe({ onChange: clear_mismatched_account })
@@ -952,8 +938,7 @@ export function AccountSelect(props = {}) {
 export function LoadingView() {
   return View(
     {
-      class:
-        "route-loading page dm-grid dm-place-center dm-text-muted dm-p-8",
+      class: "route-loading page dm-grid dm-place-center dm-text-muted dm-p-8",
       attributes: {
         n: "route-loading-placeholder",
         role: "status",
@@ -999,12 +984,323 @@ export function ErrorFallbackView(error, view_name) {
             view_name || "未知页面",
           ]),
         ]),
-        View({ as: "pre", class: "route-error-card__detail" }, [
-          error.message,
-        ]),
+        View({ as: "pre", class: "route-error-card__detail" }, [error.message]),
       ]),
     ],
   );
 }
 
 export { PlatformIcon, PlatformTag as TablePlatformBadge } from "./dmui.js";
+
+// --- Tag system -------------------------------------------------------------
+
+// ContentTagBadge renders one user tag as a removable chip in a content row.
+function ContentTagBadge(props) {
+  const tag = props.tag || {};
+  return Tag(
+    {
+      class: "dm-content-tag",
+      attributes: {
+        n: `content-tag-${tag.id}`,
+        title: String(tag.name || ""),
+      },
+    },
+    [
+      String(tag.name || ""),
+      Show({
+        when: typeof props.onRemove === "function",
+        ok() {
+          return View(
+            {
+              type: "button",
+              class: "dm-content-tag__remove",
+              attributes: {
+                n: `content-tag-remove-${tag.id}`,
+                type: "button",
+                "aria-label": `移除标签 ${tag.name}`,
+              },
+              onClick(event) {
+                event.preventDefault();
+                event.stopPropagation();
+                props.onRemove(tag);
+              },
+            },
+            [Runtime.Icon({ name: "x", size: 10 })],
+          );
+        },
+      }),
+    ],
+  );
+}
+
+// TagSelect is an antd Select mode="tags" style control: a "+" trigger opens a
+// popover with a searchable tag list, supports creating a new tag on Enter/Space
+// when there is no exact match, and persists the selection immediately.
+export function TagSelect(props = {}) {
+  const SEARCH_DEBOUNCE_MS = 300;
+  const content_id = props.contentId || props.content_id || "";
+  const popover_store = new Runtime.vm.PopoverCore();
+  const selected_ =
+    props.tagsRef && typeof props.tagsRef.as === "function"
+      ? props.tagsRef
+      : Runtime.ref((props.tags || []).slice());
+  const all_tags_ = Runtime.ref([]);
+  const keyword_ = Runtime.ref("");
+  let keyword_timer = null;
+  let tag_select_destroyed = false;
+
+  function set_search_keyword(value, immediate = false) {
+    if (keyword_timer) {
+      window.clearTimeout(keyword_timer);
+      keyword_timer = null;
+    }
+    if (immediate) {
+      keyword_.as(String(value || ""));
+      return;
+    }
+    keyword_timer = window.setTimeout(() => {
+      keyword_timer = null;
+      if (tag_select_destroyed) return;
+      keyword_.as(String(value || ""));
+    }, SEARCH_DEBOUNCE_MS);
+  }
+
+  const search_input = new Runtime.vm.InputCore({
+    defaultValue: "",
+    placeholder: "搜索或创建标签",
+    allowClear: true,
+    autocomplete: false,
+    onEnter() {
+      const value = String(search_input.value || "").trim();
+      if (!value) return;
+      set_search_keyword(value, true);
+      const match = (all_tags_.value || []).find((t) => t.name === value);
+      if (match) {
+        toggle(match);
+        return;
+      }
+      create_and_toggle(value);
+    },
+  });
+
+  const tag_list_request = new Runtime.kit.RequestCore(
+    (params) => {
+      return request.get("/api/tag/list", params);
+    },
+    { client: props.client },
+  );
+  const tag_set_request = new Runtime.kit.RequestCore(
+    (params) => {
+      return request.post("/api/tag/content/set", params);
+    },
+    { client: props.client },
+  );
+  const tag_create_request = new Runtime.kit.RequestCore(
+    (params) => {
+      request.post("/api/tag/create", params);
+    },
+    { client: props.client },
+  );
+
+  async function load_all() {
+    const result = await tag_list_request.run({});
+    if (result.error) return;
+    const data =
+      result.data && result.data.data
+        ? result.data.data
+        : Array.isArray(result.data)
+          ? result.data
+          : [];
+    all_tags_.as(Array.isArray(data) ? data : []);
+  }
+
+  async function persist(next) {
+    selected_.as(next || []);
+    const result = await tag_set_request.run({
+      content_id,
+      tag_ids: (next || []).map((t) => t.id),
+    });
+    if (!result.error && typeof props.onChange === "function") {
+      props.onChange(next || []);
+    }
+  }
+
+  function toggle(tag) {
+    const current = selected_.value || [];
+    const next = current.some((t) => t.id === tag.id)
+      ? current.filter((t) => t.id !== tag.id)
+      : current.concat([tag]);
+    persist(next);
+  }
+
+  async function create_and_toggle(name) {
+    const clean = String(name || "").trim();
+    if (!clean) return;
+    const result = await tag_create_request.run({ name: clean });
+    if (result.error) {
+      return;
+    }
+    const resp = result.data || {};
+    const tag = resp.data ? resp.data : resp;
+    if (tag && tag.id) {
+      const current = selected_.value || [];
+      if (!current.some((t) => t.id === tag.id)) {
+        persist(current.concat([tag]));
+      }
+    }
+    load_all();
+  }
+
+  let popover_was_visible = false;
+  const popover_unlisten = popover_store.onStateChange((state) => {
+    const visible = Boolean(state && state.visible);
+    if (visible && !popover_was_visible) {
+      set_search_keyword("", true);
+      load_all();
+      setTimeout(() => search_input.focus(), 0);
+    }
+    popover_was_visible = visible;
+  });
+  const popover_hide_unlisten = popover_store.onHide(() => {
+    set_search_keyword("", true);
+  });
+
+  const filtered_ = Runtime.combine({ all: all_tags_, kw: keyword_ }, (s) =>
+    filter_select_options(
+      (s.all || []).map((t) => ({ label: t.name, value: t.id, name: t.name })),
+      s.kw,
+    ),
+  );
+
+  const selected_ids_ = Runtime.computed(selected_, (list) =>
+    (list || []).map((t) => t.id),
+  );
+
+  const trigger = View(
+    {
+      type: "button",
+      class: "dm-tag dm-tag-select-trigger",
+      attributes: {
+        n: "tag-select-trigger",
+        type: "button",
+        "aria-label": "管理标签",
+        title: "管理标签",
+      },
+      onPointerDown(event) {
+        event.preventDefault();
+        event.stopPropagation();
+      },
+      onClick(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        popover_store.toggle();
+      },
+    },
+    [Runtime.Icon({ name: "plus", size: 12 })],
+  );
+
+  const popover = Popover(
+    {
+      store: popover_store,
+      side: "bottom",
+      align: "start",
+      triggerClass: "dm-tag-select-popover-trigger",
+      onTriggerMouseEnter() {},
+      onTriggerMouseLeave() {},
+      class: "dm-tag-select-popover",
+      content: [
+        View({ class: "dm-tag-select-search-wrap" }, [
+          Input({
+            store: search_input,
+            rootAttributes: { n: "tag-select-search" },
+            attributes: {
+              n: "tag-select-search-input",
+              type: "search",
+              autocomplete: "off",
+              "aria-label": "搜索或创建标签",
+            },
+            onChange(event) {
+              const value = String(
+                (event && event.target && event.target.value) || "",
+              );
+              set_search_keyword(value);
+            },
+            onKeyDown(event) {
+              if (event.key === "Escape") popover_store.hide();
+            },
+          }),
+        ]),
+        Show({
+          when: Runtime.computed(filtered_, (list) => (list || []).length > 0),
+          ok() {
+            return View(
+              {
+                class: "dm-tag-select-list",
+                attributes: { n: "tag-select-list", role: "listbox" },
+              },
+              [
+                Runtime.For({
+                  each: filtered_,
+                  render(entry) {
+                    const tag = { id: entry.value, name: entry.name };
+                    return View(
+                      {
+                        type: "button",
+                        class: select_class_names([
+                          "dm-tag-select-option",
+                          Runtime.computed(selected_ids_, (ids) =>
+                            (ids || []).indexOf(entry.value) >= 0
+                              ? "is-selected"
+                              : "",
+                          ),
+                        ]),
+                        attributes: {
+                          n: `tag-select-option-${entry.value}`,
+                          type: "button",
+                          role: "option",
+                        },
+                        onClick(event) {
+                          event.preventDefault();
+                          toggle(tag);
+                        },
+                      },
+                      [String(entry.name || "")],
+                    );
+                  },
+                }),
+              ],
+            );
+          },
+          else() {
+            return View({ class: "dm-tag-select-empty" }, [
+              "没有匹配的标签，回车可创建",
+            ]);
+          },
+        }),
+      ],
+      onUnmounted() {
+        tag_select_destroyed = true;
+        if (keyword_timer) {
+          window.clearTimeout(keyword_timer);
+          keyword_timer = null;
+        }
+        if (typeof popover_unlisten === "function") popover_unlisten();
+        if (typeof popover_hide_unlisten === "function")
+          popover_hide_unlisten();
+        popover_store.destroy?.();
+      },
+    },
+    [trigger],
+  );
+
+  return View(
+    {
+      onClick(event) {
+        event.stopPropagation();
+      },
+    },
+    [popover],
+  );
+}
+
+export { ContentTagBadge };
