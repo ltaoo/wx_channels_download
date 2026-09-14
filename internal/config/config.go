@@ -721,40 +721,6 @@ func (c *Config) LoadConfig() error {
 		HotReload:   true,
 	})
 	Register(ConfigField{
-		Key:         "bridge.deploy.workerName",
-		Type:        ConfigTypeString,
-		Default:     "dm-bridge",
-		Description: "部署 Durable Objects Bridge 桥接/转发服务时使用的 Cloudflare Worker 名称",
-		Title:       "Bridge Worker 名称",
-		Group:       "Bridge",
-	})
-	Register(ConfigField{
-		Key:         "bridge.deploy.pagesProjectName",
-		Type:        ConfigTypeString,
-		Default:     "",
-		Description: "Bridge 管理页面的 Cloudflare Pages 项目名；留空时使用 <workerName>-admin",
-		Title:       "Bridge Pages 项目名",
-		Group:       "Bridge",
-	})
-	Register(ConfigField{
-		Key:         "bridge.deploy.token",
-		Type:        ConfigTypeString,
-		Default:     "",
-		Description: "部署为 BRIDGE_TOKEN secret 的设备连接凭证；不要分发给外部调用者",
-		Title:       "Bridge 设备 Secret",
-		Group:       "Bridge",
-		Sensitive:   true,
-	})
-	Register(ConfigField{
-		Key:         "bridge.deploy.adminToken",
-		Type:        ConfigTypeString,
-		Default:     "",
-		Description: "保护 Bridge 管理页面和调用 Token 管理 API 的独立管理员密码，不能与设备 Secret 相同",
-		Title:       "Bridge 管理员 Token",
-		Group:       "Bridge",
-		Sensitive:   true,
-	})
-	Register(ConfigField{
 		Key:         "bridge.enabled",
 		Type:        ConfigTypeBool,
 		Default:     false,
