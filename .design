@@ -1,0 +1,884 @@
+schema: design.v1
+name: wx-channels-download
+version: 1.0.0
+status: bootstrap
+updated_at: 2026-09-12
+description: Living visual contract extracted from the frontend DMUI token and page-composition layers.
+
+agent:
+  skill: design
+  instructions: |
+    This file is the visual source of truth for the wx_channels_download frontend.
+    If the AgentsORG `design` skill is installed, activate it and still treat this
+    contract as normative.
+
+    READ
+    - Read intent, constraints, policy, decisions, tokens, themes, voice,
+      components, patterns, sources, and locked before changing UI.
+    - `frontend/src/dmui.css` is the implementation source for design tokens and
+      reusable DMUI components. `frontend/src/style.css` is the implementation
+      source for shared page composition.
+
+    FOLLOW
+    - Match the existing Timeless/DMUI component stack; do not introduce a
+      parallel styling framework.
+    - Reuse a catalogued component or the nearest approved variant before adding
+      a page-specific primitive.
+    - Consume `--dm-*` semantic CSS variables. Do not copy palette values into
+      page styles or JavaScript.
+    - Apply the active light, explicit-dark, or system-dark theme without
+      component-level theme overrides.
+    - Keep the product utilitarian and dense. Spend visual emphasis on the
+      Folder Gold primary action and selected state, not decoration.
+    - Preserve keyboard focus, disabled, loading, empty, error, hover, active,
+      and selected states when the component supports them.
+
+    UPDATE
+    - Edit this file in place when the design system changes and bump SemVer.
+    - Ask before changing a path listed in `locked`. Git is the history.
+    - Keep the CSS implementation and this contract synchronized in the same
+      change when tokens or catalogued components change.
+
+    VERIFY
+    - Compare tokens against `frontend/src/dmui.css` and shared patterns against
+      `frontend/src/style.css`.
+    - Report token and component drift as added, removed, or modified, and mark
+      whether the drift is a consumer regression.
+    - Verify both light and dark mappings, visible focus, responsive states, and
+      `prefers-reduced-motion` handling. Never automate a browser in this repo;
+      finish with static checks and leave browser verification to the user.
+
+    PRECEDENCE
+    1. Current user request
+    2. This contract
+    3. The design skill
+    4. Generic UI conventions
+
+overview: |
+  A compact desktop workbench with the visual memory of file folders, warm
+  paper, and archive labels. Modern application chrome keeps the interface
+  operational rather than nostalgic: shallow surfaces, crisp separators,
+  squared four-pixel corners, dense data rows, and direct controls. Warm neutral
+  layers reduce glare while Folder Gold makes the single primary action and
+  selected state immediately recognizable.
+
+intent:
+  reference: "A Folder Gold desktop workbench: warm paper and archive-label tactility expressed through compact modern application chrome."
+  direction: warm-archival-workbench
+  signature: "Folder Gold fill and a narrow gold selection indicator reserved for the primary action, active tab, and current item."
+  treatment: utilitarian
+  density: compact
+  trust: high
+  character: warm, practical, precise
+
+voice:
+  language: zh-CN
+  register: "Direct, calm, and task-oriented; friendly without being playful."
+  casing: sentence
+  terminology:
+    preserve:
+      - Pipeline
+      - ID
+      - URL
+      - JSON
+    preferred:
+      automation: 自动化
+      refresh: 刷新
+      create: 创建
+      save: 保存
+      delete: 删除
+      cancel: 取消
+  actions: "Use a verb plus the concrete object, such as ‘创建 Pipeline’ or ‘保存设置’."
+  empty_states: "State what is absent and name the next useful action."
+  loading: "Name the object being loaded; use an ellipsis character when progress is ongoing."
+  success: "Confirm the completed action and mention the next step only when it is useful."
+  errors: "Say which action failed, include the useful cause when known, and provide a recovery step."
+  destructive: "Use explicit object names; do not disguise destructive actions behind vague labels."
+
+tokens:
+  color:
+    canvas: "#f3f2ee"
+    surface: "#fffefa"
+    surface-subtle: "#f8f5ec"
+    surface-interactive: "#eee8d9"
+    popup: "#fffaf0"
+    inverse: "#292317"
+    inverse-hover: "#3a301d"
+    text-primary: "#29251d"
+    text-secondary: "#706958"
+    text-disabled: "#a39a87"
+    text-inverse: "#fff9eb"
+    text-inverse-secondary: "#cfc2a5"
+    border: "#e2dccf"
+    border-strong: "#c9bfaa"
+    border-translucent: "rgba(41, 37, 29, 0.13)"
+    fill-translucent: "rgba(41, 37, 29, 0.06)"
+    primary-text: "#9a5800"
+    primary-text-hover: "#754200"
+    primary-fill: "#f3b41b"
+    primary-fill-hover: "#d99a00"
+    on-primary: "#2d1b00"
+    primary-soft: "#fff1c7"
+    primary-border: "rgba(183, 112, 0, 0.30)"
+    primary-border-strong: "rgba(154, 88, 0, 0.58)"
+    signal: "#ffbf2f"
+    signal-soft: "rgba(255, 191, 47, 0.18)"
+    signal-glow: "rgba(243, 180, 27, 0.34)"
+    success: "#178353"
+    success-soft: "#e2f5e9"
+    warning: "#b34f00"
+    warning-soft: "#fff0df"
+    danger: "#c84646"
+    danger-soft: "#fdeeee"
+    danger-border: "rgba(200, 70, 70, 0.34)"
+    info: "#286f9f"
+    info-soft: "#e8f3fa"
+    info-border: "rgba(40, 111, 159, 0.30)"
+    accent-violet: "#7256b8"
+    accent-violet-soft: "rgba(114, 86, 184, 0.12)"
+    accent-sky: "#187da1"
+    accent-sky-soft: "rgba(24, 125, 161, 0.12)"
+    accent-amber: "#a7660d"
+    accent-amber-soft: "rgba(167, 102, 13, 0.13)"
+    sidebar-border: "rgba(255, 225, 153, 0.12)"
+    focus-ring: "rgba(243, 180, 27, 0.30)"
+    scrim: "rgba(24, 18, 7, 0.82)"
+    skeleton: "rgba(41, 37, 29, 0.08)"
+    skeleton-highlight: "rgba(255, 255, 255, 0.62)"
+    chart-grid: "rgba(112, 95, 63, 0.20)"
+    disabled-fill: "#cbc3b3"
+    scrollbar: "rgba(41, 37, 29, 0.20)"
+    scrollbar-hover: "rgba(41, 37, 29, 0.38)"
+    media-canvas: "#090804"
+    media-surface: "rgba(25, 22, 14, 0.92)"
+    media-surface-hover: "rgba(42, 36, 21, 0.94)"
+    media-text: "#fffaf0"
+    media-muted: "#bdb4a2"
+    media-border: "rgba(255, 255, 255, 0.20)"
+    document-canvas: "#ffffff"
+    selection:
+      surface: "{tokens.color.primary-soft}"
+      surface-hover: "color-mix(in srgb, var(--dm-color-primary-soft) 90%, var(--dm-color-primary-fill))"
+      border: "{tokens.color.primary-border-strong}"
+      text: "{tokens.color.primary-text}"
+      indicator: "{tokens.color.primary-fill}"
+      indicator-text: "{tokens.color.on-primary}"
+      halo: "{tokens.color.signal-soft}"
+
+  typography:
+    family:
+      display: 'Bahnschrift, "DIN Alternate", "Segoe UI Variable Display", "PingFang SC", "Microsoft YaHei", sans-serif'
+      sans: '"Segoe UI Variable Text", Aptos, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif'
+      mono: '"Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace'
+    size:
+      caption-compact: 10px
+      xs: 11px
+      sm: 12px
+      md: 13px
+      base: 14px
+      ui: 15px
+      lg: 16px
+      heading-sm: 17px
+      xl: 18px
+      heading-md: 20px
+      2xl: 21px
+      3xl: 24px
+      display: 40px
+    weight:
+      regular: 400
+      medium: 500
+      semibold: 600
+      bold: 700
+    line-height:
+      tight: 1.2
+      snug: 1.35
+      base: 1.5
+      relaxed: 1.7
+    letter-spacing:
+      tight: -0.02em
+      normal: 0
+      wide: 0.08em
+    roles:
+      page-title:
+        fontFamily: "{tokens.typography.family.display}"
+        fontSize: "{tokens.typography.size.3xl}"
+        fontWeight: "{tokens.typography.weight.semibold}"
+        lineHeight: "{tokens.typography.line-height.tight}"
+        letterSpacing: "{tokens.typography.letter-spacing.tight}"
+      section-title:
+        fontFamily: "{tokens.typography.family.display}"
+        fontSize: "{tokens.typography.size.lg}"
+        fontWeight: "{tokens.typography.weight.bold}"
+        lineHeight: "{tokens.typography.line-height.tight}"
+      body:
+        fontFamily: "{tokens.typography.family.sans}"
+        fontSize: "{tokens.typography.size.base}"
+        fontWeight: "{tokens.typography.weight.regular}"
+        lineHeight: "{tokens.typography.line-height.base}"
+      control:
+        fontFamily: "{tokens.typography.family.sans}"
+        fontSize: "{tokens.typography.size.md}"
+        fontWeight: "{tokens.typography.weight.semibold}"
+        lineHeight: 1
+      caption:
+        fontFamily: "{tokens.typography.family.sans}"
+        fontSize: "{tokens.typography.size.sm}"
+        fontWeight: "{tokens.typography.weight.regular}"
+        lineHeight: "{tokens.typography.line-height.base}"
+      code:
+        fontFamily: "{tokens.typography.family.mono}"
+        fontSize: "{tokens.typography.size.sm}"
+        fontWeight: "{tokens.typography.weight.regular}"
+        lineHeight: "{tokens.typography.line-height.relaxed}"
+
+  spacing:
+    unit: 4px
+    0: 0
+    0-5: 2px
+    1: 4px
+    1-5: 6px
+    2: 8px
+    2-5: 10px
+    3: 12px
+    3-5: 14px
+    4: 16px
+    4-5: 18px
+    5: 20px
+    6: 24px
+    7: 28px
+    8: 32px
+    9: 36px
+    10: 40px
+    12: 48px
+    16: 64px
+    24: 96px
+
+  border:
+    default: 1px
+    strong: 2px
+
+  radius:
+    none: 0
+    xs: 4px
+    sm: 6px
+    md: 8px
+    lg: 12px
+    xl: 16px
+    2xl: 20px
+    full: 9999px
+    control: "{tokens.radius.xs}"
+    content: "{tokens.radius.xs}"
+    card: "{tokens.radius.xs}"
+    overlay: "{tokens.radius.xs}"
+    badge: "{tokens.radius.xs}"
+    avatar: "{tokens.radius.xs}"
+
+  size:
+    control:
+      xs: 28px
+      sm: 32px
+      md: 38px
+      base: 40px
+      lg: 44px
+      textarea-min-height: 96px
+    layout:
+      min-width: 320px
+      sidebar-width: 248px
+      content-max: 1320px
+      popover-width: 288px
+      dropdown-min-width: 160px
+      dialog-width: 640px
+
+  motion:
+    fast: 120ms
+    base: 160ms
+    slow: 240ms
+    loop: 800ms
+    easing-standard: cubic-bezier(0.2, 0, 0, 1)
+    easing-emphasized: cubic-bezier(0.2, 0, 0, 1.2)
+    route-enter: "Fade and translate 24px from the inline end with a 0.985 scale."
+    route-exit: "Fade and translate 12px toward the inline start with a 0.995 scale."
+    overlay-enter: "Fade; dialogs also translate 8px and scale from 0.98."
+    reduced: "Remove spatial route, overlay, navigation, shimmer, and branded loading motion while preserving state clarity."
+
+  opacity:
+    disabled: 0.72
+
+  z-index:
+    base: 0
+    raised: 2
+    sticky: 20
+    overlay: 50
+    dropdown: 1000
+
+  elevation:
+    sm: "0 1px 2px rgba(77, 57, 18, 0.08)"
+    md: "0 12px 30px rgba(77, 57, 18, 0.12)"
+    lg: "0 24px 64px rgba(77, 57, 18, 0.17)"
+    popover: "0 12px 36px rgba(77, 57, 18, 0.21)"
+    divider: "0 1px 0 rgba(77, 57, 18, 0.10)"
+    selection: "inset 3px 0 0 var(--dm-color-primary-fill), 0 6px 18px var(--dm-color-signal-soft)"
+    focus: "0 0 0 3px var(--dm-color-focus-ring)"
+
+  sound:
+    enabled: false
+    material: none
+
+themes:
+  default: light
+  modes:
+    light:
+      selector: ":root, body[data-weui-theme='light']"
+      description: "Warm parchment canvas, ivory surfaces, umber text, and saturated Folder Gold controls."
+    dark:
+      selector: ".dark, body[data-weui-theme='dark']"
+      description: "Layered charcoal-brown surfaces with desaturated warm borders and luminous gold text accents."
+      tokens:
+        color:
+          canvas: "#17150f"
+          surface: "#201d16"
+          surface-subtle: "#2b271d"
+          surface-interactive: "#373020"
+          popup: "#1c1912"
+          inverse: "#13110c"
+          inverse-hover: "#332b19"
+          text-primary: "#f8f3e7"
+          text-secondary: "#bbb19e"
+          text-disabled: "#827967"
+          text-inverse: "#fff8e8"
+          text-inverse-secondary: "#bbaa86"
+          border: "#413b2f"
+          border-strong: "#5d5340"
+          border-translucent: "rgba(255, 255, 255, 0.10)"
+          fill-translucent: "rgba(255, 255, 255, 0.08)"
+          primary-text: "#ffd166"
+          primary-text-hover: "#ffe09a"
+          primary-fill: "#f2ad18"
+          primary-fill-hover: "#ffc43d"
+          on-primary: "#281800"
+          primary-soft: "rgba(255, 191, 47, 0.16)"
+          primary-border: "rgba(255, 209, 102, 0.30)"
+          primary-border-strong: "rgba(255, 209, 102, 0.64)"
+          signal: "#ffc43d"
+          signal-soft: "rgba(255, 196, 61, 0.17)"
+          signal-glow: "rgba(255, 196, 61, 0.34)"
+          success: "#63dda0"
+          success-soft: "rgba(99, 221, 160, 0.13)"
+          warning: "#ff9855"
+          warning-soft: "rgba(255, 152, 85, 0.14)"
+          danger: "#ff8585"
+          danger-soft: "rgba(255, 133, 133, 0.13)"
+          danger-border: "rgba(255, 133, 133, 0.42)"
+          info: "#74b9e8"
+          info-soft: "rgba(116, 185, 232, 0.14)"
+          info-border: "rgba(116, 185, 232, 0.34)"
+          accent-violet: "#b09ae8"
+          accent-violet-soft: "rgba(176, 154, 232, 0.14)"
+          accent-sky: "#6fc6e5"
+          accent-sky-soft: "rgba(111, 198, 229, 0.14)"
+          accent-amber: "#e8ae58"
+          accent-amber-soft: "rgba(232, 174, 88, 0.14)"
+          sidebar-border: "rgba(255, 222, 141, 0.10)"
+          focus-ring: "rgba(255, 196, 61, 0.30)"
+          skeleton: "rgba(255, 255, 255, 0.10)"
+          skeleton-highlight: "rgba(255, 255, 255, 0.16)"
+          chart-grid: "rgba(187, 177, 158, 0.22)"
+          disabled-fill: "#514a3d"
+          scrollbar: "rgba(255, 255, 255, 0.20)"
+          scrollbar-hover: "rgba(255, 255, 255, 0.36)"
+          media-canvas: "#080703"
+          media-surface: "rgba(20, 17, 10, 0.94)"
+          media-surface-hover: "rgba(51, 43, 25, 0.96)"
+          media-text: "#fff8e8"
+          media-muted: "#b9ae98"
+          media-border: "rgba(255, 255, 255, 0.18)"
+        elevation:
+          sm: "0 1px 2px rgba(0, 0, 0, 0.30)"
+          md: "0 14px 34px rgba(0, 0, 0, 0.38)"
+          lg: "0 24px 64px rgba(0, 0, 0, 0.46)"
+          popover: "0 14px 40px rgba(0, 0, 0, 0.50)"
+          divider: "0 1px 0 rgba(255, 255, 255, 0.06)"
+    system-dark:
+      media: "(prefers-color-scheme: dark)"
+      when: "body:not([data-weui-theme='light'])"
+      inherits: dark
+
+components:
+  button:
+    implementation: ".dm-button"
+    when: ["A labeled action or icon action"]
+    when_not: ["Navigation rows with application-specific structure", "A non-interactive status"]
+    variants: [default, primary, secondary, outline, surface, ghost, link, danger, icon, toolbar, list-row, choice-card, disclosure, media]
+    states: [default, hover, active, focus-visible, disabled, loading, selected]
+    tokens:
+      default:
+        backgroundColor: "{tokens.color.surface-interactive}"
+        textColor: "{tokens.color.text-primary}"
+        typography: "{tokens.typography.roles.control}"
+        rounded: "{tokens.radius.control}"
+        padding: "0 {tokens.spacing.3-5}"
+        height: "{tokens.size.control.md}"
+        width: auto
+      primary:
+        backgroundColor: "{tokens.color.primary-fill}"
+        textColor: "{tokens.color.on-primary}"
+        typography: "{tokens.typography.roles.control}"
+        rounded: "{tokens.radius.control}"
+        padding: "0 {tokens.spacing.3-5}"
+        height: "{tokens.size.control.md}"
+        width: auto
+      ghost:
+        backgroundColor: transparent
+        textColor: "{tokens.color.text-primary}"
+        typography: "{tokens.typography.roles.control}"
+        rounded: "{tokens.radius.control}"
+        padding: "0 {tokens.spacing.3-5}"
+        height: "{tokens.size.control.md}"
+        width: auto
+
+  field:
+    implementation: ".dm-field, .dm-input-affix-wrapper, .dm-textarea, .dm-select"
+    when: ["Text, structured data, or selection input"]
+    when_not: ["Read-only metadata that should be plain text"]
+    states: [default, hover, focus-within, disabled, invalid, loading]
+    tokens:
+      default:
+        backgroundColor: "{tokens.color.surface-subtle}"
+        textColor: "{tokens.color.text-primary}"
+        typography: "{tokens.typography.roles.body}"
+        rounded: "{tokens.radius.control}"
+        padding: "0 {tokens.spacing.3}"
+        height: "{tokens.size.control.md}"
+        width: 100%
+
+  tabs:
+    implementation: ".dm-tabs, .dm-tab"
+    when: ["Peer views or status filters inside one page context"]
+    when_not: ["Primary application navigation", "A sequential wizard"]
+    states: [default, hover, active, focus-visible, disabled]
+    tokens:
+      container:
+        backgroundColor: "{tokens.color.surface-subtle}"
+        textColor: "{tokens.color.text-secondary}"
+        typography: "{tokens.typography.roles.control}"
+        rounded: "{tokens.radius.content}"
+        padding: "{tokens.spacing.1}"
+        height: 42px
+        width: auto
+      active:
+        backgroundColor: "{tokens.color.primary-fill}"
+        textColor: "{tokens.color.on-primary}"
+        typography: "{tokens.typography.roles.control}"
+        rounded: "{tokens.radius.control}"
+        padding: "0 {tokens.spacing.3}"
+        height: "{tokens.size.control.sm}"
+        width: auto
+
+  tag:
+    implementation: ".dm-tag"
+    when: ["Compact category, source, or status metadata"]
+    when_not: ["An actionable filter without button semantics"]
+    variants: [neutral, success, warning, danger, info]
+    tokens:
+      neutral:
+        backgroundColor: "{tokens.color.surface-interactive}"
+        textColor: "{tokens.color.text-secondary}"
+        typography: "{tokens.typography.roles.caption}"
+        rounded: "{tokens.radius.badge}"
+        padding: "0 {tokens.spacing.2}"
+        height: "{tokens.spacing.5}"
+        width: auto
+
+  panel:
+    implementation: ".dm-panel, .dm-card, .dm-list-card"
+    when: ["A grouped content surface requiring separation from the canvas"]
+    when_not: ["Every row in a dense list when separators are sufficient"]
+    variants: [default, soft, card, list-card, choice-card]
+    tokens:
+      default:
+        backgroundColor: "{tokens.color.surface}"
+        textColor: "{tokens.color.text-primary}"
+        typography: "{tokens.typography.roles.body}"
+        rounded: "{tokens.radius.card}"
+        padding: "{tokens.spacing.5}"
+        height: auto
+        width: 100%
+
+  overlay:
+    implementation: ".dm-dialog-content, .dm-drawer-content, .dm-popover-content, .dm-dropdown-content, .dm-select-content"
+    when: ["Focused blocking tasks or contextual floating controls"]
+    when_not: ["Information that belongs in the normal page flow"]
+    variants: [dialog, drawer, popover, dropdown, select]
+    states: [entering, open, exiting]
+    tokens:
+      dialog:
+        backgroundColor: "{tokens.color.surface}"
+        textColor: "{tokens.color.text-primary}"
+        typography: "{tokens.typography.roles.body}"
+        rounded: "{tokens.radius.overlay}"
+        padding: "{tokens.spacing.5}"
+        height: auto
+        width: "{tokens.size.layout.dialog-width}"
+      popover:
+        backgroundColor: "{tokens.color.surface}"
+        textColor: "{tokens.color.text-primary}"
+        typography: "{tokens.typography.roles.caption}"
+        rounded: "{tokens.radius.overlay}"
+        padding: "{tokens.spacing.3}"
+        height: auto
+        width: "{tokens.size.layout.popover-width}"
+
+  alert:
+    implementation: ".dm-alert"
+    when: ["Persistent inline notice, request error, or important state"]
+    when_not: ["Brief success confirmation that does not need to remain in layout"]
+    variants: [default, destructive]
+    tokens:
+      default:
+        backgroundColor: "{tokens.color.surface}"
+        textColor: "{tokens.color.text-primary}"
+        typography: "{tokens.typography.roles.caption}"
+        rounded: "{tokens.radius.content}"
+        padding: "{tokens.spacing.4}"
+        height: auto
+        width: 100%
+      destructive:
+        backgroundColor: "{tokens.color.danger-soft}"
+        textColor: "{tokens.color.danger}"
+        typography: "{tokens.typography.roles.caption}"
+        rounded: "{tokens.radius.content}"
+        padding: "{tokens.spacing.4}"
+        height: auto
+        width: 100%
+
+  checkbox:
+    implementation: ".dm-checkbox, .dm-checkbox-box, .dm-checkbox-text"
+    when: ["Independent boolean settings or multi-selection"]
+    when_not: ["A single mutually exclusive choice; use radio or choice-card semantics"]
+    states: [default, hover, focus-visible, checked, indeterminate, disabled]
+    tokens:
+      default:
+        backgroundColor: transparent
+        textColor: "{tokens.color.text-secondary}"
+        typography: "{tokens.typography.roles.caption}"
+        rounded: "{tokens.radius.control}"
+        padding: 0
+        height: 22px
+        width: 22px
+      checked:
+        backgroundColor: "{tokens.color.primary-fill}"
+        textColor: "{tokens.color.on-primary}"
+        typography: "{tokens.typography.roles.caption}"
+        rounded: "{tokens.radius.control}"
+        padding: 0
+        height: 22px
+        width: 22px
+
+  navigation-item:
+    implementation: ".dm-button--sidebar-nav"
+    when: ["Primary application route navigation"]
+    when_not: ["Peer tabs within one route"]
+    states: [default, hover, active, focus-visible, disabled]
+    tokens:
+      default:
+        backgroundColor: transparent
+        textColor: "{tokens.color.text-secondary}"
+        typography: "{tokens.typography.roles.control}"
+        rounded: "{tokens.radius.control}"
+        padding: "{tokens.spacing.2} {tokens.spacing.2-5}"
+        height: "{tokens.size.control.md}"
+        width: 100%
+      active:
+        backgroundColor: "{tokens.color.primary-soft}"
+        textColor: "{tokens.color.primary-text}"
+        typography: "{tokens.typography.roles.control}"
+        rounded: "{tokens.radius.control}"
+        padding: "{tokens.spacing.2} {tokens.spacing.2-5}"
+        height: "{tokens.size.control.md}"
+        width: 100%
+
+  state:
+    implementation: ".dm-empty-state, .dm-table-state, .content-state, .route-error-card"
+    when: ["Loading, empty, error, or no-selection state replacing a content region"]
+    when_not: ["Transient progress inside a single button"]
+    variants: [loading, empty, error, no-selection]
+    tokens:
+      default:
+        backgroundColor: "{tokens.color.surface}"
+        textColor: "{tokens.color.text-secondary}"
+        typography: "{tokens.typography.roles.body}"
+        rounded: "{tokens.radius.content}"
+        padding: "{tokens.spacing.8}"
+        height: 320px
+        width: 100%
+
+  data-table:
+    implementation: ".dm-table-panel, .dm-table-header, .dm-table-row, .dm-table-cell"
+    when: ["Comparable records with stable columns and dense scanning"]
+    when_not: ["Heterogeneous content better represented by cards"]
+    states: [default, striped, loading, empty, error]
+    tokens:
+      row:
+        backgroundColor: "{tokens.color.surface}"
+        textColor: "{tokens.color.text-primary}"
+        typography: "{tokens.typography.roles.body}"
+        rounded: "{tokens.radius.none}"
+        padding: "{tokens.spacing.2} {tokens.spacing.3}"
+        height: 72px
+        width: 100%
+
+  pagination:
+    implementation: ".dm-pagination, .dm-pagination__page, .dm-pagination__button"
+    when: ["A bounded dataset split into numbered pages"]
+    when_not: ["Continuous discovery feeds; use an explicit load-more or virtualized pattern"]
+    states: [default, hover, active, focus-visible, disabled, loading]
+    tokens:
+      page:
+        backgroundColor: "{tokens.color.surface}"
+        textColor: "{tokens.color.text-primary}"
+        typography: "{tokens.typography.roles.code}"
+        rounded: "{tokens.radius.control}"
+        padding: "0 {tokens.spacing.2}"
+        height: "{tokens.size.control.sm}"
+        width: "{tokens.size.control.sm}"
+
+patterns:
+  application-shell:
+    treatment: utilitarian
+    use: "Persistent application navigation around one scroll-contained route view."
+    composition: "Sidebar or compact mobile navigation + route content + tokenized canvas."
+    rules:
+      - Keep global navigation visually quieter than the active workspace.
+      - Use the shared z-index scale for sticky and overlay layers.
+      - At 640px, collapse navigation into compact 44px-minimum touch targets.
+
+  content-page:
+    treatment: utilitarian
+    use: "Standard data-management and settings pages."
+    composition: "Optional sticky header + toolbar + flexible content-main."
+    rules:
+      - Toolbar places context and peer navigation first; actions align at the inline end.
+      - Use one filled primary action; refresh, filters, and secondary actions use outline or ghost variants.
+      - Shared horizontal page padding is 16px on compact layouts and may expand to 32px on wide headers.
+      - Let the content region, not the document body, own overflow for application-height pages.
+
+  master-detail:
+    treatment: utilitarian
+    use: "Selectable pipelines, schedules, accounts, or other records with an adjacent editor/detail."
+    composition: "Bounded list rail + flexible detail region; stack when content no longer fits."
+    rules:
+      - Selected items use the selection surface, border, and narrow indicator.
+      - Keep list titles single-line with an accessible route to the full value.
+      - Preserve loading, empty, no-selection, and stale-selection states.
+
+  data-management:
+    treatment: utilitarian
+    use: "Filterable, paginated record collections."
+    composition: "Toolbar/filter form + bounded table/list + pagination."
+    rules:
+      - Reserve space for asynchronous rows and pagination controls.
+      - Use tabular numerals for counts, pages, timestamps, and stable numeric columns.
+      - At 760px wrap toolbars; at 520px stack filters and allow actions to share the row width.
+
+  form-dialog:
+    treatment: utilitarian
+    use: "Short creation or editing task that should preserve page context."
+    composition: "Title/description + scrollable body + separated footer actions."
+    rules:
+      - Place the primary commit action at the footer inline end and disable it while submitting.
+      - Use explicit labels and inline validation; retain entered values after recoverable errors.
+      - Use the scrim, overlay elevation, focus containment, Escape/outside dismissal when safe, and focus return.
+
+decisions:
+  action-emphasis:
+    - if: "The action is the single primary completion action for the current view or dialog."
+      then: "Use components.button primary."
+    - if: "The action is refresh, cancel, browse, filter, or another supporting action."
+      then: "Use outline, surface, or ghost according to surrounding separation."
+    - if: "The action is destructive."
+      then: "Use the danger treatment, name the target, separate it from confirmation, and require explicit confirmation for irreversible work."
+
+  surface-choice:
+    - if: "A region needs elevation above the page or blocks the current task."
+      then: "Use an overlay with popover elevation and the appropriate scrim."
+    - if: "A region only needs grouping or row separation."
+      then: "Use a panel/card or a border separator; do not add decorative elevation."
+
+  selection:
+    - if: "A row, card, tab, or compact option represents the current item."
+      then: "Use the Folder Gold selection surface, border, and indicator; never rely on color alone when an indicator or label can be present."
+
+  missing-component:
+    - if: "A requested UI has no exact catalog entry."
+      then: "Adapt the nearest DMUI primitive, keep semantic tokens, document the new reusable variant here if it appears in more than one feature."
+
+policy:
+  if_missing: nearest
+  hierarchy: [typography, spacing, contrast, color]
+  reuse:
+    order: [existing-page-pattern, catalogued-DMUI-component, nearest-DMUI-variant, new-reusable-variant]
+    page_specific: "Only business structure and content-derived geometry belong in page CSS."
+  color:
+    accent_cycle: [primary-fill, accent-sky, accent-violet, accent-amber]
+    semantic: "Gold is brand/action/selection; green is success; orange is warning; red is danger; blue is information."
+  accessibility:
+    contrast: "Target WCAG AA: 4.5:1 for body text and 3:1 for large text and essential UI boundaries."
+    focus: "Every keyboard-interactive control has a visible focus ring using the shared focus token."
+    input_labels: "Inputs have programmatic labels; placeholder text is supporting copy, not the label."
+    targets: "Prefer 40px desktop and 44px touch targets; smaller visible controls require a non-overlapping enlarged hit area."
+    motion: "Honor prefers-reduced-motion and never make motion the only state signal."
+    color_only: "Error, selection, and status must include text, icon, border, or shape in addition to color."
+  responsive:
+    breakpoints:
+      compact: 520px
+      navigation: 640px
+      toolbar: 760px
+    strategy: "Break at content failure points; keep the body free of horizontal scrolling."
+
+constraints:
+  always:
+    - Use semantic `--dm-*` variables for color and reusable visual decisions.
+    - Keep light, explicit dark, and system dark themes legible and synchronized.
+    - Keep one filled primary action per view or dialog.
+    - Provide default, hover, focus-visible, active, disabled, loading, empty, and error states where applicable.
+    - Use the 4px spacing scale and four-pixel semantic radius unless content geometry requires an explicitly documented exception.
+    - Keep data and user-provided identifiers truncatable only when the full value remains available through title, tooltip, or detail view.
+    - Use tabular numerals for dynamic counts and numeric columns.
+    - Keep overlay and route motion under 300ms and provide reduced-motion behavior.
+  never:
+    - Add raw palette values to page CSS or JavaScript when a semantic color token exists.
+    - Introduce a second component framework or parallel token namespace.
+    - Use Folder Gold as a decorative wash across multiple competing regions.
+    - Show more than one filled primary action in the same view or dialog.
+    - Use `transition: all`, unbounded z-index values, or layout-property animation.
+    - Remove focus outlines without an equal or stronger focus-visible replacement.
+    - Use hover as the only way to discover or invoke a core action.
+    - Change font weight between interaction states.
+    - Put persistent page content in an overlay when it belongs in the normal information hierarchy.
+
+rationale:
+  colors: |
+    The palette is intentionally warm rather than neutral-grey. Parchment canvas
+    and ivory surfaces establish the archive/workbench character; umber text
+    keeps contrast grounded. Folder Gold carries identity, primary action, and
+    selection. Status hues are separate so gold never ambiguously means success
+    or warning. Dark mode remaps the same roles onto charcoal-brown layers rather
+    than inverting light colors.
+  typography: |
+    Bahnschrift/DIN-style display faces give headings the labeled, engineered
+    character of folders and utility hardware. Segoe/PingFang keeps dense Chinese
+    application text familiar and readable. Cascadia/SFMono is reserved for IDs,
+    code, timestamps, and machine-shaped data.
+  layout: |
+    This is an operational desktop application, so density and stable regions
+    matter more than editorial whitespace. Toolbars expose current context and
+    one primary action. Lists and tables own their scrolling, while responsive
+    breakpoints stack filters and navigation only when content fails to fit.
+  elevation: |
+    Borders perform most separation. Small warm shadows lift cards gently;
+    stronger layered shadows are reserved for dialogs, popovers, and drawers.
+    Dark mode deepens shadow opacity while keeping borders visible.
+  shapes: |
+    Four-pixel semantic corners are the defining geometry for controls, cards,
+    badges, avatars, and overlays. Larger radii exist for exceptional branded or
+    media treatments but should not soften ordinary application chrome.
+  motion: |
+    Fast 120–240ms motion communicates route direction, overlay presence, and
+    control response. It is functional and infrequent, uses transform/opacity
+    where practical, and yields to reduced-motion preferences.
+  dos:
+    - Let warm neutral layers and crisp hierarchy carry the interface.
+    - Reserve Folder Gold for primary action and current selection.
+    - Prefer separators over shadows in dense record collections.
+    - Preserve concrete Chinese task language and established technical terms.
+  donts:
+    - Do not turn the archival reference into skeuomorphic paper textures.
+    - Do not scatter gradients, glows, or gold accents as decoration.
+    - Do not replace compact controls with oversized marketing-page proportions.
+    - Do not introduce cool generic grey palettes that erase the Folder Gold identity.
+
+sources:
+  - path: frontend/src/dmui.css
+    role: "Normative CSS token declarations, light/dark mappings, DMUI components, state variants, motion, responsive behavior, and utilities."
+    inspected_at: 2026-09-12
+  - path: frontend/src/style.css
+    role: "Shared application page composition, content toolbars, filters, route states, responsive layouts, and application-level motion."
+    inspected_at: 2026-09-12
+  - path: frontend/src/pages/automation.css
+    role: "Adjacent master-detail workflow showing how the shared system is consumed by the automation workspace."
+    inspected_at: 2026-09-12
+
+exports:
+  css:
+    tokens: frontend/src/dmui.css
+    shared-patterns: frontend/src/style.css
+    variable-prefix: "--dm-"
+    map_from_tokens:
+      "--dm-color-bg-canvas": tokens.color.canvas
+      "--dm-color-bg-surface": tokens.color.surface
+      "--dm-color-bg-subtle": tokens.color.surface-subtle
+      "--dm-color-bg-interactive": tokens.color.surface-interactive
+      "--dm-color-bg-popup": tokens.color.popup
+      "--dm-color-text-primary": tokens.color.text-primary
+      "--dm-color-text-secondary": tokens.color.text-secondary
+      "--dm-color-text-disabled": tokens.color.text-disabled
+      "--dm-color-primary": tokens.color.primary-text
+      "--dm-color-primary-hover": tokens.color.primary-text-hover
+      "--dm-color-primary-fill": tokens.color.primary-fill
+      "--dm-color-primary-fill-hover": tokens.color.primary-fill-hover
+      "--dm-color-on-primary": tokens.color.on-primary
+      "--dm-color-primary-soft": tokens.color.primary-soft
+      "--dm-color-success": tokens.color.success
+      "--dm-color-warning": tokens.color.warning
+      "--dm-color-danger": tokens.color.danger
+      "--dm-color-info": tokens.color.info
+      "--dm-color-focus-ring": tokens.color.focus-ring
+      "--dm-color-sidebar-border": tokens.color.sidebar-border
+      "--dm-color-scrim": tokens.color.scrim
+      "--dm-font-family-display": tokens.typography.family.display
+      "--dm-font-family-sans": tokens.typography.family.sans
+      "--dm-font-family-mono": tokens.typography.family.mono
+      "--dm-space-1": tokens.spacing.1
+      "--dm-space-2": tokens.spacing.2
+      "--dm-space-3": tokens.spacing.3
+      "--dm-space-4": tokens.spacing.4
+      "--dm-space-5": tokens.spacing.5
+      "--dm-space-6": tokens.spacing.6
+      "--dm-space-8": tokens.spacing.8
+      "--dm-radius-control": tokens.radius.control
+      "--dm-radius-content": tokens.radius.content
+      "--dm-radius-card": tokens.radius.card
+      "--dm-radius-overlay": tokens.radius.overlay
+      "--dm-radius-badge": tokens.radius.badge
+      "--dm-control-height-sm": tokens.size.control.sm
+      "--dm-control-height-md": tokens.size.control.md
+      "--dm-control-height-base": tokens.size.control.base
+      "--dm-control-height-lg": tokens.size.control.lg
+      "--dm-duration-fast": tokens.motion.fast
+      "--dm-duration-base": tokens.motion.base
+      "--dm-duration-slow": tokens.motion.slow
+      "--dm-ease-standard": tokens.motion.easing-standard
+      "--dm-ease-emphasized": tokens.motion.easing-emphasized
+      "--dm-z-sticky": tokens.z-index.sticky
+      "--dm-z-overlay": tokens.z-index.overlay
+      "--dm-z-dropdown": tokens.z-index.dropdown
+      "--dm-shadow-sm": tokens.elevation.sm
+      "--dm-shadow-md": tokens.elevation.md
+      "--dm-shadow-lg": tokens.elevation.lg
+      "--dm-shadow-popover": tokens.elevation.popover
+      "--dm-focus-ring": tokens.elevation.focus
+
+integrations:
+  shadcn:
+    enabled: false
+  framework:
+    name: Timeless/DMUI
+    component_styles: frontend/src/dmui.css
+    page_styles: frontend/src/style.css
+
+locked: []
+
+omitted:
+  - assets: "No repo-level brand asset contract was requested or inferred."
+  - figma: "No Figma source is connected."
+  - sound-files: "Product sound is disabled."

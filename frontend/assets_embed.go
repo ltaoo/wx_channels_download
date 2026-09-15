@@ -7,7 +7,7 @@ import (
 	"io/fs"
 )
 
-//go:embed inject public *.html
+//go:embed inject public *.html wxchannels.stream.js
 var injectFS embed.FS
 
 func embeddedRootFS() fs.FS {
