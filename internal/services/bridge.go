@@ -325,6 +325,7 @@ type bridge_wxchannels_article struct {
 	Digest      string `json:"digest"`
 	URL         string `json:"url"`
 	CoverURL    string `json:"cover_url"`
+	DecodeKey   string `json:"decode_key"`
 	PublishTime int64  `json:"publish_time"`
 }
 
@@ -780,6 +781,7 @@ func normalize_bridge_wxchannels_article_list(response_json json.RawMessage) (*b
 			Digest:      object.ObjectDesc.Description,
 			URL:         bridge_wxchannels_article_url(object),
 			CoverURL:    bridge_wxchannels_article_cover_url(object),
+			DecodeKey:   bridge_wxchannels_article_decode_key(object),
 			PublishTime: int64(object.CreateTime),
 		})
 	}
@@ -804,6 +806,13 @@ func bridge_wxchannels_article_cover_url(object *wxchannels.ChannelsObject) stri
 		return cover_url
 	}
 	return strings.TrimSpace(media.CoverUrl)
+}
+
+func bridge_wxchannels_article_decode_key(object *wxchannels.ChannelsObject) string {
+	if len(object.ObjectDesc.Media) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(object.ObjectDesc.Media[0].DecodeKey)
 }
 
 // bridge_wxchannels_article_url builds the playable media URL from media[0].
