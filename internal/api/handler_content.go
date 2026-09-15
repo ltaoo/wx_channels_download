@@ -21,7 +21,7 @@ func (c *APIClient) handle_content_list(ctx *gin.Context) {
 }
 
 func (c *APIClient) handle_content_list_with_type(ctx *gin.Context, force_content_type string) {
-	if c.content_service == nil {
+	if c.service_content == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
@@ -106,7 +106,7 @@ func (c *APIClient) handle_content_list_with_type(ctx *gin.Context, force_conten
 		}
 	}
 
-	page_result, err := c.content_service.ListContents(services.ContentListOptions{
+	page_result, err := c.service_content.ListContents(services.ContentListOptions{
 		AccountID:  account_id,
 		PlatformID: platform_id,
 		Type:       content_type,
@@ -127,7 +127,7 @@ func (c *APIClient) handle_content_list_with_type(ctx *gin.Context, force_conten
 }
 
 func (c *APIClient) handle_content_detail(ctx *gin.Context) {
-	if c.content_service == nil {
+	if c.service_content == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
@@ -138,7 +138,7 @@ func (c *APIClient) handle_content_detail(ctx *gin.Context) {
 		return
 	}
 
-	item, err := c.content_service.GetContentDetail(contentID)
+	item, err := c.service_content.GetContentDetail(contentID)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
@@ -146,8 +146,8 @@ func (c *APIClient) handle_content_detail(ctx *gin.Context) {
 
 	// Enrich resources with local file info.
 	content_tags := make([]services.ContentTagRecord, 0)
-	if c.tag_service != nil {
-		if tag_models, err := c.tag_service.GetContentTags(contentID); err == nil {
+	if c.service_tag != nil {
+		if tag_models, err := c.service_tag.GetContentTags(contentID); err == nil {
 			for _, tag := range tag_models {
 				content_tags = append(content_tags, services.ContentTagRecord{ID: tag.Id, Name: tag.Name})
 			}
@@ -205,7 +205,7 @@ func (c *APIClient) handle_content_detail(ctx *gin.Context) {
 }
 
 func (c *APIClient) handle_content_relations(ctx *gin.Context) {
-	if c.content_service == nil {
+	if c.service_content == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
@@ -252,7 +252,7 @@ func (c *APIClient) handle_content_relations(ctx *gin.Context) {
 		return
 	}
 
-	relations, err := c.content_service.ListContentRelations(services.ContentRelationListOptions{
+	relations, err := c.service_content.ListContentRelations(services.ContentRelationListOptions{
 		ContentID: content_id,
 		Direction: direction,
 		Type:      body.RelationType,
