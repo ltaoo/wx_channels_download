@@ -1,7 +1,6 @@
 package mcpserver
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,22 +12,16 @@ import (
 	"time"
 
 	servicetools "wx_channel/internal/services/tools"
+	mcp "wx_channel/pkg/mcp"
 )
-
-var err_unknown_tool = servicetools.ErrUnknownTool
 
 type ToolDefinition = servicetools.Definition
 type ToolFormField = servicetools.FormField
 type ToolFormOption = servicetools.FormOption
 
-type tool_execution_error struct {
-	message string
-	data    any
-}
-
-func (e *tool_execution_error) Error() string {
-	return e.message
-}
+// tool_execution_error is a true alias so errors.As in mcp.ErrorResult keeps
+// matching errors returned by this package's tool handlers.
+type tool_execution_error = mcp.ToolError
 
 type fetch_content_arguments struct {
 	URL            string `json:"url"`
@@ -82,21 +75,7 @@ type wxchannels_download_endpoint struct {
 }
 
 func new_tool_execution_error(message string, data any) error {
-	return &tool_execution_error{message: message, data: data}
-}
-
-func tool_error_result(err error) map[string]any {
-	message := err.Error()
-	structured := map[string]any{"error": message}
-	var execution_error *tool_execution_error
-	if errors.As(err, &execution_error) && execution_error.data != nil {
-		structured["details"] = execution_error.data
-	}
-	return map[string]any{
-		"content":           []any{map[string]any{"type": "text", "text": message}},
-		"structuredContent": structured,
-		"isError":           true,
-	}
+	return mcp.NewToolError(message, data)
 }
 
 // ToolNames returns the MCP tool names exposed by this server.
@@ -118,7 +97,7 @@ func ToolCatalog() []ToolDefinition {
 
 // ToolCatalog returns the tools enabled by this server's configured service
 // backends. CLI and other process-local callers use the same catalog as MCP.
-func (s *Server) ToolCatalog() []ToolDefinition {
+func (s *ToolSet) ToolCatalog() []ToolDefinition {
 	if s == nil || s.tool_service == nil {
 		return []ToolDefinition{}
 	}
@@ -126,7 +105,7 @@ func (s *Server) ToolCatalog() []ToolDefinition {
 }
 
 // ToolNames returns the tools enabled by this server's tool service.
-func (s *Server) ToolNames() []string {
+func (s *ToolSet) ToolNames() []string {
 	if s == nil || s.tool_service == nil {
 		return []string{}
 	}
@@ -135,7 +114,7 @@ func (s *Server) ToolNames() []string {
 
 // ToolService exposes the transport-neutral registry used internally by MCP.
 // Process-local adapters such as the CLI can invoke it without speaking MCP.
-func (s *Server) ToolService() *servicetools.Service {
+func (s *ToolSet) ToolService() *servicetools.Service {
 	if s == nil {
 		return nil
 	}
@@ -144,162 +123,14 @@ func (s *Server) ToolService() *servicetools.Service {
 
 // ExecuteTool invokes an MCP tool directly and returns its structured result.
 // This shares the exact same validation and dispatch path as tools/call.
-func (s *Server) ExecuteTool(ctx context.Context, name string, arguments map[string]any) (any, error) {
+func (s *ToolSet) ExecuteTool(ctx context.Context, name string, arguments map[string]any) (any, error) {
 	if s == nil || s.tool_service == nil {
 		return nil, errors.New("工具服务未初始化")
 	}
 	return s.tool_service.Execute(ctx, name, arguments)
 }
 
-func (s *Server) tool_definitions() []any {
-	if s == nil || s.tool_service == nil {
-		return []any{}
-	}
-	return s.tool_service.MCPDefinitions()
-}
-
-func (s *Server) supports_tool(name string) bool {
-	if s == nil {
-		return false
-	}
-	switch name {
-	case "fetch_content", "create_scraper_job", "get_scraper_job":
-		return s.scraper_jobs != nil || s.api_client != nil
-	case "download_content":
-		return (s.scraper_jobs != nil || s.api_client != nil) && (s.download_task_creator != nil || s.api_client != nil)
-	case "download_wxchannels_live", "download_wxchannels_video":
-		return s.api_client != nil && (s.download_task_creator != nil || s.api_client != nil)
-	case "get_download_tasks", "get_download_task_detail", "get_accounts", "get_browse_history", "get_logs", "get_certificate_status":
-		return s.data_reader != nil || s.api_client != nil
-	case "delete_download_tasks":
-		return s.download_task_deleter != nil
-	case "create_download_task":
-		return s.download_task_creator != nil || s.api_client != nil
-	case "deploy_sph_worker":
-		return s.sph_deployer != nil
-	case get_zhihu_credential_status_tool_name,
-		get_my_zhihu_collections_tool_name,
-		get_zhihu_collection_contents_tool_name,
-		get_my_zhihu_answers_tool_name,
-		get_my_zhihu_posts_tool_name,
-		get_my_zhihu_zvideos_tool_name,
-		get_my_zhihu_columns_tool_name:
-		return s.zhihu_collections != nil && s.zhihu_credentials != nil
-	case list_automation_schedules_tool_name,
-		get_automation_schedule_tool_name,
-		create_automation_schedule_tool_name,
-		toggle_automation_schedule_tool_name,
-		trigger_automation_schedule_tool_name,
-		list_automation_runs_tool_name:
-		return s.automation != nil
-	default:
-		return s.api_client != nil
-	}
-}
-
-func (s *Server) call_tool(ctx context.Context, params call_tool_params) (map[string]any, error) {
-	if s == nil || s.tool_service == nil {
-		return nil, errors.New("工具服务未初始化")
-	}
-	return s.tool_service.Call(ctx, params.Name, params.Arguments)
-}
-
-func (s *Server) execute_tool(ctx context.Context, name string, raw_arguments json.RawMessage) (map[string]any, error) {
-	switch name {
-	case "get_config":
-		return s.get_config(ctx)
-	case "update_config":
-		return s.update_config(ctx, raw_arguments)
-	case "get_restart_status":
-		return s.get_restart_status(ctx, raw_arguments)
-	case "get_platform_status":
-		return s.get_platform_status(ctx)
-	case "fetch_content":
-		return s.fetch_content(ctx, raw_arguments)
-	case "create_scraper_job":
-		return s.create_scraper_job_tool(ctx, raw_arguments)
-	case "get_scraper_job":
-		return s.get_scraper_job_tool(ctx, raw_arguments)
-	case "download_content":
-		return s.download_content(ctx, raw_arguments)
-	case "decrypt_wxchannels_video":
-		return s.decrypt_wxchannels_video(ctx, raw_arguments)
-	case "get_wxchannels_status":
-		return s.get_wxchannels_status(ctx)
-	case "search_wxchannels_accounts":
-		return s.search_wxchannels_accounts(ctx, raw_arguments)
-	case "get_wxchannels_account_videos":
-		return s.get_wxchannels_account_videos(ctx, raw_arguments)
-	case "get_wxchannels_live_replays":
-		return s.get_wxchannels_live_replays(ctx, raw_arguments)
-	case "get_wxchannels_live_profile":
-		return s.get_wxchannels_live_profile(ctx, raw_arguments)
-	case "get_wxchannels_interacted_videos":
-		return s.get_wxchannels_interacted_videos(ctx, raw_arguments)
-	case "get_wxchannels_followed_accounts":
-		return s.get_wxchannels_followed_accounts(ctx, raw_arguments)
-	case "get_wxchannels_play_history":
-		return s.get_wxchannels_play_history(ctx, raw_arguments)
-	case "get_wxchannels_video_profile":
-		return s.get_wxchannels_video_profile(ctx, raw_arguments)
-	case "get_wxchannels_video_comments":
-		return s.get_wxchannels_video_comments(ctx, raw_arguments)
-	case "get_wxchannels_video_share_url":
-		return s.get_wxchannels_video_share_url(ctx, raw_arguments)
-	case "download_wxchannels_live":
-		return s.download_wxchannels_live(ctx, raw_arguments)
-	case "download_wxchannels_video":
-		return s.download_wxchannels_video(ctx, raw_arguments)
-	case "get_download_tasks":
-		return s.get_download_tasks(ctx, raw_arguments)
-	case "get_download_task_detail":
-		return s.get_download_task_detail(ctx, raw_arguments)
-	case "delete_download_tasks":
-		return s.delete_download_tasks(ctx, raw_arguments)
-	case "create_download_task":
-		return s.create_download_task_tool(ctx, raw_arguments)
-	case "get_accounts":
-		return s.get_accounts(ctx, raw_arguments)
-	case "get_browse_history":
-		return s.get_browse_history(ctx, raw_arguments)
-	case "get_logs":
-		return s.get_logs(ctx, raw_arguments)
-	case "get_certificate_status":
-		return s.get_certificate_status(ctx)
-	case "deploy_sph_worker":
-		return s.deploy_sph_worker(ctx, raw_arguments)
-	case get_zhihu_credential_status_tool_name:
-		return s.get_zhihu_credential_status(ctx, raw_arguments)
-	case get_my_zhihu_collections_tool_name:
-		return s.get_my_zhihu_collections(ctx, raw_arguments)
-	case get_zhihu_collection_contents_tool_name:
-		return s.get_zhihu_collection_contents(ctx, raw_arguments)
-	case get_my_zhihu_answers_tool_name:
-		return s.get_my_zhihu_answers(ctx, raw_arguments)
-	case get_my_zhihu_posts_tool_name:
-		return s.get_my_zhihu_posts(ctx, raw_arguments)
-	case get_my_zhihu_zvideos_tool_name:
-		return s.get_my_zhihu_zvideos(ctx, raw_arguments)
-	case get_my_zhihu_columns_tool_name:
-		return s.get_my_zhihu_columns(ctx, raw_arguments)
-	case list_automation_schedules_tool_name:
-		return s.list_automation_schedules_tool(ctx)
-	case get_automation_schedule_tool_name:
-		return s.get_automation_schedule_tool(ctx, raw_arguments)
-	case create_automation_schedule_tool_name:
-		return s.create_automation_schedule_tool(ctx, raw_arguments)
-	case toggle_automation_schedule_tool_name:
-		return s.toggle_automation_schedule_tool(ctx, raw_arguments)
-	case trigger_automation_schedule_tool_name:
-		return s.trigger_automation_schedule_tool(ctx, raw_arguments)
-	case list_automation_runs_tool_name:
-		return s.list_automation_runs_tool(ctx, raw_arguments)
-	default:
-		return nil, fmt.Errorf("%w: %s", err_unknown_tool, name)
-	}
-}
-
-func (s *Server) get_config(ctx context.Context) (map[string]any, error) {
+func (s *ToolSet) get_config(ctx context.Context) (map[string]any, error) {
 	raw_config, err := s.api_client.get_config(ctx)
 	if err != nil {
 		return nil, err
@@ -307,7 +138,7 @@ func (s *Server) get_config(ctx context.Context) (map[string]any, error) {
 	return successful_tool_result(raw_json_value(raw_config))
 }
 
-func (s *Server) update_config(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) update_config(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments update_config_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -322,7 +153,7 @@ func (s *Server) update_config(ctx context.Context, raw_arguments json.RawMessag
 	return successful_tool_result(raw_json_value(raw_result))
 }
 
-func (s *Server) get_restart_status(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_restart_status(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments get_restart_status_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -338,7 +169,7 @@ func (s *Server) get_restart_status(ctx context.Context, raw_arguments json.RawM
 	return successful_tool_result(raw_json_value(raw_result))
 }
 
-func (s *Server) get_platform_status(ctx context.Context) (map[string]any, error) {
+func (s *ToolSet) get_platform_status(ctx context.Context) (map[string]any, error) {
 	raw_status, err := s.api_client.get_platform_status(ctx)
 	if err != nil {
 		return nil, err
@@ -346,7 +177,7 @@ func (s *Server) get_platform_status(ctx context.Context) (map[string]any, error
 	return successful_tool_result(raw_json_value(raw_status))
 }
 
-func (s *Server) fetch_content(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) fetch_content(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments fetch_content_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -455,7 +286,7 @@ func resource_decode_key(resource map[string]any) string {
 	return strings.TrimSpace(decode_key)
 }
 
-func (s *Server) decrypt_wxchannels_video(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) decrypt_wxchannels_video(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments decrypt_wxchannels_video_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -481,7 +312,7 @@ func (s *Server) decrypt_wxchannels_video(ctx context.Context, raw_arguments jso
 	})
 }
 
-func (s *Server) download_content(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) download_content(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments download_content_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -592,7 +423,7 @@ func (s *Server) download_content(ctx context.Context, raw_arguments json.RawMes
 	return successful_tool_result(result)
 }
 
-func (s *Server) resolve_download_job(ctx context.Context, arguments download_content_arguments) (*ScraperJob, error) {
+func (s *ToolSet) resolve_download_job(ctx context.Context, arguments download_content_arguments) (*ScraperJob, error) {
 	if arguments.JobID != "" {
 		job, err := s.get_scraper_job(ctx, arguments.JobID)
 		if err != nil {
@@ -607,7 +438,7 @@ func (s *Server) resolve_download_job(ctx context.Context, arguments download_co
 	return s.wait_scraper_job(ctx, job)
 }
 
-func (s *Server) create_scraper_job(ctx context.Context, raw_url string, force_refresh bool) (*ScraperJob, error) {
+func (s *ToolSet) create_scraper_job(ctx context.Context, raw_url string, force_refresh bool) (*ScraperJob, error) {
 	if s.scraper_jobs != nil {
 		return s.scraper_jobs.CreateScraperJob(ctx, raw_url, force_refresh)
 	}
@@ -617,7 +448,7 @@ func (s *Server) create_scraper_job(ctx context.Context, raw_url string, force_r
 	return s.api_client.create_scraper_job(ctx, raw_url, force_refresh)
 }
 
-func (s *Server) get_scraper_job(ctx context.Context, job_id string) (*ScraperJob, error) {
+func (s *ToolSet) get_scraper_job(ctx context.Context, job_id string) (*ScraperJob, error) {
 	if s.scraper_jobs != nil {
 		return s.scraper_jobs.GetScraperJob(ctx, job_id)
 	}
@@ -627,7 +458,7 @@ func (s *Server) get_scraper_job(ctx context.Context, job_id string) (*ScraperJo
 	return s.api_client.get_scraper_job(ctx, job_id)
 }
 
-func (s *Server) wait_scraper_job(ctx context.Context, job *ScraperJob) (*ScraperJob, error) {
+func (s *ToolSet) wait_scraper_job(ctx context.Context, job *ScraperJob) (*ScraperJob, error) {
 	if job == nil || strings.TrimSpace(job.ID) == "" {
 		return nil, fmt.Errorf("抓取任务响应缺少 id")
 	}
@@ -669,27 +500,11 @@ func (s *Server) wait_scraper_job(ctx context.Context, job *ScraperJob) (*Scrape
 }
 
 func successful_tool_result(value any) (map[string]any, error) {
-	text_content, err := json.Marshal(value)
-	if err != nil {
-		return nil, fmt.Errorf("编码工具结果失败: %w", err)
-	}
-	return map[string]any{
-		"content":           []any{map[string]any{"type": "text", "text": string(text_content)}},
-		"structuredContent": value,
-		"isError":           false,
-	}, nil
+	return mcp.SuccessfulResult(value)
 }
 
 func decode_tool_arguments(raw json.RawMessage, destination any) error {
-	if len(bytes.TrimSpace(raw)) == 0 {
-		raw = json.RawMessage("{}")
-	}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(destination); err != nil {
-		return fmt.Errorf("工具参数无效: %w", err)
-	}
-	return nil
+	return mcp.DecodeArguments(raw, destination)
 }
 
 func validate_source_url(raw_url string) error {
@@ -730,7 +545,7 @@ func download_source(job *ScraperJob, output scraper_output) map[string]any {
 	}
 }
 
-func (s *Server) create_download_task(ctx context.Context, request DownloadTaskCreateRequest, fallback_message string) (*DownloadTaskCreateResult, error) {
+func (s *ToolSet) create_download_task(ctx context.Context, request DownloadTaskCreateRequest, fallback_message string) (*DownloadTaskCreateResult, error) {
 	if s.download_task_creator != nil {
 		return s.download_task_creator.CreateDownloadTask(ctx, request)
 	}
@@ -754,7 +569,7 @@ func (s *Server) create_download_task(ctx context.Context, request DownloadTaskC
 	}, nil
 }
 
-func (s *Server) wait_download_task(ctx context.Context, task_id int) (any, error) {
+func (s *ToolSet) wait_download_task(ctx context.Context, task_id int) (any, error) {
 	if s.data_reader == nil {
 		if s.api_client == nil {
 			return nil, fmt.Errorf("下载任务查询服务未初始化")

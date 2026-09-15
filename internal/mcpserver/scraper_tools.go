@@ -16,7 +16,7 @@ type get_scraper_job_arguments struct {
 	ID string `json:"id"`
 }
 
-func (s *Server) create_scraper_job_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) create_scraper_job_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments create_scraper_job_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -32,7 +32,7 @@ func (s *Server) create_scraper_job_tool(ctx context.Context, raw_arguments json
 	return successful_tool_result(job)
 }
 
-func (s *Server) get_scraper_job_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_scraper_job_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments get_scraper_job_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err

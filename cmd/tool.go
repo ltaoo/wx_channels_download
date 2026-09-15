@@ -76,11 +76,11 @@ func new_cli_tool_service(cmd *cobra.Command) (*servicetools.Service, error) {
 	if api_base_url == "" {
 		api_base_url = configured_api_base_url()
 	}
-	server, err := new_remote_tool_server(api_base_url, strings.NewReader(""), io.Discard, cmd.ErrOrStderr())
+	_, toolset, err := new_remote_tool_server(api_base_url, strings.NewReader(""), io.Discard, cmd.ErrOrStderr())
 	if err != nil {
 		return nil, err
 	}
-	return server.ToolService(), nil
+	return toolset.ToolService(), nil
 }
 
 func write_tool_json(output io.Writer, value any) error {

@@ -20,6 +20,7 @@ import (
 	"wx_channel/pkg/flowengine"
 	"wx_channel/pkg/hermes"
 	"wx_channel/pkg/hermes/protocol"
+	mcp "wx_channel/pkg/mcp"
 	"wx_channel/pkg/scraper/zhihu"
 )
 
@@ -32,7 +33,8 @@ type MCPStdioConfig struct {
 }
 
 type mcp_stdio_runtime struct {
-	server              *mcpserver.Server
+	server              *mcp.Server
+	toolset             *mcpserver.ToolSet
 	scraper_job_service *services.ScraperJobService
 	automation_service  *services.AutomationService
 	downloader          *hermes.HermesEngine
@@ -171,7 +173,7 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 	flow_engine.SetFlowDefinitions(wxchannels_flow_definitions)
 	automation_service := services.NewAutomationService(app.DB, logger, flow_engine, bus)
 
-	server, err := mcpserver.NewServer(mcpserver.Config{
+	server, toolset, err := mcpserver.NewRuntime(mcpserver.Config{
 		Version:             api_config.Version,
 		Input:               stdio_config.Input,
 		Output:              stdio_config.Output,
@@ -192,10 +194,11 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 		task_store.Shutdown()
 		return nil, err
 	}
-	flowengine.RegisterServiceNode(flow_engine, server.ExecuteTool)
+	flowengine.RegisterServiceNode(flow_engine, toolset.ExecuteTool)
 	automation_service.Start()
 	return &mcp_stdio_runtime{
 		server:              server,
+		toolset:             toolset,
 		scraper_job_service: scraper_job_service,
 		automation_service:  automation_service,
 		downloader:          downloader,

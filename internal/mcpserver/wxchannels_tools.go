@@ -58,11 +58,11 @@ type wxchannels_api_response struct {
 	ErrMsg  string `json:"errMsg"`
 }
 
-func (s *Server) get_wxchannels_status(ctx context.Context) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_status(ctx context.Context) (map[string]any, error) {
 	return s.call_wxchannels_api(ctx, "/api/channels/status", nil)
 }
 
-func (s *Server) search_wxchannels_accounts(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) search_wxchannels_accounts(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments wxchannels_search_accounts_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -77,15 +77,15 @@ func (s *Server) search_wxchannels_accounts(ctx context.Context, raw_arguments j
 	})
 }
 
-func (s *Server) get_wxchannels_account_videos(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_account_videos(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	return s.get_wxchannels_account_page(ctx, raw_arguments, "/api/channels/contact/feed/list")
 }
 
-func (s *Server) get_wxchannels_live_replays(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_live_replays(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	return s.get_wxchannels_account_page(ctx, raw_arguments, "/api/channels/live/replay/list")
 }
 
-func (s *Server) get_wxchannels_live_profile(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_live_profile(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments wxchannels_live_profile_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -114,7 +114,7 @@ func (s *Server) get_wxchannels_live_profile(ctx context.Context, raw_arguments 
 	})
 }
 
-func (s *Server) get_wxchannels_account_page(ctx context.Context, raw_arguments json.RawMessage, path string) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_account_page(ctx context.Context, raw_arguments json.RawMessage, path string) (map[string]any, error) {
 	var arguments wxchannels_account_page_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -129,7 +129,7 @@ func (s *Server) get_wxchannels_account_page(ctx context.Context, raw_arguments 
 	})
 }
 
-func (s *Server) get_wxchannels_interacted_videos(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_interacted_videos(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments wxchannels_interacted_videos_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -147,15 +147,15 @@ func (s *Server) get_wxchannels_interacted_videos(ctx context.Context, raw_argum
 	})
 }
 
-func (s *Server) get_wxchannels_followed_accounts(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_followed_accounts(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	return s.get_wxchannels_page(ctx, raw_arguments, "/api/channels/follow/list")
 }
 
-func (s *Server) get_wxchannels_play_history(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_play_history(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	return s.get_wxchannels_page(ctx, raw_arguments, "/api/channels/play/history")
 }
 
-func (s *Server) get_wxchannels_page(ctx context.Context, raw_arguments json.RawMessage, path string) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_page(ctx context.Context, raw_arguments json.RawMessage, path string) (map[string]any, error) {
 	var arguments wxchannels_page_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -165,7 +165,7 @@ func (s *Server) get_wxchannels_page(ctx context.Context, raw_arguments json.Raw
 	})
 }
 
-func (s *Server) get_wxchannels_video_profile(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_video_profile(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments wxchannels_video_profile_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -198,7 +198,7 @@ func (s *Server) get_wxchannels_video_profile(ctx context.Context, raw_arguments
 	})
 }
 
-func (s *Server) get_wxchannels_video_comments(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_video_comments(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments wxchannels_video_comments_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -220,7 +220,7 @@ func (s *Server) get_wxchannels_video_comments(ctx context.Context, raw_argument
 	})
 }
 
-func (s *Server) get_wxchannels_video_share_url(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_video_share_url(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments wxchannels_video_share_url_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -234,7 +234,7 @@ func (s *Server) get_wxchannels_video_share_url(ctx context.Context, raw_argumen
 	})
 }
 
-func (s *Server) call_wxchannels_api(ctx context.Context, path string, query url.Values) (map[string]any, error) {
+func (s *ToolSet) call_wxchannels_api(ctx context.Context, path string, query url.Values) (map[string]any, error) {
 	raw_response, err := s.api_client.get_wxchannels_api(ctx, path, query)
 	if err != nil {
 		return nil, err
