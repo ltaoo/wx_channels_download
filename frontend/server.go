@@ -7,7 +7,7 @@ import (
 	"github.com/ltaoo/velo/frontendserver"
 )
 
-//go:embed index.html public src
+//go:embed index.html public src wxchannels.stream.js
 var embeddedFS embed.FS
 
 // FS exports the embedded frontend filesystem for use in production mode
