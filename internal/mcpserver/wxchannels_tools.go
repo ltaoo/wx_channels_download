@@ -58,245 +58,11 @@ type wxchannels_api_response struct {
 	ErrMsg  string `json:"errMsg"`
 }
 
-func wxchannels_tool_definitions() []any {
-	return []any{
-		wxchannels_tool_definition(
-			"get_wxchannels_status",
-			"获取微信视频号连接状态",
-			"检查是否已有视频号页面通过 WebSocket 连接到下载器。其他微信视频号工具依赖此连接。",
-			map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-			},
-		),
-		wxchannels_tool_definition(
-			"search_wxchannels_accounts",
-			"搜索微信视频号账号",
-			"按关键词搜索微信视频号账号。继续翻页时，把响应中的 lastBuff 原样传给 next_marker。",
-			map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"keyword": map[string]any{
-						"type":        "string",
-						"minLength":   1,
-						"description": "账号昵称等搜索关键词。",
-					},
-					"next_marker": wxchannels_next_marker_schema("上一页响应 data.lastBuff 中的分页游标。"),
-				},
-				"required": []string{"keyword"},
-			},
-		),
-		wxchannels_tool_definition(
-			"get_wxchannels_account_videos",
-			"获取微信视频号账号的视频列表",
-			"获取指定视频号账号发布的视频。username 可使用搜索结果中的 username；缺少 @finder 后缀时会自动补齐。",
-			wxchannels_account_page_schema("上一页响应 data.lastBuffer 中的分页游标。"),
-		),
-		wxchannels_tool_definition(
-			"get_wxchannels_live_replays",
-			"获取微信视频号直播回放",
-			"获取指定视频号账号的直播回放列表。username 可使用搜索或关注列表返回的 username。",
-			wxchannels_account_page_schema("上一页响应 data.lastBuffer 中的分页游标。"),
-		),
-		wxchannels_tool_definition(
-			"get_wxchannels_live_profile",
-			"获取微信视频号直播详情",
-			"通过视频号页面的 joinLive 能力获取直播详情和直播流信息。username、oid、nid 和 id 分别对应 finderUsername、objectId、objectNonceId 和 liveId。所有 ID 均以字符串传入，避免大整数精度损失。",
-			map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"username": map[string]any{
-						"type":        "string",
-						"minLength":   1,
-						"description": "传给 joinLive 的 finderUsername。",
-					},
-					"oid": map[string]any{
-						"type":        "string",
-						"minLength":   1,
-						"description": "直播对象 ID，对应 objectId。",
-					},
-					"nid": map[string]any{
-						"type":        "string",
-						"minLength":   1,
-						"description": "直播对象 nonce ID，对应 objectNonceId。",
-					},
-					"id": map[string]any{
-						"type":        "string",
-						"minLength":   1,
-						"description": "直播 ID，对应 liveId。",
-					},
-				},
-				"required": []string{"username", "oid", "nid", "id"},
-			},
-		),
-		wxchannels_tool_definition(
-			"get_wxchannels_interacted_videos",
-			"获取微信视频号赞或收藏的视频",
-			"获取当前微信用户赞过或收藏的视频。flag 是视频号页面使用的 tabFlag，默认值 7；继续翻页时传入响应中的 lastBuffer。",
-			map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"flag": map[string]any{
-						"type":        "integer",
-						"minimum":     1,
-						"default":     7,
-						"description": "视频号交互列表的 tabFlag；留空时使用 7。",
-					},
-					"next_marker": wxchannels_next_marker_schema("上一页响应 data.lastBuffer 中的分页游标。"),
-				},
-			},
-		),
-		wxchannels_tool_definition(
-			"get_wxchannels_followed_accounts",
-			"获取关注的微信视频号账号",
-			"获取当前微信用户关注的视频号账号列表。继续翻页时，把响应中的 lastBuffer 原样传给 next_marker。",
-			wxchannels_page_schema("上一页响应 data.lastBuffer 中的分页游标。"),
-		),
-		wxchannels_tool_definition(
-			"get_wxchannels_play_history",
-			"获取微信视频号播放记录",
-			"获取当前微信用户最近的视频号播放记录。响应同时包含 recentNDays 和分页游标 lastBuffer。",
-			wxchannels_page_schema("上一页响应 data.lastBuffer 中的分页游标。"),
-		),
-		wxchannels_tool_definition(
-			"get_wxchannels_video_profile",
-			"获取微信视频号视频详情",
-			"获取单个视频号内容详情。优先直接传视频链接；也可传 oid 与 nid，或只传 eid。",
-			map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"url": map[string]any{
-						"type":        "string",
-						"format":      "uri",
-						"description": "视频号内容链接。",
-					},
-					"oid": map[string]any{
-						"type":        "string",
-						"description": "视频对象 ID；使用它时还需提供 nid。",
-					},
-					"nid": map[string]any{
-						"type":        "string",
-						"description": "视频对象 nonce ID；与 oid 配套使用。",
-					},
-					"eid": map[string]any{
-						"type":        "string",
-						"description": "加密的视频对象 ID。",
-					},
-				},
-				"anyOf": []any{
-					map[string]any{"required": []string{"url"}},
-					map[string]any{"required": []string{"oid", "nid"}},
-					map[string]any{"required": []string{"eid"}},
-				},
-			},
-		),
-		wxchannels_tool_definition(
-			"get_wxchannels_video_comments",
-			"获取微信视频号视频评论",
-			"获取视频评论或指定根评论的回复。oid 必填；查询一级评论时传 nid，查询回复时传 comment_id。",
-			map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"oid": map[string]any{
-						"type":        "string",
-						"minLength":   1,
-						"description": "视频对象 ID。",
-					},
-					"nid": map[string]any{
-						"type":        "string",
-						"description": "查询一级评论时需要的视频对象 nonce ID。",
-					},
-					"comment_id": map[string]any{
-						"type":        "string",
-						"description": "查询某条根评论的回复时使用的评论 ID。",
-					},
-					"next_marker": wxchannels_next_marker_schema("上一页响应 data.lastBuffer 中的分页游标。"),
-				},
-				"required": []string{"oid"},
-				"anyOf": []any{
-					map[string]any{"required": []string{"nid"}},
-					map[string]any{"required": []string{"comment_id"}},
-				},
-			},
-		),
-		wxchannels_tool_definition(
-			"get_wxchannels_video_share_url",
-			"获取微信视频号视频分享链接",
-			"根据视频对象 ID 获取可分享的 H5 链接。",
-			map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"oid": map[string]any{
-						"type":        "string",
-						"minLength":   1,
-						"description": "视频对象 ID。",
-					},
-				},
-				"required": []string{"oid"},
-			},
-		),
-	}
-}
-
-func wxchannels_tool_definition(name string, title string, description string, input_schema map[string]any) map[string]any {
-	return map[string]any{
-		"name":        name,
-		"title":       title,
-		"description": description,
-		"inputSchema": input_schema,
-		"annotations": map[string]any{
-			"readOnlyHint":    true,
-			"destructiveHint": false,
-			"idempotentHint":  true,
-			"openWorldHint":   true,
-		},
-	}
-}
-
-func wxchannels_next_marker_schema(description string) map[string]any {
-	return map[string]any{
-		"type":        "string",
-		"description": description,
-	}
-}
-
-func wxchannels_page_schema(next_marker_description string) map[string]any {
-	return map[string]any{
-		"type":                 "object",
-		"additionalProperties": false,
-		"properties": map[string]any{
-			"next_marker": wxchannels_next_marker_schema(next_marker_description),
-		},
-	}
-}
-
-func wxchannels_account_page_schema(next_marker_description string) map[string]any {
-	return map[string]any{
-		"type":                 "object",
-		"additionalProperties": false,
-		"properties": map[string]any{
-			"username": map[string]any{
-				"type":        "string",
-				"minLength":   1,
-				"description": "视频号账号 username。",
-			},
-			"next_marker": wxchannels_next_marker_schema(next_marker_description),
-		},
-		"required": []string{"username"},
-	}
-}
-
-func (s *Server) get_wxchannels_status(ctx context.Context) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_status(ctx context.Context) (map[string]any, error) {
 	return s.call_wxchannels_api(ctx, "/api/channels/status", nil)
 }
 
-func (s *Server) search_wxchannels_accounts(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) search_wxchannels_accounts(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments wxchannels_search_accounts_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -311,15 +77,15 @@ func (s *Server) search_wxchannels_accounts(ctx context.Context, raw_arguments j
 	})
 }
 
-func (s *Server) get_wxchannels_account_videos(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_account_videos(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	return s.get_wxchannels_account_page(ctx, raw_arguments, "/api/channels/contact/feed/list")
 }
 
-func (s *Server) get_wxchannels_live_replays(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_live_replays(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	return s.get_wxchannels_account_page(ctx, raw_arguments, "/api/channels/live/replay/list")
 }
 
-func (s *Server) get_wxchannels_live_profile(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_live_profile(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments wxchannels_live_profile_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -348,7 +114,7 @@ func (s *Server) get_wxchannels_live_profile(ctx context.Context, raw_arguments 
 	})
 }
 
-func (s *Server) get_wxchannels_account_page(ctx context.Context, raw_arguments json.RawMessage, path string) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_account_page(ctx context.Context, raw_arguments json.RawMessage, path string) (map[string]any, error) {
 	var arguments wxchannels_account_page_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -363,7 +129,7 @@ func (s *Server) get_wxchannels_account_page(ctx context.Context, raw_arguments 
 	})
 }
 
-func (s *Server) get_wxchannels_interacted_videos(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_interacted_videos(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments wxchannels_interacted_videos_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -381,15 +147,15 @@ func (s *Server) get_wxchannels_interacted_videos(ctx context.Context, raw_argum
 	})
 }
 
-func (s *Server) get_wxchannels_followed_accounts(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_followed_accounts(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	return s.get_wxchannels_page(ctx, raw_arguments, "/api/channels/follow/list")
 }
 
-func (s *Server) get_wxchannels_play_history(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_play_history(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	return s.get_wxchannels_page(ctx, raw_arguments, "/api/channels/play/history")
 }
 
-func (s *Server) get_wxchannels_page(ctx context.Context, raw_arguments json.RawMessage, path string) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_page(ctx context.Context, raw_arguments json.RawMessage, path string) (map[string]any, error) {
 	var arguments wxchannels_page_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -399,7 +165,7 @@ func (s *Server) get_wxchannels_page(ctx context.Context, raw_arguments json.Raw
 	})
 }
 
-func (s *Server) get_wxchannels_video_profile(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_video_profile(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments wxchannels_video_profile_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -432,7 +198,7 @@ func (s *Server) get_wxchannels_video_profile(ctx context.Context, raw_arguments
 	})
 }
 
-func (s *Server) get_wxchannels_video_comments(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_video_comments(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments wxchannels_video_comments_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -454,7 +220,7 @@ func (s *Server) get_wxchannels_video_comments(ctx context.Context, raw_argument
 	})
 }
 
-func (s *Server) get_wxchannels_video_share_url(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_wxchannels_video_share_url(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments wxchannels_video_share_url_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -468,7 +234,7 @@ func (s *Server) get_wxchannels_video_share_url(ctx context.Context, raw_argumen
 	})
 }
 
-func (s *Server) call_wxchannels_api(ctx context.Context, path string, query url.Values) (map[string]any, error) {
+func (s *ToolSet) call_wxchannels_api(ctx context.Context, path string, query url.Values) (map[string]any, error) {
 	raw_response, err := s.api_client.get_wxchannels_api(ctx, path, query)
 	if err != nil {
 		return nil, err

@@ -8,6 +8,7 @@ import (
 	"github.com/ltaoo/velo"
 
 	"wx_channel/internal/adapter"
+	wxchannelsadapter "wx_channel/internal/adapter/wxchannels"
 	"wx_channel/internal/api"
 	"wx_channel/internal/config"
 	"wx_channel/internal/database"
@@ -16,8 +17,10 @@ import (
 	"wx_channel/internal/services"
 	"wx_channel/pkg/cache"
 	"wx_channel/pkg/cookies"
+	"wx_channel/pkg/flowengine"
 	"wx_channel/pkg/hermes"
 	"wx_channel/pkg/hermes/protocol"
+	mcp "wx_channel/pkg/mcp"
 	"wx_channel/pkg/scraper/zhihu"
 )
 
@@ -30,8 +33,10 @@ type MCPStdioConfig struct {
 }
 
 type mcp_stdio_runtime struct {
-	server              *mcpserver.Server
+	server              *mcp.Server
+	toolset             *mcpserver.ToolSet
 	scraper_job_service *services.ScraperJobService
+	automation_service  *services.AutomationService
 	downloader          *hermes.HermesEngine
 	task_store          *database.DBTaskStore
 	adapter_handles     []adapter.RuntimeHandle
@@ -158,7 +163,17 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 		adapter_handles = append(adapter_handles, handle)
 	}
 
-	server, err := mcpserver.NewServer(mcpserver.Config{
+	// --- Workflow automation ---
+	flow_engine := flowengine.NewWorkflowEngine()
+	wxchannels_flows := wxchannelsadapter.GetWXChannelsPostprocessFlows()
+	wxchannels_flow_definitions := make(map[string]flowengine.FlowDefinition, len(wxchannels_flows))
+	for _, flow := range wxchannels_flows {
+		wxchannels_flow_definitions[flow.ID] = flow
+	}
+	flow_engine.SetFlowDefinitions(wxchannels_flow_definitions)
+	automation_service := services.NewAutomationService(app.DB, logger, flow_engine, bus)
+
+	server, toolset, err := mcpserver.NewRuntime(mcpserver.Config{
 		Version:             api_config.Version,
 		Input:               stdio_config.Input,
 		Output:              stdio_config.Output,
@@ -170,16 +185,22 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 		SphDeployer:         NewMCPSphDeployer(cfg),
 		ZhihuCollections:    zhihu.NewClient(cookie_reader, logger),
 		ZhihuCredentials:    cookie_reader,
+		Automation:          new_mcp_automation_backend(automation_service),
 	})
 	if err != nil {
+		automation_service.Stop()
 		stop_adapter_handles(adapter_handles)
 		downloader.RequestPauseAllTask()
 		task_store.Shutdown()
 		return nil, err
 	}
+	flowengine.RegisterServiceNode(flow_engine, toolset.ExecuteTool)
+	automation_service.Start()
 	return &mcp_stdio_runtime{
 		server:              server,
+		toolset:             toolset,
 		scraper_job_service: scraper_job_service,
+		automation_service:  automation_service,
 		downloader:          downloader,
 		task_store:          task_store,
 		adapter_handles:     adapter_handles,
@@ -192,6 +213,9 @@ func (r *mcp_stdio_runtime) close() {
 	}
 	if r.scraper_job_service != nil {
 		r.scraper_job_service.InterruptAll()
+	}
+	if r.automation_service != nil {
+		r.automation_service.Stop()
 	}
 	stop_adapter_handles(r.adapter_handles)
 	if r.downloader != nil {

@@ -51,109 +51,7 @@ type zhihu_page_arguments struct {
 	Page int `json:"page"`
 }
 
-func zhihu_tool_definitions() []any {
-	return []any{
-		zhihu_tool_definition(
-			get_zhihu_credential_status_tool_name,
-			"检查知乎凭证",
-			"检查 cookies.json 是否包含未过期且适用于 zhihu.com 的 z_c0 登录 Cookie，并通过当前用户接口验证登录态。不会返回 Cookie 明文。",
-			map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-			},
-		),
-		zhihu_tool_definition(
-			get_my_zhihu_collections_tool_name,
-			"获取我的知乎收藏夹",
-			"使用 cookies.json 中的知乎登录态识别当前账号，获取该账号可见的公开与私密收藏夹列表。调用前会验证 z_c0 Cookie 和当前登录账号。",
-			map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-			},
-		),
-		zhihu_tool_definition(
-			get_zhihu_collection_contents_tool_name,
-			"获取知乎收藏夹内容",
-			"按 collection_id 获取指定知乎收藏夹的一页内容。page 从 1 开始；响应 has_next=true 时，应将 next_page 作为下一次调用的 page。调用前会验证 cookies.json 中的知乎登录态。",
-			map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"collection_id": map[string]any{
-						"type":        "string",
-						"pattern":     "^[0-9]+$",
-						"description": "知乎收藏夹 ID，例如收藏夹链接 /collection/972293341 中的 972293341。",
-					},
-					"page": map[string]any{
-						"type":        "integer",
-						"minimum":     1,
-						"maximum":     1000000,
-						"default":     1,
-						"description": "页码，从 1 开始。",
-					},
-				},
-				"required": []string{"collection_id"},
-			},
-		),
-		zhihu_tool_definition(
-			get_my_zhihu_answers_tool_name,
-			"获取我的知乎回答",
-			"使用 cookies.json 中的知乎登录态识别当前账号，分页获取该账号发布的回答。page 从 1 开始；响应 has_next=true 时，应将 next_page 作为下一次调用的 page。",
-			zhihu_page_input_schema(),
-		),
-		zhihu_tool_definition(
-			get_my_zhihu_posts_tool_name,
-			"获取我的知乎文章",
-			"使用 cookies.json 中的知乎登录态识别当前账号，分页获取该账号发布的文章。page 从 1 开始；响应 has_next=true 时，应将 next_page 作为下一次调用的 page。",
-			zhihu_page_input_schema(),
-		),
-		zhihu_tool_definition(
-			get_my_zhihu_zvideos_tool_name,
-			"获取我的知乎视频",
-			"使用 cookies.json 中的知乎登录态识别当前账号，分页获取该账号发布的视频。page 从 1 开始；响应 has_next=true 时，应将 next_page 作为下一次调用的 page。",
-			zhihu_page_input_schema(),
-		),
-		zhihu_tool_definition(
-			get_my_zhihu_columns_tool_name,
-			"获取我的知乎专栏",
-			"使用 cookies.json 中的知乎登录态识别当前账号，分页获取该账号参与的专栏。page 从 1 开始；响应 has_next=true 时，应将 next_page 作为下一次调用的 page。",
-			zhihu_page_input_schema(),
-		),
-	}
-}
-
-func zhihu_page_input_schema() map[string]any {
-	return map[string]any{
-		"type":                 "object",
-		"additionalProperties": false,
-		"properties": map[string]any{
-			"page": map[string]any{
-				"type":        "integer",
-				"minimum":     1,
-				"maximum":     1000000,
-				"default":     1,
-				"description": "页码，从 1 开始。",
-			},
-		},
-	}
-}
-
-func zhihu_tool_definition(name string, title string, description string, input_schema map[string]any) map[string]any {
-	return map[string]any{
-		"name":        name,
-		"title":       title,
-		"description": description,
-		"inputSchema": input_schema,
-		"annotations": map[string]any{
-			"readOnlyHint":    true,
-			"destructiveHint": false,
-			"idempotentHint":  true,
-			"openWorldHint":   true,
-		},
-	}
-}
-
-func (s *Server) get_zhihu_credential_status(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_zhihu_credential_status(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments struct{}
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -195,7 +93,7 @@ func (s *Server) get_zhihu_credential_status(ctx context.Context, raw_arguments 
 	})
 }
 
-func (s *Server) get_my_zhihu_collections(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_my_zhihu_collections(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments struct{}
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -212,7 +110,7 @@ func (s *Server) get_my_zhihu_collections(ctx context.Context, raw_arguments jso
 	return successful_tool_result(result)
 }
 
-func (s *Server) get_zhihu_collection_contents(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_zhihu_collection_contents(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments zhihu_collection_contents_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -243,23 +141,23 @@ func (s *Server) get_zhihu_collection_contents(ctx context.Context, raw_argument
 	return successful_tool_result(result)
 }
 
-func (s *Server) get_my_zhihu_answers(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_my_zhihu_answers(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	return s.get_my_zhihu_user_content(ctx, raw_arguments, zhihu.UserContentKindAnswers)
 }
 
-func (s *Server) get_my_zhihu_posts(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_my_zhihu_posts(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	return s.get_my_zhihu_user_content(ctx, raw_arguments, zhihu.UserContentKindPosts)
 }
 
-func (s *Server) get_my_zhihu_zvideos(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_my_zhihu_zvideos(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	return s.get_my_zhihu_user_content(ctx, raw_arguments, zhihu.UserContentKindZvideos)
 }
 
-func (s *Server) get_my_zhihu_columns(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_my_zhihu_columns(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	return s.get_my_zhihu_user_content(ctx, raw_arguments, zhihu.UserContentKindColumns)
 }
 
-func (s *Server) get_my_zhihu_user_content(ctx context.Context, raw_arguments json.RawMessage, kind string) (map[string]any, error) {
+func (s *ToolSet) get_my_zhihu_user_content(ctx context.Context, raw_arguments json.RawMessage, kind string) (map[string]any, error) {
 	var arguments zhihu_page_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -302,7 +200,7 @@ func (s *Server) get_my_zhihu_user_content(ctx context.Context, raw_arguments js
 	return successful_tool_result(result)
 }
 
-func (s *Server) authenticated_zhihu_user(ctx context.Context) (*zhihu.User, error) {
+func (s *ToolSet) authenticated_zhihu_user(ctx context.Context) (*zhihu.User, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -319,7 +217,7 @@ func (s *Server) authenticated_zhihu_user(ctx context.Context) (*zhihu.User, err
 	return user, nil
 }
 
-func (s *Server) check_local_zhihu_credential() error {
+func (s *ToolSet) check_local_zhihu_credential() error {
 	if s == nil || s.zhihu_credentials == nil {
 		return fmt.Errorf("知乎凭证读取器未配置")
 	}

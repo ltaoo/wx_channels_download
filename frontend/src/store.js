@@ -1,9 +1,18 @@
+import "./dmui.js";
 import SiderLayoutView from "./pages/shell.js";
+
+const Timeless = window.Timeless;
+
+if (!Timeless) {
+  throw new Error("应用无法启动：Timeless 运行时未加载");
+}
+
+Timeless.ui.ScrollViewPrimitive.setScrollViewProvider(Timeless.web);
+Timeless.ui.InputPrimitive.setInputProvider(Timeless.web);
 
 const storage_key = "wx_channels_download";
 const legacy_scraper_job_key = "scraper.active_scraper_job_id";
-const legacy_downloader_key =
-  "wx_channels_download.third_party_downloader.v1";
+const legacy_downloader_key = "wx_channels_download.third_party_downloader.v1";
 
 function read_json(client, key) {
   try {
@@ -37,12 +46,6 @@ function load_storage_values(client) {
     }
   }
   return values;
-}
-
-const Timeless = window.Timeless;
-
-if (!Timeless) {
-  throw new Error("应用无法启动：Timeless 运行时未加载");
 }
 
 const css_records = Object.create(null);
@@ -232,6 +235,12 @@ const routes_configure = {
         component: lazy("src/pages/account.js", "src/pages/account.css"),
         // options: animated_route_options,
       },
+      automation: {
+        title: "自动化",
+        pathname: "/automation",
+        component: lazy("src/pages/automation.js", "src/pages/automation.css"),
+        // options: animated_route_options,
+      },
       logs: {
         title: "日志",
         pathname: "/logs",
@@ -239,6 +248,18 @@ const routes_configure = {
         // options: animated_route_options,
       },
     },
+  },
+  flow_detail: {
+    title: "Pipeline 详情",
+    pathname: "/automation/detail",
+    component: lazy("src/pages/flow_detail.js", "src/pages/automation.css"),
+    // options: animated_route_options,
+  },
+  flow_edit: {
+    title: "编辑 Pipeline",
+    pathname: "/automation/edit",
+    component: lazy("src/pages/flow_edit.js", "src/pages/automation.css"),
+    // options: animated_route_options,
   },
 };
 
@@ -326,4 +347,249 @@ history$.onRouteChange(function (event) {
   if (event.reason === "replace") {
     router$.replaceState(String(event.href));
   }
+});
+
+const default_platform_favicon = "public/platform-icons.svg#default";
+const platform_favicons = Object.freeze({
+  default: default_platform_favicon,
+  wxchannels: "public/platform-icons.svg#wxchannels",
+  wxmp: "public/platform-icons.svg#wxmp",
+  weibo: "public/platform-icons.svg#weibo",
+  officialaccount: "public/platform-icons.svg#wxmp",
+  zhihu: "public/platform-icons.svg#zhihu",
+  juejin: "public/platform-icons.svg?v=20260907#juejin",
+  jianshu: "public/platform-icons.svg?v=20260907#jianshu",
+  douyin: "public/platform-icons.svg#douyin",
+  youtube: "public/platform-icons.svg#youtube",
+  bilibili: "public/platform-icons.svg#bilibili",
+  cctv: "public/platform-icons.svg#cctv",
+  ucdrive: "public/platform-icons.svg#ucdrive",
+  feishu: "public/platform-icons.svg#feishu",
+  x: "public/platform-icons.svg#x",
+  twitter: "public/platform-icons.svg#x",
+  instagram: "public/platform-icons.svg#instagram",
+  insgram: "public/platform-icons.svg#instagram",
+  telegram: "public/platform-icons.svg#telegram",
+  facebook: "public/platform-icons.svg#facebook",
+  threads: "public/platform-icons.svg#threads",
+  tiktok: "public/platform-icons.svg#tiktok",
+  reddit: "public/platform-icons.svg#reddit",
+  linkedin: "public/platform-icons.svg#linkedin",
+  pinterest: "public/platform-icons.svg#pinterest",
+  snapchat: "public/platform-icons.svg#snapchat",
+  whatsapp: "public/platform-icons.svg#whatsapp",
+  discord: "public/platform-icons.svg#discord",
+  twitch: "public/platform-icons.svg#twitch",
+  github: "public/platform-icons.svg#github",
+  stackoverflow: "public/platform-icons.svg#stackoverflow",
+  kuaishou: "public/platform-icons.svg#kuaishou",
+  xiaohongshu: "public/platform-icons.svg#xiaohongshu",
+  xhs: "public/platform-icons.svg#xiaohongshu",
+  fanqienovel: "public/platform-icons.svg#fanqienovel",
+  douban: "public/platform-icons.svg#douban",
+  tieba: "public/platform-icons.svg#tieba",
+  baidutieba: "public/platform-icons.svg#tieba",
+  qidian: "public/platform-icons.svg#qidian",
+});
+
+window.PLATFORM_FAVICONS = new Proxy(platform_favicons, {
+  get(target, property, receiver) {
+    const favicon = Reflect.get(target, property, receiver);
+    if (favicon !== undefined || typeof property !== "string" || !property) {
+      return favicon;
+    }
+    return default_platform_favicon;
+  },
+});
+
+window.PLATFORM_NAMES = Object.freeze({
+  wxchannels: "视频号",
+  wxmp: "公众号",
+  douyin: "抖音",
+  kuaishou: "快手",
+  xiaohongshu: "小红书",
+  instagram: "Instagram",
+  youtube: "YouTube",
+  bilibili: "Bilibili",
+  x: "X",
+  weibo: "微博",
+  zhihu: "知乎",
+  feishu: "飞书",
+  // juejin: "掘金",
+  // jianshu: "简书",
+  // webpage: "网页",
+  singlefile: "网页",
+  // officialaccount: "公众号",
+  // twitter: "X",
+  // insgram: "Instagram",
+  // telegram: "Telegram",
+  // facebook: "Facebook",
+  // threads: "Threads",
+  // tiktok: "TikTok",
+  // reddit: "Reddit",
+  // linkedin: "LinkedIn",
+  // pinterest: "Pinterest",
+  // snapchat: "Snapchat",
+  // whatsapp: "WhatsApp",
+  // discord: "Discord",
+  // twitch: "Twitch",
+  // github: "GitHub",
+  // stackoverflow: "Stack Overflow",
+  // xhs: "小红书",
+  // douban: "豆瓣",
+  // tieba: "百度贴吧",
+  // baidutieba: "百度贴吧",
+  // qidian: "起点中文网",
+  // fanqienovel: "番茄小说",
+  // jianshu: "简书",
+  // "69shuba": "69书吧",
+  // ttk: "TT看书",
+  // ucdrive: "UC网盘",
+});
+
+window.CONTENT_TYPE_NAMES = Object.freeze({
+  video: "视频",
+  long_video: "长视频",
+  episode: "单集",
+  series: "系列",
+  collection: "合集",
+  short_video: "短视频",
+  image: "图片",
+  image_set: "图集",
+  album: "图集",
+  article: "文章",
+  answer: "回答",
+  question: "问题",
+  post: "帖子",
+  blog: "文章",
+  webpage: "网页",
+  novel: "小说",
+  audio: "音频",
+  podcast: "播客",
+  music: "音乐",
+  document: "文档",
+  course: "课程",
+  comic: "漫画",
+  live: "直播",
+  text: "TXT",
+  html: "HTML",
+  pdf: "PDF",
+  conversation: "对话",
+  other: "其他",
+});
+
+const content_type_icon_base = "public/content-type-icons.svg?v=20260910-4#";
+const content_type_icons = Object.freeze({
+  default: `${content_type_icon_base}default`,
+  video: `${content_type_icon_base}video`,
+  long_video: `${content_type_icon_base}long_video`,
+  episode: `${content_type_icon_base}episode`,
+  series: `${content_type_icon_base}series`,
+  collection: `${content_type_icon_base}collection`,
+  short_video: `${content_type_icon_base}short_video`,
+  image: `${content_type_icon_base}image`,
+  image_set: `${content_type_icon_base}image_set`,
+  album: `${content_type_icon_base}album`,
+  article: `${content_type_icon_base}article`,
+  answer: `${content_type_icon_base}answer`,
+  question: `${content_type_icon_base}question`,
+  post: `${content_type_icon_base}post`,
+  blog: `${content_type_icon_base}blog`,
+  webpage: `${content_type_icon_base}webpage`,
+  novel: `${content_type_icon_base}novel`,
+  audio: `${content_type_icon_base}audio`,
+  podcast: `${content_type_icon_base}podcast`,
+  music: `${content_type_icon_base}music`,
+  document: `${content_type_icon_base}document`,
+  course: `${content_type_icon_base}course`,
+  comic: `${content_type_icon_base}comic`,
+  live: `${content_type_icon_base}live`,
+  text: `${content_type_icon_base}text`,
+  txt: `${content_type_icon_base}text`,
+  html: `${content_type_icon_base}html`,
+  pdf: `${content_type_icon_base}pdf`,
+  conversation: `${content_type_icon_base}conversation`,
+  other: `${content_type_icon_base}other`,
+});
+
+window.CONTENT_TYPE_ICONS = new Proxy(content_type_icons, {
+  get(target, property, receiver) {
+    const icon = Reflect.get(target, property, receiver);
+    if (icon !== undefined || typeof property !== "string" || !property) {
+      return icon;
+    }
+    return content_type_icons.default;
+  },
+});
+
+window.CONTENT_RELATION_NAMES = Object.freeze({
+  answer_of: "回答所属问题",
+  contains: "包含",
+  part_of: "属于",
+  episode_of: "单集属于系列",
+  reply_to: "回复",
+  quote_of: "引用",
+  repost_of: "转发",
+  translation_of: "翻译自",
+  derived_from: "派生自",
+  related: "相关内容",
+});
+
+window.TYPE_ICONS = Object.freeze({
+  image: "file-image",
+  video: "file-play",
+  audio: "file-volume",
+  html: "file-code",
+  zip: "file-box",
+  pdf: "file-text",
+  other: "file",
+});
+
+window.TYPE_LABELS = Object.freeze({
+  image: "图片",
+  video: "视频",
+  audio: "音频",
+  html: "HTML",
+  zip: "压缩包",
+  pdf: "PDF",
+  other: "文件",
+});
+
+window.DOWNLOAD_RESOURCE_SUFFIXES = Object.freeze({
+  image: ".jpg",
+  video: ".mp4",
+  audio: ".mp3",
+  html: ".html",
+  text: ".txt",
+  json: ".json",
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+  "image/avif": ".avif",
+  "image/svg+xml": ".svg",
+  "image/bmp": ".bmp",
+  "image/tiff": ".tiff",
+  "video/mp4": ".mp4",
+  "video/webm": ".webm",
+  "video/quicktime": ".mov",
+  "video/x-msvideo": ".avi",
+  "video/x-matroska": ".mkv",
+  "video/mp2t": ".ts",
+  "video/x-flv": ".flv",
+  "audio/mpeg": ".mp3",
+  "audio/mp4": ".m4a",
+  "audio/aac": ".aac",
+  "audio/ogg": ".ogg",
+  "audio/wav": ".wav",
+  "audio/flac": ".flac",
+  "text/html": ".html",
+  "text/plain": ".txt",
+  "text/css": ".css",
+  "text/csv": ".csv",
+  "text/markdown": ".md",
+  "application/json": ".json",
+  "application/xml": ".xml",
+  "application/pdf": ".pdf",
+  "application/zip": ".zip",
 });

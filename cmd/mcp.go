@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	"wx_channel/internal/config"
 	"wx_channel/internal/mcpserver"
 	"wx_channel/pkg/cookies"
+	mcp "wx_channel/pkg/mcp"
 	"wx_channel/pkg/scraper/zhihu"
 )
 
@@ -39,22 +41,26 @@ var mcp_cmd = &cobra.Command{
 		if api_base_url == "" {
 			api_base_url = configured_api_base_url()
 		}
-		cookie_reader := cookies.NewPersistentReader(Cfg.WorkDir)
-		server, err := mcpserver.NewServer(mcpserver.Config{
-			APIBaseURL:       api_base_url,
-			Version:          Version,
-			Input:            cmd.InOrStdin(),
-			Output:           cmd.OutOrStdout(),
-			ErrorOutput:      cmd.ErrOrStderr(),
-			SphDeployer:      application.NewMCPSphDeployer(Cfg),
-			ZhihuCollections: zhihu.NewClient(cookie_reader, Cfg.Logger()),
-			ZhihuCredentials: cookie_reader,
-		})
+		server, _, err := new_remote_tool_server(api_base_url, cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr())
 		if err != nil {
 			return err
 		}
 		return server.Serve(context.Background())
 	},
+}
+
+func new_remote_tool_server(api_base_url string, input io.Reader, output io.Writer, error_output io.Writer) (*mcp.Server, *mcpserver.ToolSet, error) {
+	cookie_reader := cookies.NewPersistentReader(Cfg.WorkDir)
+	return mcpserver.NewRuntime(mcpserver.Config{
+		APIBaseURL:       api_base_url,
+		Version:          Version,
+		Input:            input,
+		Output:           output,
+		ErrorOutput:      error_output,
+		SphDeployer:      application.NewMCPSphDeployer(Cfg),
+		ZhihuCollections: zhihu.NewClient(cookie_reader, Cfg.Logger()),
+		ZhihuCredentials: cookie_reader,
+	})
 }
 
 func init() {

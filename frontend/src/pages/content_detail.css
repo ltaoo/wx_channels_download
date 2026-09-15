@@ -94,6 +94,14 @@
   gap: var(--dm-space-3);
 }
 
+.content-detail-tags {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dm-space-1-5);
+}
+
 .content-account-item {
   max-width: 240px;
   min-height: var(--dm-control-height-sm);
@@ -156,7 +164,6 @@
   display: inline-flex;
   align-items: center;
   gap: var(--dm-space-1-5);
-  margin-top: auto;
   color: var(--dm-content-muted);
   font-size: var(--dm-font-size-sm);
 }
@@ -207,6 +214,82 @@
 
 .content-detail-section-body {
   padding: var(--dm-space-4);
+}
+
+.content-detail-content-block {
+  position: relative;
+  min-width: 0;
+}
+
+.content-detail-content-nav-button {
+  position: absolute;
+  top: 0;
+  z-index: 2;
+  width: 72px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.content-detail-content-nav-button.is-left {
+  left: 0;
+  background: linear-gradient(
+    to right,
+    rgb(0 0 0 / 22%),
+    transparent
+  );
+}
+
+.content-detail-content-nav-button.is-left:hover:not(:disabled),
+.content-detail-content-nav-button.is-left:focus-visible:not(:disabled) {
+  background: linear-gradient(
+    to right,
+    rgb(0 0 0 / 28%),
+    transparent
+  );
+}
+
+.content-detail-content-nav-button.is-right {
+  right: 0;
+  background: linear-gradient(
+    to left,
+    rgb(0 0 0 / 22%),
+    transparent
+  );
+}
+
+.content-detail-content-nav-button.is-right:hover:not(:disabled),
+.content-detail-content-nav-button.is-right:focus-visible:not(:disabled) {
+  background: linear-gradient(
+    to left,
+    rgb(0 0 0 / 28%),
+    transparent
+  );
+}
+
+.content-detail-content-nav-button > svg {
+  box-sizing: content-box;
+  width: 18px;
+  height: 18px;
+  padding: 13px;
+  display: grid;
+  place-items: center;
+  color: var(--dm-color-text-primary);
+  background-color: transparent;
+  border: var(--dm-border-width) solid var(--dm-color-border);
+  border-radius: 50%;
+  box-shadow: var(--dm-shadow-sm);
+  transition: color 0.15s ease, background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.content-detail-content-nav-button:hover:not(:disabled) > svg,
+.content-detail-content-nav-button:focus-visible:not(:disabled) > svg {
+  color: var(--dm-color-primary);
+  background-color: var(--dm-color-bg-surface);
+  border-color: var(--dm-color-primary-border);
 }
 
 .content-detail-extension {

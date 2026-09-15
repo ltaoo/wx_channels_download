@@ -1,0 +1,54 @@
+/* Generic file-tree styles — used by FileTreeView / FileTreeRow in tree.js */
+
+.file-tree-scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+}
+
+.file-tree-row {
+  display: grid;
+  grid-template-columns: 18px 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--dm-space-1);
+  padding: 4px var(--dm-space-1-5);
+  color: var(--dm-color-text-primary);
+  font-size: var(--dm-font-size-sm);
+  border-radius: var(--dm-radius-content);
+}
+
+.file-tree-row.is-directory {
+  color: var(--dm-color-text-secondary);
+  font-weight: var(--dm-font-weight-semibold);
+  cursor: pointer;
+}
+
+.file-tree-row.is-directory:hover {
+  background: var(--dm-color-bg-hover);
+}
+
+.file-tree-caret {
+  width: 18px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--dm-color-text-muted);
+  line-height: 1;
+}
+
+.file-tree-icon {
+  width: 18px;
+  flex-shrink: 0;
+}
+
+.file-tree-name {
+  min-width: 0;
+}
+
+.file-tree-meta {
+  color: var(--dm-color-text-muted);
+  font-size: 11px;
+  font-weight: var(--dm-font-weight-normal);
+  white-space: nowrap;
+  padding-left: var(--dm-space-2);
+}

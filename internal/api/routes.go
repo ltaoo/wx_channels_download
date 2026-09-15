@@ -83,13 +83,6 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/v1/third_party_downloader/probe", c.handle_probe_third_party_downloader)
 	c.engine.POST("/api/v1/third_party_downloader/create", c.handle_create_third_party_download)
 	c.engine.POST("/api/v1/third_party_downloader/status", c.handle_third_party_download_status)
-	c.engine.GET("/api/bridge/status", c.handle_bridge_status)
-	c.engine.GET("/api/bridge/tasks", c.handle_bridge_task_list)
-	c.engine.POST("/api/bridge/call", c.handle_bridge_call_submit)
-	c.engine.POST("/api/bridge/tasks", c.handle_bridge_call_submit)
-	c.engine.GET("/api/bridge/tasks/:id", c.handle_bridge_task_get)
-	c.engine.POST("/api/bridge/tasks/wxchannels", c.handle_bridge_wxchannels_submit)
-	c.engine.POST("/api/bridge/tasks/download", c.handle_bridge_download_submit)
 	// c.engine.GET("/api/influencers", c.handle_influencer_list)
 	// c.engine.GET("/api/influencers/:id", c.handle_influencer_get)
 	// c.engine.POST("/api/influencers", c.handle_influencer_create)
@@ -105,6 +98,13 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/api/content/list", c.handle_content_list)
 	c.engine.GET("/api/content/detail", c.handle_content_detail)
 	c.engine.GET("/api/content/relations", c.handle_content_relations)
+	// Tag system (flat tags + content/account associations)
+	c.engine.GET("/api/tag/list", c.handle_tag_list)
+	c.engine.POST("/api/tag/create", c.handle_tag_create)
+	c.engine.POST("/api/tag/delete", c.handle_tag_delete)
+	c.engine.POST("/api/tag/rename", c.handle_tag_rename)
+	c.engine.POST("/api/tag/content/set", c.handle_tag_content_set)
+	c.engine.POST("/api/tag/account/set", c.handle_tag_account_set)
 	// Other endpoints
 	c.engine.GET("/api/logs", c.handle_logs)
 	c.engine.POST("/api/logs/clear", c.handle_clear_logs)
@@ -139,6 +139,32 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/proxy/certificate/uninstall", c.handle_proxy_certificate_uninstall)
 	c.engine.POST("/api/proxy/certificate/uninstall_by_name", c.handle_proxy_certificate_uninstall_by_name)
 	c.engine.POST("/api/cookies/update", c.handle_cookie_update)
+	c.setup_automation_routes()
+}
+
+func (c *APIClient) setup_automation_routes() {
+	c.engine.GET("/ws/v1/automation", c.handle_automation_ws)
+	// Scheduled workflow automation
+	c.engine.POST("/api/v1/automation/list_schedules", c.handle_list_automation_schedules)
+	c.engine.POST("/api/v1/automation/create_schedule", c.handle_create_automation_schedule)
+	c.engine.POST("/api/v1/automation/get_schedule", c.handle_get_automation_schedule)
+	c.engine.POST("/api/v1/automation/update_schedule", c.handle_update_automation_schedule)
+	c.engine.POST("/api/v1/automation/delete_schedule", c.handle_delete_automation_schedule)
+	c.engine.POST("/api/v1/automation/toggle_schedule", c.handle_toggle_automation_schedule)
+	c.engine.POST("/api/v1/automation/trigger_schedule", c.handle_trigger_automation_schedule)
+	c.engine.POST("/api/v1/automation/list_runs", c.handle_list_automation_runs)
+	c.engine.POST("/api/v1/automation/get_run", c.handle_get_automation_run)
+	c.engine.POST("/api/v1/automation/cancel_run", c.handle_cancel_automation_run)
+	// User-defined pipelines
+	c.engine.POST("/api/v1/automation/list_flows", c.handle_list_user_flows)
+	c.engine.POST("/api/v1/automation/create_flow", c.handle_create_user_flow)
+	c.engine.POST("/api/v1/automation/import_flow", c.handle_import_user_flow)
+	c.engine.POST("/api/v1/automation/get_flow", c.handle_get_user_flow)
+	c.engine.POST("/api/v1/automation/update_flow", c.handle_update_user_flow)
+	c.engine.POST("/api/v1/automation/delete_flow", c.handle_delete_user_flow)
+	c.engine.POST("/api/v1/automation/list_flow_nodes", c.handle_get_user_flow_node_catalog)
+	c.engine.POST("/api/v1/automation/get_flow_graph", c.handle_get_user_flow_graph)
+	c.engine.POST("/api/v1/automation/trigger_flow", c.handle_trigger_user_flow)
 }
 
 func (c *APIClient) handle_favicon(ctx *gin.Context) {

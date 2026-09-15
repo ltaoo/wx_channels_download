@@ -1,0 +1,1438 @@
+[
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "获取 config.yaml 的可配置字段、类型、说明、当前值和解析后的生效值。application_fields 是 internal/config/config.go 注册的应用配置，plugin_fields 是 adapter 插件配置，fields 是两者的兼容合集。敏感字段只返回是否已配置，不返回明文。修改前应先调用此工具确认字段名称和允许值。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "name": "get_config",
+    "title": "获取应用配置"
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "批量修改 get_config 返回的非只读配置字段。配置保存成功后只代表重启已安排，不代表重启已完成；必须保存返回的 restart_token，在连接恢复后调用 get_restart_status，且仅当 status=completed、restart_completed=true、config_applied=true 时才能告诉用户重启完成且配置生效。当前 MCP 连接可能短暂断开；相同值不会触发重启。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "additionalProperties": true,
+          "description": "配置键到新值的映射；键必须来自 get_config，值必须符合对应字段类型。",
+          "minProperties": 1,
+          "type": "object"
+        }
+      },
+      "required": [
+        "values"
+      ],
+      "type": "object"
+    },
+    "name": "update_config",
+    "title": "修改应用配置并重启"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "使用 update_config 返回的 restart_token 确认重启结果。status=pending 表示仍是旧进程，必须在连接恢复后重试；status=failed 表示重启请求失败；status=config_mismatch 表示已重启但配置不一致；只有 status=completed、restart_completed=true、config_applied=true 才能向用户确认重启完成且新配置已生效。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "restart_token": {
+          "description": "update_config 返回的重启确认令牌。",
+          "type": "string"
+        }
+      },
+      "required": [
+        "restart_token"
+      ],
+      "type": "object"
+    },
+    "name": "get_restart_status",
+    "title": "确认应用重启与配置生效"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "获取下载器当前支持的抓取平台及各平台可用状态。解析或下载链接前可先调用此工具。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "name": "get_platform_status",
+    "title": "获取平台状态"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "解析受支持的平台链接并返回规范化内容、账号、内容详情、缓存条目和下载预览。微信视频号结果会额外提供 download_resources，其中包含可交给 aria2 等下载器的 download_url 和可选 decode_key。返回的 job_id 可传给 download_content，避免再次解析链接。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "force_refresh": {
+          "default": false,
+          "description": "忽略抓取缓存并重新获取。",
+          "type": "boolean"
+        },
+        "timeout_seconds": {
+          "default": 300,
+          "description": "等待链接解析完成的最长秒数。",
+          "maximum": 3600,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "url": {
+          "description": "要解析的平台内容链接。",
+          "format": "uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
+    "name": "fetch_content",
+    "title": "获取链接内容"
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "根据 fetch_content 返回的 job_id 创建并启动下载任务；也可直接传 url，此时会先解析链接。默认在任务启动后返回，设置 wait_for_completion 可等待文件下载完成。此工具会写入下载目录。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "job_id"
+          ]
+        },
+        {
+          "required": [
+            "fetch_id"
+          ]
+        },
+        {
+          "required": [
+            "url"
+          ]
+        }
+      ],
+      "properties": {
+        "download_dir": {
+          "description": "下载目录；留空时使用应用配置。",
+          "type": "string"
+        },
+        "existing_action": {
+          "default": "error",
+          "description": "遇到相同任务时的处理方式。overwrite 会覆盖已有任务及文件。",
+          "enum": [
+            "error",
+            "skip",
+            "overwrite",
+            "duplicate"
+          ],
+          "type": "string"
+        },
+        "fetch_id": {
+          "deprecated": true,
+          "description": "job_id 的旧名称，仅用于兼容已有调用。",
+          "type": "string"
+        },
+        "filename": {
+          "description": "可选的自定义文件名。",
+          "type": "string"
+        },
+        "force_refresh": {
+          "default": false,
+          "description": "直接传 url 时忽略抓取缓存。",
+          "type": "boolean"
+        },
+        "job_id": {
+          "description": "fetch_content 返回的 job_id；优先使用它以复用解析结果。",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 300,
+          "description": "解析链接以及可选等待下载完成的最长秒数。",
+          "maximum": 86400,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "url": {
+          "description": "未提供 job_id 时，要解析并下载的平台内容链接。",
+          "format": "uri",
+          "type": "string"
+        },
+        "video_variant_key": {
+          "description": "可选的视频规格 variant_key。",
+          "type": "string"
+        },
+        "video_variant_spec": {
+          "description": "可选的视频规格名称；同时兼容适配器的 spec 配置。",
+          "type": "string"
+        },
+        "wait_for_completion": {
+          "default": false,
+          "description": "是否等待实际下载结束后再返回。",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "name": "download_content",
+    "title": "下载内容"
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "原地解密已经下载到本机的微信视频号视频。file_path 必须是运行下载器服务的同一台机器上的绝对路径；仅当 fetch_content 返回的 download_resources 项中 requires_decryption 为 true 时调用，并原样传入 decode_key。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "file_path": {
+          "description": "第三方下载器已下载完成的视频绝对路径。文件会被原地覆盖为解密后内容。",
+          "type": "string"
+        },
+        "key": {
+          "description": "fetch_content 返回的 decode_key，使用字符串传递以避免整数精度丢失。",
+          "pattern": "^[1-9][0-9]*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_path",
+        "key"
+      ],
+      "type": "object"
+    },
+    "name": "decrypt_wxchannels_video",
+    "title": "解密微信视频号视频"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "创建异步页面抓取任务并立即返回任务快照。使用 get_scraper_job 查询状态和结果；需要直接等待结果时可使用 fetch_content。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "force_refresh": {
+          "default": false,
+          "description": "忽略抓取缓存并重新获取。",
+          "type": "boolean"
+        },
+        "url": {
+          "description": "要抓取的平台或普通页面链接。",
+          "format": "uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
+    "name": "create_scraper_job",
+    "title": "创建页面抓取任务"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "按任务 ID 查询抓取状态、进度和完成后的输出。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "create_scraper_job 返回的任务 ID。",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "get_scraper_job",
+    "title": "获取页面抓取任务"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "检查是否已有视频号页面通过 WebSocket 连接到下载器。其他微信视频号工具依赖此连接。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "name": "get_wxchannels_status",
+    "title": "获取微信视频号连接状态"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "按关键词搜索微信视频号账号。继续翻页时，把响应中的 lastBuff 原样传给 next_marker。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "keyword": {
+          "description": "账号昵称等搜索关键词。",
+          "minLength": 1,
+          "type": "string"
+        },
+        "next_marker": {
+          "description": "上一页响应 data.lastBuff 中的分页游标。",
+          "type": "string"
+        }
+      },
+      "required": [
+        "keyword"
+      ],
+      "type": "object"
+    },
+    "name": "search_wxchannels_accounts",
+    "title": "搜索微信视频号账号"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "获取指定视频号账号发布的视频。username 可使用搜索结果中的 username；缺少 @finder 后缀时会自动补齐。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "next_marker": {
+          "description": "上一页响应 data.lastBuffer 中的分页游标。",
+          "type": "string"
+        },
+        "username": {
+          "description": "视频号账号 username。",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "username"
+      ],
+      "type": "object"
+    },
+    "name": "get_wxchannels_account_videos",
+    "title": "获取微信视频号账号的视频列表"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "获取指定视频号账号的直播回放列表。username 可使用搜索或关注列表返回的 username。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "next_marker": {
+          "description": "上一页响应 data.lastBuffer 中的分页游标。",
+          "type": "string"
+        },
+        "username": {
+          "description": "视频号账号 username。",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "username"
+      ],
+      "type": "object"
+    },
+    "name": "get_wxchannels_live_replays",
+    "title": "获取微信视频号直播回放"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "通过视频号页面的 joinLive 能力获取直播详情和直播流信息。username、oid、nid 和 id 分别对应 finderUsername、objectId、objectNonceId 和 liveId。所有 ID 均以字符串传入，避免大整数精度损失。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "直播 ID，对应 liveId。",
+          "minLength": 1,
+          "type": "string"
+        },
+        "nid": {
+          "description": "直播对象 nonce ID，对应 objectNonceId。",
+          "minLength": 1,
+          "type": "string"
+        },
+        "oid": {
+          "description": "直播对象 ID，对应 objectId。",
+          "minLength": 1,
+          "type": "string"
+        },
+        "username": {
+          "description": "传给 joinLive 的 finderUsername。",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "username",
+        "oid",
+        "nid",
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "get_wxchannels_live_profile",
+    "title": "获取微信视频号直播详情"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "获取当前微信用户赞过或收藏的视频。flag 是视频号页面使用的 tabFlag，默认值 7；继续翻页时传入响应中的 lastBuffer。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "flag": {
+          "default": 7,
+          "description": "视频号交互列表的 tabFlag；留空时使用 7。",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "next_marker": {
+          "description": "上一页响应 data.lastBuffer 中的分页游标。",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_wxchannels_interacted_videos",
+    "title": "获取微信视频号赞或收藏的视频"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "获取当前微信用户关注的视频号账号列表。继续翻页时，把响应中的 lastBuffer 原样传给 next_marker。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "next_marker": {
+          "description": "上一页响应 data.lastBuffer 中的分页游标。",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_wxchannels_followed_accounts",
+    "title": "获取关注的微信视频号账号"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "获取当前微信用户最近的视频号播放记录。响应同时包含 recentNDays 和分页游标 lastBuffer。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "next_marker": {
+          "description": "上一页响应 data.lastBuffer 中的分页游标。",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_wxchannels_play_history",
+    "title": "获取微信视频号播放记录"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "获取单个视频号内容详情。优先直接传视频链接；也可传 oid 与 nid，或只传 eid。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "url"
+          ]
+        },
+        {
+          "required": [
+            "oid",
+            "nid"
+          ]
+        },
+        {
+          "required": [
+            "eid"
+          ]
+        }
+      ],
+      "properties": {
+        "eid": {
+          "description": "加密的视频对象 ID。",
+          "type": "string"
+        },
+        "nid": {
+          "description": "视频对象 nonce ID；与 oid 配套使用。",
+          "type": "string"
+        },
+        "oid": {
+          "description": "视频对象 ID；使用它时还需提供 nid。",
+          "type": "string"
+        },
+        "url": {
+          "description": "视频号内容链接。",
+          "format": "uri",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_wxchannels_video_profile",
+    "title": "获取微信视频号视频详情"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "获取视频评论或指定根评论的回复。oid 必填；查询一级评论时传 nid，查询回复时传 comment_id。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "nid"
+          ]
+        },
+        {
+          "required": [
+            "comment_id"
+          ]
+        }
+      ],
+      "properties": {
+        "comment_id": {
+          "description": "查询某条根评论的回复时使用的评论 ID。",
+          "type": "string"
+        },
+        "next_marker": {
+          "description": "上一页响应 data.lastBuffer 中的分页游标。",
+          "type": "string"
+        },
+        "nid": {
+          "description": "查询一级评论时需要的视频对象 nonce ID。",
+          "type": "string"
+        },
+        "oid": {
+          "description": "视频对象 ID。",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "oid"
+      ],
+      "type": "object"
+    },
+    "name": "get_wxchannels_video_comments",
+    "title": "获取微信视频号视频评论"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "根据视频对象 ID 获取可分享的 H5 链接。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "oid": {
+          "description": "视频对象 ID。",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "oid"
+      ],
+      "type": "object"
+    },
+    "name": "get_wxchannels_video_share_url",
+    "title": "获取微信视频号视频分享链接"
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "用户明确确认下载后，使用此命令按精确昵称或 username 自动定位当前直播并直接创建、启动直播下载任务。只需传 account；命令会完成账号搜索、直播流定位和原生任务创建。不要先获取流地址，也不要把直播 FLV 地址传给 download_content。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "account": {
+          "description": "视频号精确昵称，或以 @finder 结尾的 username。推荐直接传用户说出的精确昵称。",
+          "minLength": 1,
+          "type": "string"
+        },
+        "download_dir": {
+          "description": "可选下载目录；留空时使用应用配置。",
+          "type": "string"
+        },
+        "existing_action": {
+          "default": "error",
+          "description": "遇到相同任务时的处理方式；默认报错，避免重复下载。",
+          "enum": [
+            "error",
+            "skip",
+            "overwrite",
+            "duplicate"
+          ],
+          "type": "string"
+        },
+        "filename": {
+          "description": "可选自定义文件名。",
+          "type": "string"
+        }
+      },
+      "required": [
+        "account"
+      ],
+      "type": "object"
+    },
+    "name": "download_wxchannels_live",
+    "title": "快速下载微信视频号直播"
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "用户明确确认下载后，使用此命令获取单个视频详情并直接创建、启动下载任务。最快方式是只传视频号分享链接 url；已有列表结果时也可传 oid+nid，或只传 eid。无需先调用 get_wxchannels_video_profile、fetch_content 或 download_content。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "url"
+          ]
+        },
+        {
+          "required": [
+            "oid",
+            "nid"
+          ]
+        },
+        {
+          "required": [
+            "eid"
+          ]
+        }
+      ],
+      "properties": {
+        "download_dir": {
+          "description": "可选下载目录；留空时使用应用配置。",
+          "type": "string"
+        },
+        "eid": {
+          "description": "加密的视频对象 ID。",
+          "type": "string"
+        },
+        "existing_action": {
+          "default": "error",
+          "description": "遇到相同任务时的处理方式；默认报错，避免重复下载。",
+          "enum": [
+            "error",
+            "skip",
+            "overwrite",
+            "duplicate"
+          ],
+          "type": "string"
+        },
+        "filename": {
+          "description": "可选自定义文件名。",
+          "type": "string"
+        },
+        "nid": {
+          "description": "视频对象 nonce ID；与 oid 配套使用。",
+          "type": "string"
+        },
+        "oid": {
+          "description": "视频对象 ID；与 nid 配套使用。",
+          "type": "string"
+        },
+        "url": {
+          "description": "视频号视频分享链接；推荐使用此参数。",
+          "format": "uri",
+          "type": "string"
+        },
+        "video_variant_key": {
+          "description": "可选视频规格 variant_key。",
+          "type": "string"
+        },
+        "video_variant_spec": {
+          "description": "可选视频规格名称。",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "download_wxchannels_video",
+    "title": "快速下载微信视频号视频"
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "读取应用配置中的 cloudflare.accountId、cloudflare.apiToken、cloudflare.sphWorkerName、cloudflare.sphCookie 和 cloudflare.sphCredential，部署或覆盖 Cloudflare 视频号查询 Worker，并返回 workers.dev 地址。调用前应获得用户确认；get_config 可用时，可先用它确认相关配置均已设置。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "name": "deploy_sph_worker",
+    "title": "部署视频号查询 Worker"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "检查 cookies.json 是否包含未过期且适用于 zhihu.com 的 z_c0 登录 Cookie，并通过当前用户接口验证登录态。不会返回 Cookie 明文。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "name": "get_zhihu_credential_status",
+    "title": "检查知乎凭证"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "使用 cookies.json 中的知乎登录态识别当前账号，获取该账号可见的公开与私密收藏夹列表。调用前会验证 z_c0 Cookie 和当前登录账号。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "name": "get_my_zhihu_collections",
+    "title": "获取我的知乎收藏夹"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "按 collection_id 获取指定知乎收藏夹的一页内容。page 从 1 开始；响应 has_next=true 时，应将 next_page 作为下一次调用的 page。调用前会验证 cookies.json 中的知乎登录态。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "description": "知乎收藏夹 ID，例如收藏夹链接 /collection/972293341 中的 972293341。",
+          "pattern": "^[0-9]+$",
+          "type": "string"
+        },
+        "page": {
+          "default": 1,
+          "description": "页码，从 1 开始。",
+          "maximum": 1000000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_zhihu_collection_contents",
+    "title": "获取知乎收藏夹内容"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "使用 cookies.json 中的知乎登录态识别当前账号，分页获取该账号发布的回答。page 从 1 开始；响应 has_next=true 时，应将 next_page 作为下一次调用的 page。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "page": {
+          "default": 1,
+          "description": "页码，从 1 开始。",
+          "maximum": 1000000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_my_zhihu_answers",
+    "title": "获取我的知乎回答"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "使用 cookies.json 中的知乎登录态识别当前账号，分页获取该账号发布的文章。page 从 1 开始；响应 has_next=true 时，应将 next_page 作为下一次调用的 page。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "page": {
+          "default": 1,
+          "description": "页码，从 1 开始。",
+          "maximum": 1000000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_my_zhihu_posts",
+    "title": "获取我的知乎文章"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "使用 cookies.json 中的知乎登录态识别当前账号，分页获取该账号发布的视频。page 从 1 开始；响应 has_next=true 时，应将 next_page 作为下一次调用的 page。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "page": {
+          "default": 1,
+          "description": "页码，从 1 开始。",
+          "maximum": 1000000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_my_zhihu_zvideos",
+    "title": "获取我的知乎视频"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "使用 cookies.json 中的知乎登录态识别当前账号，分页获取该账号参与的专栏。page 从 1 开始；响应 has_next=true 时，应将 next_page 作为下一次调用的 page。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "page": {
+          "default": 1,
+          "description": "页码，从 1 开始。",
+          "maximum": 1000000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_my_zhihu_columns",
+    "title": "获取我的知乎专栏"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "列出已保存的工作流定时任务，包含 cron 表达式、启用状态、下次执行时间和最近一次执行结果。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "name": "list_automation_schedules",
+    "title": "列出定时任务"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "按 ID 查询单个定时任务的完整配置，包含初始数据和超时时间。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "list_automation_schedules 返回的定时任务 ID。",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "get_automation_schedule",
+    "title": "获取定时任务"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "创建一个按 cron 表达式周期性执行工作流的定时任务。cron_expr 支持标准 5 字段表达式，也支持 @every 1m、@daily 等简写。创建前应先获得用户确认。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "cron_expr": {
+          "description": "cron 表达式，例如 \"0 9 * * *\" 表示每天 9 点，\"@every 30m\" 表示每 30 分钟。",
+          "type": "string"
+        },
+        "description": {
+          "description": "定时任务说明。",
+          "type": "string"
+        },
+        "enabled": {
+          "description": "创建后是否立即启用，默认 true。",
+          "type": "boolean"
+        },
+        "flow_id": {
+          "description": "要执行的工作流 ID，必须已在流程引擎中注册。",
+          "type": "string"
+        },
+        "initial_data": {
+          "additionalProperties": true,
+          "description": "传给工作流的初始上下文数据。",
+          "type": "object"
+        },
+        "name": {
+          "description": "定时任务名称。",
+          "type": "string"
+        },
+        "timeout_sec": {
+          "description": "单次执行的超时秒数，默认 3600。",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "cron_expr",
+        "flow_id"
+      ],
+      "type": "object"
+    },
+    "name": "create_automation_schedule",
+    "title": "创建定时任务"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "切换定时任务的启用状态。停用后不再按 cron 计划触发，任务本身和它的历史记录都会保留。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "要切换状态的定时任务 ID。",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "toggle_automation_schedule",
+    "title": "启停定时任务"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "不等待 cron 计划，立即按定时任务的配置执行一次工作流，并返回本次运行记录。执行前应先获得用户确认。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "要立即执行的定时任务 ID。",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "trigger_automation_schedule",
+    "title": "立即执行定时任务"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "列出定时任务的执行历史，可按 schedule_id 过滤。用于确认一次执行是否成功以及失败原因。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "description": "返回条数上限，默认 20。",
+          "type": "integer"
+        },
+        "schedule_id": {
+          "description": "只返回该定时任务的执行记录；留空返回全部。",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "list_automation_runs",
+    "title": "列出定时任务执行记录"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "分页查询下载任务及状态统计，可按任务状态、父任务或根任务筛选。状态值：0 等待、1 准备、2 下载中、3 暂停、4 合并、5 完成、6 失败、7 取消。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "content_id": {
+          "description": "只返回关联该内容 ID 的下载任务。",
+          "type": "string"
+        },
+        "page": {
+          "default": 1,
+          "description": "页码，从 1 开始。",
+          "maximum": 1000000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "page_size": {
+          "default": 20,
+          "description": "每页任务数。",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "parent_task_id": {
+          "description": "只返回该父任务的直接子任务。",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "root_task_id": {
+          "description": "只返回属于该根任务的任务。",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "statuses": {
+          "description": "可选的任务状态列表。",
+          "items": {
+            "maximum": 7,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_download_tasks",
+    "title": "获取下载任务"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "按下载任务 ID 获取任务、文件、进度、关联内容和账号详情。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "下载任务 ID。",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "get_download_task_detail",
+    "title": "获取下载任务详情"
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "用户明确确认后，停止并软删除指定下载任务。delete_files 默认为 false，仅删除任务记录；设为 true 时同时安全删除关联的最终文件、临时文件和直播录制目录。每个任务独立返回删除结果。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "delete_files": {
+          "default": false,
+          "description": "是否同时删除任务关联的本地文件。",
+          "type": "boolean"
+        },
+        "task_ids": {
+          "description": "要删除的下载任务 ID。",
+          "items": {
+            "description": "下载任务 ID。",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "task_ids"
+      ],
+      "type": "object"
+    },
+    "name": "delete_download_tasks",
+    "title": "删除下载任务"
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "直接创建并启动一个下载任务。platform 指定内容平台，content 是平台归一化后的内容对象，config 可携带 existing_action、video_variant_key 等下载配置。相比 download_content 或 download_wxchannels_video，此工具不做链接解析，只调用下载任务服务。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "platform": {
+          "description": "内容平台 ID，例如 wxchannels。",
+          "minLength": 1,
+          "type": "string"
+        },
+        "content": {
+          "description": "平台归一化后的内容对象，必须包含平台下载所需的字段。",
+          "type": "object"
+        },
+        "build_from_fetch": {
+          "default": false,
+          "description": "是否按抓取结果构建下载任务。",
+          "type": "boolean"
+        },
+        "resource_indexes": {
+          "description": "要下载的资源下标列表。",
+          "items": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "download_dir": {
+          "description": "下载目录；留空时使用应用配置。",
+          "type": "string"
+        },
+        "filename": {
+          "description": "可选的自定义文件名。",
+          "type": "string"
+        },
+        "config": {
+          "additionalProperties": true,
+          "description": "下载配置，例如 existing_action、video_variant_key。",
+          "type": "object"
+        },
+        "auto_start": {
+          "default": true,
+          "description": "创建后是否立即启动，默认 true。",
+          "type": "boolean"
+        },
+        "parent_task_id": {
+          "description": "可选的父任务 ID，用于建立任务关联。",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "relation_type": {
+          "description": "与父任务的关系类型。",
+          "type": "string"
+        }
+      },
+      "required": [
+        "platform",
+        "content"
+      ],
+      "type": "object"
+    },
+    "name": "create_download_task",
+    "title": "创建下载任务"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "分页查询已保存的平台账号，可按账号 ID 精确筛选，或按 ID、平台外部 ID、别名和昵称模糊搜索。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "description": "可选的数据库账号 ID。",
+          "type": "string"
+        },
+        "keyword": {
+          "description": "账号搜索关键词。",
+          "type": "string"
+        },
+        "page": {
+          "default": 1,
+          "description": "页码，从 1 开始。",
+          "maximum": 1000000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "page_size": {
+          "default": 24,
+          "description": "每页账号数。",
+          "maximum": 200,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_accounts",
+    "title": "获取账号列表"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "分页查询已保存的浏览记录，可按平台、关联账号和关键词筛选。username 对应账号的数据库 ID。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "keyword": {
+          "description": "匹配标题、内容 ID、链接或关联账号的关键词。",
+          "type": "string"
+        },
+        "page": {
+          "default": 1,
+          "description": "页码，从 1 开始。",
+          "maximum": 1000000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "page_size": {
+          "default": 20,
+          "description": "每页记录数。",
+          "maximum": 200,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "platform_ids": {
+          "description": "平台 ID 列表；留空时查询常用平台。",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "username": {
+          "description": "关联账号的数据库 ID，例如 wxchannels:xxx。",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_browse_history",
+    "title": "获取浏览记录"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "分页读取应用日志，可按级别、来源和关键词过滤。默认最多从日志末尾读取 2 MB。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "keyword": {
+          "description": "不区分大小写的日志关键词。",
+          "type": "string"
+        },
+        "levels": {
+          "description": "日志级别列表，例如 debug、info、warn、error。",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "max_bytes": {
+          "default": 2097152,
+          "description": "从每个日志文件末尾读取的最大字节数。",
+          "maximum": 10485760,
+          "minimum": 65536,
+          "type": "integer"
+        },
+        "page": {
+          "default": 1,
+          "description": "页码，从 1 开始。",
+          "maximum": 1000000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "page_size": {
+          "default": 300,
+          "description": "每页日志条数。",
+          "maximum": 2000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "source": {
+          "description": "日志来源、文件或组件筛选。",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_logs",
+    "title": "获取应用日志"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "获取当前代理根证书的来源、安装和信任状态、证书详情及风险提示。",
+    "inputSchema": {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "name": "get_certificate_status",
+    "title": "获取代理证书状态"
+  }
+]
