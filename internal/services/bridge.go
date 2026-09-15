@@ -17,6 +17,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"wx_channel/internal/adapter"
+	wxchannelsadapter "wx_channel/internal/adapter/wxchannels"
 	"wx_channel/internal/bridge"
 	"wx_channel/internal/config"
 	"wx_channel/pkg/scraper/wxchannels"
@@ -324,6 +325,7 @@ type bridge_wxchannels_article struct {
 	Title       string `json:"title"`
 	Digest      string `json:"digest"`
 	URL         string `json:"url"`
+	SourceURL   string `json:"source_url"`
 	CoverURL    string `json:"cover_url"`
 	DecodeKey   string `json:"decode_key"`
 	PublishTime int64  `json:"publish_time"`
@@ -780,6 +782,7 @@ func normalize_bridge_wxchannels_article_list(response_json json.RawMessage) (*b
 			Title:       bridge_wxchannels_article_title(object),
 			Digest:      object.ObjectDesc.Description,
 			URL:         bridge_wxchannels_article_url(object),
+			SourceURL:   bridge_wxchannels_article_source_url(object, contact.Username),
 			CoverURL:    bridge_wxchannels_article_cover_url(object),
 			DecodeKey:   bridge_wxchannels_article_decode_key(object),
 			PublishTime: int64(object.CreateTime),
@@ -795,6 +798,21 @@ func bridge_wxchannels_article_title(object *wxchannels.ChannelsObject) string {
 		}
 	}
 	return object.ObjectDesc.Description
+}
+
+// bridge_wxchannels_article_source_url builds the feed page URL of the object.
+// The URL returned by the upstream response wins over the generated one.
+func bridge_wxchannels_article_source_url(object *wxchannels.ChannelsObject, account_username string) string {
+	object_username := strings.TrimSpace(object.Contact.Username)
+	if object_username == "" {
+		object_username = strings.TrimSpace(account_username)
+	}
+	return wxchannelsadapter.BuildJumpURLFromParts(
+		object.ID,
+		object.ObjectNonceId,
+		strings.TrimSpace(object.SourceURL),
+		object_username,
+	)
 }
 
 func bridge_wxchannels_article_cover_url(object *wxchannels.ChannelsObject) string {
