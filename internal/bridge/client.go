@@ -28,7 +28,6 @@ var method_name_pattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}
 type Client struct {
 	config           Config
 	executor         Executor
-	terminal_handler TerminalHandler
 	logger           *zerolog.Logger
 	http_client      *http.Client
 
@@ -46,7 +45,7 @@ type Client struct {
 }
 
 // NewClient creates a dormant client. Call Start after adapters are registered.
-func NewClient(config Config, executor Executor, terminal_handler TerminalHandler, logger *zerolog.Logger) *Client {
+func NewClient(config Config, executor Executor, logger *zerolog.Logger) *Client {
 	http_timeout := config.HTTPTimeout
 	if http_timeout <= 0 {
 		http_timeout = 30 * time.Second
@@ -54,7 +53,6 @@ func NewClient(config Config, executor Executor, terminal_handler TerminalHandle
 	return &Client{
 		config:           config,
 		executor:         executor,
-		terminal_handler: terminal_handler,
 		logger:           logger,
 		http_client:      &http.Client{Timeout: http_timeout},
 		active_tasks:     make(map[string]struct{}),
@@ -305,11 +303,6 @@ func (c *Client) read_messages(run_context context.Context, connection *websocke
 			if message.Task != nil && message.LeaseToken != "" {
 				c.start_task(run_context, *message.Task, message.LeaseToken, message.LeaseMilliseconds)
 			}
-		case "task.completed", "task.failed":
-			if message.Task != nil && c.terminal_handler != nil {
-				task := *message.Task
-				go c.terminal_handler(task)
-			}
 		case "error":
 			if c.logger != nil {
 				c.logger.Warn().Str("error", message.Error).Msg("bridge protocol error")
@@ -433,13 +426,13 @@ func (c *Client) set_disconnected(connection *websocket.Conn, err error) {
 func (c *Client) request_headers() http.Header {
 	headers := http.Header{}
 	headers.Set("Authorization", "Bearer "+c.config.Token)
-	headers.Set("X-Bridge-Device-ID", c.config.DeviceID)
-	headers.Set("X-Bridge-Device-Name", c.config.DeviceName)
-	headers.Set("X-Bridge-Device-OS", c.config.DeviceOS)
-	headers.Set("X-Bridge-Methods", strings.Join(c.config.Methods, ","))
+	headers.Set("X-Api-Device-ID", c.config.DeviceID)
+	headers.Set("X-Api-Device-Name", c.config.DeviceName)
+	headers.Set("X-Api-Device-OS", c.config.DeviceOS)
+	headers.Set("X-Api-Methods", strings.Join(c.config.Methods, ","))
 	if c.config.LegacyBridgeID != "" {
-		headers.Set("X-Bridge-Client-ID", c.config.DeviceID)
-		headers.Set("X-Bridge-Capabilities", strings.Join(c.config.Methods, ","))
+		headers.Set("X-Api-Client-ID", c.config.DeviceID)
+		headers.Set("X-Api-Capabilities", strings.Join(c.config.Methods, ","))
 	}
 	return headers
 }

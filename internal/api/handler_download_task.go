@@ -378,10 +378,10 @@ func (c *APIClient) handle_prepare_download_task_by_url(ctx *gin.Context) {
 
 // create_download_task_single creates a single platform download task and returns the compact task item or error.
 func (c *APIClient) create_download_task_single(body services.CreateDownloadTaskBody) (DownloadTaskItem, error) {
-	if c.download_task_service == nil {
+	if c.service_download_task == nil {
 		return DownloadTaskItem{}, fmt.Errorf("下载任务服务未初始化")
 	}
-	create_result, err := c.download_task_service.CreateTask(body)
+	create_result, err := c.service_download_task.CreateTask(body)
 	if err != nil {
 		return DownloadTaskItem{}, err
 	}
@@ -618,10 +618,10 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 
 // create_download_task_by_url_single uses the shared URL task persistence and lifecycle.
 func (c *APIClient) create_download_task_by_url_single(body CreateDownloadTaskByURLBody) (gin.H, error) {
-	if c.download_task_service == nil {
+	if c.service_download_task == nil {
 		return nil, fmt.Errorf("下载任务服务未初始化")
 	}
-	created, err := c.download_task_service.CreateTaskByURL(body)
+	created, err := c.service_download_task.CreateTaskByURL(body)
 	if err != nil {
 		return nil, err
 	}
@@ -723,7 +723,7 @@ func (c *APIClient) handle_start_download_task(ctx *gin.Context) {
 
 		c.logger.Info().Str("api", "POST /api/v1/download_task/start").Int("task_id", task_id).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("Starting download task")
 
-		started_task, err := c.download_task_service.StartTask(task.Id)
+		started_task, err := c.service_download_task.StartTask(task.Id)
 		if err != nil {
 			c.logger.Error().Int("task_id", task_id).Err(err).Msg("Failed to start download task")
 			results = append(results, gin.H{"task_id": task_id, "success": false, "error": err.Error()})
@@ -814,7 +814,7 @@ func (c *APIClient) handle_pause_download_task(ctx *gin.Context) {
 			continue
 		}
 
-		paused_task, is_stream, err := c.download_task_service.PauseTask(task.Id)
+		paused_task, is_stream, err := c.service_download_task.PauseTask(task.Id)
 		if err != nil {
 			failure := gin.H{"task_id": task_id, "success": false, "error": err.Error()}
 			if paused_task != nil {
@@ -876,7 +876,7 @@ func (c *APIClient) handle_resume_download_task(ctx *gin.Context) {
 			continue
 		}
 
-		resumed_task, err := c.download_task_service.ResumeTask(task.Id)
+		resumed_task, err := c.service_download_task.ResumeTask(task.Id)
 		if err != nil {
 			results = append(results, gin.H{"task_id": task_id, "success": false, "error": err.Error()})
 			continue
@@ -936,7 +936,7 @@ func (c *APIClient) handle_retry_download_task(ctx *gin.Context) {
 
 		c.logger.Info().Str("api", "POST /api/v1/download_task/retry").Int("task_id", task_id).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("Retrying download task")
 
-		retried_task, err := c.download_task_service.RetryTask(task.Id)
+		retried_task, err := c.service_download_task.RetryTask(task.Id)
 		if err != nil {
 			c.logger.Error().Int("task_id", task_id).Err(err).Msg("Failed to retry download task")
 			results = append(results, gin.H{"task_id": task_id, "success": false, "error": err.Error()})
@@ -989,7 +989,7 @@ func (c *APIClient) delete_single_download_task(task_id int, delete_files bool) 
 		c.logger.Warn().Str("api", "POST /api/v1/download_task/delete").Int("task_id", task_id).Bool("delete_files", delete_files).Msg("Rejected invalid task ID")
 		return gin.H{"task_id": task_id, "success": false, "error": "task_id 无效"}
 	}
-	if err := c.download_task_service.DeleteTaskWithFiles(task_id, delete_files); err != nil {
+	if err := c.service_download_task.DeleteTaskWithFiles(task_id, delete_files); err != nil {
 		c.logger.Error().Int("task_id", task_id).Bool("delete_files", delete_files).Err(err).Msg("Download task deletion failed")
 		return gin.H{"task_id": task_id, "success": false, "error": err.Error()}
 	}
@@ -1226,7 +1226,7 @@ func (c *APIClient) handle_list_download_task(ctx *gin.Context) {
 		return
 	}
 	if task_id, err := strconv.Atoi(ctx.Query("task_id")); err == nil && task_id > 0 {
-		record, err := c.download_task_service.BuildTaskRecord(task_id)
+		record, err := c.service_download_task.BuildTaskRecord(task_id)
 		if err != nil {
 			result.Err(ctx, 500, "查询下载任务失败: "+err.Error())
 			return
@@ -1297,7 +1297,7 @@ func (c *APIClient) handle_list_download_task(ctx *gin.Context) {
 		return
 	}
 
-	list, err := c.download_task_service.BuildTaskRecords(tasks)
+	list, err := c.service_download_task.BuildTaskRecords(tasks)
 	if err != nil {
 		result.Err(ctx, 500, "构建下载任务记录失败: "+err.Error())
 		return
@@ -1420,7 +1420,7 @@ func (c *APIClient) handle_start_all_download_task(ctx *gin.Context) {
 	}
 	ctx.ShouldBindJSON(&body)
 
-	started, total, err := c.download_task_service.StartAllTasks(body.Status)
+	started, total, err := c.service_download_task.StartAllTasks(body.Status)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
@@ -1470,7 +1470,7 @@ func (c *APIClient) handle_pause_all_download_task(ctx *gin.Context) {
 			continue
 		}
 		total++
-		if _, _, err := c.download_task_service.PauseTask(task.Id); err != nil {
+		if _, _, err := c.service_download_task.PauseTask(task.Id); err != nil {
 			failures = append(failures, gin.H{"task_id": task.Id, "error": err.Error()})
 			continue
 		}
@@ -1576,7 +1576,7 @@ func (c *APIClient) handle_download_task_detail(ctx *gin.Context) {
 		return
 	}
 
-	record, err := c.download_task_service.BuildTaskRecord(task_id)
+	record, err := c.service_download_task.BuildTaskRecord(task_id)
 	if err != nil {
 		result.Err(ctx, 500, "查询下载任务失败: "+err.Error())
 		return

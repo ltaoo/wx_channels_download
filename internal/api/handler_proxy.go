@@ -325,7 +325,7 @@ func (c *APIClient) proxy_config_data() gin.H {
 }
 
 func (c *APIClient) proxy_service_status_data() gin.H {
-	proxy_status := c.runtime_status_service.ProxyStatus()
+	proxy_status := c.service_runtime_status.ProxyStatus()
 	addr := proxy_status.Addr
 	status := proxy_status.Status
 	if status == "" {
@@ -378,10 +378,10 @@ func (c *APIClient) system_proxy_status_data() gin.H {
 }
 
 func (c *APIClient) certificate_status_data() gin.H {
-	if c == nil || c.certificate_service == nil {
+	if c == nil || c.service_certificate == nil {
 		return gin.H{}
 	}
-	return gin.H(c.certificate_service.Status())
+	return gin.H(c.service_certificate.Status())
 }
 
 func (c *APIClient) system_proxy_settings() system.ProxySettings {
@@ -430,7 +430,7 @@ func (c *APIClient) save_config_values(values map[string]interface{}) error {
 }
 
 func (c *APIClient) proxy_service_running() bool {
-	status := c.runtime_status_service.ProxyStatus().Status
+	status := c.service_runtime_status.ProxyStatus().Status
 	return status == "running" || status == "stopping"
 }
 
