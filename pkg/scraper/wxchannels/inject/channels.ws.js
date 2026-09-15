@@ -121,9 +121,14 @@ function ChannelsWebsocketClient() {
   let websocket_ = null;
   let connection_promise_ = null;
   let retry_timer_ = null;
+  let my_username = __wx_username;
   const state = {
     connection_status: "disconnected",
   };
+
+  WXU.onInit((data) => {
+    my_username = data.mainFinderUsername;
+  });
 
   function set_connection_status(status) {
     state.connection_status = status;
@@ -383,11 +388,18 @@ function ChannelsWebsocketClient() {
         return;
       }
       if (key === "key:channels:live_profile") {
+        if (!my_username) {
+          var r = await WXU.API.finderInit();
+          if (r.data.mainFinderUsername) {
+            my_username = r.data.mainFinderUsername;
+          }
+        }
         var payload = {
           liveId: data.id,
           objectId: data.oid,
-          objectNonceId: data.nid,
+          finderUsername: my_username,
           scene: 2,
+          objectNonceId: data.nid,
           clientStatus: {
             videoDecoderSupportMask: 1,
           },

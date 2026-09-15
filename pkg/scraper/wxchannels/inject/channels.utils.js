@@ -8,7 +8,7 @@ if (typeof WXU === "undefined") {
   throw new Error("utils.js must be loaded before channels.utils.js");
 }
 
-var __wx_username;
+var __wx_username = undefined;
 var __wx_channels_tip__ = {};
 var __wx_channels_cur_video = null;
 /** 全局的存储 */
