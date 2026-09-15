@@ -3,8 +3,6 @@ import { ThirdPartyDownloaderModel } from "@/third-party-downloader.model.js";
 import { proxy_image_url } from "@/image-proxy.model.js";
 import { format_time } from "@/utils.js";
 
-// import { createCheckboxStore } from "../dmui.js";
-
 const active_job_storage_key = "scraper_active_job_id";
 const platform_status_popover_hide_delay = 240;
 const platform_status_order = new Map(

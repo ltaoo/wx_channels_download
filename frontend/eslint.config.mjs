@@ -80,7 +80,6 @@ export default [
         AccountSelect: "readonly",
         PlatformSelect: "readonly",
         PlatformIcon: "readonly",
-        TablePlatformBadge: "readonly",
         createInputStore: "readonly",
         createCheckboxStore: "readonly",
         DL: "readonly",

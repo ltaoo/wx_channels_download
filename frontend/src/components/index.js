@@ -1,13 +1,4 @@
-import { request } from "./biz/request.js";
-
-import {
-  BrandError,
-  BrandLoading,
-  Input,
-  PlatformIcon,
-  Popover,
-  Tag,
-} from "./dmui.js";
+import { request } from "@/biz/request.js";
 
 const Runtime = window.Timeless;
 
@@ -989,8 +980,6 @@ export function ErrorFallbackView(error, view_name) {
     ],
   );
 }
-
-export { PlatformIcon, PlatformTag as TablePlatformBadge } from "./dmui.js";
 
 // --- Tag system -------------------------------------------------------------
 

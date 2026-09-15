@@ -1,7 +1,7 @@
-import { Tag, PlatformTag, PlatformIcon, IconButton } from "../dmui.js";
+import { TagSelect, ContentTagBadge } from "@/components/index.js";
+
 import { ContentViewModel } from "./content.model.js";
 import ContentDetailPageView from "./content_detail.js";
-import { TagSelect, ContentTagBadge } from "../components.js";
 
 const Runtime = window.Timeless;
 
@@ -127,26 +127,26 @@ function ContentLayoutMenu(props) {
             title: "切换内容布局",
             "aria-label": "切换内容布局",
           },
-          },
-          [
-            Show({
-              when: computed(vm$.state.layout, (layout) => layout === "table"),
-              ok() {
-                return Timeless.Icon({
-                  name: "table",
-                  size: 16,
-                  attributes: { n: "content-layout-action-table-icon" },
-                });
-              },
-              else() {
-                return Timeless.Icon({
-                  name: "grid-3x3",
-                  size: 16,
-                  attributes: { n: "content-layout-action-card-icon" },
-                });
-              },
-            }),
-          ],
+        },
+        [
+          Show({
+            when: computed(vm$.state.layout, (layout) => layout === "table"),
+            ok() {
+              return Timeless.Icon({
+                name: "table",
+                size: 16,
+                attributes: { n: "content-layout-action-table-icon" },
+              });
+            },
+            else() {
+              return Timeless.Icon({
+                name: "grid-3x3",
+                size: 16,
+                attributes: { n: "content-layout-action-card-icon" },
+              });
+            },
+          }),
+        ],
       ),
     ],
   );

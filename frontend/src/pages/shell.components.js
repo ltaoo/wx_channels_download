@@ -1,10 +1,4 @@
 import { format_time } from "@/utils.js";
-import { Tag } from "../dmui.js";
-const Timeless = window.Timeless;
-
-if (!Timeless) {
-  throw new Error("应用无法启动：Timeless 运行时未加载");
-}
 
 function certificate_source_label(source) {
   var labels = {
