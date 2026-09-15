@@ -129,25 +129,6 @@ func (s *Service) Names() []string {
 	return names
 }
 
-// MCPDefinitions renders the service catalog in MCP tools/list format.
-func (s *Service) MCPDefinitions() []any {
-	definitions := s.Definitions()
-	result := make([]any, 0, len(definitions))
-	for _, definition := range definitions {
-		tool := map[string]any{
-			"name":        definition.Name,
-			"title":       definition.Title,
-			"description": definition.Description,
-			"inputSchema": definition.InputSchema,
-		}
-		if len(definition.Annotations) > 0 {
-			tool["annotations"] = definition.Annotations
-		}
-		result = append(result, tool)
-	}
-	return result
-}
-
 // Call executes a tool and preserves its MCP-compatible result envelope.
 func (s *Service) Call(ctx context.Context, name string, arguments json.RawMessage) (map[string]any, error) {
 	if s == nil {

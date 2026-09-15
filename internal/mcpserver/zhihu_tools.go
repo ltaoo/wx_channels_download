@@ -51,7 +51,7 @@ type zhihu_page_arguments struct {
 	Page int `json:"page"`
 }
 
-func (s *Server) get_zhihu_credential_status(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_zhihu_credential_status(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments struct{}
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -93,7 +93,7 @@ func (s *Server) get_zhihu_credential_status(ctx context.Context, raw_arguments 
 	})
 }
 
-func (s *Server) get_my_zhihu_collections(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_my_zhihu_collections(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments struct{}
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -110,7 +110,7 @@ func (s *Server) get_my_zhihu_collections(ctx context.Context, raw_arguments jso
 	return successful_tool_result(result)
 }
 
-func (s *Server) get_zhihu_collection_contents(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_zhihu_collection_contents(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments zhihu_collection_contents_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -141,23 +141,23 @@ func (s *Server) get_zhihu_collection_contents(ctx context.Context, raw_argument
 	return successful_tool_result(result)
 }
 
-func (s *Server) get_my_zhihu_answers(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_my_zhihu_answers(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	return s.get_my_zhihu_user_content(ctx, raw_arguments, zhihu.UserContentKindAnswers)
 }
 
-func (s *Server) get_my_zhihu_posts(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_my_zhihu_posts(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	return s.get_my_zhihu_user_content(ctx, raw_arguments, zhihu.UserContentKindPosts)
 }
 
-func (s *Server) get_my_zhihu_zvideos(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_my_zhihu_zvideos(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	return s.get_my_zhihu_user_content(ctx, raw_arguments, zhihu.UserContentKindZvideos)
 }
 
-func (s *Server) get_my_zhihu_columns(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_my_zhihu_columns(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	return s.get_my_zhihu_user_content(ctx, raw_arguments, zhihu.UserContentKindColumns)
 }
 
-func (s *Server) get_my_zhihu_user_content(ctx context.Context, raw_arguments json.RawMessage, kind string) (map[string]any, error) {
+func (s *ToolSet) get_my_zhihu_user_content(ctx context.Context, raw_arguments json.RawMessage, kind string) (map[string]any, error) {
 	var arguments zhihu_page_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -200,7 +200,7 @@ func (s *Server) get_my_zhihu_user_content(ctx context.Context, raw_arguments js
 	return successful_tool_result(result)
 }
 
-func (s *Server) authenticated_zhihu_user(ctx context.Context) (*zhihu.User, error) {
+func (s *ToolSet) authenticated_zhihu_user(ctx context.Context) (*zhihu.User, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -217,7 +217,7 @@ func (s *Server) authenticated_zhihu_user(ctx context.Context) (*zhihu.User, err
 	return user, nil
 }
 
-func (s *Server) check_local_zhihu_credential() error {
+func (s *ToolSet) check_local_zhihu_credential() error {
 	if s == nil || s.zhihu_credentials == nil {
 		return fmt.Errorf("知乎凭证读取器未配置")
 	}
