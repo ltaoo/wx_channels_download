@@ -63,7 +63,7 @@ type wxchannels_download_options struct {
 	VideoVariantSpec string
 }
 
-func (s *Server) download_wxchannels_live(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) download_wxchannels_live(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments download_wxchannels_live_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -125,7 +125,7 @@ func (s *Server) download_wxchannels_live(ctx context.Context, raw_arguments jso
 	})
 }
 
-func (s *Server) download_wxchannels_video(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) download_wxchannels_video(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments download_wxchannels_video_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -192,7 +192,7 @@ func validate_wxchannels_video_selector(raw_url string, object_id string, object
 	return nil
 }
 
-func (s *Server) resolve_wxchannels_live(ctx context.Context, account string) (wxchannels_download_contact, wxchannels_download_live_object, error) {
+func (s *ToolSet) resolve_wxchannels_live(ctx context.Context, account string) (wxchannels_download_contact, wxchannels_download_live_object, error) {
 	if strings.HasSuffix(account, "@finder") {
 		return s.resolve_wxchannels_live_by_username(ctx, account, wxchannels_download_contact{Username: account})
 	}
@@ -255,7 +255,7 @@ func (s *Server) resolve_wxchannels_live(ctx context.Context, account string) (w
 	return s.resolve_wxchannels_live_by_username(ctx, contact.Username, contact)
 }
 
-func (s *Server) resolve_wxchannels_live_by_username(ctx context.Context, username string, fallback_contact wxchannels_download_contact) (wxchannels_download_contact, wxchannels_download_live_object, error) {
+func (s *ToolSet) resolve_wxchannels_live_by_username(ctx context.Context, username string, fallback_contact wxchannels_download_contact) (wxchannels_download_contact, wxchannels_download_live_object, error) {
 	data, err := s.fetch_wxchannels_data(ctx, "/api/channels/contact/feed/list", url.Values{"username": []string{username}})
 	if err != nil {
 		return wxchannels_download_contact{}, wxchannels_download_live_object{}, err
@@ -306,7 +306,7 @@ func find_wxchannels_live_object(raw_objects []json.RawMessage, username string)
 	return wxchannels_download_live_object{}, false
 }
 
-func (s *Server) fetch_wxchannels_data(ctx context.Context, path string, query url.Values) (json.RawMessage, error) {
+func (s *ToolSet) fetch_wxchannels_data(ctx context.Context, path string, query url.Values) (json.RawMessage, error) {
 	raw_response, err := s.api_client.get_wxchannels_api(ctx, path, query)
 	if err != nil {
 		return nil, err
@@ -329,7 +329,7 @@ func (s *Server) fetch_wxchannels_data(ctx context.Context, path string, query u
 	return response.Data, nil
 }
 
-func (s *Server) create_wxchannels_download_task(ctx context.Context, content json.RawMessage, options wxchannels_download_options, source map[string]any) (map[string]any, error) {
+func (s *ToolSet) create_wxchannels_download_task(ctx context.Context, content json.RawMessage, options wxchannels_download_options, source map[string]any) (map[string]any, error) {
 	existing_action := strings.TrimSpace(options.ExistingAction)
 	if existing_action == "" {
 		existing_action = "error"

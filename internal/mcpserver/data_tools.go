@@ -160,7 +160,7 @@ type log_list_arguments struct {
 	Levels   []string `json:"levels"`
 }
 
-func (s *Server) get_download_tasks(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_download_tasks(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments download_task_list_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -211,7 +211,7 @@ func (s *Server) get_download_tasks(ctx context.Context, raw_arguments json.RawM
 	return s.call_read_api(ctx, http.MethodGet, "/api/v1/download_task/list?"+values.Encode(), nil)
 }
 
-func (s *Server) get_download_task_detail(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_download_task_detail(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments download_task_detail_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -233,7 +233,7 @@ func (s *Server) get_download_task_detail(ctx context.Context, raw_arguments jso
 	return s.call_read_api(ctx, http.MethodGet, "/api/v1/download_task/detail?"+values.Encode(), nil)
 }
 
-func (s *Server) delete_download_tasks(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) delete_download_tasks(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments delete_download_tasks_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -253,7 +253,7 @@ func (s *Server) delete_download_tasks(ctx context.Context, raw_arguments json.R
 	return successful_tool_result(map[string]any{"results": results})
 }
 
-func (s *Server) create_download_task_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) create_download_task_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments create_download_task_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -297,7 +297,7 @@ func (s *Server) create_download_task_tool(ctx context.Context, raw_arguments js
 	})
 }
 
-func (s *Server) get_accounts(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_accounts(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments account_list_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -328,7 +328,7 @@ func (s *Server) get_accounts(ctx context.Context, raw_arguments json.RawMessage
 	return s.call_read_api(ctx, http.MethodGet, "/api/account/list?"+values.Encode(), nil)
 }
 
-func (s *Server) get_browse_history(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_browse_history(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments browse_history_list_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -364,7 +364,7 @@ func (s *Server) get_browse_history(ctx context.Context, raw_arguments json.RawM
 	return s.call_read_api(ctx, http.MethodPost, "/api/browse_history/list", body)
 }
 
-func (s *Server) get_logs(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_logs(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments log_list_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -406,7 +406,7 @@ func (s *Server) get_logs(ctx context.Context, raw_arguments json.RawMessage) (m
 	return s.call_read_api(ctx, http.MethodGet, "/api/logs?"+values.Encode(), nil)
 }
 
-func (s *Server) get_certificate_status(ctx context.Context) (map[string]any, error) {
+func (s *ToolSet) get_certificate_status(ctx context.Context) (map[string]any, error) {
 	if s.data_reader != nil {
 		value, err := s.data_reader.GetCertificateStatus(ctx)
 		if err != nil {
@@ -417,7 +417,7 @@ func (s *Server) get_certificate_status(ctx context.Context) (map[string]any, er
 	return s.call_read_api(ctx, http.MethodGet, "/api/proxy/certificate/status", nil)
 }
 
-func (s *Server) call_read_api(ctx context.Context, method string, path string, body any) (map[string]any, error) {
+func (s *ToolSet) call_read_api(ctx context.Context, method string, path string, body any) (map[string]any, error) {
 	raw_response, err := s.api_client.do_json(ctx, method, path, body)
 	if err != nil {
 		return nil, err

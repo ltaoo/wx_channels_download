@@ -21,7 +21,7 @@ type SphDeployer interface {
 	DeploySphWorker(ctx context.Context) (*SphDeployResult, error)
 }
 
-func (s *Server) deploy_sph_worker(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) deploy_sph_worker(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments struct{}
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err

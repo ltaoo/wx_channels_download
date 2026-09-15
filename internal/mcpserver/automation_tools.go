@@ -100,7 +100,7 @@ type list_automation_runs_arguments struct {
 	Limit      int    `json:"limit"`
 }
 
-func (s *Server) list_automation_schedules_tool(ctx context.Context) (map[string]any, error) {
+func (s *ToolSet) list_automation_schedules_tool(ctx context.Context) (map[string]any, error) {
 	schedules, err := s.automation.ListSchedules(ctx)
 	if err != nil {
 		return nil, err
@@ -108,7 +108,7 @@ func (s *Server) list_automation_schedules_tool(ctx context.Context) (map[string
 	return successful_tool_result(map[string]any{"schedules": schedules})
 }
 
-func (s *Server) get_automation_schedule_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) get_automation_schedule_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments get_automation_schedule_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -123,7 +123,7 @@ func (s *Server) get_automation_schedule_tool(ctx context.Context, raw_arguments
 	return successful_tool_result(schedule)
 }
 
-func (s *Server) create_automation_schedule_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) create_automation_schedule_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments create_automation_schedule_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
@@ -143,7 +143,7 @@ func (s *Server) create_automation_schedule_tool(ctx context.Context, raw_argume
 	return successful_tool_result(schedule)
 }
 
-func (s *Server) toggle_automation_schedule_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) toggle_automation_schedule_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	id, err := automation_schedule_id_argument(raw_arguments)
 	if err != nil {
 		return nil, err
@@ -155,7 +155,7 @@ func (s *Server) toggle_automation_schedule_tool(ctx context.Context, raw_argume
 	return successful_tool_result(schedule)
 }
 
-func (s *Server) trigger_automation_schedule_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) trigger_automation_schedule_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	id, err := automation_schedule_id_argument(raw_arguments)
 	if err != nil {
 		return nil, err
@@ -167,7 +167,7 @@ func (s *Server) trigger_automation_schedule_tool(ctx context.Context, raw_argum
 	return successful_tool_result(run)
 }
 
-func (s *Server) list_automation_runs_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+func (s *ToolSet) list_automation_runs_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
 	var arguments list_automation_runs_arguments
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err

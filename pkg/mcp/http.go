@@ -1,4 +1,4 @@
-package mcpserver
+package mcp
 
 import (
 	"bytes"
@@ -64,9 +64,12 @@ func (h *http_handler) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 
 func (h *http_handler) request_server(request *http.Request) *Server {
 	request_server := &Server{
-		tool_service: h.server.tool_service,
-		error_output: h.server.error_output,
+		name:         h.server.name,
 		version:      h.server.version,
+		instructions: h.server.instructions,
+		error_output: h.server.error_output,
+		tools:        h.server.tools,
+		handlers:     h.server.handlers,
 		pending:      make(map[string]context.CancelFunc),
 	}
 	protocol_version := strings.TrimSpace(request.Header.Get("MCP-Protocol-Version"))

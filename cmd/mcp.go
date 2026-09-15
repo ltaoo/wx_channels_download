@@ -15,6 +15,7 @@ import (
 	"wx_channel/internal/config"
 	"wx_channel/internal/mcpserver"
 	"wx_channel/pkg/cookies"
+	mcp "wx_channel/pkg/mcp"
 	"wx_channel/pkg/scraper/zhihu"
 )
 
@@ -40,7 +41,7 @@ var mcp_cmd = &cobra.Command{
 		if api_base_url == "" {
 			api_base_url = configured_api_base_url()
 		}
-		server, err := new_remote_tool_server(api_base_url, cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr())
+		server, _, err := new_remote_tool_server(api_base_url, cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr())
 		if err != nil {
 			return err
 		}
@@ -48,9 +49,9 @@ var mcp_cmd = &cobra.Command{
 	},
 }
 
-func new_remote_tool_server(api_base_url string, input io.Reader, output io.Writer, error_output io.Writer) (*mcpserver.Server, error) {
+func new_remote_tool_server(api_base_url string, input io.Reader, output io.Writer, error_output io.Writer) (*mcp.Server, *mcpserver.ToolSet, error) {
 	cookie_reader := cookies.NewPersistentReader(Cfg.WorkDir)
-	return mcpserver.NewServer(mcpserver.Config{
+	return mcpserver.NewRuntime(mcpserver.Config{
 		APIBaseURL:       api_base_url,
 		Version:          Version,
 		Input:            input,

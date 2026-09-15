@@ -10,6 +10,7 @@ import (
 
 	"wx_channel/internal/mcpserver"
 	servicetools "wx_channel/internal/services/tools"
+	mcp "wx_channel/pkg/mcp"
 )
 
 const mcp_transport = "streamable_http"
@@ -40,33 +41,33 @@ type MCPServiceStatus struct {
 type MCPService struct {
 	handler_mu     sync.RWMutex
 	handler        http.Handler
-	server         *mcpserver.Server
-	tool_service   *servicetools.Service
+	server         *mcp.Server
+	toolset        *mcpserver.ToolSet
 	server_factory mcp_server_factory
 	enabled        atomic.Bool
 }
 
-type mcp_server_factory func() (*mcpserver.Server, error)
+type mcp_server_factory func() (*mcp.Server, *mcpserver.ToolSet, error)
 
 // NewMCPService constructs an enabled MCP service.
 func NewMCPService(config MCPServiceConfig) (*MCPService, error) {
-	server, err := build_mcp_server(config)
+	server, toolset, err := build_mcp_server(config)
 	if err != nil {
 		return nil, err
 	}
-	return new_mcp_service(server), nil
+	return new_mcp_service(server, toolset), nil
 }
 
 // NewLazyMCPService constructs a disabled MCP service whose protocol server is
 // initialized by the first HTTP enable or in-process tool execution.
 func NewLazyMCPService(config MCPServiceConfig) *MCPService {
-	return new_lazy_mcp_service(func() (*mcpserver.Server, error) {
+	return new_lazy_mcp_service(func() (*mcp.Server, *mcpserver.ToolSet, error) {
 		return build_mcp_server(config)
 	})
 }
 
-func build_mcp_server(config MCPServiceConfig) (*mcpserver.Server, error) {
-	return mcpserver.NewServer(mcpserver.Config{
+func build_mcp_server(config MCPServiceConfig) (*mcp.Server, *mcpserver.ToolSet, error) {
+	return mcpserver.NewRuntime(mcpserver.Config{
 		APIBaseURL:          config.APIBaseURL,
 		Version:             config.Version,
 		DataReader:          config.DataReader,
@@ -80,11 +81,10 @@ func build_mcp_server(config MCPServiceConfig) (*mcpserver.Server, error) {
 	})
 }
 
-func new_mcp_service(server *mcpserver.Server) *MCPService {
-	service := &MCPService{server: server}
+func new_mcp_service(server *mcp.Server, toolset *mcpserver.ToolSet) *MCPService {
+	service := &MCPService{server: server, toolset: toolset}
 	if server != nil {
-		service.handler = mcpserver.NewHTTPHandler(server)
-		service.tool_service = server.ToolService()
+		service.handler = mcp.NewHTTPHandler(server)
 	}
 	service.enabled.Store(server != nil)
 	return service
@@ -97,14 +97,14 @@ func new_lazy_mcp_service(server_factory mcp_server_factory) *MCPService {
 func (s *MCPService) ensure_server_locked() error {
 	if s.server != nil {
 		if s.handler == nil {
-			s.handler = mcpserver.NewHTTPHandler(s.server)
+			s.handler = mcp.NewHTTPHandler(s.server)
 		}
 		return nil
 	}
 	if s.server_factory == nil {
 		return errors.New("MCP 服务未初始化")
 	}
-	server, err := s.server_factory()
+	server, toolset, err := s.server_factory()
 	if err != nil {
 		return err
 	}
@@ -112,8 +112,8 @@ func (s *MCPService) ensure_server_locked() error {
 		return errors.New("MCP 服务未初始化")
 	}
 	s.server = server
-	s.tool_service = server.ToolService()
-	s.handler = mcpserver.NewHTTPHandler(server)
+	s.toolset = toolset
+	s.handler = mcp.NewHTTPHandler(server)
 	s.server_factory = nil
 	return nil
 }
@@ -143,12 +143,12 @@ func (s *MCPService) ExecuteTool(ctx context.Context, name string, arguments map
 		s.handler_mu.Unlock()
 		return nil, err
 	}
-	tool_service := s.tool_service
+	toolset := s.toolset
 	s.handler_mu.Unlock()
-	if tool_service == nil {
+	if toolset == nil {
 		return nil, errors.New("工具服务未初始化")
 	}
-	return tool_service.Execute(ctx, name, arguments)
+	return toolset.ExecuteTool(ctx, name, arguments)
 }
 
 // ToolCatalog returns the canonical service tool declarations used by MCP,
@@ -158,12 +158,12 @@ func (s *MCPService) ToolCatalog() []servicetools.Definition {
 		return []servicetools.Definition{}
 	}
 	s.handler_mu.RLock()
-	tool_service := s.tool_service
+	toolset := s.toolset
 	s.handler_mu.RUnlock()
-	if tool_service == nil {
+	if toolset == nil {
 		return mcpserver.ToolCatalog()
 	}
-	return tool_service.Definitions()
+	return toolset.ToolCatalog()
 }
 
 // Disable rejects new MCP protocol requests without destroying the handler.
@@ -190,8 +190,8 @@ func (s *MCPService) Status() MCPServiceStatus {
 	tools := mcpserver.ToolNames()
 	if s != nil {
 		s.handler_mu.RLock()
-		if s.tool_service != nil {
-			tools = s.tool_service.Names()
+		if s.toolset != nil {
+			tools = s.toolset.ToolNames()
 		}
 		s.handler_mu.RUnlock()
 	}
