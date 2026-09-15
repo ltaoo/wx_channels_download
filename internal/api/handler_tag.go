@@ -11,11 +11,11 @@ import (
 )
 
 func (c *APIClient) tag_service_or_error(ctx *gin.Context) (*services.TagService, bool) {
-	if c == nil || c.tag_service == nil {
+	if c == nil || c.service_tag == nil {
 		result.Err(ctx, api_code_invalid_params, "标签服务未初始化")
 		return nil, false
 	}
-	return c.tag_service, true
+	return c.service_tag, true
 }
 
 func (c *APIClient) handle_tag_list(ctx *gin.Context) {

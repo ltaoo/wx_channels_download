@@ -71,11 +71,11 @@ func automation_list_payload(list interface{}, total int64, page int, page_size 
 }
 
 func (c *APIClient) automation_service_or_error(ctx *gin.Context) (*services.AutomationService, bool) {
-	if c == nil || c.automation_service == nil {
+	if c == nil || c.service_automation == nil {
 		result.Err(ctx, api_code_invalid_params, "自动化服务未初始化")
 		return nil, false
 	}
-	return c.automation_service, true
+	return c.service_automation, true
 }
 
 func (c *APIClient) handle_list_automation_schedules(ctx *gin.Context) {

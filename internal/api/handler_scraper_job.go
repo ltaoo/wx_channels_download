@@ -34,7 +34,7 @@ func (c *APIClient) handle_scraper_fetch(ctx *gin.Context) {
 		return
 	}
 
-	job, err := c.scraper_job_service.Create(services.ScraperFetchRequest{
+	job, err := c.service_scraper_job.Create(services.ScraperFetchRequest{
 		ID:           request.ID,
 		URL:          request.URL,
 		ForceRefresh: request.ForceRefresh,
@@ -83,7 +83,7 @@ func (c *APIClient) handle_scraper_job(ctx *gin.Context) {
 		result.Err(ctx, api_code_invalid_params, "缺少参数：id")
 		return
 	}
-	job := c.scraper_job_service.Get(job_id, true)
+	job := c.service_scraper_job.Get(job_id, true)
 	if job == nil {
 		result.Err(ctx, api_code_invalid_params, "fetch job 不存在")
 		return
@@ -105,7 +105,7 @@ func (c *APIClient) handle_scraper_fetch_interrupt(ctx *gin.Context) {
 		result.Err(ctx, api_code_invalid_params, "缺少参数：id")
 		return
 	}
-	interrupted := c.scraper_job_service.Interrupt(job_id)
+	interrupted := c.service_scraper_job.Interrupt(job_id)
 	result.Ok(ctx, gin.H{
 		"id":          job_id,
 		"interrupted": interrupted,

@@ -152,18 +152,18 @@ func Start(cfg *config.Config) error {
 
 	// --- Database store ---
 	task_store := database.NewDBTaskStore(b.DB, logger)
-	account_service := services.NewAccountService(b.DB)
-	content_service := services.NewContentService(b.DB)
-	tag_service := services.NewTagService(b.DB)
-	browse_history_service := services.NewBrowseService(b.DB, *logger)
-	fs_service := services.NewFSService()
-	certificate_service := services.NewCertificateService(cfg)
-	scraper_job_service := services.NewScraperJobService(
+	service_account := services.NewAccountService(b.DB)
+	service_content := services.NewContentService(b.DB)
+	service_tag := services.NewTagService(b.DB)
+	service_browse_history := services.NewBrowseService(b.DB, *logger)
+	service_fs := services.NewFSService()
+	service_certificate := services.NewCertificateService(cfg)
+	service_scraper_job := services.NewScraperJobService(
 		new_scraper_platform_checker(),
 		api.BroadcastScraperJobEvent,
 		logger,
 	)
-	scraper_job_service.SetRetentionLimit(cfg.GetInt("scraper.retainedJobs"))
+	service_scraper_job.SetRetentionLimit(cfg.GetInt("scraper.retainedJobs"))
 
 	// --- Download engine ---
 	downloader := hermes.New(hermes.HermesNewConfig{
@@ -185,7 +185,7 @@ func Start(cfg *config.Config) error {
 	downloader.RegisterProtocol(protocol.NewFileDriver())
 	downloader.SetHooks(hook_manager)
 	downloader.SetPostprocessor(adapter.NewPlatformPostprocessor(b.DB, *logger, api_cfg.DownloadDir))
-	download_task_service := services.NewDownloadTaskService(
+	service_download_task := services.NewDownloadTaskService(
 		b.DB,
 		logger,
 		downloader,
@@ -194,8 +194,8 @@ func Start(cfg *config.Config) error {
 		api_cfg.DownloadDir,
 		bus,
 	)
-	runtime_status_service := services.NewRuntimeStatusService()
-	download_task_broadcaster := api.NewDownloadTaskBroadcaster(b.DB, logger, download_task_service)
+	service_runtime_status := services.NewRuntimeStatusService()
+	download_task_broadcaster := api.NewDownloadTaskBroadcaster(b.DB, logger, service_download_task)
 	bus.Subscribe(events.TypeDownloadTaskCreated, func(event events.Event) {
 		created, ok := event.(events.DownloadTaskCreated)
 		if ok {
@@ -219,17 +219,19 @@ func Start(cfg *config.Config) error {
 			go bus.Publish(events.DownloadTaskFinished{TaskID: task_id})
 		}
 	})
-	bridge_service := services.NewBridgeService(services.BridgeServiceOptions{
-		ApplicationConfig:   cfg,
-		DownloadTaskService: download_task_service,
-		Logger:              logger,
-	})
-	data_service := services.NewDataQueryService(services.DataQueryServiceConfig{
+	var service_bridge *services.BridgeService
+	if cfg.GetBool("bridge.enabled") {
+		service_bridge = services.NewBridgeService(services.BridgeServiceOptions{
+			ApplicationConfig: cfg,
+			Logger:            logger,
+		})
+	}
+	service_data := services.NewDataQueryService(services.DataQueryServiceConfig{
 		DB:                   b.DB,
-		AccountService:       account_service,
-		DownloadTaskService:  download_task_service,
-		BrowseHistoryService: browse_history_service,
-		CertificateService:   certificate_service,
+		AccountService:       service_account,
+		DownloadTaskService:  service_download_task,
+		BrowseHistoryService: service_browse_history,
+		CertificateService:   service_certificate,
 		LogPath:              api_cfg.LogPath,
 		WorkDir:              api_cfg.WorkDir,
 	})
@@ -243,21 +245,16 @@ func Start(cfg *config.Config) error {
 		wxchannels_flow_definitions[flow.ID] = flow
 	}
 	flow_engine.SetFlowDefinitions(wxchannels_flow_definitions)
-	automation_service := services.NewAutomationService(b.DB, logger, flow_engine, bus)
+	service_automation := services.NewAutomationService(b.DB, logger, flow_engine, bus)
 
-	mcp_service, err := new_mcp_service(api_cfg, data_service, download_task_service, scraper_job_service, automation_service, cfg.GetBool("mcp.enabled"))
+	service_mcp, err := new_mcp_service(api_cfg, service_data, service_download_task, service_scraper_job, service_automation, cfg.GetBool("mcp.enabled"))
 	if err != nil {
-		automation_service.Stop()
+		service_automation.Stop()
 		task_store.Shutdown()
 		return fmt.Errorf("failed to initialize MCP service: %w", err)
 	}
 	// --- API service ---
-	restart_service := services.NewApplicationRestartService(services.ApplicationRestartServiceOptions{
-		RequestRestart: func() error {
-			return restart_current_process(stop)
-		},
-	})
-	application_update_service := new_application_update_service(api_cfg.Version, restart_service)
+	service_app := new_app_service(api_cfg.Version, stop)
 	api_srv := api.NewAPIServer(
 		api_cfg,
 		logger,
@@ -265,37 +262,35 @@ func Start(cfg *config.Config) error {
 		static_assets,
 		download_task_broadcaster,
 		bus,
-		runtime_status_service,
-		account_service,
-		content_service,
-		browse_history_service,
-		download_task_service,
-		fs_service,
-		scraper_job_service,
-		bridge_service,
-		certificate_service,
-		mcp_service,
-		application_update_service,
-		restart_service,
-		automation_service,
-		tag_service,
+		service_runtime_status,
+		service_account,
+		service_content,
+		service_browse_history,
+		service_download_task,
+		service_fs,
+		service_scraper_job,
+		service_certificate,
+		service_mcp,
+		service_app,
+		service_automation,
+		service_tag,
 	)
 	bus.Subscribe(events.TypeProxyStatusChanged, func(event events.Event) {
 		status, ok := event.(events.ProxyStatusChanged)
 		if ok {
-			runtime_status_service.UpdateProxyStatus(status)
+			service_runtime_status.UpdateProxyStatus(status)
 		}
 	})
 	bus.Subscribe(events.TypeServiceStatusChanged, func(event events.Event) {
 		status, ok := event.(events.ServiceStatusChanged)
 		if ok {
-			runtime_status_service.UpdateServiceStatus(status)
+			service_runtime_status.UpdateServiceStatus(status)
 		}
 	})
 	bus.Subscribe(events.TypeScraperFetchProgress, func(event events.Event) {
 		progress, ok := event.(events.ScraperFetchProgress)
 		if ok {
-			scraper_job_service.UpdateProgress(progress)
+			service_scraper_job.UpdateProgress(progress)
 		}
 	})
 	bus.Subscribe(events.TypePlatformStatusChanged, func(event events.Event) {
@@ -303,7 +298,7 @@ func Start(cfg *config.Config) error {
 		if !ok {
 			return
 		}
-		status, changed := runtime_status_service.UpdatePlatformStatus(status)
+		status, changed := service_runtime_status.UpdatePlatformStatus(status)
 		if changed {
 			api.BroadcastPlatformStatus(&status)
 		}
@@ -318,7 +313,7 @@ func Start(cfg *config.Config) error {
 	} {
 		bus.Subscribe(event_type, api.BroadcastAutomationEvent)
 	}
-	automation_service.Start()
+	service_automation.Start()
 	bus.Subscribe(events.TypeServiceCommand, func(event events.Event) {
 		command, ok := event.(events.ServiceCommand)
 		if !ok || command.Name != "api" {
@@ -332,7 +327,6 @@ func Start(cfg *config.Config) error {
 		}
 	})
 	publish_registered_adapter_statuses(bus)
-	// admin_srv := admin.NewAdminServer(cfg, b, bus)
 	if cfg.GlobalScriptPath != "" {
 		table_data = append(table_data, []string{"Global Script", cfg.GlobalScriptPath})
 	}
@@ -387,10 +381,10 @@ func Start(cfg *config.Config) error {
 				}
 			}
 			if bridge_started {
-				bridge_service.Close()
+				service_bridge.Close()
 			}
-			automation_service.Stop()
-			scraper_job_service.InterruptAll()
+			service_automation.Stop()
+			service_scraper_job.InterruptAll()
 			for i := len(adapter_handles) - 1; i >= 0; i-- {
 				adapter_handles[i].Stop()
 			}
@@ -403,23 +397,15 @@ func Start(cfg *config.Config) error {
 			// not hold up shutdown while task goroutines finish.
 			downloader.RequestPauseAllTask()
 			task_store.Shutdown()
-			// if err := admin_srv.Stop(); err != nil {
-			// 	color.Red(fmt.Sprintf("Failed to stop GUI/Admin service: %v\n", err))
-			// }
 			color.Green("Downloader has been shut down")
 		})
 	}
 
-	// if err := admin_srv.Start(); err != nil {
-	// 	color.Red(fmt.Sprintf("ERROR Failed to start GUI/Admin service: %v\n", err))
-	// 	cleanup()
-	// 	os.Exit(0)
-	// 	return
-	// }
-	// color.Green(fmt.Sprintf("GUI/Admin service started successfully, address: %v", admin_srv.Addr()))
-	bridge_started = true
-	if err := bridge_service.Start(ctx); err != nil {
-		logger.Error().Err(err).Msg("Bridge 服务启动失败，应用将继续启动")
+	if service_bridge != nil {
+		bridge_started = true
+		if err := service_bridge.Start(ctx); err != nil {
+			logger.Error().Err(err).Msg("failed to start Bridge service")
+		}
 	}
 	if err := api_srv.Start(); err != nil {
 		cleanup()
@@ -428,7 +414,7 @@ func Start(cfg *config.Config) error {
 	api_started = true
 	api_url := http_service_url(api_srv.Addr())
 	color.Green(fmt.Sprintf("API service started successfully, address: %v", api_url))
-	if mcp_service.Enabled() {
+	if service_mcp.Enabled() {
 		color.Green(fmt.Sprintf("MCP server started successfully, address: %v/mcp", api_url))
 	}
 

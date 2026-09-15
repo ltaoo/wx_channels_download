@@ -26,24 +26,22 @@ type APIClient struct {
 	http_handler              http.Handler
 	static_assets             *webassets.Registry
 	event_publisher           events.Publisher
-	runtime_status_service    *services.RuntimeStatusService
+	service_runtime_status    *services.RuntimeStatusService
 
 	claw_client *clawreq.Client
 
 	// Services
-	account_service             *services.AccountService
-	content_service             *services.ContentService
-	browse_history_service      *services.BrowseService
-	download_task_service       *services.DownloadTaskService
-	fs_service                  *services.FSService
-	scraper_job_service         *services.ScraperJobService
-	application_update_service  *services.ApplicationUpdateService
-	application_restart_service *services.ApplicationRestartService
-	bridge_service              *services.BridgeService
-	certificate_service         *services.CertificateService
-	mcp_service                 *services.MCPService
-	automation_service          *services.AutomationService
-	tag_service                 *services.TagService
+	service_account        *services.AccountService
+	service_content        *services.ContentService
+	service_browse_history *services.BrowseService
+	service_download_task  *services.DownloadTaskService
+	service_fs             *services.FSService
+	service_scraper_job    *services.ScraperJobService
+	service_app            *services.AppService
+	service_certificate    *services.CertificateService
+	service_mcp            *services.MCPService
+	service_automation     *services.AutomationService
+	service_tag            *services.TagService
 }
 
 func NewAPIClient(
@@ -53,20 +51,18 @@ func NewAPIClient(
 	static_assets *webassets.Registry,
 	download_task_broadcaster *DownloadTaskBroadcaster,
 	event_publisher events.Publisher,
-	runtime_status_service *services.RuntimeStatusService,
-	account_service *services.AccountService,
-	content_service *services.ContentService,
-	browse_history_service *services.BrowseService,
-	download_task_service *services.DownloadTaskService,
-	fs_service *services.FSService,
-	scraper_job_service *services.ScraperJobService,
-	bridge_service *services.BridgeService,
-	certificate_service *services.CertificateService,
-	mcp_service *services.MCPService,
-	application_update_service *services.ApplicationUpdateService,
-	application_restart_service *services.ApplicationRestartService,
-	automation_service *services.AutomationService,
-	tag_service *services.TagService,
+	service_runtime_status *services.RuntimeStatusService,
+	service_account *services.AccountService,
+	service_content *services.ContentService,
+	service_browse_history *services.BrowseService,
+	service_download_task *services.DownloadTaskService,
+	service_fs *services.FSService,
+	service_scraper_job *services.ScraperJobService,
+	service_certificate *services.CertificateService,
+	service_mcp *services.MCPService,
+	service_app *services.AppService,
+	service_automation *services.AutomationService,
+	service_tag *services.TagService,
 ) *APIClient {
 	logger := parent_logger.With().Str("component", "APIClient").Logger()
 	engine := gin.New()
@@ -78,27 +74,25 @@ func NewAPIClient(
 	)
 
 	api_client := &APIClient{
-		cfg:                         cfg,
-		engine:                      engine,
-		db:                          db,
-		logger:                      &logger,
-		static_assets:               static_assets,
-		download_task_broadcaster:   download_task_broadcaster,
-		event_publisher:             event_publisher,
-		runtime_status_service:      runtime_status_service,
-		account_service:             account_service,
-		content_service:             content_service,
-		browse_history_service:      browse_history_service,
-		fs_service:                  fs_service,
-		scraper_job_service:         scraper_job_service,
-		application_update_service:  application_update_service,
-		application_restart_service: application_restart_service,
-		download_task_service:       download_task_service,
-		bridge_service:              bridge_service,
-		certificate_service:         certificate_service,
-		mcp_service:                 mcp_service,
-		automation_service:          automation_service,
-		tag_service:                 tag_service,
+		cfg:                       cfg,
+		engine:                    engine,
+		db:                        db,
+		logger:                    &logger,
+		static_assets:             static_assets,
+		download_task_broadcaster: download_task_broadcaster,
+		event_publisher:           event_publisher,
+		service_runtime_status:    service_runtime_status,
+		service_account:           service_account,
+		service_content:           service_content,
+		service_browse_history:    service_browse_history,
+		service_fs:                service_fs,
+		service_scraper_job:       service_scraper_job,
+		service_app:               service_app,
+		service_download_task:     service_download_task,
+		service_certificate:       service_certificate,
+		service_mcp:               service_mcp,
+		service_automation:        service_automation,
+		service_tag:               service_tag,
 	}
 
 	// // Set file transfer helper Channels auto-download callback
@@ -133,7 +127,7 @@ type ClientWebsocketResponse struct {
 }
 
 func (c *APIClient) service_statuses_map() map[string]string {
-	return c.runtime_status_service.ServiceStatuses()
+	return c.service_runtime_status.ServiceStatuses()
 }
 
 func (c *APIClient) Stop() error {
@@ -163,7 +157,7 @@ func (c *APIClient) HTTPHandler() http.Handler {
 
 // DownloadTaskService returns the download task service.
 func (c *APIClient) DownloadTaskService() *services.DownloadTaskService {
-	return c.download_task_service
+	return c.service_download_task
 }
 
 func (c *APIClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
