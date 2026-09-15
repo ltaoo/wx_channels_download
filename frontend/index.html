@@ -18,7 +18,7 @@
   <link href="src/style.css?v=__WX_DOWNLOAD_VERSION__" rel="stylesheet" />
   <link href="src/pages/shell.css?v=__WX_DOWNLOAD_VERSION__" rel="stylesheet" />
   <script>!function () { try { var d = document.documentElement; var e = localStorage.getItem('theme'); var resolved; if ('system' === e || !e) { var t = '(prefers-color-scheme: dark)', m = window.matchMedia(t); resolved = (m.media !== t || m.matches) ? 'dark' : 'light' } else { resolved = e } d.style.colorScheme = resolved; if (resolved === 'dark') { d.classList.add('dark') } else { d.classList.remove('dark') } } catch (e) { } }()</script>
-   <script>
+  <script>
     window.__d_config = Object.assign({}, __WX_DOWNLOAD_CONFIG_JSON__, {
       version: "__WX_DOWNLOAD_VERSION__",
       assets_base_url: "/__assets",
@@ -31,6 +31,36 @@
   <script src="public/dl.sdk.js?v=__WX_DOWNLOAD_VERSION__"></script>
   <script src="public/virtual-list-view.js?v=__WX_DOWNLOAD_VERSION__"></script>
   <script src="public/hls.min.js?v=__WX_DOWNLOAD_VERSION__"></script>
+  <script>
+    window.h = Timeless.h;
+    window.View = Timeless.View;
+    window.Fragment = Timeless.Fragment;
+    window.Img = Timeless.Img;
+    window.Link = Timeless.Link;
+    window.SplitView = Timeless.SplitView;
+    // Control flow
+    window.Show = Timeless.Show;
+    window.For = Timeless.For;
+    window.Switch = Timeless.Switch;
+    window.Match = Timeless.Match;
+    window.ui = Timeless.ui;
+    // Reactivity
+    window.ref = Timeless.ref;
+    window.refobj = Timeless.refobj;
+    window.refarr = Timeless.refarr;
+    window.computed = Timeless.computed;
+    window.combine = Timeless.combine;
+    window.isElement = Timeless.isElement;
+    // vm
+    window.vm = Timeless.vm;
+    // Styling
+    window.cn = Timeless.classNames;
+    window.classNames = Timeless.classNames;
+    // SVG helpers
+    window.SVG = Timeless.SVG;
+    window.Circle = Timeless.Circle;
+
+  </script>
 </head>
 
 <body>

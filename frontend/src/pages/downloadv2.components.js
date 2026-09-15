@@ -1,12 +1,3 @@
-import { Checkbox, Tag, createCheckboxStore } from "../dmui.js";
-import {
-  format_download_percent,
-  format_download_size,
-  format_download_speed,
-  is_download_open_external,
-  is_download_waiting_status,
-  normalize_download_status,
-} from "./downloadv2.model.js";
 import {
   resource_file_icon,
   format_file_size,
@@ -18,7 +9,16 @@ import {
   flatten_tree,
   tree_compare,
   mounted_element,
-} from "./tree.js";
+} from "@/components/tree.js";
+
+import {
+  format_download_percent,
+  format_download_size,
+  format_download_speed,
+  is_download_open_external,
+  is_download_waiting_status,
+  normalize_download_status,
+} from "./downloadv2.model.js";
 
 const OVERWRITE_ACTION_ITEMS = [
   {
