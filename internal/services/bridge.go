@@ -19,6 +19,7 @@ import (
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/bridge"
 	"wx_channel/internal/config"
+	"wx_channel/pkg/scraper/wxchannels"
 )
 
 const (
@@ -308,6 +309,30 @@ type bridge_wxchannels_args struct {
 type bridge_download_args struct {
 	Request    *CreateDownloadTaskBody      `json:"request,omitempty"`
 	URLRequest *CreateDownloadTaskByURLBody `json:"url_request,omitempty"`
+}
+
+type bridge_wxchannels_account struct {
+	Username  string `json:"username"`
+	Nickname  string `json:"nickname"`
+	AvatarURL string `json:"avatar_url"`
+	Signature string `json:"signature"`
+}
+
+type bridge_wxchannels_article struct {
+	ID          string `json:"id"`
+	Idx         int    `json:"idx"`
+	Title       string `json:"title"`
+	Digest      string `json:"digest"`
+	URL         string `json:"url"`
+	CoverURL    string `json:"cover_url"`
+	PublishTime int64  `json:"publish_time"`
+}
+
+type bridge_wxchannels_article_list struct {
+	Account  bridge_wxchannels_account   `json:"account"`
+	Articles []bridge_wxchannels_article `json:"articles"`
+	Offset   string                      `json:"offset"`
+	IsEnd    bool                        `json:"is_end"`
 }
 
 type bridge_wxchannels_contact_search_args struct {
@@ -704,7 +729,102 @@ func (s *BridgeService) execute_wxchannels_contact_feed_list(
 		return nil, err
 	}
 	response, err := wxchannels_adapter.FetchChannelsFeedListOfContact(request.Username, request.NextMarker)
-	return encode_bridge_method_result(task_context, response, err)
+	if err != nil {
+		return encode_bridge_method_result(task_context, nil, err)
+	}
+	result, err := normalize_bridge_wxchannels_article_list(response)
+	return encode_bridge_method_result(task_context, result, err)
+}
+
+func normalize_bridge_wxchannels_article_list(response_json json.RawMessage) (*bridge_wxchannels_article_list, error) {
+	var response wxchannels.ChannelsFeedListOfAccountResp
+	if err := json.Unmarshal(response_json, &response); err != nil {
+		return nil, fmt.Errorf("解析视频号视频列表失败: %w", err)
+	}
+	if response.ErrCode != 0 {
+		message := strings.TrimSpace(response.ErrMsg)
+		if message == "" {
+			message = fmt.Sprintf("视频号返回错误码 %d", response.ErrCode)
+		}
+		return nil, errors.New(message)
+	}
+	if response.Data.BaseResponse.Ret != 0 {
+		message := strings.TrimSpace(response.Data.BaseResponse.ErrMsg.String)
+		if message == "" {
+			message = fmt.Sprintf("视频号返回错误码 %d", response.Data.BaseResponse.Ret)
+		}
+		return nil, errors.New(message)
+	}
+
+	contact := response.Data.Contact
+	result := &bridge_wxchannels_article_list{
+		Account: bridge_wxchannels_account{
+			Username:  strings.TrimSpace(contact.Username),
+			Nickname:  strings.TrimSpace(contact.Nickname),
+			AvatarURL: strings.TrimSpace(contact.HeadUrl),
+			Signature: strings.TrimSpace(contact.Signature),
+		},
+		Articles: make([]bridge_wxchannels_article, 0, len(response.Data.Object)),
+		Offset:   response.Data.LastBuffer,
+		IsEnd:    response.Data.ContinueFlag == 0,
+	}
+	for index := range response.Data.Object {
+		object := &response.Data.Object[index]
+		if object.ObjectDesc.MediaType != wxchannels.MediaTypeVideo {
+			continue
+		}
+		result.Articles = append(result.Articles, bridge_wxchannels_article{
+			ID:          strings.TrimSpace(object.ID),
+			Idx:         len(result.Articles),
+			Title:       bridge_wxchannels_article_title(object),
+			Digest:      object.ObjectDesc.Description,
+			URL:         bridge_wxchannels_article_url(object),
+			CoverURL:    bridge_wxchannels_article_cover_url(object),
+			PublishTime: int64(object.CreateTime),
+		})
+	}
+	return result, nil
+}
+
+func bridge_wxchannels_article_title(object *wxchannels.ChannelsObject) string {
+	for _, short_title := range object.ObjectDesc.ShortTitle {
+		if title := strings.TrimSpace(short_title.ShortTitle); title != "" {
+			return title
+		}
+	}
+	return object.ObjectDesc.Description
+}
+
+func bridge_wxchannels_article_cover_url(object *wxchannels.ChannelsObject) string {
+	if len(object.ObjectDesc.Media) == 0 {
+		return ""
+	}
+	media := object.ObjectDesc.Media[0]
+	if cover_url := strings.TrimSpace(media.ThumbUrl); cover_url != "" {
+		return cover_url
+	}
+	return strings.TrimSpace(media.CoverUrl)
+}
+
+// bridge_wxchannels_article_url builds the playable media URL from media[0].
+// The file format spec is appended as a query parameter only when present.
+func bridge_wxchannels_article_url(object *wxchannels.ChannelsObject) string {
+	if len(object.ObjectDesc.Media) == 0 {
+		return ""
+	}
+	media := object.ObjectDesc.Media[0]
+	if strings.TrimSpace(media.URL) == "" {
+		return ""
+	}
+	article_url := media.URL + media.URLToken
+	if len(media.Spec) == 0 {
+		return article_url
+	}
+	file_format := strings.TrimSpace(media.Spec[0].FileFormat)
+	if file_format == "" {
+		return article_url
+	}
+	return article_url + "&X-snsvideoflag=" + file_format
 }
 
 func (s *BridgeService) execute_wxchannels_live_replay_list(

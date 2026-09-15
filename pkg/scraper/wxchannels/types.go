@@ -209,6 +209,7 @@ type ChannelsObjectDesc struct {
 	Media          []ChannelsMediaItem    `json:"media"`
 	MediaType      int                    `json:"mediaType"`
 	FollowPostInfo ChannelsFollowPostInfo `json:"followPostInfo"`
+	ShortTitle     []ShortTitle           `json:"shortTitle"`
 }
 
 type InfoListItem struct {
