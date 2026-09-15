@@ -1,5 +1,4 @@
 import { PreviewViewModel } from "./preview.model.js";
-import { BrandEmpty, BrandError, BrandLoading, Tag, PlatformTag } from "../dmui.js";
 
 function PreviewStateView(props) {
   return View(
@@ -29,9 +28,7 @@ function PreviewStateView(props) {
         ? View({ as: "h3", class: "preview-state-title" }, [props.title])
         : null,
       props.message
-        ? View({ as: "p", class: "preview-state-message" }, [
-            props.message,
-          ])
+        ? View({ as: "p", class: "preview-state-message" }, [props.message])
         : null,
       props.action || null,
     ].filter(Boolean),
@@ -41,48 +38,51 @@ function PreviewStateView(props) {
 function PreviewHeaderView(props) {
   const task = props.task;
   const account = task.account;
-  return View({ class: "preview-header page-header container" }, [
-    account
-      ? View({ class: "preview-account" }, [
-          account.avatar_url
-            ? LazyImg({
-                class: "preview-account-avatar",
-                src: account.avatar_url,
-                alt: "",
-                attributes: { referrerpolicy: "no-referrer" },
+  return View(
+    { class: "preview-header page-header container" },
+    [
+      account
+        ? View({ class: "preview-account" }, [
+            account.avatar_url
+              ? LazyImg({
+                  class: "preview-account-avatar",
+                  src: account.avatar_url,
+                  alt: "",
+                  attributes: { referrerpolicy: "no-referrer" },
+                })
+              : null,
+            View({ class: "preview-account-name" }, [
+              account.nickname || account.external_id || "",
+            ]),
+          ])
+        : null,
+      View({ class: "preview-title dm-font-display dm-font-bold" }, [
+        task.title,
+      ]),
+      View(
+        { class: "preview-subtitle" },
+        [
+          task.platform_id
+            ? PlatformTag({
+                name: "preview-platform",
+                favicon: task.platform_favicon,
+                label: task.platform_name,
               })
             : null,
-          View({ class: "preview-account-name" }, [
-            account.nickname || account.external_id || "",
-          ]),
-        ])
-      : null,
-    View(
-      { class: "preview-title dm-font-display dm-font-bold" },
-      [task.title],
-    ),
-    View({ class: "preview-subtitle" }, [
-      task.platform_id
-        ? PlatformTag({
-            name: "preview-platform",
-            favicon: task.platform_favicon,
-            label: task.platform_name,
-          })
-        : null,
-      task.content_type
-        ? Tag(
-            { variant: "info", name: "preview-content-type" },
-            [task.content_type],
-          )
-        : null,
-      Number.isFinite(props.fileCount)
-        ? Tag(
-            { variant: "info", name: "preview-file-count" },
-            [`文件 (${props.fileCount})`],
-          )
-        : null,
-    ].filter(Boolean)),
-  ].filter(Boolean));
+          task.content_type
+            ? Tag({ variant: "info", name: "preview-content-type" }, [
+                task.content_type,
+              ])
+            : null,
+          Number.isFinite(props.fileCount)
+            ? Tag({ variant: "info", name: "preview-file-count" }, [
+                `文件 (${props.fileCount})`,
+              ])
+            : null,
+        ].filter(Boolean),
+      ),
+    ].filter(Boolean),
+  );
 }
 
 function PreviewSingleFileView(props) {
@@ -162,7 +162,8 @@ function PreviewHTMLFileView(props) {
             action: View(
               {
                 as: "button",
-                class: "preview-retry dm-button dm-button--primary dm-focus-ring",
+                class:
+                  "preview-retry dm-button dm-button--primary dm-focus-ring",
                 attributes: { type: "button" },
                 onClick() {
                   vm$.methods.retryHTML();
@@ -181,8 +182,7 @@ function PreviewTextFileView(props) {
   const vm$ = props.store;
   const file = props.file;
   const render_text_line = (line_) => {
-    const line =
-      line_ && line_.value !== undefined ? line_.value : line_;
+    const line = line_ && line_.value !== undefined ? line_.value : line_;
     return View(
       {
         class: "preview-text-line",
@@ -372,7 +372,8 @@ function PreviewVideoPlayerView(props) {
           // Timeless 0.33 View always renders a div, so render native tracks here.
           unsubscribe_tracks = player$.state.tracks.subscribe({
             onChange(tracks) {
-              video.querySelectorAll('[data-n="preview-video-subtitle-track"]')
+              video
+                .querySelectorAll('[data-n="preview-video-subtitle-track"]')
                 .forEach((track) => track.remove());
               for (const track of tracks) {
                 const element = video.ownerDocument.createElement("track");
@@ -397,10 +398,13 @@ function PreviewVideoPlayerView(props) {
       Show({
         when: computed(player$.state.subtitle_error, Boolean),
         ok() {
-          return Tag({
-            class: "preview-subtitle-error",
-            attributes: { n: "preview-video-subtitle-error", role: "status" },
-          }, [player$.state.subtitle_error]);
+          return Tag(
+            {
+              class: "preview-subtitle-error",
+              attributes: { n: "preview-video-subtitle-error", role: "status" },
+            },
+            [player$.state.subtitle_error],
+          );
         },
       }),
       is_live_playback
@@ -408,8 +412,7 @@ function PreviewVideoPlayerView(props) {
             {
               class: computed(
                 vm$.state.live_playback_status,
-                (status) =>
-                  `preview-live-status is-${status || "waiting"}`,
+                (status) => `preview-live-status is-${status || "waiting"}`,
               ),
               attributes: {
                 n: "live-playback-status",
@@ -485,33 +488,42 @@ function PreviewFileCardView(props) {
       },
     },
     [
-      View({ class: "preview-file-thumb" }, [
-        PreviewFileThumbnail({ store: vm$, file }),
-        file.status
-          ? Tag({ name: "preview-file-status", class: "preview-file-status" }, [file.status])
-          : null,
-      ].filter(Boolean)),
-      View({ class: "preview-file-info" }, [
-        View(
-          {
-            class: "preview-file-name",
-            attributes: { title: file.name },
-          },
-          [file.name],
-        ),
-        View({ class: "preview-file-meta" }, [
-          View({}, [vm$.methods.formatBytes(file.size)]),
-          View({}, [playable ? "" : "missing"]),
-        ]),
-        file.status === "downloading" && file.progress > 0
-          ? View({ class: "preview-progress" }, [
-              View({
-                class: "preview-progress-value",
-                style: { width: `${file.progress}%` },
-              }),
-            ])
-          : null,
-      ].filter(Boolean)),
+      View(
+        { class: "preview-file-thumb" },
+        [
+          PreviewFileThumbnail({ store: vm$, file }),
+          file.status
+            ? Tag(
+                { name: "preview-file-status", class: "preview-file-status" },
+                [file.status],
+              )
+            : null,
+        ].filter(Boolean),
+      ),
+      View(
+        { class: "preview-file-info" },
+        [
+          View(
+            {
+              class: "preview-file-name",
+              attributes: { title: file.name },
+            },
+            [file.name],
+          ),
+          View({ class: "preview-file-meta" }, [
+            View({}, [vm$.methods.formatBytes(file.size)]),
+            View({}, [playable ? "" : "missing"]),
+          ]),
+          file.status === "downloading" && file.progress > 0
+            ? View({ class: "preview-progress" }, [
+                View({
+                  class: "preview-progress-value",
+                  style: { width: `${file.progress}%` },
+                }),
+              ])
+            : null,
+        ].filter(Boolean),
+      ),
     ],
   );
 }
@@ -661,59 +673,60 @@ function PreviewGalleryStageView(props) {
       View({ class: "preview-gallery-viewport" }, [
         PreviewGalleryMediaView({ store: vm$, file }),
       ]),
-      View({ class: "preview-gallery-caption" }, [
-        View(
-          {
-            class: "preview-gallery-caption-icon",
-            attributes: { n: "gallery-caption-file-type-icon" },
-          },
-          [
-            Timeless.Icon({
-              name: vm$.methods.fileTypeIcon(file.file_type),
-              size: 18,
-            }),
-          ],
-        ),
-        View({ class: "preview-gallery-caption-main" }, [
+      View(
+        { class: "preview-gallery-caption" },
+        [
           View(
             {
-              class: "preview-gallery-name",
-              attributes: { title: file.name },
+              class: "preview-gallery-caption-icon",
+              attributes: { n: "gallery-caption-file-type-icon" },
             },
-            [file.name],
+            [
+              Timeless.Icon({
+                name: vm$.methods.fileTypeIcon(file.file_type),
+                size: 18,
+              }),
+            ],
           ),
-          View({ class: "preview-gallery-meta" }, [meta]),
-        ]),
-        file.exists
-          ? View(
+          View({ class: "preview-gallery-caption-main" }, [
+            View(
               {
-                as: "button",
-                class:
-                  "preview-gallery-open dm-button dm-focus-ring",
-                attributes: {
-                  n: "gallery-show-file-action",
-                  type: "button",
-                  title: `在文件夹中显示 ${file.name}`,
-                  "aria-label": `在文件夹中显示 ${file.name}`,
-                },
-                onClick() {
-                  vm$.methods.showFile(file);
-                },
+                class: "preview-gallery-name",
+                attributes: { title: file.name },
               },
-              [
-                Timeless.Icon({
-                  name: "folder",
-                  size: 15,
-                  attributes: { n: "gallery-show-file-icon" },
-                }),
-                View(
-                  { attributes: { n: "gallery-show-file-label" } },
-                  ["文件"],
-                ),
-              ],
-            )
-          : null,
-      ].filter(Boolean)),
+              [file.name],
+            ),
+            View({ class: "preview-gallery-meta" }, [meta]),
+          ]),
+          file.exists
+            ? View(
+                {
+                  as: "button",
+                  class: "preview-gallery-open dm-button dm-focus-ring",
+                  attributes: {
+                    n: "gallery-show-file-action",
+                    type: "button",
+                    title: `在文件夹中显示 ${file.name}`,
+                    "aria-label": `在文件夹中显示 ${file.name}`,
+                  },
+                  onClick() {
+                    vm$.methods.showFile(file);
+                  },
+                },
+                [
+                  Timeless.Icon({
+                    name: "folder",
+                    size: 15,
+                    attributes: { n: "gallery-show-file-icon" },
+                  }),
+                  View({ attributes: { n: "gallery-show-file-label" } }, [
+                    "文件",
+                  ]),
+                ],
+              )
+            : null,
+        ].filter(Boolean),
+      ),
     ],
   );
 }
@@ -738,9 +751,8 @@ function PreviewGalleryFileView(props) {
         type: "button",
         title: file.name,
         disabled: !playable,
-        "aria-pressed": computed(
-          vm$.state.gallery_file,
-          (selected_file) => (selected_file === file ? "true" : "false"),
+        "aria-pressed": computed(vm$.state.gallery_file, (selected_file) =>
+          selected_file === file ? "true" : "false",
         ),
       },
       onClick() {
@@ -874,7 +886,10 @@ function PreviewZipView(props) {
     Show({
       when: vm$.state.zip_loading,
       ok() {
-          return PreviewStateView({ loading: true, message: "正在加载压缩包预览…" });
+        return PreviewStateView({
+          loading: true,
+          message: "正在加载压缩包预览…",
+        });
       },
       else() {
         return Show({

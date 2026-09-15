@@ -1,4 +1,3 @@
-import { Tag, PlatformTag } from "../dmui.js";
 import { FileHelperViewModel } from "./filehelper.model.js";
 
 function FileHelperHeaderView(props) {
@@ -23,18 +22,22 @@ function FileHelperHeaderView(props) {
         ),
         ok() {
           return Tag(
-            { name: "filehelper-channels-status", variant: "info", class: "filehelper-channels-status" },
+            {
+              name: "filehelper-channels-status",
+              variant: "info",
+              class: "filehelper-channels-status",
+            },
             [
-            "视频号API: ",
-            View(
-              {
-                class: computed(
-                  vm$.state.channels_status,
-                  (status) => `is-${status}`,
-                ),
-              },
-              [vm$.state.channels_status_text],
-            ),
+              "视频号API: ",
+              View(
+                {
+                  class: computed(
+                    vm$.state.channels_status,
+                    (status) => `is-${status}`,
+                  ),
+                },
+                [vm$.state.channels_status_text],
+              ),
             ],
           );
         },
@@ -43,9 +46,7 @@ function FileHelperHeaderView(props) {
         {
           name: "filehelper-status",
           class: computed(vm$.state.logged_in, (logged_in) =>
-            logged_in
-              ? "filehelper-status is-online"
-              : "filehelper-status",
+            logged_in ? "filehelper-status is-online" : "filehelper-status",
           ),
         },
         [vm$.state.connection_text],
@@ -86,27 +87,19 @@ function FileHelperQRCodeView(props) {
             });
           },
         }),
-        View({ class: "filehelper-scanned-tip" }, [
-          "请在手机上确认登录",
-        ]),
+        View({ class: "filehelper-scanned-tip" }, ["请在手机上确认登录"]),
       ]);
     },
     else() {
       return View({ class: "filehelper-qrcode" }, [
         Show({
-          when: computed(
-            vm$.state.login_stage,
-            (stage) => stage === "loading",
-          ),
+          when: computed(vm$.state.login_stage, (stage) => stage === "loading"),
           ok() {
             return View({ class: "filehelper-loading-spinner" });
           },
         }),
         Show({
-          when: computed(
-            vm$.state.qrcode_url,
-            (url) => Boolean(url),
-          ),
+          when: computed(vm$.state.qrcode_url, (url) => Boolean(url)),
           ok() {
             return Timeless.Img({
               class: "filehelper-qrcode-image",
@@ -146,7 +139,10 @@ function FileHelperLoginView(props) {
   const vm$ = props.store;
   return View({ class: "filehelper-login" }, [
     View({ class: "filehelper-login-copy" }, [
-      Tag({ name: "filehelper-login-eyebrow", class: "filehelper-login-eyebrow" }, ["微信连接"]),
+      Tag(
+        { name: "filehelper-login-eyebrow", class: "filehelper-login-eyebrow" },
+        ["微信连接"],
+      ),
       View({ as: "h1", class: "filehelper-login-title" }, [
         "把手机里的内容，直接送到工作台",
       ]),
@@ -192,31 +188,40 @@ function FileHelperLoginView(props) {
 function FileHelperFinderMessageView(props) {
   const data = props.message.finder_data;
   const cover_url = data.cover_url || data.thumb_url || "";
-  return View({ class: "filehelper-finder-card" }, [
-    cover_url
-      ? LazyImg({
-          class: "filehelper-finder-cover",
-          src: cover_url,
-          alt: "封面",
-        })
-      : null,
-    View({ class: "filehelper-finder-content" }, [
-      View({ class: "filehelper-finder-desc" }, [
-        data.desc || "[视频号]",
+  return View(
+    { class: "filehelper-finder-card" },
+    [
+      cover_url
+        ? LazyImg({
+            class: "filehelper-finder-cover",
+            src: cover_url,
+            alt: "封面",
+          })
+        : null,
+      View({ class: "filehelper-finder-content" }, [
+        View({ class: "filehelper-finder-desc" }, [data.desc || "[视频号]"]),
+        View(
+          { class: "filehelper-finder-author" },
+          [
+            data.avatar
+              ? LazyImg({
+                  class: "filehelper-finder-avatar",
+                  src: data.avatar,
+                  alt: "头像",
+                })
+              : null,
+            View({ class: "filehelper-finder-nickname" }, [data.nickname]),
+            PlatformTag({
+              class: "filehelper-finder-badge",
+              name: "filehelper-finder-platform",
+              label: "视频号",
+              favicon: (window.PLATFORM_FAVICONS || {}).wxchannels,
+            }),
+          ].filter(Boolean),
+        ),
       ]),
-      View({ class: "filehelper-finder-author" }, [
-        data.avatar
-          ? LazyImg({
-              class: "filehelper-finder-avatar",
-              src: data.avatar,
-              alt: "头像",
-            })
-          : null,
-        View({ class: "filehelper-finder-nickname" }, [data.nickname]),
-        PlatformTag({ class: "filehelper-finder-badge", name: "filehelper-finder-platform", label: "视频号", favicon: (window.PLATFORM_FAVICONS || {}).wxchannels }),
-      ].filter(Boolean)),
-    ]),
-  ].filter(Boolean));
+    ].filter(Boolean),
+  );
 }
 
 function FileHelperMessageView(props) {
@@ -233,14 +238,15 @@ function FileHelperMessageView(props) {
       View({ class: "filehelper-message-avatar" }, [
         message.is_mine ? "我" : "文",
       ]),
-      View({ class: "filehelper-message-content" }, [
-        message.type === "finder" && message.finder_data
-          ? FileHelperFinderMessageView({ message })
-          : View({ class: "filehelper-message-bubble" }, [message.text]),
-        time
-          ? View({ class: "filehelper-message-time" }, [time])
-          : null,
-      ].filter(Boolean)),
+      View(
+        { class: "filehelper-message-content" },
+        [
+          message.type === "finder" && message.finder_data
+            ? FileHelperFinderMessageView({ message })
+            : View({ class: "filehelper-message-bubble" }, [message.text]),
+          time ? View({ class: "filehelper-message-time" }, [time]) : null,
+        ].filter(Boolean),
+      ),
     ],
   );
 }

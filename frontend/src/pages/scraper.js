@@ -1,12 +1,12 @@
 import { ThirdPartyDownloaderPanel } from "@/third-party-downloader.js";
-
-import { ScraperPageViewModel } from "./scraper.model.js";
 import {
   FileTreeView,
   resource_file_icon,
   format_file_size,
   count_tree_children,
-} from "./tree.js";
+} from "@/components/tree.js";
+
+import { ScraperPageViewModel } from "./scraper.model.js";
 
 const {
   Alert,
@@ -1725,10 +1725,7 @@ function ScraperDownloadInfo(props) {
             },
           }),
           Show({
-            when: computed(
-              download_info.hide_resources,
-              (hide) => !hide,
-            ),
+            when: computed(download_info.hide_resources, (hide) => !hide),
             ok() {
               return HomeDownloadSection(
                 {
