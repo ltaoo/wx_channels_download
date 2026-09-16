@@ -3,7 +3,16 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 )
+
+// WXMPRuntime performs the raw official-account platform calls behind one
+// backend. A process without an installed adapter simply does not inject one,
+// which hides the tool.
+type WXMPRuntime interface {
+	BizMsgList(ctx context.Context, username string, offset string) (json.RawMessage, error)
+}
 
 type wxmp_biz_msg_list_arguments struct {
 	Username string `json:"username"`
@@ -15,7 +24,11 @@ func (s *ToolSet) get_wxmp_biz_msg_list(ctx context.Context, raw_arguments json.
 	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
 		return nil, err
 	}
-	raw_response, err := s.wxmp_capability().BizMsgList(ctx, arguments.Username, arguments.Offset)
+	username := strings.TrimSpace(arguments.Username)
+	if username == "" {
+		return nil, errors.New("username 不能为空")
+	}
+	raw_response, err := s.wxmp.BizMsgList(ctx, username, strings.TrimSpace(arguments.Offset))
 	if err != nil {
 		return nil, err
 	}
