@@ -18,7 +18,7 @@ MCP 中的“命令”以工具（tool）的形式提供。调用时由 AI 客�
 
 `update_config` 的键必须来自 `get_config`。值必须符合字段类型和 `options` 枚举约束。配置文件使用原子替换方式保存；成功响应中的 `restart_scheduled: true` 只表示重启已经安排，不能据此宣称重启完成。调用方必须保存 `restart_token`，在连接恢复后调用 `get_restart_status`。只有响应同时满足 `status: "completed"`、`restart_completed: true` 和 `config_applied: true`，才能确认新进程已经运行且保存后的配置已经加载。`pending` 需要继续重试，`failed` 表示重启请求失败，`config_mismatch` 表示进程已更换但配置摘要不一致。
 
-重启期间 HTTP、WebSocket 和 MCP 连接可能短暂断开，客户端应重新连接。若修改了 `api.hostname` 或 `api.port`，应改用新地址连接；stdio 客户端也需要更新 API 地址或重新启动。提交的值与当前值完全相同时不会写盘或重启。
+重启期间 HTTP、WebSocket 和 MCP 连接可能短暂断开，客户端应重新连接。若修改了 `api.hostname` 或 `api.port`，应改用新地址连接；stdio 客户端只在启动时读取一次配置，需要重新启动才能生效。提交的值与当前值完全相同时不会写盘或重启。
 
 ## Worker 部署
 
@@ -51,6 +51,7 @@ MCP 中的“命令”以工具（tool）的形式提供。调用时由 AI 客�
 | `search_wxchannels_accounts` | `keyword`，可选 `next_marker` | 搜索视频号账号。 |
 | `get_wxchannels_account_videos` | `username`，可选 `next_marker` | 获取账号发布的视频列表。 |
 | `get_wxchannels_live_replays` | `username`，可选 `next_marker` | 获取账号的直播回放。 |
+| `get_wxchannels_live_profile` | `username` + `oid` + `nid` + `id` | 获取直播详情和直播流信息，`id` 对应 `liveId`。 |
 | `get_wxchannels_interacted_videos` | 可选 `flag`、`next_marker` | 获取当前用户赞过或收藏的视频，`flag` 默认值为 `7`。 |
 | `get_wxchannels_followed_accounts` | 可选 `next_marker` | 获取当前用户关注的视频号账号。 |
 | `get_wxchannels_play_history` | 可选 `next_marker` | 获取当前用户最近的视频号播放记录。 |
@@ -59,6 +60,12 @@ MCP 中的“命令”以工具（tool）的形式提供。调用时由 AI 客�
 | `get_wxchannels_video_share_url` | `oid` | 获取视频的 H5 分享链接。 |
 
 列表工具会保留微信接口的分页字段。继续翻页时，将上一页 `data.lastBuffer` 原样传给 `next_marker`；只有账号搜索使用 `data.lastBuff`。游标不需要解码或修改。
+
+## 微信公众号
+
+| 工具 | 主要参数 | 用途 |
+| --- | --- | --- |
+| `get_wxmp_biz_msg_list` | `username`，可选 `offset` | 获取指定微信公众号的历史消息列表；继续翻页时把上一页响应中的分页游标传给 `offset`。 |
 
 ## 本地数据
 

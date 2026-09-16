@@ -1,12 +1,10 @@
-import { Tag, PlatformTag } from "../dmui.js";
 import { BrowseHistoryViewModel } from "./browsehistory.model.js";
 
 function BrowseHistoryPageView(props) {
   const vm$ = BrowseHistoryViewModel(props);
   return View(
     {
-      class:
-        "content-page content-library-page browse-history-page page",
+      class: "content-page content-library-page browse-history-page page",
       onMounted() {
         vm$.methods.ready();
       },
@@ -60,67 +58,65 @@ function BrowseHistoryPageToolbar(props) {
     [
       View(
         {
-          class:
-            "content-filter-fields dm-flex dm-items-center dm-gap-2",
+          class: "content-filter-fields dm-flex dm-items-center dm-gap-2",
         },
         [
-        PlatformSelect({
-          name: "browse-history-platform-select",
-          store: vm$.ui.select_platform$,
-          attributes: {
-            n: "browse-history-platform-select-trigger",
-            "aria-label": "按平台筛选浏览记录",
-          },
-        }),
-        View(
-          {
-            class: "content-filter-search",
-            attributes: { n: "browse-history-search-field" },
-          },
-          [
-            Input({
-              store: vm$.ui.input_keyword$,
-              rootAttributes: { n: "browse-history-search-control" },
-              prefix: Timeless.Icon({
-                name: "search",
-                size: 16,
-                attributes: { n: "browse-history-search-icon" },
+          PlatformSelect({
+            name: "browse-history-platform-select",
+            store: vm$.ui.select_platform$,
+            attributes: {
+              n: "browse-history-platform-select-trigger",
+              "aria-label": "按平台筛选浏览记录",
+            },
+          }),
+          View(
+            {
+              class: "content-filter-search",
+              attributes: { n: "browse-history-search-field" },
+            },
+            [
+              Input({
+                store: vm$.ui.input_keyword$,
+                rootAttributes: { n: "browse-history-search-control" },
+                prefix: Timeless.Icon({
+                  name: "search",
+                  size: 16,
+                  attributes: { n: "browse-history-search-icon" },
+                }),
+                attributes: {
+                  n: "browse-history-search-input",
+                  name: "keyword",
+                  type: "text",
+                  autocomplete: "off",
+                  "aria-label": "搜索浏览记录标题、账号或链接",
+                },
               }),
-              attributes: {
-                n: "browse-history-search-input",
-                name: "keyword",
-                type: "text",
-                autocomplete: "off",
-                "aria-label": "搜索浏览记录标题、账号或链接",
-              },
-            }),
-          ],
-        ),
+            ],
+          ),
         ],
       ),
       View(
         {
-          class:
-            "content-filter-actions dm-flex dm-items-center dm-gap-2",
+          class: "content-filter-actions dm-flex dm-items-center dm-gap-2",
         },
         [
-        BrowseHistoryPageActionButton({
-          name: "browse-history-search-action",
-          store: vm$.ui.btn_search$,
-          icon: "search",
-          label: "搜索",
-          type: "submit",
-          onClick(event) {
-            event.preventDefault();
-            vm$.methods.search();
-          },
-        }),
-        BrowseHistoryPageActionButton({
-          name: "browse-history-reset-action",
-          store: vm$.ui.btn_refresh$,
-          icon: "rotate-ccw",
-          label: "重置",
-        }),
+          BrowseHistoryPageActionButton({
+            name: "browse-history-search-action",
+            store: vm$.ui.btn_search$,
+            icon: "search",
+            label: "搜索",
+            type: "submit",
+            onClick(event) {
+              event.preventDefault();
+              vm$.methods.search();
+            },
+          }),
+          BrowseHistoryPageActionButton({
+            name: "browse-history-reset-action",
+            store: vm$.ui.btn_refresh$,
+            icon: "rotate-ccw",
+            label: "重置",
+          }),
         ],
       ),
     ],
@@ -198,8 +194,7 @@ function BrowseHistoryRowMain(props) {
         ),
         View(
           {
-            class:
-              "content-row-badges dm-flex dm-items-center dm-gap-1-5",
+            class: "content-row-badges dm-flex dm-items-center dm-gap-1-5",
             attributes: { n: "browse-history-badges" },
           },
           [
@@ -287,9 +282,7 @@ function BrowseHistoryRowAccess(props) {
           "dm-flex dm-items-center dm-gap-1-5 dm-text-muted dm-text-sm dm-tabular-nums dm-whitespace-nowrap",
         attributes: { n: "browse-history-updated-at" },
       },
-      [
-        vm$.methods.formatTime(history.updated_at),
-      ],
+      [vm$.methods.formatTime(history.updated_at)],
     ),
   ].filter(Boolean);
 }
@@ -427,9 +420,7 @@ function BrowseHistoryPageBody(props) {
     renderSkeletonRow: BrowseHistorySkeletonRow,
     onRow(history) {
       return {
-        class: browse_history_cover_url(history)
-          ? ""
-          : "content-row-no-cover",
+        class: browse_history_cover_url(history) ? "" : "content-row-no-cover",
       };
     },
     errorTitle: "浏览记录加载失败",
@@ -437,9 +428,7 @@ function BrowseHistoryPageBody(props) {
       store: vm$.ui.btn_retry$,
     },
     emptyTitle: computed(vm$.state.keyword, (keyword) =>
-      String(keyword || "").trim()
-        ? "没有匹配的浏览记录"
-        : "暂无浏览记录",
+      String(keyword || "").trim() ? "没有匹配的浏览记录" : "暂无浏览记录",
     ),
     emptyDescription: computed(vm$.state.keyword, (keyword) =>
       String(keyword || "").trim()

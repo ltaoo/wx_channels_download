@@ -1,860 +1,239 @@
 package mcpserver
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
+
+	mcp "wx_channel/pkg/mcp"
 )
 
-var err_unknown_tool = errors.New("未知工具")
+const server_name = "dm"
 
-type tool_execution_error struct {
-	message string
-	data    any
+// Config configures the MCP tool backends.
+type Config struct {
+	APIBaseURL          string
+	Version             string
+	Input               io.Reader
+	Output              io.Writer
+	ErrorOutput         io.Writer
+	HTTPClient          *http.Client
+	PollInterval        time.Duration
+	DataReader          DataReader
+	ScraperJobs         ScraperJobBackend
+	DownloadTaskCreator DownloadTaskCreator
+	DownloadTaskDeleter DownloadTaskDeleter
+	WXMP                WXMPRuntime
+	WXChannels          WXChannelsBackend
+	SphDeployer         SphDeployer
+	ZhihuCollections    ZhihuCollectionReader
+	ZhihuCredentials    ZhihuCredentialReader
+	Automation          AutomationBackend
 }
 
-func (e *tool_execution_error) Error() string {
-	return e.message
+// ToolSet owns the business tool backends and registers their tools into an MCP
+// protocol engine.
+type ToolSet struct {
+	api_client            *api_client
+	data_reader           DataReader
+	scraper_jobs          ScraperJobBackend
+	download_task_creator DownloadTaskCreator
+	download_task_deleter DownloadTaskDeleter
+	wxmp                  WXMPRuntime
+	wxchannels            WXChannelsBackend
+	sph_deployer          SphDeployer
+	zhihu_collections     ZhihuCollectionReader
+	zhihu_credentials     ZhihuCredentialReader
+	automation            AutomationBackend
 }
 
-type fetch_content_arguments struct {
-	URL            string `json:"url"`
-	ForceRefresh   bool   `json:"force_refresh"`
-	TimeoutSeconds int    `json:"timeout_seconds"`
+// NewToolSet validates the configured tool backends and builds the business
+// tool registry.
+func NewToolSet(config Config) (*ToolSet, error) {
+	var client *api_client
+	if strings.TrimSpace(config.APIBaseURL) != "" {
+		var err error
+		client, err = new_api_client(config.APIBaseURL, config.HTTPClient, config.PollInterval)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if (config.ZhihuCollections == nil) != (config.ZhihuCredentials == nil) {
+		return nil, fmt.Errorf("知乎 MCP 工具需要同时配置收藏夹读取器和凭证读取器")
+	}
+	if client == nil && config.DataReader == nil && config.ScraperJobs == nil && config.DownloadTaskCreator == nil && config.DownloadTaskDeleter == nil && config.WXChannels == nil && config.SphDeployer == nil && config.ZhihuCollections == nil && config.Automation == nil {
+		return nil, fmt.Errorf("至少需要配置一种工具后端")
+	}
+	toolset := &ToolSet{
+		api_client:            client,
+		data_reader:           config.DataReader,
+		scraper_jobs:          config.ScraperJobs,
+		download_task_creator: config.DownloadTaskCreator,
+		download_task_deleter: config.DownloadTaskDeleter,
+		wxmp:                  config.WXMP,
+		wxchannels:            config.WXChannels,
+		sph_deployer:          config.SphDeployer,
+		zhihu_collections:     config.ZhihuCollections,
+		zhihu_credentials:     config.ZhihuCredentials,
+		automation:            config.Automation,
+	}
+	if err := validate_tool_registry(); err != nil {
+		return nil, err
+	}
+	return toolset, nil
 }
 
-type download_content_arguments struct {
-	JobID             string `json:"job_id"`
-	FetchID           string `json:"fetch_id"`
-	URL               string `json:"url"`
-	DownloadDir       string `json:"download_dir"`
-	Filename          string `json:"filename"`
-	ForceRefresh      bool   `json:"force_refresh"`
-	ExistingAction    string `json:"existing_action"`
-	VideoVariantKey   string `json:"video_variant_key"`
-	VideoVariantSpec  string `json:"video_variant_spec"`
-	WaitForCompletion bool   `json:"wait_for_completion"`
-	TimeoutSeconds    int    `json:"timeout_seconds"`
+// NewRuntime builds the MCP protocol engine and registers the business toolset
+// into it. It is the single composition point for every transport.
+func NewRuntime(config Config) (*mcp.Server, *ToolSet, error) {
+	toolset, err := NewToolSet(config)
+	if err != nil {
+		return nil, nil, err
+	}
+	server := mcp.NewServer(mcp.ServerOptions{
+		Name:         server_name,
+		Version:      config.Version,
+		Instructions: server_instructions(),
+		Input:        config.Input,
+		Output:       config.Output,
+		ErrorOutput:  config.ErrorOutput,
+	})
+	if err := toolset.Register(server); err != nil {
+		return nil, nil, err
+	}
+	return server, toolset, nil
 }
 
-type decrypt_wxchannels_video_arguments struct {
-	FilePath string `json:"file_path"`
-	Key      string `json:"key"`
+// Register snapshots the enabled tools into the protocol engine. The filtered
+// set is materialized once here instead of being recomputed per tools/list.
+func (t *ToolSet) Register(server *mcp.Server) error {
+	if server == nil {
+		return errors.New("MCP 服务未初始化")
+	}
+	if t == nil {
+		return errors.New("工具服务未初始化")
+	}
+	for _, definition := range t.ToolCatalog() {
+		name := definition.Name
+		server.AddTool(mcp.Tool{
+			Name:        definition.Name,
+			Title:       definition.Title,
+			Description: definition.Description,
+			InputSchema: definition.InputSchema,
+			Annotations: definition.Annotations,
+		}, func(ctx context.Context, request *mcp.CallToolRequest) (any, error) {
+			envelope, err := t.call(ctx, name, request.Arguments)
+			if err != nil {
+				if errors.Is(err, ErrUnknownTool) {
+					return nil, fmt.Errorf("%w: %s", mcp.ErrToolNotFound, name)
+				}
+				return nil, err
+			}
+			return envelope["structuredContent"], nil
+		})
+	}
+	return nil
 }
 
-type update_config_arguments struct {
-	Values map[string]any `json:"values"`
-}
+type ToolDefinition = Definition
 
-type get_restart_status_arguments struct {
-	RestartToken string `json:"restart_token"`
-}
-
-type wxchannels_download_preview struct {
-	Resources []wxchannels_download_resource_info `json:"Resources"`
-}
-
-type wxchannels_download_resource_info struct {
-	Resource  map[string]any                 `json:"Resource"`
-	Endpoints []wxchannels_download_endpoint `json:"Endpoints"`
-}
-
-type wxchannels_download_endpoint struct {
-	Protocol string `json:"protocol"`
-	URL      string `json:"url"`
-	Priority int    `json:"priority"`
-	Enabled  int    `json:"enabled"`
-	Headers  string `json:"headers,omitempty"`
-	Cookies  string `json:"cookies,omitempty"`
-}
+// tool_execution_error is a true alias so errors.As in mcp.ErrorResult keeps
+// matching errors returned by this package's tool handlers.
+type tool_execution_error = mcp.ToolError
 
 func new_tool_execution_error(message string, data any) error {
-	return &tool_execution_error{message: message, data: data}
+	return mcp.NewToolError(message, data)
 }
 
-func tool_error_result(err error) map[string]any {
-	message := err.Error()
-	structured := map[string]any{"error": message}
-	var execution_error *tool_execution_error
-	if errors.As(err, &execution_error) && execution_error.data != nil {
-		structured["details"] = execution_error.data
-	}
-	return map[string]any{
-		"content":           []any{map[string]any{"type": "text", "text": message}},
-		"structuredContent": structured,
-		"isError":           true,
-	}
+func server_instructions() string {
+	return "查询下载器平台状态、解析受支持平台的内容链接，并创建和启动内容下载任务。调用 download_content、download_wxchannels_live、download_wxchannels_video、delete_download_tasks 或 deploy_sph_worker 前应先获得用户确认。deploy_sph_worker 会读取应用中的 Cloudflare 敏感配置，并覆盖同名的远端视频号查询 Worker；get_config 可用时，应先用它确认 cloudflare.accountId、cloudflare.apiToken、cloudflare.sphWorkerName、cloudflare.sphCookie 和 cloudflare.sphCredential 均已配置。凡涉及下载文件的文件系统操作，包括重命名、移动、删除以及修改文件名或路径，都必须在同一业务流程中同步更新数据库中的 DownloadResource 表记录，禁止仅操作本地文件。若当前工具无法保证文件系统与 DownloadResource 记录一致，必须停止操作并明确告知用户暂不支持，不得使用其他本地文件工具绕过该约束。只读数据工具可查询下载任务及详情、账号、浏览记录、应用日志和代理证书状态；列表结果支持分页，应优先使用筛选参数限制返回量。知乎工具使用 cookies.json 中的 z_c0 登录 Cookie；可先调用 get_zhihu_credential_status 检查登录态，再用 get_my_zhihu_collections 获取当前账号的公开及私密收藏夹，或用 get_my_zhihu_answers、get_my_zhihu_posts、get_my_zhihu_zvideos 和 get_my_zhihu_columns 获取当前账号发布或参与的内容。知乎列表响应 has_next=true 时，应将 next_page 传给对应工具的下一次调用。微信视频号工具可搜索账号、查询账号视频、直播详情与直播回放、赞或收藏的视频、关注账号、播放记录、视频详情、评论及分享链接；这些工具依赖已连接的视频号页面，调用前可先使用 get_wxchannels_status。get_wxmp_biz_msg_list 可获取指定微信公众号的历史消息列表，继续翻页时把上一页响应中的分页游标传给 offset。用户确认后，下载当前直播应直接调用 download_wxchannels_live，只传精确昵称或 username，由命令自动定位直播并创建任务；不要先获取 FLV 流地址，也不要把直播流交给 download_content。下载单个视频应优先直接调用 download_wxchannels_video，传分享链接 url，或使用 oid+nid/eid；无需先调用视频详情、fetch_content 或 download_content。分页时把上一次响应的 lastBuffer 原样传给 next_marker。微信视频号 fetch_content 结果包含可供 aria2 等第三方下载器使用的 download_resources；第三方下载完成后，仅在 requires_decryption 为 true 时使用 decode_key 调用 decrypt_wxchannels_video。解密会原地覆盖文件。"
 }
 
-func tool_definitions() []any {
-	definitions := []any{
-		map[string]any{
-			"name":        "get_config",
-			"title":       "获取应用配置",
-			"description": "获取 config.yaml 的可配置字段、类型、说明、当前值和解析后的生效值。application_fields 是 internal/config/config.go 注册的应用配置，plugin_fields 是 adapter 插件配置，fields 是两者的兼容合集。敏感字段只返回是否已配置，不返回明文。修改前应先调用此工具确认字段名称和允许值。",
-			"inputSchema": map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-			},
-			"annotations": map[string]any{
-				"readOnlyHint":    true,
-				"destructiveHint": false,
-				"idempotentHint":  true,
-				"openWorldHint":   false,
-			},
-		},
-		map[string]any{
-			"name":        "update_config",
-			"title":       "修改应用配置并重启",
-			"description": "批量修改 get_config 返回的非只读配置字段。配置保存成功后只代表重启已安排，不代表重启已完成；必须保存返回的 restart_token，在连接恢复后调用 get_restart_status，且仅当 status=completed、restart_completed=true、config_applied=true 时才能告诉用户重启完成且配置生效。当前 MCP 连接可能短暂断开；相同值不会触发重启。",
-			"inputSchema": map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"values": map[string]any{
-						"type":                 "object",
-						"description":          "配置键到新值的映射；键必须来自 get_config，值必须符合对应字段类型。",
-						"additionalProperties": true,
-						"minProperties":        1,
-					},
-				},
-				"required": []string{"values"},
-			},
-			"annotations": map[string]any{
-				"readOnlyHint":    false,
-				"destructiveHint": true,
-				"idempotentHint":  true,
-				"openWorldHint":   false,
-			},
-		},
-		map[string]any{
-			"name":        "get_restart_status",
-			"title":       "确认应用重启与配置生效",
-			"description": "使用 update_config 返回的 restart_token 确认重启结果。status=pending 表示仍是旧进程，必须在连接恢复后重试；status=failed 表示重启请求失败；status=config_mismatch 表示已重启但配置不一致；只有 status=completed、restart_completed=true、config_applied=true 才能向用户确认重启完成且新配置已生效。",
-			"inputSchema": map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"restart_token": map[string]any{
-						"type":        "string",
-						"description": "update_config 返回的重启确认令牌。",
-					},
-				},
-				"required": []string{"restart_token"},
-			},
-			"annotations": map[string]any{
-				"readOnlyHint":    true,
-				"destructiveHint": false,
-				"idempotentHint":  true,
-				"openWorldHint":   false,
-			},
-		},
-		map[string]any{
-			"name":        "get_platform_status",
-			"title":       "获取平台状态",
-			"description": "获取下载器当前支持的抓取平台及各平台可用状态。解析或下载链接前可先调用此工具。",
-			"inputSchema": map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-			},
-			"annotations": map[string]any{
-				"readOnlyHint":    true,
-				"destructiveHint": false,
-				"idempotentHint":  true,
-				"openWorldHint":   false,
-			},
-		},
-		map[string]any{
-			"name":        "fetch_content",
-			"title":       "获取链接内容",
-			"description": "解析受支持的平台链接并返回规范化内容、账号、内容详情、缓存条目和下载预览。微信视频号结果会额外提供 download_resources，其中包含可交给 aria2 等下载器的 download_url 和可选 decode_key。返回的 job_id 可传给 download_content，避免再次解析链接。",
-			"inputSchema": map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"url": map[string]any{
-						"type":        "string",
-						"format":      "uri",
-						"description": "要解析的平台内容链接。",
-					},
-					"force_refresh": map[string]any{
-						"type":        "boolean",
-						"default":     false,
-						"description": "忽略抓取缓存并重新获取。",
-					},
-					"timeout_seconds": map[string]any{
-						"type":        "integer",
-						"minimum":     1,
-						"maximum":     3600,
-						"default":     300,
-						"description": "等待链接解析完成的最长秒数。",
-					},
-				},
-				"required": []string{"url"},
-			},
-			"annotations": map[string]any{
-				"readOnlyHint":    true,
-				"destructiveHint": false,
-				"idempotentHint":  true,
-				"openWorldHint":   true,
-			},
-		},
-		map[string]any{
-			"name":        "download_content",
-			"title":       "下载内容",
-			"description": "根据 fetch_content 返回的 job_id 创建并启动下载任务；也可直接传 url，此时会先解析链接。默认在任务启动后返回，设置 wait_for_completion 可等待文件下载完成。此工具会写入下载目录。",
-			"inputSchema": map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"job_id": map[string]any{
-						"type":        "string",
-						"description": "fetch_content 返回的 job_id；优先使用它以复用解析结果。",
-					},
-					"fetch_id": map[string]any{
-						"type":        "string",
-						"description": "job_id 的旧名称，仅用于兼容已有调用。",
-						"deprecated":  true,
-					},
-					"url": map[string]any{
-						"type":        "string",
-						"format":      "uri",
-						"description": "未提供 job_id 时，要解析并下载的平台内容链接。",
-					},
-					"download_dir": map[string]any{
-						"type":        "string",
-						"description": "下载目录；留空时使用应用配置。",
-					},
-					"filename": map[string]any{
-						"type":        "string",
-						"description": "可选的自定义文件名。",
-					},
-					"force_refresh": map[string]any{
-						"type":        "boolean",
-						"default":     false,
-						"description": "直接传 url 时忽略抓取缓存。",
-					},
-					"existing_action": map[string]any{
-						"type":        "string",
-						"enum":        []string{"error", "skip", "overwrite", "duplicate"},
-						"default":     "error",
-						"description": "遇到相同任务时的处理方式。overwrite 会覆盖已有任务及文件。",
-					},
-					"video_variant_key": map[string]any{
-						"type":        "string",
-						"description": "可选的视频规格 variant_key。",
-					},
-					"video_variant_spec": map[string]any{
-						"type":        "string",
-						"description": "可选的视频规格名称；同时兼容适配器的 spec 配置。",
-					},
-					"wait_for_completion": map[string]any{
-						"type":        "boolean",
-						"default":     false,
-						"description": "是否等待实际下载结束后再返回。",
-					},
-					"timeout_seconds": map[string]any{
-						"type":        "integer",
-						"minimum":     1,
-						"maximum":     86400,
-						"default":     300,
-						"description": "解析链接以及可选等待下载完成的最长秒数。",
-					},
-				},
-				"anyOf": []any{
-					map[string]any{"required": []string{"job_id"}},
-					map[string]any{"required": []string{"fetch_id"}},
-					map[string]any{"required": []string{"url"}},
-				},
-			},
-			"annotations": map[string]any{
-				"readOnlyHint":    false,
-				"destructiveHint": true,
-				"idempotentHint":  false,
-				"openWorldHint":   true,
-			},
-		},
-		map[string]any{
-			"name":        "decrypt_wxchannels_video",
-			"title":       "解密微信视频号视频",
-			"description": "原地解密已经下载到本机的微信视频号视频。file_path 必须是运行下载器服务的同一台机器上的绝对路径；仅当 fetch_content 返回的 download_resources 项中 requires_decryption 为 true 时调用，并原样传入 decode_key。",
-			"inputSchema": map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"properties": map[string]any{
-					"file_path": map[string]any{
-						"type":        "string",
-						"description": "第三方下载器已下载完成的视频绝对路径。文件会被原地覆盖为解密后内容。",
-					},
-					"key": map[string]any{
-						"type":        "string",
-						"pattern":     "^[1-9][0-9]*$",
-						"description": "fetch_content 返回的 decode_key，使用字符串传递以避免整数精度丢失。",
-					},
-				},
-				"required": []string{"file_path", "key"},
-			},
-			"annotations": map[string]any{
-				"readOnlyHint":    false,
-				"destructiveHint": true,
-				"idempotentHint":  false,
-				"openWorldHint":   false,
-			},
-		},
-	}
-	definitions = append(definitions, scraper_job_tool_definitions()...)
-	definitions = append(definitions, wxchannels_tool_definitions()...)
-	definitions = append(definitions, wxchannels_download_tool_definitions()...)
-	definitions = append(definitions, sph_tool_definitions()...)
-	definitions = append(definitions, zhihu_tool_definitions()...)
-	return append(definitions, data_tool_definitions()...)
-}
-
-// ToolNames returns the MCP tool names exposed by this server.
+// ToolNames returns every declared tool name, independent of which backends
+// happen to be enabled in one process.
 func ToolNames() []string {
-	definitions := tool_definitions()
-	names := make([]string, 0, len(definitions))
-	for _, definition := range definitions {
-		tool, ok := definition.(map[string]any)
-		if !ok {
-			continue
-		}
-		name, _ := tool["name"].(string)
-		if name != "" {
-			names = append(names, name)
-		}
+	catalog := ToolCatalog()
+	names := make([]string, 0, len(catalog))
+	for _, definition := range catalog {
+		names = append(names, definition.Name)
 	}
 	return names
 }
 
-func (s *Server) tool_definitions() []any {
-	definitions := tool_definitions()
-	filtered := make([]any, 0, len(definitions))
-	for _, definition := range definitions {
-		tool, ok := definition.(map[string]any)
-		if !ok {
-			continue
-		}
-		name, _ := tool["name"].(string)
-		if s.supports_tool(name) {
-			filtered = append(filtered, definition)
-		}
-	}
-	return filtered
+// ToolCatalog returns every declared tool, independent of which backends happen
+// to be enabled in one process. It is used by the automation editor to
+// configure service nodes without maintaining a second tool list.
+//
+// The slice is a fresh copy but its elements are the shared init-time
+// definitions: callers must treat the returned metadata as read-only.
+func ToolCatalog() []ToolDefinition {
+	definitions := make([]ToolDefinition, len(tool_definitions))
+	copy(definitions, tool_definitions)
+	return definitions
 }
 
-func (s *Server) supports_tool(name string) bool {
+// ToolCatalog returns the tools enabled by this server's configured service
+// backends. CLI and other process-local callers use the same catalog as MCP.
+func (s *ToolSet) ToolCatalog() []ToolDefinition {
 	if s == nil {
-		return false
+		return []ToolDefinition{}
 	}
-	switch name {
-	case "fetch_content", "create_scraper_job", "get_scraper_job":
-		return s.scraper_jobs != nil || s.api_client != nil
-	case "download_content":
-		return (s.scraper_jobs != nil || s.api_client != nil) && (s.download_task_creator != nil || s.api_client != nil)
-	case "download_wxchannels_live", "download_wxchannels_video":
-		return s.api_client != nil && (s.download_task_creator != nil || s.api_client != nil)
-	case "get_download_tasks", "get_download_task_detail", "get_accounts", "get_browse_history", "get_logs", "get_certificate_status":
-		return s.data_reader != nil || s.api_client != nil
-	case "delete_download_tasks":
-		return s.download_task_deleter != nil
-	case "deploy_sph_worker":
-		return s.sph_deployer != nil
-	case get_zhihu_credential_status_tool_name,
-		get_my_zhihu_collections_tool_name,
-		get_zhihu_collection_contents_tool_name,
-		get_my_zhihu_answers_tool_name,
-		get_my_zhihu_posts_tool_name,
-		get_my_zhihu_zvideos_tool_name,
-		get_my_zhihu_columns_tool_name:
-		return s.zhihu_collections != nil && s.zhihu_credentials != nil
-	default:
-		return s.api_client != nil
-	}
-}
-
-func (s *Server) call_tool(ctx context.Context, params call_tool_params) (map[string]any, error) {
-	if !s.supports_tool(params.Name) {
-		return nil, fmt.Errorf("%w: %s", err_unknown_tool, params.Name)
-	}
-	switch params.Name {
-	case "get_config":
-		return s.get_config(ctx)
-	case "update_config":
-		return s.update_config(ctx, params.Arguments)
-	case "get_restart_status":
-		return s.get_restart_status(ctx, params.Arguments)
-	case "get_platform_status":
-		return s.get_platform_status(ctx)
-	case "fetch_content":
-		return s.fetch_content(ctx, params.Arguments)
-	case "create_scraper_job":
-		return s.create_scraper_job_tool(ctx, params.Arguments)
-	case "get_scraper_job":
-		return s.get_scraper_job_tool(ctx, params.Arguments)
-	case "download_content":
-		return s.download_content(ctx, params.Arguments)
-	case "decrypt_wxchannels_video":
-		return s.decrypt_wxchannels_video(ctx, params.Arguments)
-	case "get_wxchannels_status":
-		return s.get_wxchannels_status(ctx)
-	case "search_wxchannels_accounts":
-		return s.search_wxchannels_accounts(ctx, params.Arguments)
-	case "get_wxchannels_account_videos":
-		return s.get_wxchannels_account_videos(ctx, params.Arguments)
-	case "get_wxchannels_live_replays":
-		return s.get_wxchannels_live_replays(ctx, params.Arguments)
-	case "get_wxchannels_live_profile":
-		return s.get_wxchannels_live_profile(ctx, params.Arguments)
-	case "get_wxchannels_interacted_videos":
-		return s.get_wxchannels_interacted_videos(ctx, params.Arguments)
-	case "get_wxchannels_followed_accounts":
-		return s.get_wxchannels_followed_accounts(ctx, params.Arguments)
-	case "get_wxchannels_play_history":
-		return s.get_wxchannels_play_history(ctx, params.Arguments)
-	case "get_wxchannels_video_profile":
-		return s.get_wxchannels_video_profile(ctx, params.Arguments)
-	case "get_wxchannels_video_comments":
-		return s.get_wxchannels_video_comments(ctx, params.Arguments)
-	case "get_wxchannels_video_share_url":
-		return s.get_wxchannels_video_share_url(ctx, params.Arguments)
-	case "download_wxchannels_live":
-		return s.download_wxchannels_live(ctx, params.Arguments)
-	case "download_wxchannels_video":
-		return s.download_wxchannels_video(ctx, params.Arguments)
-	case "get_download_tasks":
-		return s.get_download_tasks(ctx, params.Arguments)
-	case "get_download_task_detail":
-		return s.get_download_task_detail(ctx, params.Arguments)
-	case "delete_download_tasks":
-		return s.delete_download_tasks(ctx, params.Arguments)
-	case "get_accounts":
-		return s.get_accounts(ctx, params.Arguments)
-	case "get_browse_history":
-		return s.get_browse_history(ctx, params.Arguments)
-	case "get_logs":
-		return s.get_logs(ctx, params.Arguments)
-	case "get_certificate_status":
-		return s.get_certificate_status(ctx)
-	case "deploy_sph_worker":
-		return s.deploy_sph_worker(ctx, params.Arguments)
-	case get_zhihu_credential_status_tool_name:
-		return s.get_zhihu_credential_status(ctx, params.Arguments)
-	case get_my_zhihu_collections_tool_name:
-		return s.get_my_zhihu_collections(ctx, params.Arguments)
-	case get_zhihu_collection_contents_tool_name:
-		return s.get_zhihu_collection_contents(ctx, params.Arguments)
-	case get_my_zhihu_answers_tool_name:
-		return s.get_my_zhihu_answers(ctx, params.Arguments)
-	case get_my_zhihu_posts_tool_name:
-		return s.get_my_zhihu_posts(ctx, params.Arguments)
-	case get_my_zhihu_zvideos_tool_name:
-		return s.get_my_zhihu_zvideos(ctx, params.Arguments)
-	case get_my_zhihu_columns_tool_name:
-		return s.get_my_zhihu_columns(ctx, params.Arguments)
-	default:
-		return nil, fmt.Errorf("%w: %s", err_unknown_tool, params.Name)
-	}
-}
-
-func (s *Server) get_config(ctx context.Context) (map[string]any, error) {
-	raw_config, err := s.api_client.get_config(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return successful_tool_result(raw_json_value(raw_config))
-}
-
-func (s *Server) update_config(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
-	var arguments update_config_arguments
-	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
-		return nil, err
-	}
-	if len(arguments.Values) == 0 {
-		return nil, fmt.Errorf("values 至少需要包含一个配置项")
-	}
-	raw_result, err := s.api_client.update_config(ctx, arguments.Values)
-	if err != nil {
-		return nil, err
-	}
-	return successful_tool_result(raw_json_value(raw_result))
-}
-
-func (s *Server) get_restart_status(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
-	var arguments get_restart_status_arguments
-	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
-		return nil, err
-	}
-	arguments.RestartToken = strings.TrimSpace(arguments.RestartToken)
-	if arguments.RestartToken == "" {
-		return nil, fmt.Errorf("restart_token 不能为空")
-	}
-	raw_result, err := s.api_client.get_restart_status(ctx, arguments.RestartToken)
-	if err != nil {
-		return nil, err
-	}
-	return successful_tool_result(raw_json_value(raw_result))
-}
-
-func (s *Server) get_platform_status(ctx context.Context) (map[string]any, error) {
-	raw_status, err := s.api_client.get_platform_status(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return successful_tool_result(raw_json_value(raw_status))
-}
-
-func (s *Server) fetch_content(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
-	var arguments fetch_content_arguments
-	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
-		return nil, err
-	}
-	arguments.URL = strings.TrimSpace(arguments.URL)
-	if err := validate_source_url(arguments.URL); err != nil {
-		return nil, err
-	}
-	timeout, err := timeout_duration(arguments.TimeoutSeconds, 300, 3600)
-	if err != nil {
-		return nil, err
-	}
-	fetch_context, cancel_fetch := context.WithTimeout(ctx, timeout)
-	defer cancel_fetch()
-	job, err := s.create_scraper_job(fetch_context, arguments.URL, arguments.ForceRefresh)
-	if err != nil {
-		return nil, err
-	}
-	job, err = s.wait_scraper_job(fetch_context, job)
-	if err != nil {
-		return nil, err
-	}
-	output, err := fetch_content_output(job.Output)
-	if err != nil {
-		return nil, err
-	}
-	return successful_tool_result(output)
-}
-
-func fetch_content_output(raw_output json.RawMessage) (any, error) {
-	var output map[string]any
-	if err := json.Unmarshal(raw_output, &output); err != nil {
-		return nil, fmt.Errorf("解析抓取结果失败: %w", err)
-	}
-	platform, _ := output["platform"].(string)
-	if strings.TrimSpace(strings.ToLower(platform)) != "wxchannels" {
-		return output, nil
-	}
-	download_info, exists := output["download_info"]
-	if !exists || download_info == nil {
-		return output, nil
-	}
-	raw_download_info, err := json.Marshal(download_info)
-	if err != nil {
-		return nil, fmt.Errorf("编码微信视频号下载资源失败: %w", err)
-	}
-	resources, err := normalize_wxchannels_download_resources(raw_download_info)
-	if err != nil {
-		return nil, err
-	}
-	output["download_resources"] = resources
-	return output, nil
-}
-
-func normalize_wxchannels_download_resources(raw_download_info json.RawMessage) ([]map[string]any, error) {
-	var preview wxchannels_download_preview
-	if err := json.Unmarshal(raw_download_info, &preview); err != nil {
-		return nil, fmt.Errorf("解析微信视频号下载资源失败: %w", err)
-	}
-	resources := make([]map[string]any, 0, len(preview.Resources))
-	for _, info := range preview.Resources {
-		download_url := preferred_download_url(info.Endpoints)
-		decode_key := resource_decode_key(info.Resource)
-		resources = append(resources, map[string]any{
-			"resource":            info.Resource,
-			"endpoints":           info.Endpoints,
-			"download_url":        download_url,
-			"decode_key":          decode_key,
-			"requires_decryption": decode_key != "",
-		})
-	}
-	return resources, nil
-}
-
-func preferred_download_url(endpoints []wxchannels_download_endpoint) string {
-	for _, endpoint := range endpoints {
-		if endpoint.Enabled != 0 && strings.TrimSpace(endpoint.URL) != "" {
-			return endpoint.URL
+	definitions := make([]ToolDefinition, 0, len(tool_declarations))
+	for index, declaration := range tool_declarations {
+		if declaration.supports(s) {
+			definitions = append(definitions, tool_definitions[index])
 		}
 	}
-	for _, endpoint := range endpoints {
-		if strings.TrimSpace(endpoint.URL) != "" {
-			return endpoint.URL
-		}
-	}
-	return ""
+	return definitions
 }
 
-func resource_decode_key(resource map[string]any) string {
-	raw_extra, ok := resource["extra"]
-	if !ok {
-		raw_extra = resource["Extra"]
+// ToolNames returns the tools enabled by this server.
+func (s *ToolSet) ToolNames() []string {
+	catalog := s.ToolCatalog()
+	names := make([]string, 0, len(catalog))
+	for _, definition := range catalog {
+		names = append(names, definition.Name)
 	}
-	var extra map[string]any
-	switch value := raw_extra.(type) {
-	case string:
-		if json.Unmarshal([]byte(value), &extra) != nil {
-			return ""
-		}
-	case map[string]any:
-		extra = value
-	default:
-		return ""
-	}
-	decode_key, _ := extra["decode_key"].(string)
-	return strings.TrimSpace(decode_key)
+	return names
 }
 
-func (s *Server) decrypt_wxchannels_video(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
-	var arguments decrypt_wxchannels_video_arguments
-	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
-		return nil, err
+// ExecuteTool invokes an MCP tool directly and returns its structured result.
+// This shares the exact same validation and dispatch path as tools/call.
+func (s *ToolSet) ExecuteTool(ctx context.Context, name string, arguments map[string]any) (any, error) {
+	if s == nil {
+		return nil, errors.New("工具服务未初始化")
 	}
-	file_path := strings.TrimSpace(arguments.FilePath)
-	if file_path == "" {
-		return nil, fmt.Errorf("file_path 不能为空")
+	if arguments == nil {
+		arguments = map[string]any{}
 	}
-	if !filepath.IsAbs(file_path) {
-		return nil, fmt.Errorf("file_path 必须是运行下载器服务所在机器上的绝对路径")
+	raw_arguments, err := json.Marshal(arguments)
+	if err != nil {
+		return nil, fmt.Errorf("编码工具参数失败: %w", err)
 	}
-	decode_key := strings.TrimSpace(arguments.Key)
-	key, err := strconv.ParseUint(decode_key, 10, 64)
-	if err != nil || key == 0 {
-		return nil, fmt.Errorf("key 必须是非零十进制整数")
-	}
-	if _, err := s.api_client.decrypt_wxchannels_video(ctx, file_path, decode_key); err != nil {
-		return nil, err
-	}
-	return successful_tool_result(map[string]any{
-		"decrypted": true,
-		"file_path": file_path,
-	})
-}
-
-func (s *Server) download_content(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
-	var arguments download_content_arguments
-	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
-		return nil, err
-	}
-	arguments.JobID = strings.TrimSpace(arguments.JobID)
-	arguments.FetchID = strings.TrimSpace(arguments.FetchID)
-	arguments.URL = strings.TrimSpace(arguments.URL)
-	if arguments.JobID != "" && arguments.FetchID != "" && arguments.JobID != arguments.FetchID {
-		return nil, fmt.Errorf("job_id 与 fetch_id 不能指向不同任务")
-	}
-	if arguments.JobID == "" {
-		arguments.JobID = arguments.FetchID
-	}
-	if arguments.JobID == "" && arguments.URL == "" {
-		return nil, fmt.Errorf("job_id 和 url 至少需要提供一个")
-	}
-	if arguments.URL != "" {
-		if err := validate_source_url(arguments.URL); err != nil {
-			return nil, err
-		}
-	}
-	existing_action := strings.TrimSpace(arguments.ExistingAction)
-	if existing_action == "" {
-		existing_action = "error"
-	}
-	if !is_existing_action(existing_action) {
-		return nil, fmt.Errorf("existing_action 必须是 error、skip、overwrite 或 duplicate")
-	}
-	timeout, err := timeout_duration(arguments.TimeoutSeconds, 300, 86400)
+	result, err := s.call(ctx, name, raw_arguments)
 	if err != nil {
 		return nil, err
 	}
-	download_context, cancel_download := context.WithTimeout(ctx, timeout)
-	defer cancel_download()
-
-	job, err := s.resolve_download_job(download_context, arguments)
-	if err != nil {
-		return nil, err
+	if structured, ok := result["structuredContent"]; ok {
+		return structured, nil
 	}
-	var output scraper_output
-	if err := json.Unmarshal(job.Output, &output); err != nil {
-		return nil, fmt.Errorf("解析抓取结果失败: %w", err)
-	}
-	if strings.TrimSpace(output.Platform) == "" || !has_json_value(output.Result) {
-		return nil, fmt.Errorf("抓取结果缺少 platform 或 result")
-	}
-
-	config := map[string]any{
-		"platform":        output.Platform,
-		"existing_action": existing_action,
-	}
-	if value := strings.TrimSpace(arguments.VideoVariantKey); value != "" {
-		config["video_variant_key"] = value
-	}
-	if value := strings.TrimSpace(arguments.VideoVariantSpec); value != "" {
-		config["video_variant_spec"] = value
-		config["spec"] = value
-	}
-	if existing_action == "overwrite" {
-		config["overwrite"] = true
-	}
-	if existing_action == "duplicate" {
-		config["duplicate"] = true
-	}
-	auto_start := true
-	create_result, err := s.create_download_task(download_context, DownloadTaskCreateRequest{
-		Platform:       output.Platform,
-		Content:        output.Result,
-		BuildFromFetch: has_json_value(output.DownloadInfo),
-		DownloadDir:    strings.TrimSpace(arguments.DownloadDir),
-		Filename:       strings.TrimSpace(arguments.Filename),
-		Config:         config,
-		AutoStart:      &auto_start,
-	}, "创建下载任务失败")
-	if err != nil {
-		return nil, err
-	}
-	if create_result.Skipped {
-		return successful_tool_result(map[string]any{
-			"created":       false,
-			"started":       false,
-			"skipped":       true,
-			"existing_task": create_result.Task,
-			"source":        download_source(job, output),
-		})
-	}
-
-	result := map[string]any{
-		"created": true,
-		"started": true,
-		"skipped": false,
-		"task":    create_result.Task,
-		"ids":     create_result.IDs,
-		"source":  download_source(job, output),
-	}
-	if arguments.WaitForCompletion {
-		task_id := first_download_task_id(create_result)
-		if task_id <= 0 {
-			return nil, fmt.Errorf("下载任务响应缺少 id，无法等待完成")
-		}
-		completed_task, err := s.wait_download_task(download_context, task_id)
-		if err != nil {
-			return nil, err
-		}
-		result["completed"] = true
-		result["task"] = completed_task
-	}
-	return successful_tool_result(result)
+	return result, nil
 }
 
-func (s *Server) resolve_download_job(ctx context.Context, arguments download_content_arguments) (*ScraperJob, error) {
-	if arguments.JobID != "" {
-		job, err := s.get_scraper_job(ctx, arguments.JobID)
-		if err != nil {
-			return nil, fmt.Errorf("读取 job_id %s 失败: %w；可改为传入 url 重新解析", arguments.JobID, err)
-		}
-		return s.wait_scraper_job(ctx, job)
-	}
-	job, err := s.create_scraper_job(ctx, arguments.URL, arguments.ForceRefresh)
-	if err != nil {
-		return nil, err
-	}
-	return s.wait_scraper_job(ctx, job)
-}
-
-func (s *Server) create_scraper_job(ctx context.Context, raw_url string, force_refresh bool) (*ScraperJob, error) {
-	if s.scraper_jobs != nil {
-		return s.scraper_jobs.CreateScraperJob(ctx, raw_url, force_refresh)
-	}
-	if s.api_client == nil {
-		return nil, fmt.Errorf("抓取任务服务未初始化")
-	}
-	return s.api_client.create_scraper_job(ctx, raw_url, force_refresh)
-}
-
-func (s *Server) get_scraper_job(ctx context.Context, job_id string) (*ScraperJob, error) {
-	if s.scraper_jobs != nil {
-		return s.scraper_jobs.GetScraperJob(ctx, job_id)
-	}
-	if s.api_client == nil {
-		return nil, fmt.Errorf("抓取任务服务未初始化")
-	}
-	return s.api_client.get_scraper_job(ctx, job_id)
-}
-
-func (s *Server) wait_scraper_job(ctx context.Context, job *ScraperJob) (*ScraperJob, error) {
-	if job == nil || strings.TrimSpace(job.ID) == "" {
-		return nil, fmt.Errorf("抓取任务响应缺少 id")
-	}
-	poll_interval := default_poll_interval
-	if s.api_client != nil && s.api_client.poll_interval > 0 {
-		poll_interval = s.api_client.poll_interval
-	}
-	poll_timer := time.NewTimer(poll_interval)
-	defer poll_timer.Stop()
-	current_job := job
-	for {
-		switch current_job.Status {
-		case "completed":
-			if !has_json_value(current_job.Output) {
-				return nil, fmt.Errorf("抓取任务已完成，但响应缺少 output")
-			}
-			return current_job, nil
-		case "failed":
-			return nil, new_tool_execution_error(value_or_default(current_job.Error, "抓取内容失败"), raw_json_value(current_job.Progress))
-		case "interrupted":
-			return nil, new_tool_execution_error(value_or_default(current_job.Error, "抓取任务已中断"), raw_json_value(current_job.Progress))
-		}
-
-		select {
-		case <-ctx.Done():
-			if s.scraper_jobs != nil {
-				s.scraper_jobs.InterruptScraperJob(current_job.ID)
-			}
-			return nil, new_tool_execution_error("等待抓取任务超时或已取消: "+ctx.Err().Error(), raw_json_value(current_job.Progress))
-		case <-poll_timer.C:
-		}
-		next_job, err := s.get_scraper_job(ctx, current_job.ID)
-		if err != nil {
-			return nil, err
-		}
-		current_job = next_job
-		poll_timer.Reset(poll_interval)
-	}
-}
+// Shared helpers used by the per-domain tool handlers.
 
 func successful_tool_result(value any) (map[string]any, error) {
-	text_content, err := json.Marshal(value)
-	if err != nil {
-		return nil, fmt.Errorf("编码工具结果失败: %w", err)
-	}
-	return map[string]any{
-		"content":           []any{map[string]any{"type": "text", "text": string(text_content)}},
-		"structuredContent": value,
-		"isError":           false,
-	}, nil
+	return mcp.SuccessfulResult(value)
 }
 
 func decode_tool_arguments(raw json.RawMessage, destination any) error {
-	if len(bytes.TrimSpace(raw)) == 0 {
-		raw = json.RawMessage("{}")
-	}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(destination); err != nil {
-		return fmt.Errorf("工具参数无效: %w", err)
-	}
-	return nil
+	return mcp.DecodeArguments(raw, destination)
 }
 
 func validate_source_url(raw_url string) error {
@@ -885,104 +264,4 @@ func is_existing_action(action string) bool {
 	default:
 		return false
 	}
-}
-
-func download_source(job *ScraperJob, output scraper_output) map[string]any {
-	return map[string]any{
-		"job_id":   job.ID,
-		"platform": output.Platform,
-		"url":      output.URL,
-	}
-}
-
-func (s *Server) create_download_task(ctx context.Context, request DownloadTaskCreateRequest, fallback_message string) (*DownloadTaskCreateResult, error) {
-	if s.download_task_creator != nil {
-		return s.download_task_creator.CreateDownloadTask(ctx, request)
-	}
-	if s.api_client == nil {
-		return nil, fmt.Errorf("下载任务创建服务未初始化")
-	}
-	create_response, err := s.api_client.create_download_task(ctx, map[string]any{
-		"objects": []DownloadTaskCreateRequest{request},
-	})
-	if err != nil {
-		return nil, err
-	}
-	item := create_response.Tasks[0]
-	if item.Code != 0 {
-		return nil, new_tool_execution_error(value_or_default(item.Msg, fallback_message), raw_json_value(item.Data))
-	}
-	return &DownloadTaskCreateResult{
-		Task:    raw_json_value(item.Data),
-		IDs:     create_response.IDs,
-		Skipped: download_item_was_skipped(item.Data),
-	}, nil
-}
-
-func (s *Server) wait_download_task(ctx context.Context, task_id int) (any, error) {
-	if s.data_reader == nil {
-		if s.api_client == nil {
-			return nil, fmt.Errorf("下载任务查询服务未初始化")
-		}
-		return s.api_client.wait_download_task(ctx, task_id)
-	}
-	poll_interval := default_poll_interval
-	if s.api_client != nil && s.api_client.poll_interval > 0 {
-		poll_interval = s.api_client.poll_interval
-	}
-	poll_ticker := time.NewTicker(poll_interval)
-	defer poll_ticker.Stop()
-	for {
-		task, err := s.data_reader.GetDownloadTaskDetail(ctx, task_id)
-		if err != nil {
-			return nil, err
-		}
-		raw_task, err := json.Marshal(task)
-		if err != nil {
-			return nil, fmt.Errorf("解析下载进度响应失败: %w", err)
-		}
-		if !has_json_value(raw_task) {
-			return nil, fmt.Errorf("下载任务不存在: %d", task_id)
-		}
-		var status struct {
-			Status int    `json:"status"`
-			Error  string `json:"error"`
-		}
-		if err := json.Unmarshal(raw_task, &status); err != nil {
-			return nil, fmt.Errorf("解析下载进度响应失败: %w", err)
-		}
-		switch status.Status {
-		case 5:
-			return task, nil
-		case 6, 7:
-			return nil, new_tool_execution_error(value_or_default(status.Error, fmt.Sprintf("下载任务以状态 %d 结束", status.Status)), task)
-		}
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("等待下载任务超时或已取消: %w", ctx.Err())
-		case <-poll_ticker.C:
-		}
-	}
-}
-
-func first_download_task_id(result *DownloadTaskCreateResult) int {
-	if result == nil {
-		return 0
-	}
-	if len(result.IDs) > 0 {
-		return result.IDs[0]
-	}
-	raw_task, _ := json.Marshal(result.Task)
-	var task struct {
-		ID int `json:"id"`
-	}
-	_ = json.Unmarshal(raw_task, &task)
-	return task.ID
-}
-
-func download_item_was_skipped(raw_task json.RawMessage) bool {
-	var task struct {
-		Skipped bool `json:"skipped"`
-	}
-	return json.Unmarshal(raw_task, &task) == nil && task.Skipped
 }

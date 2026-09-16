@@ -1,9 +1,4 @@
-import { Tag } from "../dmui.js";
-const Timeless = window.Timeless;
-
-if (!Timeless) {
-  throw new Error("应用无法启动：Timeless 运行时未加载");
-}
+import { format_time } from "@/utils.js";
 
 function certificate_source_label(source) {
   var labels = {
@@ -16,7 +11,7 @@ function certificate_source_label(source) {
 }
 
 function certificate_date_label(value) {
-  return window.format_time(value, value ? String(value) : "未提供", {
+  return format_time(value, value ? String(value) : "未提供", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -391,12 +386,17 @@ function AboutSettingsDetails(props) {
           "在本机抓取、下载和管理内容。",
         ]),
       ]),
-      Tag({ name: "settings-about__version", class: "settings-about__version" }, [
-        View({ as: "span", class: "settings-about__version-label" }, ["版本"]),
-        View({ as: "code", class: "settings-about__version-value" }, [
-          props.version,
-        ]),
-      ]),
+      Tag(
+        { name: "settings-about__version", class: "settings-about__version" },
+        [
+          View({ as: "span", class: "settings-about__version-label" }, [
+            "版本",
+          ]),
+          View({ as: "code", class: "settings-about__version-value" }, [
+            props.version,
+          ]),
+        ],
+      ),
     ]),
     View({ class: "settings-about__resources" }, [
       Link(
@@ -675,7 +675,14 @@ function MCPSettingsDetails(props) {
                     return (data && data.tools) || [];
                   }),
                   render(tool) {
-                    return Tag({ as: "code", variant: "info", name: "settings-mcp-tool" }, [tool]);
+                    return Tag(
+                      {
+                        as: "code",
+                        variant: "info",
+                        name: "settings-mcp-tool",
+                      },
+                      [tool],
+                    );
                   },
                 }),
               ]),

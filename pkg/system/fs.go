@@ -8,6 +8,14 @@ import (
 	"runtime"
 )
 
+// IsMissingFileError reports errors which prove that no filesystem entry can
+// exist at the path. Cleanup uses this instead of os.IsNotExist directly
+// because some platforms return a distinct error for paths which cannot name
+// a filesystem entry.
+func IsMissingFileError(err error) bool {
+	return os.IsNotExist(err) || isUnaddressableFileError(err)
+}
+
 // ShowInExplorer opens the file explorer and highlights the specified file
 func ShowInExplorer(path string) error {
 	var cmd *exec.Cmd
