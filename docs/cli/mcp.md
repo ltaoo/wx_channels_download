@@ -24,6 +24,7 @@ title: MCP Server
 - `get_wxchannels_video_profile`：通过链接、`oid`/`nid` 或 `eid` 获取视频详情。
 - `get_wxchannels_video_comments`：获取视频评论或根评论的回复。
 - `get_wxchannels_video_share_url`：通过 `oid` 获取视频分享链接。
+- `get_wxmp_biz_msg_list`：获取指定微信公众号的历史消息列表。
 - `get_download_tasks`：分页获取下载任务和状态统计。
 - `get_download_task_detail`：获取下载任务、文件和关联内容详情。
 - `delete_download_tasks`：批量删除下载任务，可通过 `delete_files` 选择是否同时删除关联的本地文件。

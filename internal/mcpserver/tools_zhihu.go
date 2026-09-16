@@ -246,3 +246,72 @@ func zhihu_user_url_token(user *zhihu.User) string {
 	}
 	return strings.TrimSpace(user.URLToken)
 }
+
+// tools_zhihu declares the tools whose handlers live in this file. The row
+// order here is filesystem-local only; the published order is fixed
+// by the concatenation in tool_declarations (registry.go).
+var tools_zhihu = []tool{
+	{
+		name:         get_zhihu_credential_status_tool_name,
+		title:        `检查知乎凭证`,
+		description:  `检查 cookies.json 是否包含未过期且适用于 zhihu.com 的 z_c0 登录 Cookie，并通过当前用户接口验证登录态。不会返回 Cookie 明文。`,
+		input_schema: json.RawMessage(`{"additionalProperties":false,"type":"object"}`),
+		annotations:  json.RawMessage(`{"destructiveHint":false,"idempotentHint":true,"openWorldHint":true,"readOnlyHint":true}`),
+		supports:     supports_zhihu,
+		handle:       (*ToolSet).get_zhihu_credential_status,
+	},
+	{
+		name:         get_my_zhihu_collections_tool_name,
+		title:        `获取我的知乎收藏夹`,
+		description:  `使用 cookies.json 中的知乎登录态识别当前账号，获取该账号可见的公开与私密收藏夹列表。调用前会验证 z_c0 Cookie 和当前登录账号。`,
+		input_schema: json.RawMessage(`{"additionalProperties":false,"type":"object"}`),
+		annotations:  json.RawMessage(`{"destructiveHint":false,"idempotentHint":true,"openWorldHint":true,"readOnlyHint":true}`),
+		supports:     supports_zhihu,
+		handle:       (*ToolSet).get_my_zhihu_collections,
+	},
+	{
+		name:         get_zhihu_collection_contents_tool_name,
+		title:        `获取知乎收藏夹内容`,
+		description:  `按 collection_id 获取指定知乎收藏夹的一页内容。page 从 1 开始；响应 has_next=true 时，应将 next_page 作为下一次调用的 page。调用前会验证 cookies.json 中的知乎登录态。`,
+		input_schema: json.RawMessage(`{"additionalProperties":false,"properties":{"collection_id":{"description":"知乎收藏夹 ID，例如收藏夹链接 /collection/972293341 中的 972293341。","pattern":"^[0-9]+$","type":"string"},"page":{"default":1,"description":"页码，从 1 开始。","maximum":1000000,"minimum":1,"type":"integer"}},"required":["collection_id"],"type":"object"}`),
+		annotations:  json.RawMessage(`{"destructiveHint":false,"idempotentHint":true,"openWorldHint":true,"readOnlyHint":true}`),
+		supports:     supports_zhihu,
+		handle:       (*ToolSet).get_zhihu_collection_contents,
+	},
+	{
+		name:         get_my_zhihu_answers_tool_name,
+		title:        `获取我的知乎回答`,
+		description:  `使用 cookies.json 中的知乎登录态识别当前账号，分页获取该账号发布的回答。page 从 1 开始；响应 has_next=true 时，应将 next_page 作为下一次调用的 page。`,
+		input_schema: json.RawMessage(`{"additionalProperties":false,"properties":{"page":{"default":1,"description":"页码，从 1 开始。","maximum":1000000,"minimum":1,"type":"integer"}},"type":"object"}`),
+		annotations:  json.RawMessage(`{"destructiveHint":false,"idempotentHint":true,"openWorldHint":true,"readOnlyHint":true}`),
+		supports:     supports_zhihu,
+		handle:       (*ToolSet).get_my_zhihu_answers,
+	},
+	{
+		name:         get_my_zhihu_posts_tool_name,
+		title:        `获取我的知乎文章`,
+		description:  `使用 cookies.json 中的知乎登录态识别当前账号，分页获取该账号发布的文章。page 从 1 开始；响应 has_next=true 时，应将 next_page 作为下一次调用的 page。`,
+		input_schema: json.RawMessage(`{"additionalProperties":false,"properties":{"page":{"default":1,"description":"页码，从 1 开始。","maximum":1000000,"minimum":1,"type":"integer"}},"type":"object"}`),
+		annotations:  json.RawMessage(`{"destructiveHint":false,"idempotentHint":true,"openWorldHint":true,"readOnlyHint":true}`),
+		supports:     supports_zhihu,
+		handle:       (*ToolSet).get_my_zhihu_posts,
+	},
+	{
+		name:         get_my_zhihu_zvideos_tool_name,
+		title:        `获取我的知乎视频`,
+		description:  `使用 cookies.json 中的知乎登录态识别当前账号，分页获取该账号发布的视频。page 从 1 开始；响应 has_next=true 时，应将 next_page 作为下一次调用的 page。`,
+		input_schema: json.RawMessage(`{"additionalProperties":false,"properties":{"page":{"default":1,"description":"页码，从 1 开始。","maximum":1000000,"minimum":1,"type":"integer"}},"type":"object"}`),
+		annotations:  json.RawMessage(`{"destructiveHint":false,"idempotentHint":true,"openWorldHint":true,"readOnlyHint":true}`),
+		supports:     supports_zhihu,
+		handle:       (*ToolSet).get_my_zhihu_zvideos,
+	},
+	{
+		name:         get_my_zhihu_columns_tool_name,
+		title:        `获取我的知乎专栏`,
+		description:  `使用 cookies.json 中的知乎登录态识别当前账号，分页获取该账号参与的专栏。page 从 1 开始；响应 has_next=true 时，应将 next_page 作为下一次调用的 page。`,
+		input_schema: json.RawMessage(`{"additionalProperties":false,"properties":{"page":{"default":1,"description":"页码，从 1 开始。","maximum":1000000,"minimum":1,"type":"integer"}},"type":"object"}`),
+		annotations:  json.RawMessage(`{"destructiveHint":false,"idempotentHint":true,"openWorldHint":true,"readOnlyHint":true}`),
+		supports:     supports_zhihu,
+		handle:       (*ToolSet).get_my_zhihu_columns,
+	},
+}
