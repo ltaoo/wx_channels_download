@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	servicetools "wx_channel/internal/services/tools"
+	"wx_channel/internal/mcpserver"
 )
 
 var tool_arguments string
@@ -22,11 +22,11 @@ var tool_list_cmd = &cobra.Command{
 	Use:   "list",
 	Short: "列出当前可调用的服务工具及参数 schema",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		tool_service, err := new_cli_tool_service(cmd)
+		toolset, err := new_cli_tool_service(cmd)
 		if err != nil {
 			return err
 		}
-		return write_tool_json(cmd.OutOrStdout(), tool_service.Definitions())
+		return write_tool_json(cmd.OutOrStdout(), toolset.ToolCatalog())
 	},
 }
 
@@ -41,11 +41,11 @@ var tool_call_cmd = &cobra.Command{
 				return fmt.Errorf("解析 --arguments 失败: %w", err)
 			}
 		}
-		tool_service, err := new_cli_tool_service(cmd)
+		toolset, err := new_cli_tool_service(cmd)
 		if err != nil {
 			return err
 		}
-		result, err := tool_service.Execute(cmd.Context(), args[0], arguments)
+		result, err := toolset.ExecuteTool(cmd.Context(), args[0], arguments)
 		if err != nil {
 			return err
 		}
@@ -71,7 +71,7 @@ func init() {
 	root_cmd.AddCommand(tool_cmd)
 }
 
-func new_cli_tool_service(cmd *cobra.Command) (*servicetools.Service, error) {
+func new_cli_tool_service(cmd *cobra.Command) (*mcpserver.ToolSet, error) {
 	api_base_url := strings.TrimSpace(mcp_api_base_url)
 	if api_base_url == "" {
 		api_base_url = configured_api_base_url()
@@ -80,7 +80,7 @@ func new_cli_tool_service(cmd *cobra.Command) (*servicetools.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return toolset.ToolService(), nil
+	return toolset, nil
 }
 
 func write_tool_json(output io.Writer, value any) error {

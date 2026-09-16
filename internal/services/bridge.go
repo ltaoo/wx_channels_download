@@ -12,14 +12,14 @@ import (
 	"net/url"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/rs/zerolog"
 
 	"wx_channel/internal/adapter"
-	wxchannelsadapter "wx_channel/internal/adapter/wxchannels"
+	"wx_channel/internal/adapter/wxchannels"
 	"wx_channel/internal/bridge"
 	"wx_channel/internal/config"
+	"wx_channel/internal/mcpserver"
 	"wx_channel/pkg/scraper/wxchannels"
 )
 
@@ -31,6 +31,11 @@ const (
 	bridge_method_wxchannels_feed_comment_list = "wxchannels.feed.comment.list"
 	bridge_method_wxchannels_feed_share_url    = "wxchannels.feed.share_url"
 	bridge_method_wxmp_biz_msg_list            = "wxmp.biz.msg.list"
+
+	// bridge_legacy_method_wxchannels_fetch names the removed wxchannels.fetch
+	// method so legacy capability configs still report it as unsupported on
+	// this device instead of silently selecting nothing.
+	bridge_legacy_method_wxchannels_fetch = "wxchannels.fetch"
 )
 
 var bridge_device_id_pattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
@@ -97,7 +102,7 @@ func load_bridge_config(application_config *config.Config) (*bridge.Config, erro
 	if legacy.Capabilities != nil {
 		legacy_methods = []string{}
 		if legacy.Capabilities.WXChannels {
-			legacy_methods = append(legacy_methods, bridge.MethodWXChannelsFetch)
+			legacy_methods = append(legacy_methods, bridge_legacy_method_wxchannels_fetch)
 		}
 		if legacy.Capabilities.Download {
 			legacy_methods = append(legacy_methods, bridge.MethodDownloadCreate)
@@ -267,23 +272,6 @@ type BridgeServiceOptions struct {
 // BridgeMethodHandler handles the args object for one registered Bridge method.
 type BridgeMethodHandler func(context.Context, json.RawMessage) (json.RawMessage, error)
 
-// BridgeWXChannelsDownloadOptions controls local download creation after a remote fetch.
-type BridgeWXChannelsDownloadOptions struct {
-	DownloadDir string         `json:"download_dir"`
-	Filename    string         `json:"filename"`
-	Config      map[string]any `json:"config"`
-	AutoStart   *bool          `json:"auto_start"`
-}
-
-// SubmitBridgeWXChannelsTaskRequest describes one remote wxchannels fetch request.
-type SubmitBridgeWXChannelsTaskRequest struct {
-	URL                  string                           `json:"url"`
-	TargetDeviceID       string                           `json:"target_device_id"`
-	LegacyTargetClientID string                           `json:"target_client_id,omitempty"`
-	IdempotencyKey       string                           `json:"idempotency_key"`
-	Download             *BridgeWXChannelsDownloadOptions `json:"download,omitempty"`
-}
-
 // SubmitBridgeDownloadTaskRequest describes one remote download creation request.
 type SubmitBridgeDownloadTaskRequest struct {
 	TargetDeviceID       string                       `json:"target_device_id"`
@@ -300,11 +288,6 @@ type SubmitBridgeCallRequest struct {
 	TargetDeviceID       string         `json:"target_device_id"`
 	LegacyTargetClientID string         `json:"target_client_id,omitempty"`
 	IdempotencyKey       string         `json:"idempotency_key"`
-}
-
-type bridge_wxchannels_args struct {
-	URL      string                           `json:"url"`
-	Download *BridgeWXChannelsDownloadOptions `json:"download,omitempty"`
 }
 
 type bridge_download_args struct {
@@ -384,6 +367,89 @@ type bridge_wxmp_adapter interface {
 	FetchBizMsgList(username string, offset string) (json.RawMessage, error)
 }
 
+// bridge_wxchannels_runtime adapts the in-process wxchannels adapter to the
+// shared capability layer. It keeps the Bridge transport and its error text
+// unchanged; validation lives in the capability.
+type bridge_wxchannels_runtime struct {
+	adapter bridge_wxchannels_adapter
+}
+
+func (r bridge_wxchannels_runtime) SearchContact(ctx context.Context, keyword string, next_marker string) (json.RawMessage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if r.adapter == nil {
+		return nil, errors.New("当前设备未安装 wxchannels adapter 查询能力")
+	}
+	return r.adapter.SearchChannelsContact(keyword, next_marker)
+}
+
+func (r bridge_wxchannels_runtime) FeedListOfContact(ctx context.Context, username string, next_marker string) (json.RawMessage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if r.adapter == nil {
+		return nil, errors.New("当前设备未安装 wxchannels adapter 查询能力")
+	}
+	return r.adapter.FetchChannelsFeedListOfContact(username, next_marker)
+}
+
+func (r bridge_wxchannels_runtime) LiveReplayList(ctx context.Context, username string, next_marker string) (json.RawMessage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if r.adapter == nil {
+		return nil, errors.New("当前设备未安装 wxchannels adapter 查询能力")
+	}
+	return r.adapter.FetchChannelsLiveReplayList(username, next_marker)
+}
+
+func (r bridge_wxchannels_runtime) FeedProfile(ctx context.Context, oid string, nid string, request_url string, eid string) (json.RawMessage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if r.adapter == nil {
+		return nil, errors.New("当前设备未安装 wxchannels adapter 查询能力")
+	}
+	return r.adapter.FetchChannelsFeedProfile(oid, nid, request_url, eid)
+}
+
+func (r bridge_wxchannels_runtime) FeedCommentList(ctx context.Context, oid string, nid string, comment_id string, next_marker string) (json.RawMessage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if r.adapter == nil {
+		return nil, errors.New("当前设备未安装 wxchannels adapter 查询能力")
+	}
+	return r.adapter.FetchChannelsFeedCommentList(oid, nid, comment_id, next_marker)
+}
+
+func (r bridge_wxchannels_runtime) FeedShareUrl(ctx context.Context, oid string) (json.RawMessage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if r.adapter == nil {
+		return nil, errors.New("当前设备未安装 wxchannels adapter 查询能力")
+	}
+	return r.adapter.FetchChannelsFeedShareUrl(oid)
+}
+
+// bridge_wxmp_runtime adapts the in-process wxmp adapter to the shared
+// capability layer.
+type bridge_wxmp_runtime struct {
+	adapter bridge_wxmp_adapter
+}
+
+func (r bridge_wxmp_runtime) BizMsgList(ctx context.Context, username string, offset string) (json.RawMessage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if r.adapter == nil {
+		return nil, errors.New("当前设备未安装 wxmp adapter 查询能力")
+	}
+	return r.adapter.FetchBizMsgList(username, offset)
+}
+
 type bridge_unavailable_error struct {
 	message string
 }
@@ -404,9 +470,10 @@ type BridgeService struct {
 	// download_task_service *DownloadTaskService
 	logger                zerolog.Logger
 	config_error          error
-	wxchannels_mu         sync.Mutex
 	wxchannels_adapter    bridge_wxchannels_adapter
 	wxmp_adapter          bridge_wxmp_adapter
+	wxchannels_capability *mcpserver.WXChannelsCapability
+	wxmp_capability       *mcpserver.WXMPCapability
 	method_handlers       map[string]BridgeMethodHandler
 }
 
@@ -432,15 +499,16 @@ func NewBridgeService(options BridgeServiceOptions) *BridgeService {
 	}
 	wxchannels_handler := adapter.Get("wxchannels")
 	if wxchannels_handler != nil {
-		service.method_handlers[bridge.MethodWXChannelsFetch] = service.execute_wxchannels_fetch
 		if wxchannels_adapter, ok := wxchannels_handler.(bridge_wxchannels_adapter); ok {
 			service.wxchannels_adapter = wxchannels_adapter
+			service.wxchannels_capability = mcpserver.NewWXChannelsCapability(bridge_wxchannels_runtime{adapter: wxchannels_adapter})
 			service.register_wxchannels_methods()
 		}
 	}
 	wxmp_handler := adapter.Get("wxmp")
 	if wxmp_adapter, ok := wxmp_handler.(bridge_wxmp_adapter); ok {
 		service.wxmp_adapter = wxmp_adapter
+		service.wxmp_capability = mcpserver.NewWXMPCapability(bridge_wxmp_runtime{adapter: wxmp_adapter})
 		service.method_handlers[bridge_method_wxmp_biz_msg_list] = service.execute_wxmp_biz_msg_list
 	}
 	for method, handler := range options.MethodHandlers {
@@ -542,28 +610,6 @@ func (s *BridgeService) Call(request_context context.Context, request SubmitBrid
 	return task, err
 }
 
-// SubmitWXChannelsTask publishes a wxchannels fetch task through the Bridge.
-func (s *BridgeService) SubmitWXChannelsTask(request_context context.Context, request SubmitBridgeWXChannelsTaskRequest) (*bridge.Task, error) {
-	request.URL = strings.TrimSpace(request.URL)
-	if request.URL == "" {
-		return nil, errors.New("url 不能为空")
-	}
-	bridge_client, err := s.resolve_client()
-	if err != nil {
-		return nil, err
-	}
-	task, err := bridge_client.SubmitTask(request_context, bridge.SubmitTaskRequest{
-		Method:         bridge.MethodWXChannelsFetch,
-		TargetDeviceID: request.target_device_id(),
-		IdempotencyKey: strings.TrimSpace(request.IdempotencyKey),
-		Args: bridge_wxchannels_args{
-			URL:      request.URL,
-			Download: request.Download,
-		},
-	})
-	return task, err
-}
-
 // SubmitDownloadTask publishes a download creation task through the Bridge.
 func (s *BridgeService) SubmitDownloadTask(request_context context.Context, request SubmitBridgeDownloadTaskRequest) (*bridge.Task, error) {
 	target_device_id := request.target_device_id()
@@ -625,13 +671,6 @@ func (s *BridgeService) resolve_client() (*bridge.Client, error) {
 	return s.client, nil
 }
 
-func (request SubmitBridgeWXChannelsTaskRequest) target_device_id() string {
-	if target_device_id := strings.TrimSpace(request.TargetDeviceID); target_device_id != "" {
-		return target_device_id
-	}
-	return strings.TrimSpace(request.LegacyTargetClientID)
-}
-
 func (request SubmitBridgeDownloadTaskRequest) target_device_id() string {
 	if target_device_id := strings.TrimSpace(request.TargetDeviceID); target_device_id != "" {
 		return target_device_id
@@ -666,35 +705,6 @@ func (s *BridgeService) execute_task(task_context context.Context, task bridge.T
 	return handler(task_context, task.Args)
 }
 
-func (s *BridgeService) execute_wxchannels_fetch(task_context context.Context, args json.RawMessage) (json.RawMessage, error) {
-	var request bridge_wxchannels_args
-	if err := json.Unmarshal(args, &request); err != nil {
-		return nil, fmt.Errorf("解析视频号 Bridge 任务失败: %w", err)
-	}
-	request.URL = strings.TrimSpace(request.URL)
-	if request.URL == "" {
-		return nil, errors.New("视频号 Bridge 任务缺少 url")
-	}
-	handler := adapter.Get("wxchannels")
-	if handler == nil {
-		return nil, errors.New("当前设备未安装 wxchannels adapter")
-	}
-	s.wxchannels_mu.Lock()
-	defer s.wxchannels_mu.Unlock()
-	if err := task_context.Err(); err != nil {
-		return nil, err
-	}
-	content, err := handler.Fetch(request.URL)
-	if err != nil {
-		return nil, fmt.Errorf("获取视频号内容失败: %w", err)
-	}
-	data, err := json.Marshal(content)
-	if err != nil {
-		return nil, fmt.Errorf("编码视频号内容失败: %w", err)
-	}
-	return data, nil
-}
-
 func (s *BridgeService) execute_wxchannels_contact_search(
 	task_context context.Context,
 	args json.RawMessage,
@@ -703,15 +713,7 @@ func (s *BridgeService) execute_wxchannels_contact_search(
 	if err := decode_bridge_method_args(args, &request); err != nil {
 		return nil, err
 	}
-	request.Keyword = strings.TrimSpace(request.Keyword)
-	if request.Keyword == "" {
-		return nil, errors.New("keyword 不能为空")
-	}
-	wxchannels_adapter, err := s.resolve_wxchannels_adapter(task_context)
-	if err != nil {
-		return nil, err
-	}
-	response, err := wxchannels_adapter.SearchChannelsContact(request.Keyword, request.NextMarker)
+	response, err := s.wxchannels_capability.SearchContact(task_context, request.Keyword, request.NextMarker)
 	return encode_bridge_method_result(task_context, response, err)
 }
 
@@ -723,15 +725,7 @@ func (s *BridgeService) execute_wxchannels_contact_feed_list(
 	if err := decode_bridge_method_args(args, &request); err != nil {
 		return nil, err
 	}
-	request.Username = strings.TrimSpace(request.Username)
-	if request.Username == "" {
-		return nil, errors.New("username 不能为空")
-	}
-	wxchannels_adapter, err := s.resolve_wxchannels_adapter(task_context)
-	if err != nil {
-		return nil, err
-	}
-	response, err := wxchannels_adapter.FetchChannelsFeedListOfContact(request.Username, request.NextMarker)
+	response, err := s.wxchannels_capability.FeedListOfContact(task_context, request.Username, request.NextMarker)
 	if err != nil {
 		return encode_bridge_method_result(task_context, nil, err)
 	}
@@ -862,15 +856,7 @@ func (s *BridgeService) execute_wxchannels_live_replay_list(
 	if err := decode_bridge_method_args(args, &request); err != nil {
 		return nil, err
 	}
-	request.Username = strings.TrimSpace(request.Username)
-	if request.Username == "" {
-		return nil, errors.New("username 不能为空")
-	}
-	wxchannels_adapter, err := s.resolve_wxchannels_adapter(task_context)
-	if err != nil {
-		return nil, err
-	}
-	response, err := wxchannels_adapter.FetchChannelsLiveReplayList(request.Username, request.NextMarker)
+	response, err := s.wxchannels_capability.LiveReplayList(task_context, request.Username, request.NextMarker)
 	return encode_bridge_method_result(task_context, response, err)
 }
 
@@ -882,24 +868,8 @@ func (s *BridgeService) execute_wxchannels_feed_profile(
 	if err := decode_bridge_method_args(args, &request); err != nil {
 		return nil, err
 	}
-	request.OID = strings.TrimSpace(request.OID)
-	request.NID = strings.TrimSpace(request.NID)
-	request.URL = strings.TrimSpace(request.URL)
-	request.EID = strings.TrimSpace(request.EID)
-	if request.OID == "" && request.URL == "" && request.EID == "" {
-		return nil, errors.New("oid、url 和 eid 至少需要提供一个")
-	}
-	request.OID, request.NID, request.URL, request.EID = normalize_bridge_wxchannels_feed_profile_args(
-		request.OID,
-		request.NID,
-		request.URL,
-		request.EID,
-	)
-	wxchannels_adapter, err := s.resolve_wxchannels_adapter(task_context)
-	if err != nil {
-		return nil, err
-	}
-	response, err := wxchannels_adapter.FetchChannelsFeedProfile(
+	response, err := s.wxchannels_capability.FeedProfile(
+		task_context,
 		request.OID,
 		request.NID,
 		request.URL,
@@ -916,20 +886,8 @@ func (s *BridgeService) execute_wxchannels_feed_comment_list(
 	if err := decode_bridge_method_args(args, &request); err != nil {
 		return nil, err
 	}
-	request.OID = strings.TrimSpace(request.OID)
-	request.NID = strings.TrimSpace(request.NID)
-	request.CommentID = strings.TrimSpace(request.CommentID)
-	if request.OID == "" {
-		return nil, errors.New("oid 不能为空")
-	}
-	if request.NID == "" && request.CommentID == "" {
-		return nil, errors.New("nid 和 comment_id 至少需要提供一个")
-	}
-	wxchannels_adapter, err := s.resolve_wxchannels_adapter(task_context)
-	if err != nil {
-		return nil, err
-	}
-	response, err := wxchannels_adapter.FetchChannelsFeedCommentList(
+	response, err := s.wxchannels_capability.FeedCommentList(
+		task_context,
 		request.OID,
 		request.NID,
 		request.CommentID,
@@ -946,15 +904,7 @@ func (s *BridgeService) execute_wxchannels_feed_share_url(
 	if err := decode_bridge_method_args(args, &request); err != nil {
 		return nil, err
 	}
-	request.OID = strings.TrimSpace(request.OID)
-	if request.OID == "" {
-		return nil, errors.New("oid 不能为空")
-	}
-	wxchannels_adapter, err := s.resolve_wxchannels_adapter(task_context)
-	if err != nil {
-		return nil, err
-	}
-	response, err := wxchannels_adapter.FetchChannelsFeedShareUrl(request.OID)
+	response, err := s.wxchannels_capability.FeedShareUrl(task_context, request.OID)
 	return encode_bridge_method_result(task_context, response, err)
 }
 
@@ -966,31 +916,8 @@ func (s *BridgeService) execute_wxmp_biz_msg_list(
 	if err := decode_bridge_method_args(args, &request); err != nil {
 		return nil, err
 	}
-	request.Username = strings.TrimSpace(request.Username)
-	request.Offset = strings.TrimSpace(request.Offset)
-	if request.Username == "" {
-		return nil, errors.New("username 不能为空")
-	}
-	if err := task_context.Err(); err != nil {
-		return nil, err
-	}
-	if s == nil || s.wxmp_adapter == nil {
-		return nil, errors.New("当前设备未安装 wxmp adapter 查询能力")
-	}
-	response, err := s.wxmp_adapter.FetchBizMsgList(request.Username, request.Offset)
+	response, err := s.wxmp_capability.BizMsgList(task_context, request.Username, request.Offset)
 	return encode_bridge_method_result(task_context, response, err)
-}
-
-func (s *BridgeService) resolve_wxchannels_adapter(
-	task_context context.Context,
-) (bridge_wxchannels_adapter, error) {
-	if err := task_context.Err(); err != nil {
-		return nil, err
-	}
-	if s == nil || s.wxchannels_adapter == nil {
-		return nil, errors.New("当前设备未安装 wxchannels adapter 查询能力")
-	}
-	return s.wxchannels_adapter, nil
 }
 
 func decode_bridge_method_args(args json.RawMessage, target any) error {
@@ -1019,25 +946,5 @@ func encode_bridge_method_result(
 		return nil, fmt.Errorf("编码 Bridge 方法结果失败: %w", err)
 	}
 	return data, nil
-}
-
-func normalize_bridge_wxchannels_feed_profile_args(
-	oid string,
-	nid string,
-	request_url string,
-	eid string,
-) (string, string, string, string) {
-	if eid == "" && request_url != "" {
-		if parsed_url, err := url.Parse(request_url); err == nil {
-			if parsed_eid := parsed_url.Query().Get("eid"); parsed_eid != "" {
-				eid = parsed_eid
-				request_url = ""
-			}
-		}
-	}
-	if oid != "" && nid != "" {
-		request_url = ""
-	}
-	return oid, nid, request_url, eid
 }
 

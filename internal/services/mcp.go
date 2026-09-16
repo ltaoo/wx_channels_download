@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 
 	"wx_channel/internal/mcpserver"
-	servicetools "wx_channel/internal/services/tools"
 	mcp "wx_channel/pkg/mcp"
 )
 
@@ -23,6 +22,7 @@ type MCPServiceConfig struct {
 	ScraperJobs         mcpserver.ScraperJobBackend
 	DownloadTaskCreator mcpserver.DownloadTaskCreator
 	DownloadTaskDeleter mcpserver.DownloadTaskDeleter
+	WXMP                mcpserver.WXMPRuntime
 	SphDeployer         mcpserver.SphDeployer
 	ZhihuCollections    mcpserver.ZhihuCollectionReader
 	ZhihuCredentials    mcpserver.ZhihuCredentialReader
@@ -74,6 +74,7 @@ func build_mcp_server(config MCPServiceConfig) (*mcp.Server, *mcpserver.ToolSet,
 		ScraperJobs:         config.ScraperJobs,
 		DownloadTaskCreator: config.DownloadTaskCreator,
 		DownloadTaskDeleter: config.DownloadTaskDeleter,
+		WXMP:                config.WXMP,
 		SphDeployer:         config.SphDeployer,
 		ZhihuCollections:    config.ZhihuCollections,
 		ZhihuCredentials:    config.ZhihuCredentials,
@@ -149,21 +150,6 @@ func (s *MCPService) ExecuteTool(ctx context.Context, name string, arguments map
 		return nil, errors.New("工具服务未初始化")
 	}
 	return toolset.ExecuteTool(ctx, name, arguments)
-}
-
-// ToolCatalog returns the canonical service tool declarations used by MCP,
-// workflow nodes, and other process-local callers.
-func (s *MCPService) ToolCatalog() []servicetools.Definition {
-	if s == nil {
-		return []servicetools.Definition{}
-	}
-	s.handler_mu.RLock()
-	toolset := s.toolset
-	s.handler_mu.RUnlock()
-	if toolset == nil {
-		return mcpserver.ToolCatalog()
-	}
-	return toolset.ToolCatalog()
 }
 
 // Disable rejects new MCP protocol requests without destroying the handler.

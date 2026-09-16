@@ -105,37 +105,6 @@ type DownloadTaskCreator interface {
 	CreateDownloadTask(ctx context.Context, request DownloadTaskCreateRequest) (*DownloadTaskCreateResult, error)
 }
 
-type download_task_list_arguments struct {
-	Page         int    `json:"page"`
-	PageSize     int    `json:"page_size"`
-	Statuses     []int  `json:"statuses"`
-	ParentTaskID int    `json:"parent_task_id"`
-	RootTaskID   int    `json:"root_task_id"`
-	ContentID    string `json:"content_id"`
-}
-
-type download_task_detail_arguments struct {
-	ID int `json:"id"`
-}
-
-type delete_download_tasks_arguments struct {
-	TaskIDs     []int `json:"task_ids"`
-	DeleteFiles bool  `json:"delete_files"`
-}
-
-type create_download_task_arguments struct {
-	Platform        string          `json:"platform"`
-	Content         json.RawMessage `json:"content"`
-	BuildFromFetch  bool            `json:"build_from_fetch"`
-	ResourceIndexes []int           `json:"resource_indexes"`
-	DownloadDir     string          `json:"download_dir"`
-	Filename        string          `json:"filename"`
-	Config          map[string]any  `json:"config"`
-	AutoStart       *bool           `json:"auto_start"`
-	ParentTaskID    *int            `json:"parent_task_id"`
-	RelationType    string          `json:"relation_type"`
-}
-
 type account_list_arguments struct {
 	Page      int    `json:"page"`
 	PageSize  int    `json:"page_size"`
@@ -158,143 +127,6 @@ type log_list_arguments struct {
 	Keyword  string   `json:"keyword"`
 	Source   string   `json:"source"`
 	Levels   []string `json:"levels"`
-}
-
-func (s *ToolSet) get_download_tasks(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
-	var arguments download_task_list_arguments
-	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
-		return nil, err
-	}
-	page, page_size, err := normalize_data_page(arguments.Page, arguments.PageSize, 100)
-	if err != nil {
-		return nil, err
-	}
-	for _, status := range arguments.Statuses {
-		if status < 0 || status > 7 {
-			return nil, fmt.Errorf("statuses 中的状态值必须在 0 到 7 之间")
-		}
-	}
-	if arguments.ParentTaskID < 0 || arguments.RootTaskID < 0 {
-		return nil, fmt.Errorf("parent_task_id 和 root_task_id 不能为负数")
-	}
-	query := DownloadTaskListQuery{
-		Page:         page,
-		PageSize:     page_size,
-		Statuses:     arguments.Statuses,
-		ParentTaskID: arguments.ParentTaskID,
-		RootTaskID:   arguments.RootTaskID,
-		ContentID:    strings.TrimSpace(arguments.ContentID),
-	}
-	if s.data_reader != nil {
-		value, read_err := s.data_reader.ListDownloadTasks(ctx, query)
-		if read_err != nil {
-			return nil, read_err
-		}
-		return successful_tool_result(value)
-	}
-	values := url.Values{
-		"page":      []string{strconv.Itoa(query.Page)},
-		"page_size": []string{strconv.Itoa(query.PageSize)},
-	}
-	if query.ParentTaskID > 0 {
-		values.Set("parent_task_id", strconv.Itoa(query.ParentTaskID))
-	}
-	if query.RootTaskID > 0 {
-		values.Set("root_task_id", strconv.Itoa(query.RootTaskID))
-	}
-	if query.ContentID != "" {
-		values.Set("content_id", query.ContentID)
-	}
-	if len(query.Statuses) > 0 {
-		values.Set("status", join_ints(query.Statuses))
-	}
-	return s.call_read_api(ctx, http.MethodGet, "/api/v1/download_task/list?"+values.Encode(), nil)
-}
-
-func (s *ToolSet) get_download_task_detail(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
-	var arguments download_task_detail_arguments
-	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
-		return nil, err
-	}
-	if arguments.ID <= 0 {
-		return nil, fmt.Errorf("id 必须是正整数")
-	}
-	if s.data_reader != nil {
-		value, read_err := s.data_reader.GetDownloadTaskDetail(ctx, arguments.ID)
-		if read_err != nil {
-			return nil, read_err
-		}
-		if value == nil {
-			return nil, fmt.Errorf("下载任务不存在: %d", arguments.ID)
-		}
-		return successful_tool_result(value)
-	}
-	values := url.Values{"id": []string{strconv.Itoa(arguments.ID)}}
-	return s.call_read_api(ctx, http.MethodGet, "/api/v1/download_task/detail?"+values.Encode(), nil)
-}
-
-func (s *ToolSet) delete_download_tasks(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
-	var arguments delete_download_tasks_arguments
-	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
-		return nil, err
-	}
-	if len(arguments.TaskIDs) == 0 {
-		return nil, fmt.Errorf("task_ids 不能为空")
-	}
-	for _, task_id := range arguments.TaskIDs {
-		if task_id <= 0 {
-			return nil, fmt.Errorf("task_ids 中的任务 ID 必须是正整数")
-		}
-	}
-	results, err := s.download_task_deleter.DeleteDownloadTasks(ctx, arguments.TaskIDs, arguments.DeleteFiles)
-	if err != nil {
-		return nil, err
-	}
-	return successful_tool_result(map[string]any{"results": results})
-}
-
-func (s *ToolSet) create_download_task_tool(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
-	var arguments create_download_task_arguments
-	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
-		return nil, err
-	}
-	platform := strings.TrimSpace(arguments.Platform)
-	if platform == "" {
-		return nil, fmt.Errorf("platform 不能为空")
-	}
-	if !has_json_value(arguments.Content) {
-		return nil, fmt.Errorf("content 不能为空")
-	}
-	create_result, err := s.create_download_task(ctx, DownloadTaskCreateRequest{
-		Platform:        platform,
-		Content:         arguments.Content,
-		BuildFromFetch:  arguments.BuildFromFetch,
-		ResourceIndexes: arguments.ResourceIndexes,
-		DownloadDir:     strings.TrimSpace(arguments.DownloadDir),
-		Filename:        strings.TrimSpace(arguments.Filename),
-		Config:          arguments.Config,
-		AutoStart:       arguments.AutoStart,
-		ParentTaskID:    arguments.ParentTaskID,
-		RelationType:    strings.TrimSpace(arguments.RelationType),
-	}, "创建下载任务失败")
-	if err != nil {
-		return nil, err
-	}
-	if create_result.Skipped {
-		return successful_tool_result(map[string]any{
-			"created":       false,
-			"started":       false,
-			"skipped":       true,
-			"existing_task": create_result.Task,
-		})
-	}
-	return successful_tool_result(map[string]any{
-		"created": true,
-		"started": true,
-		"skipped": false,
-		"task":    create_result.Task,
-		"ids":     create_result.IDs,
-	})
 }
 
 func (s *ToolSet) get_accounts(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
@@ -459,10 +291,44 @@ func normalize_string_list(values []string) []string {
 	return normalized
 }
 
-func join_ints(values []int) string {
-	parts := make([]string, len(values))
-	for index, value := range values {
-		parts[index] = strconv.Itoa(value)
-	}
-	return strings.Join(parts, ",")
+// tools_data declares the read-only data tools whose handlers live in this
+// file. The row order here is filesystem-local only; the published order is
+// fixed by the concatenation in tool_declarations (registry.go).
+var tools_data = []tool{
+	{
+		name:         "get_accounts",
+		title:        `获取账号列表`,
+		description:  `分页查询已保存的平台账号，可按账号 ID 精确筛选，或按 ID、平台外部 ID、别名和昵称模糊搜索。`,
+		input_schema: json.RawMessage(`{"additionalProperties":false,"properties":{"account_id":{"description":"可选的数据库账号 ID。","type":"string"},"keyword":{"description":"账号搜索关键词。","type":"string"},"page":{"default":1,"description":"页码，从 1 开始。","maximum":1000000,"minimum":1,"type":"integer"},"page_size":{"default":24,"description":"每页账号数。","maximum":200,"minimum":1,"type":"integer"}},"type":"object"}`),
+		annotations:  json.RawMessage(`{"destructiveHint":false,"idempotentHint":true,"openWorldHint":false,"readOnlyHint":true}`),
+		supports:     supports_data,
+		handle:       (*ToolSet).get_accounts,
+	},
+	{
+		name:         "get_browse_history",
+		title:        `获取浏览记录`,
+		description:  `分页查询已保存的浏览记录，可按平台、关联账号和关键词筛选。username 对应账号的数据库 ID。`,
+		input_schema: json.RawMessage(`{"additionalProperties":false,"properties":{"keyword":{"description":"匹配标题、内容 ID、链接或关联账号的关键词。","type":"string"},"page":{"default":1,"description":"页码，从 1 开始。","maximum":1000000,"minimum":1,"type":"integer"},"page_size":{"default":20,"description":"每页记录数。","maximum":200,"minimum":1,"type":"integer"},"platform_ids":{"description":"平台 ID 列表；留空时查询常用平台。","items":{"minLength":1,"type":"string"},"type":"array","uniqueItems":true},"username":{"description":"关联账号的数据库 ID，例如 wxchannels:xxx。","type":"string"}},"type":"object"}`),
+		annotations:  json.RawMessage(`{"destructiveHint":false,"idempotentHint":true,"openWorldHint":false,"readOnlyHint":true}`),
+		supports:     supports_data,
+		handle:       (*ToolSet).get_browse_history,
+	},
+	{
+		name:         "get_logs",
+		title:        `获取应用日志`,
+		description:  `分页读取应用日志，可按级别、来源和关键词过滤。默认最多从日志末尾读取 2 MB。`,
+		input_schema: json.RawMessage(`{"additionalProperties":false,"properties":{"keyword":{"description":"不区分大小写的日志关键词。","type":"string"},"levels":{"description":"日志级别列表，例如 debug、info、warn、error。","items":{"minLength":1,"type":"string"},"type":"array","uniqueItems":true},"max_bytes":{"default":2097152,"description":"从每个日志文件末尾读取的最大字节数。","maximum":10485760,"minimum":65536,"type":"integer"},"page":{"default":1,"description":"页码，从 1 开始。","maximum":1000000,"minimum":1,"type":"integer"},"page_size":{"default":300,"description":"每页日志条数。","maximum":2000,"minimum":1,"type":"integer"},"source":{"description":"日志来源、文件或组件筛选。","type":"string"}},"type":"object"}`),
+		annotations:  json.RawMessage(`{"destructiveHint":false,"idempotentHint":true,"openWorldHint":false,"readOnlyHint":true}`),
+		supports:     supports_data,
+		handle:       (*ToolSet).get_logs,
+	},
+	{
+		name:         "get_certificate_status",
+		title:        `获取代理证书状态`,
+		description:  `获取当前代理根证书的来源、安装和信任状态、证书详情及风险提示。`,
+		input_schema: json.RawMessage(`{"additionalProperties":false,"type":"object"}`),
+		annotations:  json.RawMessage(`{"destructiveHint":false,"idempotentHint":true,"openWorldHint":false,"readOnlyHint":true}`),
+		supports:     supports_data,
+		handle:       without_arguments((*ToolSet).get_certificate_status),
+	},
 }
