@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"wx_channel/internal/database/model"
-	servicetools "wx_channel/internal/services/tools"
+	"wx_channel/internal/mcpserver"
 	"wx_channel/pkg/flowengine"
 	"wx_channel/pkg/flowengine/engine"
 )
@@ -22,11 +22,11 @@ const (
 // Only JSON-config driven node types are exposed; FuncNode is bound to Go
 // functions and therefore not user-constructible.
 type UserFlowNodeCatalogItem struct {
-	Type        string                    `json:"type"`
-	Name        string                    `json:"name"`
-	Description string                    `json:"description"`
-	ConfigKeys  []UserFlowConfigKey       `json:"config_keys"`
-	Tools       []servicetools.Definition `json:"tools,omitempty"`
+	Type        string                 `json:"type"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	ConfigKeys  []UserFlowConfigKey    `json:"config_keys"`
+	Tools       []mcpserver.Definition `json:"tools,omitempty"`
 }
 
 type UserFlowConfigKey struct {
@@ -91,7 +91,7 @@ func user_flow_node_catalog() []UserFlowNodeCatalogItem {
 				{Key: "output_key", Type: "string", Required: false, Description: "结构化结果写入上下文的键，默认 service_result"},
 				{Key: "timeout_seconds", Type: "number", Required: false, Description: "节点调用超时时间；不填时由具体 tool 控制"},
 			},
-			Tools: servicetools.BuiltinCatalog(),
+			Tools: mcpserver.ToolCatalog(),
 		},
 		{
 			Type:        "EndNode",
@@ -552,7 +552,7 @@ func validate_user_flow_node_config(node_type string, config map[string]interfac
 		return fmt.Errorf("tool_name 不能为空")
 	}
 	known_tool := false
-	for _, tool := range servicetools.BuiltinCatalog() {
+	for _, tool := range mcpserver.ToolCatalog() {
 		if tool.Name == tool_name {
 			known_tool = true
 			break

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"wx_channel/internal/adapter"
 	"wx_channel/internal/config"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/mcpserver"
@@ -53,6 +54,44 @@ func (d *mcp_sph_deployer) DeploySphWorker(ctx context.Context) (*mcpserver.SphD
 		WorkerURLWarning: result.WorkerURLWarning,
 		ScriptBytes:      result.ScriptBytes,
 	}, nil
+}
+
+// mcp_wxmp_runtime adapts the in-process official-account adapter to the MCP
+// capability layer. Unlike the HTTP-backed video-channel tools, the wxmp
+// capability has no api_client equivalent, so it is available in standalone and
+// HTTP MCP modes alike.
+type mcp_wxmp_runtime struct {
+	adapter interface {
+		FetchBizMsgList(username string, offset string) (json.RawMessage, error)
+	}
+}
+
+// new_mcp_wxmp_runtime returns nil when no official-account adapter is
+// installed, which hides the tool instead of exposing one that can only fail.
+func new_mcp_wxmp_runtime() mcpserver.WXMPRuntime {
+	handler := adapter.Get("wxmp")
+	if handler == nil {
+		return nil
+	}
+	// adapter.Get resolves the init-time singleton, so a runtime registered
+	// after this lookup is still the same instance.
+	wxmp_adapter, ok := handler.(interface {
+		FetchBizMsgList(username string, offset string) (json.RawMessage, error)
+	})
+	if !ok {
+		return nil
+	}
+	return &mcp_wxmp_runtime{adapter: wxmp_adapter}
+}
+
+func (r *mcp_wxmp_runtime) BizMsgList(ctx context.Context, username string, offset string) (json.RawMessage, error) {
+	if r == nil || r.adapter == nil {
+		return nil, fmt.Errorf("公众号历史消息能力未初始化")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return r.adapter.FetchBizMsgList(username, offset)
 }
 
 // mcp_data_reader adapts the transport-neutral data query service to the MCP

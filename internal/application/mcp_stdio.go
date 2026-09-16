@@ -182,6 +182,7 @@ func new_mcp_stdio_runtime(cfg *config.Config, stdio_config MCPStdioConfig) (*mc
 		ScraperJobs:         new_mcp_scraper_job_backend(scraper_job_service),
 		DownloadTaskCreator: new_mcp_download_task_creator(download_task_service),
 		DownloadTaskDeleter: new_mcp_download_task_deleter(download_task_service),
+		WXMP:                new_mcp_wxmp_runtime(),
 		SphDeployer:         NewMCPSphDeployer(cfg),
 		ZhihuCollections:    zhihu.NewClient(cookie_reader, logger),
 		ZhihuCredentials:    cookie_reader,
