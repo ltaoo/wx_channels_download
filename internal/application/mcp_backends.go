@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"wx_channel/internal/adapter"
@@ -92,6 +93,182 @@ func (r *mcp_wxmp_runtime) BizMsgList(ctx context.Context, username string, offs
 		return nil, err
 	}
 	return r.adapter.FetchBizMsgList(username, offset)
+}
+
+// mcp_wxchannels_adapter is the narrow view of the video-channel adapter that
+// the MCP backend consumes. Each method maps 1:1 onto a ChannelsAdapter export.
+type mcp_wxchannels_adapter interface {
+	SearchChannelsContact(keyword string, next_marker string) (json.RawMessage, error)
+	FetchChannelsFeedListOfContact(username string, next_marker string) (json.RawMessage, error)
+	FetchChannelsLiveReplayList(username string, next_marker string) (json.RawMessage, error)
+	FetchChannelsFeedProfile(oid string, nid string, request_url string, eid string) (json.RawMessage, error)
+	FetchChannelsFeedCommentList(oid string, nid string, comment_id string, next_marker string) (json.RawMessage, error)
+	FetchChannelsFeedShareUrl(oid string) (json.RawMessage, error)
+	FetchLiveProfile(oid string, nid string, live_id string) (json.RawMessage, error)
+	FetchChannelsInteractionedFeedList(flag string, next_marker string) (json.RawMessage, error)
+	FetchChannelsFollowList(next_marker string) (json.RawMessage, error)
+	FetchChannelsPlayHistory(next_marker string) (json.RawMessage, error)
+	PageAvailable() bool
+	DecryptVideoInPlace(file_path string, key uint64) error
+}
+
+// mcp_wxchannels_backend calls the in-process video-channel adapter instead of
+// looping back through this process's own HTTP API. The adapter is resolved on
+// every call: the MCP runtime is constructed before the adapter is registered
+// (the API server and the MCP service depend on each other), so a lookup at
+// construction time would always miss. Resolving per call also avoids caching
+// the *wxchannels.Client, which Stop() replaces under runtime_mu.
+//
+// resolved exists only so tests can inject a fake; production leaves it nil.
+type mcp_wxchannels_backend struct {
+	resolved mcp_wxchannels_adapter
+}
+
+// new_mcp_wxchannels_backend returns the HTTP host's backend. It is never nil:
+// the tools it backs must stay advertised even before the adapter registers.
+func new_mcp_wxchannels_backend() mcpserver.WXChannelsBackend {
+	return &mcp_wxchannels_backend{}
+}
+
+func (b *mcp_wxchannels_backend) begin(ctx context.Context) (mcp_wxchannels_adapter, error) {
+	if b == nil {
+		return nil, fmt.Errorf("视频号查询能力未初始化")
+	}
+	target, err := b.resolve()
+	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return target, nil
+}
+
+func (b *mcp_wxchannels_backend) resolve() (mcp_wxchannels_adapter, error) {
+	if b != nil && b.resolved != nil {
+		return b.resolved, nil
+	}
+	handler := adapter.Get("wxchannels")
+	if handler == nil {
+		return nil, fmt.Errorf("wxchannels runtime is not initialized")
+	}
+	target, ok := handler.(mcp_wxchannels_adapter)
+	if !ok {
+		return nil, fmt.Errorf("wxchannels runtime is not initialized")
+	}
+	return target, nil
+}
+
+// Status renders the page-connection state itself; it is the only call whose
+// response the adapter does not already produce as JSON.
+func (b *mcp_wxchannels_backend) Status(ctx context.Context) (json.RawMessage, error) {
+	target, err := b.begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := json.Marshal(map[string]bool{"available": target.PageAvailable()})
+	if err != nil {
+		return nil, fmt.Errorf("编码视频号连接状态失败: %w", err)
+	}
+	return json.RawMessage(payload), nil
+}
+
+func (b *mcp_wxchannels_backend) SearchContact(ctx context.Context, keyword string, next_marker string) (json.RawMessage, error) {
+	target, err := b.begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return target.SearchChannelsContact(keyword, next_marker)
+}
+
+func (b *mcp_wxchannels_backend) FeedListOfContact(ctx context.Context, username string, next_marker string) (json.RawMessage, error) {
+	target, err := b.begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return target.FetchChannelsFeedListOfContact(username, next_marker)
+}
+
+func (b *mcp_wxchannels_backend) LiveReplayList(ctx context.Context, username string, next_marker string) (json.RawMessage, error) {
+	target, err := b.begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return target.FetchChannelsLiveReplayList(username, next_marker)
+}
+
+func (b *mcp_wxchannels_backend) FeedProfile(ctx context.Context, oid string, nid string, request_url string, eid string) (json.RawMessage, error) {
+	target, err := b.begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return target.FetchChannelsFeedProfile(oid, nid, request_url, eid)
+}
+
+func (b *mcp_wxchannels_backend) FeedCommentList(ctx context.Context, oid string, nid string, comment_id string, next_marker string) (json.RawMessage, error) {
+	target, err := b.begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return target.FetchChannelsFeedCommentList(oid, nid, comment_id, next_marker)
+}
+
+func (b *mcp_wxchannels_backend) FeedShareUrl(ctx context.Context, oid string) (json.RawMessage, error) {
+	target, err := b.begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return target.FetchChannelsFeedShareUrl(oid)
+}
+
+// LiveProfile ignores username: the platform call is addressed by the live
+// object identifiers, and the HTTP route never forwarded the nickname either.
+func (b *mcp_wxchannels_backend) LiveProfile(ctx context.Context, username string, oid string, nid string, live_id string) (json.RawMessage, error) {
+	target, err := b.begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return target.FetchLiveProfile(oid, nid, live_id)
+}
+
+func (b *mcp_wxchannels_backend) InteractedFeedList(ctx context.Context, flag int, next_marker string) (json.RawMessage, error) {
+	target, err := b.begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return target.FetchChannelsInteractionedFeedList(strconv.Itoa(flag), next_marker)
+}
+
+func (b *mcp_wxchannels_backend) FollowedAccounts(ctx context.Context, next_marker string) (json.RawMessage, error) {
+	target, err := b.begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return target.FetchChannelsFollowList(next_marker)
+}
+
+func (b *mcp_wxchannels_backend) PlayHistory(ctx context.Context, next_marker string) (json.RawMessage, error) {
+	target, err := b.begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return target.FetchChannelsPlayHistory(next_marker)
+}
+
+// DecryptVideo needs no page connection, matching the HTTP decrypt route.
+func (b *mcp_wxchannels_backend) DecryptVideo(ctx context.Context, file_path string, key uint64) (json.RawMessage, error) {
+	target, err := b.begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := target.DecryptVideoInPlace(file_path, key); err != nil {
+		return nil, err
+	}
+	payload, err := json.Marshal(map[string]string{"filepath": file_path})
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(payload), nil
 }
 
 // mcp_data_reader adapts the transport-neutral data query service to the MCP

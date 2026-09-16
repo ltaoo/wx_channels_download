@@ -14,21 +14,6 @@ import (
 
 const mcp_transport = "streamable_http"
 
-// MCPServiceConfig contains the dependencies used by the MCP protocol server.
-type MCPServiceConfig struct {
-	APIBaseURL          string
-	Version             string
-	DataReader          mcpserver.DataReader
-	ScraperJobs         mcpserver.ScraperJobBackend
-	DownloadTaskCreator mcpserver.DownloadTaskCreator
-	DownloadTaskDeleter mcpserver.DownloadTaskDeleter
-	WXMP                mcpserver.WXMPRuntime
-	SphDeployer         mcpserver.SphDeployer
-	ZhihuCollections    mcpserver.ZhihuCollectionReader
-	ZhihuCredentials    mcpserver.ZhihuCredentialReader
-	Automation          mcpserver.AutomationBackend
-}
-
 // MCPServiceStatus describes the process-local MCP service state.
 type MCPServiceStatus struct {
 	Enabled   bool
@@ -50,8 +35,8 @@ type MCPService struct {
 type mcp_server_factory func() (*mcp.Server, *mcpserver.ToolSet, error)
 
 // NewMCPService constructs an enabled MCP service.
-func NewMCPService(config MCPServiceConfig) (*MCPService, error) {
-	server, toolset, err := build_mcp_server(config)
+func NewMCPService(config mcpserver.Config) (*MCPService, error) {
+	server, toolset, err := mcpserver.NewRuntime(config)
 	if err != nil {
 		return nil, err
 	}
@@ -60,25 +45,9 @@ func NewMCPService(config MCPServiceConfig) (*MCPService, error) {
 
 // NewLazyMCPService constructs a disabled MCP service whose protocol server is
 // initialized by the first HTTP enable or in-process tool execution.
-func NewLazyMCPService(config MCPServiceConfig) *MCPService {
+func NewLazyMCPService(config mcpserver.Config) *MCPService {
 	return new_lazy_mcp_service(func() (*mcp.Server, *mcpserver.ToolSet, error) {
-		return build_mcp_server(config)
-	})
-}
-
-func build_mcp_server(config MCPServiceConfig) (*mcp.Server, *mcpserver.ToolSet, error) {
-	return mcpserver.NewRuntime(mcpserver.Config{
-		APIBaseURL:          config.APIBaseURL,
-		Version:             config.Version,
-		DataReader:          config.DataReader,
-		ScraperJobs:         config.ScraperJobs,
-		DownloadTaskCreator: config.DownloadTaskCreator,
-		DownloadTaskDeleter: config.DownloadTaskDeleter,
-		WXMP:                config.WXMP,
-		SphDeployer:         config.SphDeployer,
-		ZhihuCollections:    config.ZhihuCollections,
-		ZhihuCredentials:    config.ZhihuCredentials,
-		Automation:          config.Automation,
+		return mcpserver.NewRuntime(config)
 	})
 }
 

@@ -4,9 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -222,23 +219,11 @@ func (s *ToolSet) get_download_tasks(ctx context.Context, raw_arguments json.Raw
 		}
 		return successful_tool_result(value)
 	}
-	values := url.Values{
-		"page":      []string{strconv.Itoa(query.Page)},
-		"page_size": []string{strconv.Itoa(query.PageSize)},
+	raw_response, err := s.api_client.download_tasks(ctx, query)
+	if err != nil {
+		return nil, err
 	}
-	if query.ParentTaskID > 0 {
-		values.Set("parent_task_id", strconv.Itoa(query.ParentTaskID))
-	}
-	if query.RootTaskID > 0 {
-		values.Set("root_task_id", strconv.Itoa(query.RootTaskID))
-	}
-	if query.ContentID != "" {
-		values.Set("content_id", query.ContentID)
-	}
-	if len(query.Statuses) > 0 {
-		values.Set("status", join_ints(query.Statuses))
-	}
-	return s.call_read_api(ctx, http.MethodGet, "/api/v1/download_task/list?"+values.Encode(), nil)
+	return successful_tool_result(raw_json_value(raw_response))
 }
 
 func (s *ToolSet) get_download_task_detail(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
@@ -259,8 +244,11 @@ func (s *ToolSet) get_download_task_detail(ctx context.Context, raw_arguments js
 		}
 		return successful_tool_result(value)
 	}
-	values := url.Values{"id": []string{strconv.Itoa(arguments.ID)}}
-	return s.call_read_api(ctx, http.MethodGet, "/api/v1/download_task/detail?"+values.Encode(), nil)
+	raw_response, err := s.api_client.download_task_detail(ctx, arguments.ID)
+	if err != nil {
+		return nil, err
+	}
+	return successful_tool_result(raw_json_value(raw_response))
 }
 
 func (s *ToolSet) delete_download_tasks(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
@@ -334,9 +322,7 @@ func (s *ToolSet) create_download_task(ctx context.Context, request DownloadTask
 	if s.api_client == nil {
 		return nil, fmt.Errorf("下载任务创建服务未初始化")
 	}
-	create_response, err := s.api_client.create_download_task(ctx, map[string]any{
-		"objects": []DownloadTaskCreateRequest{request},
-	})
+	create_response, err := s.api_client.create_download_task(ctx, request)
 	if err != nil {
 		return nil, err
 	}
@@ -417,14 +403,6 @@ func download_item_was_skipped(raw_task json.RawMessage) bool {
 		Skipped bool `json:"skipped"`
 	}
 	return json.Unmarshal(raw_task, &task) == nil && task.Skipped
-}
-
-func join_ints(values []int) string {
-	parts := make([]string, len(values))
-	for index, value := range values {
-		parts[index] = strconv.Itoa(value)
-	}
-	return strings.Join(parts, ",")
 }
 
 // tools_download_task declares the download-task tools whose handlers live in

@@ -18,6 +18,7 @@ title: MCP Server
 - `search_wxchannels_accounts`：搜索视频号账号。
 - `get_wxchannels_account_videos`：获取账号发布的视频列表。
 - `get_wxchannels_live_replays`：获取账号的直播回放。
+- `get_wxchannels_live_profile`：获取视频号直播详情和直播流信息。
 - `get_wxchannels_interacted_videos`：获取当前用户赞过或收藏的视频。
 - `get_wxchannels_followed_accounts`：获取当前用户关注的视频号账号。
 - `get_wxchannels_play_history`：获取当前用户的视频号播放记录。
@@ -57,26 +58,9 @@ http://127.0.0.1:2022/mcp
 
 所有数据查询工具均为只读。`get_download_tasks` 支持按状态、父任务和根任务筛选；`get_accounts` 支持账号 ID 和关键词；`get_browse_history` 支持平台、关联账号和关键词；`get_logs` 支持日志级别、来源和关键词。列表工具默认分页，并限制单页最大返回量。
 
-## CLI 直接调用
-
-MCP、自动化流程节点和 CLI 共用同一个 service tool 注册表。下载器 API 启动后，可直接查看当前工具的描述与参数 schema：
-
-```sh
-wx_video_download tool list
-```
-
-按工具名称调用时，通过 `--arguments`（或 `-a`）传入 JSON 对象：
-
-```sh
-wx_video_download tool call get_wxchannels_account_videos \
-  --arguments '{"username":"example@finder","next_marker":""}'
-```
-
-需要连接其他实例时，可增加 `--api-base-url http://127.0.0.1:2022`。CLI 会直接调用进程内 tool service，不需要封装 MCP JSON-RPC 请求。
-
 ## stdio
 
-使用 stdio MCP 前先启动下载器：
+stdio 是一个薄壳，自身不建立数据库、下载引擎或平台适配器，全部工具调用都转发给已运行的下载器 API。因此使用前必须先启动下载器：
 
 ```sh
 wx_video_download server
@@ -95,18 +79,7 @@ wx_video_download server
 }
 ```
 
-默认 API 地址来自项目配置中的 `api.protocol`、`api.hostname` 和 `api.port`。也可显式指定：
-
-```json
-{
-  "mcpServers": {
-    "dm": {
-      "command": "/absolute/path/to/wx_video_download",
-      "args": ["mcp", "--api-base-url", "http://127.0.0.1:2022"]
-    }
-  }
-}
-```
+API 地址固定取自项目配置中的 `api.protocol`、`api.hostname` 和 `api.port`，不接受命令行参数覆盖。启动时会对下载器做一次连通性探测：连不上只向 stderr 打印警告，进程照常服务，因为下载器可能在稍后才启动。这类情况下所有工具调用都会失败，错误会提示确认下载器是否在运行。
 
 ## 配置管理
 
@@ -121,7 +94,7 @@ wx_video_download server
 }
 ```
 
-未知字段、只读字段、类型不匹配或不在 `options` 中的值会被拒绝。值发生变化后应用会优雅重启，MCP 连接可能短暂中断。修改 `api.hostname` 或 `api.port` 后，应使用新地址连接；stdio 客户端需要同步更新 API 地址或重新启动。相同值不会触发重启。
+未知字段、只读字段、类型不匹配或不在 `options` 中的值会被拒绝。值发生变化后应用会优雅重启，MCP 连接可能短暂中断。修改 `api.hostname` 或 `api.port` 后，应使用新地址连接；stdio 客户端只在启动时读取一次配置，需要重新启动才能生效。相同值不会触发重启。
 
 `update_config` 返回 `restart_scheduled: true` 时只表示已安排重启。调用方必须保留 `restart_token`，连接恢复后调用 `get_restart_status`。只有返回 `status: "completed"`、`restart_completed: true`、`config_applied: true` 时，才表示新进程已经启动并加载了保存后的配置；在此之前不应向用户声称重启完成。
 

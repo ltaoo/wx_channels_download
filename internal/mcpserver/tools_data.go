@@ -4,9 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
 )
 
@@ -18,43 +15,6 @@ const (
 	default_log_max_bytes  = 2 * 1024 * 1024
 	max_log_max_bytes      = 10 * 1024 * 1024
 )
-
-// DownloadTaskListQuery describes a read-only download task query.
-type DownloadTaskListQuery struct {
-	Page         int
-	PageSize     int
-	Statuses     []int
-	ParentTaskID int
-	RootTaskID   int
-	ContentID    string
-}
-
-// AccountListQuery describes a read-only account query.
-type AccountListQuery struct {
-	Page      int
-	PageSize  int
-	Keyword   string
-	AccountID string
-}
-
-// BrowseHistoryListQuery describes a read-only browse history query.
-type BrowseHistoryListQuery struct {
-	Page        int
-	PageSize    int
-	Keyword     string
-	Username    string
-	PlatformIDs []string
-}
-
-// LogListQuery describes a read-only application log query.
-type LogListQuery struct {
-	Page     int
-	PageSize int
-	MaxBytes int
-	Keyword  string
-	Source   string
-	Levels   []string
-}
 
 // DataReader supplies read-only data tools.
 type DataReader interface {
@@ -77,20 +37,6 @@ type DeleteDownloadTaskResult struct {
 // DownloadTaskDeleter supplies download task deletion tools.
 type DownloadTaskDeleter interface {
 	DeleteDownloadTasks(ctx context.Context, task_ids []int, delete_files bool) ([]DeleteDownloadTaskResult, error)
-}
-
-// DownloadTaskCreateRequest is the transport-neutral input for one task.
-type DownloadTaskCreateRequest struct {
-	Platform        string          `json:"platform"`
-	Content         json.RawMessage `json:"content"`
-	BuildFromFetch  bool            `json:"build_from_fetch"`
-	ResourceIndexes []int           `json:"resource_indexes,omitempty"`
-	DownloadDir     string          `json:"download_dir"`
-	Filename        string          `json:"filename"`
-	Config          map[string]any  `json:"config"`
-	AutoStart       *bool           `json:"auto_start"`
-	ParentTaskID    *int            `json:"parent_task_id,omitempty"`
-	RelationType    string          `json:"relation_type,omitempty"`
 }
 
 // DownloadTaskCreateResult is the normalized result consumed by MCP tools.
@@ -151,13 +97,11 @@ func (s *ToolSet) get_accounts(ctx context.Context, raw_arguments json.RawMessag
 		}
 		return successful_tool_result(value)
 	}
-	values := url.Values{
-		"page":       []string{strconv.Itoa(query.Page)},
-		"page_size":  []string{strconv.Itoa(query.PageSize)},
-		"keyword":    []string{query.Keyword},
-		"account_id": []string{query.AccountID},
+	raw_response, err := s.api_client.accounts(ctx, query)
+	if err != nil {
+		return nil, err
 	}
-	return s.call_read_api(ctx, http.MethodGet, "/api/account/list?"+values.Encode(), nil)
+	return successful_tool_result(raw_json_value(raw_response))
 }
 
 func (s *ToolSet) get_browse_history(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
@@ -184,16 +128,11 @@ func (s *ToolSet) get_browse_history(ctx context.Context, raw_arguments json.Raw
 		}
 		return successful_tool_result(value)
 	}
-	body := map[string]any{
-		"page":         query.Page,
-		"page_size":    query.PageSize,
-		"keyword":      query.Keyword,
-		"platform_ids": query.PlatformIDs,
+	raw_response, err := s.api_client.browse_history(ctx, query)
+	if err != nil {
+		return nil, err
 	}
-	if query.Username != "" {
-		body["username"] = query.Username
-	}
-	return s.call_read_api(ctx, http.MethodPost, "/api/browse_history/list", body)
+	return successful_tool_result(raw_json_value(raw_response))
 }
 
 func (s *ToolSet) get_logs(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
@@ -227,15 +166,11 @@ func (s *ToolSet) get_logs(ctx context.Context, raw_arguments json.RawMessage) (
 		}
 		return successful_tool_result(value)
 	}
-	values := url.Values{
-		"page":      []string{strconv.Itoa(query.Page)},
-		"page_size": []string{strconv.Itoa(query.PageSize)},
-		"max_bytes": []string{strconv.Itoa(query.MaxBytes)},
-		"keyword":   []string{query.Keyword},
-		"source":    []string{query.Source},
-		"levels":    []string{strings.Join(query.Levels, ",")},
+	raw_response, err := s.api_client.logs(ctx, query)
+	if err != nil {
+		return nil, err
 	}
-	return s.call_read_api(ctx, http.MethodGet, "/api/logs?"+values.Encode(), nil)
+	return successful_tool_result(raw_json_value(raw_response))
 }
 
 func (s *ToolSet) get_certificate_status(ctx context.Context) (map[string]any, error) {
@@ -246,11 +181,7 @@ func (s *ToolSet) get_certificate_status(ctx context.Context) (map[string]any, e
 		}
 		return successful_tool_result(value)
 	}
-	return s.call_read_api(ctx, http.MethodGet, "/api/proxy/certificate/status", nil)
-}
-
-func (s *ToolSet) call_read_api(ctx context.Context, method string, path string, body any) (map[string]any, error) {
-	raw_response, err := s.api_client.do_json(ctx, method, path, body)
+	raw_response, err := s.api_client.certificate_status(ctx)
 	if err != nil {
 		return nil, err
 	}

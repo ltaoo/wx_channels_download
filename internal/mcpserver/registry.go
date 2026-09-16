@@ -49,8 +49,16 @@ func supports_download_content(s *ToolSet) bool {
 	return (s.scraper_jobs != nil || s.api_client != nil) && (s.download_task_creator != nil || s.api_client != nil)
 }
 
+// supports_wxchannels keeps the api_client arm as load-bearing: ToolSet.Register
+// materializes the supported set once, at construction, which on the HTTP host
+// happens before the adapter is registered. Dropping the OR would permanently
+// hide these tools from the api_client-only CLI runtime.
+func supports_wxchannels(s *ToolSet) bool {
+	return s.wxchannels != nil || s.api_client != nil
+}
+
 func supports_wxchannels_download(s *ToolSet) bool {
-	return s.api_client != nil && (s.download_task_creator != nil || s.api_client != nil)
+	return (s.wxchannels != nil || s.api_client != nil) && (s.download_task_creator != nil || s.api_client != nil)
 }
 
 func supports_data(s *ToolSet) bool {
