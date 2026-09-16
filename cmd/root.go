@@ -4,6 +4,9 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"net"
+	"strconv"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -96,6 +99,19 @@ func Execute(cfg *config.Config) error {
 		return nil
 	}
 	return err
+}
+
+// configured_api_base_url resolves the downloader address shared by the
+// commands that talk to a running downloader (mcp, download) from api.protocol,
+// api.hostname, and api.port.
+func configured_api_base_url() string {
+	protocol := strings.TrimSpace(Cfg.GetString("api.protocol"))
+	if protocol == "" {
+		protocol = "http"
+	}
+	hostname := config.APIClientHostname(Cfg.GetString("api.hostname"))
+	port := Cfg.GetInt("api.port")
+	return fmt.Sprintf("%s://%s", protocol, net.JoinHostPort(hostname, strconv.Itoa(port)))
 }
 
 func wait_for_start_failure(in io.Reader, out io.Writer) {

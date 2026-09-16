@@ -6,6 +6,7 @@ import (
 
 	"wx_channel/internal/api"
 	"wx_channel/internal/config"
+	"wx_channel/internal/mcpserver"
 	"wx_channel/internal/services"
 	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/flowengine"
@@ -21,7 +22,7 @@ func new_mcp_service(
 	enabled bool,
 ) (*services.MCPService, error) {
 	cookie_reader := cookies.NewPersistentReader(api_config.WorkDir)
-	service_config := services.MCPServiceConfig{
+	service_config := mcpserver.Config{
 		APIBaseURL:          mcp_api_base_url(api_config),
 		Version:             api_config.Version,
 		DataReader:          new_mcp_data_reader(data_service),
@@ -29,6 +30,7 @@ func new_mcp_service(
 		DownloadTaskCreator: new_mcp_download_task_creator(download_task_service),
 		DownloadTaskDeleter: new_mcp_download_task_deleter(download_task_service),
 		WXMP:                new_mcp_wxmp_runtime(),
+		WXChannels:          new_mcp_wxchannels_backend(),
 		SphDeployer:         NewMCPSphDeployer(api_config.Original),
 		ZhihuCollections:    zhihu.NewClient(cookie_reader, api_config.Original.Logger()),
 		ZhihuCredentials:    cookie_reader,

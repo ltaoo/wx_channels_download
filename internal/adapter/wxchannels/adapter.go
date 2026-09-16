@@ -162,6 +162,70 @@ func (a *ChannelsAdapter) FetchChannelsFeedShareUrl(
 	return client.FetchChannelsFeedShareUrl(oid)
 }
 
+// FetchLiveProfile fetches a live profile through the active browser-backed
+// runtime's joinLive API.
+func (a *ChannelsAdapter) FetchLiveProfile(
+	oid string,
+	nid string,
+	live_id string,
+) (json.RawMessage, error) {
+	client, err := a.wxchannels_client()
+	if err != nil {
+		return nil, err
+	}
+	return client.FetchLiveProfile(oid, nid, live_id)
+}
+
+// FetchChannelsInteractionedFeedList fetches the user's liked or favorited feed
+// list through the active browser-backed runtime.
+func (a *ChannelsAdapter) FetchChannelsInteractionedFeedList(
+	flag string,
+	next_marker string,
+) (json.RawMessage, error) {
+	client, err := a.wxchannels_client()
+	if err != nil {
+		return nil, err
+	}
+	return client.FetchChannelsInteractionedFeedList(flag, next_marker)
+}
+
+// FetchChannelsFollowList fetches the user's following list through the active
+// browser-backed runtime.
+func (a *ChannelsAdapter) FetchChannelsFollowList(
+	next_marker string,
+) (json.RawMessage, error) {
+	client, err := a.wxchannels_client()
+	if err != nil {
+		return nil, err
+	}
+	return client.FetchChannelsFollowList(next_marker)
+}
+
+// FetchChannelsPlayHistory fetches the user's watch history through the active
+// browser-backed runtime.
+func (a *ChannelsAdapter) FetchChannelsPlayHistory(
+	next_marker string,
+) (json.RawMessage, error) {
+	client, err := a.wxchannels_client()
+	if err != nil {
+		return nil, err
+	}
+	return client.FetchChannelsPlayHistory(next_marker)
+}
+
+// PageAvailable reports whether a Channels page is connected. It is false when
+// the runtime is not initialized, matching a disconnected page.
+func (a *ChannelsAdapter) PageAvailable() bool {
+	client, err := a.wxchannels_client()
+	return err == nil && client.Available()
+}
+
+// DecryptVideoInPlace decrypts a local encrypted video without a page
+// connection: the HTTP decrypt route never needed the runtime either.
+func (a *ChannelsAdapter) DecryptVideoInPlace(file_path string, key uint64) error {
+	return wxchannels.DecryptFileInPlace(file_path, key)
+}
+
 func (a *ChannelsAdapter) wxchannels_client() (*wxchannels.Client, error) {
 	if a == nil {
 		return nil, errors.New("wxchannels adapter is not initialized")
