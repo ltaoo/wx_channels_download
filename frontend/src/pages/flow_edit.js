@@ -2,9 +2,9 @@ import { AutomationPageViewModel } from "./automation.model.js";
 import {
   AutomationEmptyState,
   AutomationFlowGraph,
+  AutomationNodeExecutionWindows,
   AutomationRunPipelineDialog,
   AutomationWorkspaceToolbar,
-  automation_execution_status_class,
 } from "./flow.components.js";
 
 function AutomationNodeInspector(props) {
@@ -119,148 +119,6 @@ function AutomationNodeInspector(props) {
           },
         });
       })(),
-    ],
-  );
-}
-
-function AutomationExecutionPanel(props) {
-  const vm$ = props.store;
-  const recent_logs_ = computed(vm$.state.execution_logs, (logs) =>
-    (logs || []).slice(-50).reverse(),
-  );
-  return View(
-    {
-      class: "automation-execution-panel",
-      attributes: {
-        n: "automation-execution-panel",
-        "aria-label": "执行过程日志",
-      },
-    },
-    [
-      View({ class: "automation-execution-panel__header" }, [
-        View({}, [
-          View({ class: "automation-editor-panel__title" }, ["执行过程"]),
-          View({ class: "automation-editor-panel__hint" }, [
-            computed(vm$.state.execution_run_id, (run_id) =>
-              run_id ? `Run ID：${run_id}` : "等待触发 Pipeline",
-            ),
-          ]),
-        ]),
-        View(
-          {
-            class: combine(
-              {
-                connected: vm$.state.execution_channel_connected,
-                status: vm$.state.execution_run_status,
-              },
-              ({ connected, status }) =>
-                `automation-execution-connection${
-                  connected ? " is-connected" : ""
-                }${status ? ` is-${automation_execution_status_class(status)}` : ""}`,
-            ),
-            attributes: { role: "status", "aria-live": "polite" },
-          },
-          [
-            View({ class: "automation-execution-connection__dot" }),
-            computed(
-              combine(
-                {
-                  connected: vm$.state.execution_channel_connected,
-                  status: vm$.state.execution_run_status,
-                },
-                (value) => value,
-              ),
-              ({ connected, status }) =>
-                status || (connected ? "实时连接" : "连接中"),
-            ),
-          ],
-        ),
-      ]),
-      View(
-        {
-          class: "automation-execution-log-list",
-          attributes: { "aria-live": "polite", "aria-relevant": "additions" },
-        },
-        [
-          Show({
-            when: computed(recent_logs_, (logs) => logs.length === 0),
-            ok() {
-              return View({ class: "automation-execution-log-empty" }, [
-                "触发 Pipeline 后，这里会实时显示每个节点的入参、行为和输出。",
-              ]);
-            },
-          }),
-          For({
-            each: recent_logs_,
-            key: "_execution_key",
-            render(entry_) {
-              const entry =
-                entry_ && entry_.value !== undefined ? entry_.value : entry_;
-              return View(
-                {
-                  as: "details",
-                  class: "automation-execution-log",
-                  attributes: {
-                    n: `automation-execution-log-${entry.node_id}`,
-                  },
-                },
-                [
-                  View(
-                    {
-                      as: "summary",
-                      class: "automation-execution-log__summary dm-focus-ring",
-                    },
-                    [
-                      View({ class: "automation-execution-log__node" }, [
-                        entry.node_name || entry.node_id,
-                      ]),
-                      View(
-                        {
-                          class: `automation-execution-log__status is-${automation_execution_status_class(
-                            entry.outcome,
-                          )}`,
-                        },
-                        [vm$.methods.nodeExecutionStatusLabel(entry.outcome)],
-                      ),
-                      View({ class: "automation-execution-log__meta" }, [
-                        `第 ${entry.attempt || 1} 次 · ${entry.duration_ms || 0} ms`,
-                      ]),
-                    ],
-                  ),
-                  View(
-                    { class: "automation-execution-log__body" },
-                    [
-                      ...[
-                        ["入参", entry.input],
-                        ["节点行为", entry.behavior],
-                        ["输出", entry.output],
-                      ].map(([label, value]) =>
-                        View({ class: "automation-execution-log__data" }, [
-                          View({ class: "automation-execution-log__label" }, [
-                            label,
-                          ]),
-                          View(
-                            {
-                              as: "pre",
-                              class: "automation-execution-log__value",
-                            },
-                            [vm$.methods.formatExecutionValue(value)],
-                          ),
-                        ]),
-                      ),
-                      entry.error
-                        ? View({ class: "automation-execution-log__error" }, [
-                            entry.error,
-                          ])
-                        : null,
-                    ].filter(Boolean),
-                  ),
-                ],
-              );
-            },
-          }),
-        ],
-      ),
     ],
   );
 }
@@ -485,6 +343,23 @@ function AutomationToolFormRender(props) {
 
 function AutomationAddNodeDialog(props) {
   const vm$ = props.store;
+  // 绿点走「新增」（接在节点后面），黄点走「插入」（插在 A → B 这条连线中间）
+  const insert_to$ = vm$.state.add_insert_to;
+  const insert_route$ = combine(
+    {
+      from: vm$.state.add_from,
+      to: insert_to$,
+      nodes: vm$.state.edit_nodes,
+    },
+    (state) => {
+      const nodes = state.nodes || [];
+      const label = (node_id) => {
+        const node = nodes.find((item) => item.id === node_id);
+        return (node && (node.name || node.id)) || node_id;
+      };
+      return `${label(state.from)} → ${label(state.to)}`;
+    },
+  );
   return Dialog(
     {
       store: vm$.ui.add_dialog$,
@@ -493,10 +368,25 @@ function AutomationAddNodeDialog(props) {
     },
     [
       DialogHeader({}, [
-        DialogTitle({}, ["添加节点"]),
-        DialogDescription({}, [
-          "选择节点类型并填入配置；新节点会连接到所选节点的后面。",
-        ]),
+        Show({
+          when: insert_to$,
+          ok() {
+            return [
+              DialogTitle({}, ["插入节点"]),
+              DialogDescription({}, [
+                "选择节点类型并填入配置；新节点会插到这条连线中间。",
+              ]),
+            ];
+          },
+          else() {
+            return [
+              DialogTitle({}, ["添加节点"]),
+              DialogDescription({}, [
+                "选择节点类型并填入配置；新节点会连接到所选节点的后面。",
+              ]),
+            ];
+          },
+        }),
       ]),
       DialogBody({}, [
         View({ class: "automation-form" }, [
@@ -511,16 +401,33 @@ function AutomationAddNodeDialog(props) {
                 },
               }),
             ]),
-            View({ class: "automation-form__field" }, [
-              View({ class: "automation-form__label" }, ["连接自"]),
-              Select({
-                store: vm$.ui.select_add_from$,
-                attributes: {
-                  n: "automation-add-from",
-                  "aria-label": "连接自哪个节点",
-                },
-              }),
-            ]),
+            Show({
+              when: computed(insert_to$, (to) => !to),
+              ok() {
+                return View({ class: "automation-form__field" }, [
+                  View({ class: "automation-form__label" }, ["连接自"]),
+                  Select({
+                    store: vm$.ui.select_add_from$,
+                    attributes: {
+                      n: "automation-add-from",
+                      "aria-label": "连接自哪个节点",
+                    },
+                  }),
+                ]);
+              },
+              else() {
+                return View({ class: "automation-form__field" }, [
+                  View({ class: "automation-form__label" }, ["插入位置"]),
+                  View(
+                    {
+                      class: "dm-alert automation-form__hint",
+                      attributes: { n: "automation-insert-route" },
+                    },
+                    [insert_route$],
+                  ),
+                ]);
+              },
+            }),
           ]),
           Show({
             when: computed(
@@ -640,7 +547,17 @@ function AutomationAddNodeDialog(props) {
             store: vm$.ui.btn_add_submit$,
             attributes: { n: "automation-add-submit", type: "button" },
           },
-          ["添加节点"],
+          [
+            Show({
+              when: insert_to$,
+              ok() {
+                return ["插入节点"];
+              },
+              else() {
+                return ["添加节点"];
+              },
+            }),
+          ],
         ),
       ]),
     ],
@@ -688,7 +605,6 @@ function FlowEditPageView(props) {
                   ]),
                 ]),
                 AutomationFlowGraph({ store: vm$, editable: true }),
-                AutomationExecutionPanel({ store: vm$ }),
               ]),
               AutomationNodeInspector({ store: vm$ }),
             ],
@@ -717,6 +633,7 @@ function FlowEditPageView(props) {
       AutomationAddNodeDialog({ store: vm$ }),
       AutomationRunPipelineDialog({ store: vm$ }),
       AutomationDeletePipelineConfirm({ store: vm$ }),
+      AutomationNodeExecutionWindows({ store: vm$ }),
     ],
   );
 }
