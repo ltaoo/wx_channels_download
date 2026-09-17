@@ -139,8 +139,91 @@ function calculate_pipeline_node_positions(nodes) {
     const x = position && Number(position.x);
     const y = position && Number(position.y);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-    positions[node.id] = { x: Math.max(16, x), y: Math.max(16, y) };
+    positions[node.id] = { x, y };
   });
+  return positions;
+}
+
+// —— 条件分支（GatewayNode/Exclusive）的 rules 同步 ——
+// 引擎只按 config.rules 顺序取第一条成立的条件跳到 target_id，完全不看 next_ids。
+// 所以画布上插/删节点时必须把 rules 里的 target_id 一起改掉，否则连线看起来接上了，
+// 引擎仍然按旧 rules 走，新节点永远不会被执行。
+
+function gateway_rules_of(node) {
+  if (!node || node.type !== "GatewayNode") return null;
+  const config = node.config || {};
+  if (String(config.gateway_type || "Exclusive") !== "Exclusive") return null;
+  const rules = config.rules;
+  if (!Array.isArray(rules) || rules.length === 0) return null;
+  return rules;
+}
+
+// a→b 之间插入新节点：把指向 b 的规则改成指向新节点（条件保持不变）
+function remap_gateway_rules(node, to_id, new_id) {
+  const rules = gateway_rules_of(node);
+  if (!rules) return node ? node.config : undefined;
+  const target = String(to_id || "");
+  let changed = false;
+  const next_rules = rules.map((rule) => {
+    if (!rule || typeof rule !== "object") return rule;
+    if (String(rule.target_id || rule.target || "") !== target) return rule;
+    changed = true;
+    return { ...rule, target_id: new_id };
+  });
+  return changed ? { ...(node.config || {}), rules: next_rules } : node.config;
+}
+
+// 删除节点：把它从 rules 里摘掉，避免留下指向不存在节点的悬空分支
+function drop_gateway_rules(node, node_id) {
+  const rules = gateway_rules_of(node);
+  if (!rules) return node ? node.config : undefined;
+  const removed = String(node_id || "");
+  const next_rules = rules.filter(
+    (rule) =>
+      !rule ||
+      typeof rule !== "object" ||
+      String(rule.target_id || rule.target || "") !== removed,
+  );
+  if (next_rules.length === rules.length) return node.config;
+  return { ...(node.config || {}), rules: next_rules };
+}
+
+// 用户改完网关的 rules 后，连线（next_ids）跟着 rules 走；rules 为空时保持原样，
+// 方便先画线再补条件
+function gateway_next_ids_from_rules(node, config) {
+  if (!node || node.type !== "GatewayNode") return null;
+  if (String((config && config.gateway_type) || "Exclusive") !== "Exclusive") {
+    return null;
+  }
+  const rules = config && config.rules;
+  if (!Array.isArray(rules) || rules.length === 0) return null;
+  const next_ids = [];
+  rules.forEach((rule) => {
+    const target = String(
+      (rule && (rule.target_id || rule.target)) || "",
+    ).trim();
+    if (target && !next_ids.includes(target)) next_ids.push(target);
+  });
+  return next_ids.length > 0 ? next_ids : null;
+}
+
+// insert_node_positions 为「在 a、b 之间插入」腾位置：新节点落在 b 原来那一列（与 a 同高），
+// 原本处在 b 这一列及更右的所有节点（含其它分支）统一右移一个间距，这样整张图仍然保持在
+// 同一个网格上，而不是只有被插入的那条分支单独错开。
+function insert_node_positions(nodes, from_id, to_id, new_id) {
+  const positions = calculate_pipeline_node_positions(nodes);
+  const from_position = positions[from_id];
+  const to_position = positions[to_id];
+  if (!from_position || !to_position) return positions;
+
+  const gap = 260;
+  Object.keys(positions).forEach((node_id) => {
+    const position = positions[node_id];
+    if (position && position.x >= to_position.x) {
+      positions[node_id] = { x: position.x + gap, y: position.y };
+    }
+  });
+  positions[new_id] = { x: to_position.x, y: from_position.y };
   return positions;
 }
 
@@ -162,14 +245,18 @@ function calculate_flow_minimap_geometry(
     1,
     Number(viewport_size && viewport_size.height) || 1,
   );
+  // 世界原点：节点可以拖到画布原点左上（负坐标），
+  // 世界范围 = [world_left, 内容右边界]，宽度按跨度计算
+  const world_left = Math.min(0, Number(layout && layout.min_left) || 0);
+  const world_top = Math.min(0, Number(layout && layout.min_top) || 0);
   const world_width = Math.max(
     1,
-    Number(layout && layout.width) || 1,
+    (Number(layout && layout.width) || 1) - world_left,
     viewport_width / zoom,
   );
   const world_height = Math.max(
     1,
-    Number(layout && layout.height) || 1,
+    (Number(layout && layout.height) || 1) - world_top,
     viewport_height / zoom,
   );
   const content_width = Math.max(1, minimap_width - padding * 2);
@@ -183,17 +270,9 @@ function calculate_flow_minimap_geometry(
   const offset_y = (minimap_height - world_height * scale) / 2;
   const viewport_x = Number(viewport && viewport.x) || 0;
   const viewport_y = Number(viewport && viewport.y) || 0;
-  const visible_left = Math.max(0, -viewport_x / zoom);
-  const visible_top = Math.max(0, -viewport_y / zoom);
-  const visible_right = Math.min(
-    world_width,
-    (-viewport_x + viewport_width) / zoom,
-  );
-  const visible_bottom = Math.min(
-    world_height,
-    (-viewport_y + viewport_height) / zoom,
-  );
-
+  // The viewport rect is kept unclipped: it only depends on the viewport size
+  // and zoom, so panning slides it without changing its dimensions. The
+  // minimap clips the overflow.
   return {
     width: minimap_width,
     height: minimap_height,
@@ -202,11 +281,13 @@ function calculate_flow_minimap_geometry(
     offset_y,
     world_width,
     world_height,
+    world_left,
+    world_top,
     viewport: {
-      left: offset_x + visible_left * scale,
-      top: offset_y + visible_top * scale,
-      width: Math.max(0, visible_right - visible_left) * scale,
-      height: Math.max(0, visible_bottom - visible_top) * scale,
+      left: offset_x + (-viewport_x / zoom - world_left) * scale,
+      top: offset_y + (-viewport_y / zoom - world_top) * scale,
+      width: (viewport_width / zoom) * scale,
+      height: (viewport_height / zoom) * scale,
     },
   };
 }
@@ -328,6 +409,12 @@ function AutomationPageViewModel(props, options) {
   const execution_run_status_ = ref("");
   const node_execution_states_ = refobj({});
   const execution_logs_ = refarr([]);
+  // 画布节点执行日志浮窗：可同时存在多个，各自位置独立，层级由 WindowManager 维护
+  const execution_windows_ = refarr([]);
+  const execution_window_z_ = refobj({});
+  const execution_window_active_id_ = ref("");
+  const execution_windows = new Timeless.vm.WindowManager({ baseZ: 240 });
+  execution_windows.onStateChange(sync_execution_windows);
 
   // editor working copy: [{id,type,name,config,next_ids,input_schema}]
   const edit_nodes_ = refarr([]);
@@ -357,6 +444,8 @@ function AutomationPageViewModel(props, options) {
   const add_service_form_schema_ = refarr([]);
   const add_service_form_error_ = ref("");
   const add_from_ = ref("");
+  // 非空即「插入」模式：在该节点与其 next 之间插入新节点
+  const add_insert_to_ = ref("");
   const add_submitting_ = ref(false);
 
   // create-schedule dialog state
@@ -1319,6 +1408,102 @@ function AutomationPageViewModel(props, options) {
     if (run_status) execution_run_status_.as(String(run_status));
   }
 
+  // 浮窗尺寸需与 automation.css 的 .automation-node-log-window 保持一致
+  const execution_window_width = 420;
+  const execution_window_margin = 12;
+  // 纵向至少留出标题栏，避免点在画布底部时窗口整块跑出屏幕
+  const execution_window_min_visible = 48;
+
+  function clamp_window_offset(value, min, max) {
+    const offset = Number(value);
+    const safe_offset = Number.isFinite(offset) ? offset : min;
+    return Math.min(Math.max(safe_offset, min), Math.max(min, max));
+  }
+
+  /**
+   * WindowManager 全量快照 → 视图状态。
+   * 成员集合用 refarr 的 insert/delete patch 驱动 For，逐个增删，
+   * 避免整表 reset 导致其它窗口被销毁重建。
+   */
+  function sync_execution_windows(state) {
+    const windows = (state && state.windows) || [];
+    const ids = windows.map((item) => item.id);
+    const current = (execution_windows_.value || []).map((item) => item.id);
+    for (let i = current.length - 1; i >= 0; i -= 1) {
+      if (!ids.includes(current[i])) execution_windows_.delete(i);
+    }
+    const now = (execution_windows_.value || []).map((item) => item.id);
+    ids.forEach((id) => {
+      if (!now.includes(id)) execution_windows_.push({ id });
+    });
+    const z = {};
+    windows.forEach((item) => {
+      z[item.id] = item.z;
+    });
+    execution_window_z_.as(z);
+    execution_window_active_id_.as((state && state.activeId) || "");
+  }
+
+  function open_node_execution_window(node_id, anchor) {
+    const id = String(node_id || "");
+    if (!id) return null;
+    const point = anchor && typeof anchor === "object" ? anchor : {};
+    const viewport_width = Number(window.innerWidth) || 0;
+    const viewport_height = Number(window.innerHeight) || 0;
+    execution_windows.open(id, {
+      x: clamp_window_offset(
+        point.x,
+        execution_window_margin,
+        viewport_width - execution_window_width,
+      ),
+      y: clamp_window_offset(
+        point.y,
+        execution_window_margin,
+        viewport_height - execution_window_min_visible,
+      ),
+    });
+    return id;
+  }
+
+  function close_node_execution_window(node_id) {
+    return execution_windows.close(String(node_id || ""));
+  }
+
+  function focus_node_execution_window(node_id) {
+    return execution_windows.focus(String(node_id || ""));
+  }
+
+  /** 拖动结束回写位置；clamp 到「至少 min_visible 露在视口内」，返回最终位置 */
+  function move_node_execution_window(node_id, position) {
+    const id = String(node_id || "");
+    if (!id) return null;
+    const point = position && typeof position === "object" ? position : {};
+    const viewport_width = Number(window.innerWidth) || 0;
+    const viewport_height = Number(window.innerHeight) || 0;
+    const clamped = {
+      x: clamp_window_offset(
+        point.x,
+        execution_window_min_visible - execution_window_width,
+        viewport_width - execution_window_min_visible,
+      ),
+      y: clamp_window_offset(
+        point.y,
+        0,
+        viewport_height - execution_window_min_visible,
+      ),
+    };
+    execution_windows.moveTo(id, clamped);
+    return clamped;
+  }
+
+  function close_all_node_execution_windows() {
+    execution_windows.closeAll();
+  }
+
+  function execution_window_position(node_id) {
+    return execution_windows.positionOf(String(node_id || ""));
+  }
+
   function handle_automation_channel_message(message) {
     if (!message || typeof message !== "object") return;
     const flow_id = String(message.flow_id || "").trim();
@@ -1578,7 +1763,12 @@ function AutomationPageViewModel(props, options) {
       if (!config || typeof config !== "object" || Array.isArray(config)) {
         throw new Error("节点配置必须是 JSON 对象");
       }
-      update_selected_node({ config });
+      // 条件分支的 rules 是走向的唯一依据，改完 rules 后连线也要跟着变
+      const next_ids = gateway_next_ids_from_rules(
+        find_edit_node(node_id),
+        config,
+      );
+      update_selected_node(next_ids ? { config, next_ids } : { config });
       notice_.as("节点配置已应用，保存 Pipeline 后生效");
     } catch (err) {
       set_error(err);
@@ -1785,7 +1975,7 @@ function AutomationPageViewModel(props, options) {
   }
 
   // --- editor: add / remove nodes ---
-  function open_add_dialog(node_type, from_node_id) {
+  function open_add_dialog(node_type, from_node_id, insert_to_node_id) {
     if (!selected_pipeline_.value) return null;
     const nodes = edit_nodes_.value || [];
     const last = nodes.length > 0 ? nodes[nodes.length - 1] : null;
@@ -1795,6 +1985,14 @@ function AutomationPageViewModel(props, options) {
     if (requested_from) {
       select_edit_node(requested_from.id);
     }
+    // 插入模式：只在 from 确实连到 insert_to 时才生效，否则退化成普通新增
+    const requested_insert_to = String(insert_to_node_id || "");
+    const insert_to =
+      from_node &&
+      requested_insert_to &&
+      (from_node.next_ids || []).includes(requested_insert_to)
+        ? requested_insert_to
+        : "";
     const requested_type = String(node_type || "").trim();
     add_type_.as(requested_type);
     add_name_.as("");
@@ -1813,9 +2011,16 @@ function AutomationPageViewModel(props, options) {
     ui.select_add_from$.setValue(from_node ? from_node.id : "", {
       silence: true,
     });
+    // 放在最后：它一翻，弹窗就会切到「插入」文案，此时 from 等状态必须已是新值
+    add_insert_to_.as(insert_to);
     add_open_.as(true);
     ui.add_dialog$.show();
     return null;
+  }
+
+  // 插入模式：在 from → to 这条连线上插入一个新节点
+  function open_insert_dialog(from_node_id, to_node_id) {
+    return open_add_dialog("", from_node_id, to_node_id);
   }
 
   async function submit_add_node() {
@@ -1844,26 +2049,47 @@ function AutomationPageViewModel(props, options) {
         config.arguments = service_form_arguments({ validate_required: true });
       }
       const node_id = `node-${Date.now()}-${++node_sequence}`;
+      const from_id = String(add_from_.value || "").trim();
+      const insert_to = String(add_insert_to_.value || "").trim();
       const nodes = (edit_nodes_.value || []).slice();
       const new_node = {
         id: node_id,
         type: node_type,
         name: String(add_name_.value || "").trim() || flow_label(node_type),
         config,
-        next_ids: [],
+        // 插入模式下新节点接管 from→insert_to 这段连线
+        next_ids: insert_to ? [insert_to] : [],
         input_schema: [],
       };
-      const from_id = String(add_from_.value || "").trim();
+      let gateway_append = false;
       if (from_id) {
         const from_index = nodes.findIndex((node) => node.id === from_id);
         if (from_index >= 0) {
-          const next_ids = (nodes[from_index].next_ids || []).slice();
-          if (!next_ids.includes(node_id)) next_ids.push(node_id);
-          nodes[from_index] = { ...nodes[from_index], next_ids };
+          const from_node = nodes[from_index];
+          // 条件分支上「新增节点」= 多开一条分支，得由用户去 rules 里补条件
+          gateway_append = !insert_to && gateway_rules_of(from_node) !== null;
+          const next_ids = (from_node.next_ids || []).slice();
+          if (insert_to) {
+            const at = next_ids.indexOf(insert_to);
+            if (at >= 0) next_ids[at] = node_id;
+            else next_ids.push(node_id);
+          } else if (!next_ids.includes(node_id)) {
+            next_ids.push(node_id);
+          }
+          nodes[from_index] = {
+            ...from_node,
+            next_ids,
+            // 条件分支的走向看 rules，不跟着改的话新节点不会被路由到
+            config: insert_to
+              ? remap_gateway_rules(from_node, insert_to, node_id)
+              : from_node.config,
+          };
         }
       }
       nodes.push(new_node);
-      const calculated_positions = calculate_pipeline_node_positions(nodes);
+      const calculated_positions = insert_to
+        ? insert_node_positions(nodes, from_id, insert_to, node_id)
+        : calculate_pipeline_node_positions(nodes);
       edit_nodes_.as(
         nodes.map((node) => ({
           ...node,
@@ -1871,11 +2097,21 @@ function AutomationPageViewModel(props, options) {
         })),
         { reset: true },
       );
+      // 所有节点的坐标刚刚重算过（插入会把后面的整体右移），保存时不能再被
+      // 之前拖拽留下的 staged 坐标覆盖，否则被移动过的节点会保存回旧位置
+      staged_node_positions.clear();
       select_edit_node(node_id);
       dirty_.as(true);
       ui.add_dialog$.hide();
       add_open_.as(false);
-      notice_.as("节点已添加，记得保存 Pipeline");
+      add_insert_to_.as("");
+      notice_.as(
+        insert_to
+          ? "节点已插入，记得保存 Pipeline"
+          : gateway_append
+            ? "节点已作为新分支添加；还要在该节点的 rules 里补上条件，否则引擎不会走到它"
+            : "节点已添加，记得保存 Pipeline",
+      );
     } catch (err) {
       set_error(err);
     }
@@ -1894,6 +2130,8 @@ function AutomationPageViewModel(props, options) {
       .map((node) => ({
         ...node,
         next_ids: (node.next_ids || []).filter((id) => id !== node_id),
+        // 条件分支的 rules 里也可能指着它，一起摘掉
+        config: drop_gateway_rules(node, node_id),
       }));
     edit_nodes_.as(nodes, { reset: true });
     if (selected_edit_node_id_.value === node_id) {
@@ -2308,6 +2546,7 @@ function AutomationPageViewModel(props, options) {
     removeCreateParam: remove_create_param,
     updateCreateParam: update_create_param,
     openAddDialog: open_add_dialog,
+    openInsertDialog: open_insert_dialog,
     selectEditNode: select_edit_node,
     stageEditNodePosition: stage_edit_node_position,
     moveEditNode: move_edit_node,
@@ -2354,6 +2593,12 @@ function AutomationPageViewModel(props, options) {
         return String(value);
       }
     },
+    openNodeExecutionWindow: open_node_execution_window,
+    closeNodeExecutionWindow: close_node_execution_window,
+    focusNodeExecutionWindow: focus_node_execution_window,
+    moveNodeExecutionWindow: move_node_execution_window,
+    closeAllNodeExecutionWindows: close_all_node_execution_windows,
+    executionWindowPosition: execution_window_position,
     catalogDescription(node_type) {
       const item = (catalog_.value || []).find(
         (entry) => entry.type === node_type,
@@ -2396,6 +2641,9 @@ function AutomationPageViewModel(props, options) {
     execution_run_status: execution_run_status_,
     node_execution_states: node_execution_states_,
     execution_logs: execution_logs_,
+    execution_windows: execution_windows_,
+    execution_window_z: execution_window_z_,
+    execution_window_active_id: execution_window_active_id_,
     create_open: create_open_,
     create_trigger_type: create_trigger_type_,
     create_name: create_name_,
@@ -2413,6 +2661,7 @@ function AutomationPageViewModel(props, options) {
     add_service_form_schema: add_service_form_schema_,
     add_service_form_error: add_service_form_error_,
     add_from: add_from_,
+    add_insert_to: add_insert_to_,
     schedule_open: schedule_open_,
     schedule_trigger_type: schedule_trigger_type_,
     schedule_event_key: schedule_event_key_,

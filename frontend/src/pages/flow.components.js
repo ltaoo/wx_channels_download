@@ -248,8 +248,8 @@ function automation_edit_layout(nodes, position_overrides) {
   Object.entries(position_overrides || {}).forEach(([node_id, position]) => {
     if (!by_id[node_id] || !position) return;
     positions[node_id] = {
-      left: Math.max(16, Number(position.left) || 0),
-      top: Math.max(16, Number(position.top) || 0),
+      left: Number(position.left) || 0,
+      top: Number(position.top) || 0,
     };
   });
   const width = Object.values(positions).reduce(
@@ -260,7 +260,123 @@ function automation_edit_layout(nodes, position_overrides) {
     (max, position) => Math.max(max, position.top + 110),
     160,
   );
-  return { positions, width, height: Math.max(max_bottom + 40, 320) };
+  // 节点可以拖到画布原点左上（负坐标），画布原点仍是 0,0，
+  // 这里只把负向边界一起返回，供缩略图/世界范围使用
+  const min_left = Object.values(positions).reduce(
+    (min, position) => Math.min(min, position.left),
+    0,
+  );
+  const min_top = Object.values(positions).reduce(
+    (min, position) => Math.min(min, position.top),
+    0,
+  );
+  return {
+    positions,
+    width,
+    height: Math.max(max_bottom + 40, 320),
+    min_left,
+    min_top,
+  };
+}
+
+// 节点右侧边框上的连接圆点，从连线出发的位置（top + 52）往下排：
+// 每个已有后继一个黄点（在它与该后继之间插入节点），末尾补一个绿点（在其后新增节点）
+const automation_flow_connector_gap = 24;
+const automation_flow_connector_anchor = 52;
+
+// 条件分支（GatewayNode/Exclusive）的走向由 config.rules 决定：引擎按顺序取第一条
+// condition 成立的规则，跳到它的 target_id，完全不看 next_ids。所以出边上要直接标出
+// 这条分支在 rules 里对应什么：是 / 否（condition 为 true 的兜底）/ 多分支时的 case 值。
+function automation_gateway_rules(node) {
+  if (!node || node.type !== "GatewayNode") return [];
+  const config = node.config || {};
+  if (String(config.gateway_type || "Exclusive") !== "Exclusive") return [];
+  const rules = config.rules;
+  if (!Array.isArray(rules)) return [];
+  return rules.filter((rule) => rule && typeof rule === "object");
+}
+
+function automation_is_fallback_rule(rule) {
+  return String((rule && rule.condition) || "").trim().toLowerCase() === "true";
+}
+
+// case 场景（多分支）：`xxx == "STREAM"` 这类单值比较只显示等号右边的值，
+// 判断不出来（有 && / ||、或多个 ==）就退回条件本身，截断后用 tooltip 补全
+function automation_case_label(condition) {
+  const text = String(condition || "").trim();
+  const parts = text.split("==");
+  if (parts.length !== 2 || /(&&|\|\|)/.test(text)) {
+    return text.length > 10 ? `${text.slice(0, 10)}…` : text;
+  }
+  return parts[1].trim().replace(/^["']|["']$/g, "");
+}
+
+function automation_gateway_branch(node, target_id) {
+  const rules = automation_gateway_rules(node);
+  if (rules.length === 0) return null;
+  const target = String(target_id || "");
+  const rule = rules.find(
+    (item) => String(item.target_id || item.target || "") === target,
+  );
+  if (!rule) {
+    return {
+      kind: "unconfigured",
+      label: "未配置",
+      title: `这条连线在「${node.name || node.id}」的 rules 里没有对应条件，引擎不会走到这个节点`,
+    };
+  }
+  const condition = String(rule.condition || "").trim();
+  if (automation_is_fallback_rule(rule)) {
+    return {
+      kind: "no",
+      label: "否",
+      title: `其它情况（condition: true）→ ${target}`,
+    };
+  }
+  const condition_count = rules.filter(
+    (item) => !automation_is_fallback_rule(item),
+  ).length;
+  // 只有一个条件分支时就是 yes/no 语义；多个条件（case）时直接标出各自的条件值
+  if (condition_count === 1) {
+    return { kind: "yes", label: "是", title: `${condition} → ${target}` };
+  }
+  return {
+    kind: "case",
+    label: automation_case_label(condition),
+    title: `${condition} → ${target}`,
+  };
+}
+
+function automation_node_connectors(node, nodes) {
+  const by_id = new Map((nodes || []).map((item) => [item.id, item]));
+  const node_label = (node_id) => {
+    const target = by_id.get(node_id);
+    return (target && (target.name || target.id)) || node_id;
+  };
+  const source = (node && (node.name || node.id)) || "";
+  const is_gateway = automation_gateway_rules(node).length > 0;
+  const connectors = ((node && node.next_ids) || []).map((to) => {
+    const branch = automation_gateway_branch(node, to);
+    return {
+      kind: "insert",
+      to,
+      title: branch
+        ? `在「${source}」的「${branch.label}」分支（${node_label(to)}）前插入节点`
+        : `在「${source}」与「${node_label(to)}」之间插入节点`,
+    };
+  });
+  connectors.push({
+    kind: "add",
+    to: "",
+    title: is_gateway
+      ? `在「${source}」后新增分支（新分支还需要在该节点的 rules 里补条件）`
+      : `在「${source}」后新增节点`,
+  });
+  // 连接圆点列表会随 next_ids 变（改 rules / 插入 / 删除），要有稳定的 key
+  connectors.forEach((connector) => {
+    connector.id = `${connector.kind}-${connector.to}`;
+  });
+  return connectors;
 }
 
 function automation_edit_edges(nodes) {
@@ -271,6 +387,8 @@ function automation_edit_edges(nodes) {
         id: `${node.id}-${target}-${index}`,
         from: node.id,
         to: target,
+        // 第几条出边：一个节点有多条出边时，每条线要接在自己那个连接圆点上
+        index,
       });
     });
   });
@@ -282,11 +400,42 @@ function automation_edge_path(edge, positions) {
   const to = positions[edge.to];
   if (!from || !to) return "";
   const x1 = from.left + 180;
-  const y1 = from.top + 52;
+  // 第 index 条出边对齐到第 index 个连接圆点（绿点是「新增」，排在所有出边之后）
+  const y1 =
+    from.top +
+    automation_flow_connector_anchor +
+    (Number(edge.index) || 0) * automation_flow_connector_gap;
   const x2 = to.left;
-  const y2 = to.top + 52;
+  const y2 = to.top + automation_flow_connector_anchor;
   const middle = Math.max(36, Math.abs(x2 - x1) / 2);
   return `M ${x1} ${y1} C ${x1 + middle} ${y1}, ${x2 - middle} ${y2}, ${x2} ${y2}`;
+}
+
+// 条件分支出边的分支标签：按 edge id 给出「是 / 否 / case 值」和标签要贴的曲线中点
+function automation_edge_labels(nodes, position_overrides) {
+  const labels = {};
+  const layout = automation_edit_layout(nodes, position_overrides);
+  automation_edit_edges(nodes).forEach((edge) => {
+    const source = (nodes || []).find((item) => item.id === edge.from);
+    const branch = automation_gateway_branch(source, edge.to);
+    if (!branch) return;
+    const from = layout.positions[edge.from];
+    const to = layout.positions[edge.to];
+    if (!from || !to) return;
+    const x1 = from.left + 180;
+    const y1 =
+      from.top +
+      automation_flow_connector_anchor +
+      (Number(edge.index) || 0) * automation_flow_connector_gap;
+    const x2 = to.left;
+    const y2 = to.top + automation_flow_connector_anchor;
+    labels[edge.id] = {
+      ...branch,
+      left: (x1 + x2) / 2,
+      top: (y1 + y2) / 2,
+    };
+  });
+  return labels;
 }
 
 function automation_refresh_flow_canvas(canvas, nodes, position_overrides) {
@@ -298,8 +447,17 @@ function automation_refresh_flow_canvas(canvas, nodes, position_overrides) {
     const edge = {
       from: path.getAttribute("data-flow-from"),
       to: path.getAttribute("data-flow-to"),
+      index: Number(path.getAttribute("data-flow-index")) || 0,
     };
     path.setAttribute("d", automation_edge_path(edge, layout.positions));
+  });
+  // 拖动节点时 edit_nodes 还没提交，标签位置得跟连线一样手动刷新，否则会滞后到松手才跳
+  const labels = automation_edge_labels(nodes, position_overrides);
+  canvas.querySelectorAll(".automation-flow-edge-label").forEach((element) => {
+    const label = labels[element.getAttribute("data-flow-edge")];
+    if (!label) return;
+    element.style.left = `${label.left}px`;
+    element.style.top = `${label.top}px`;
   });
 }
 
@@ -338,6 +496,11 @@ export function AutomationFlowGraph(props) {
   );
   const flow_edges_ = refarr(
     automation_edit_edges(vm$.state.edit_nodes.value || []),
+  );
+  // 条件分支出边上的分支标签（是 / 否 / case 值）：一次算好所有边再按 id 取，
+  // 每条边各建一个 computed 的话订阅者太多，某个订阅者出错会静默吞掉后面的通知
+  const flow_edge_labels_ = computed(vm$.state.edit_nodes, (nodes) =>
+    automation_edge_labels(nodes, position_overrides),
   );
   let root_element = null;
   let canvas_element = null;
@@ -482,7 +645,14 @@ export function AutomationFlowGraph(props) {
       delete position_overrides[node_id];
       flow$.removeNode(node_id);
     });
-    return automation_edit_layout(nodes, position_overrides);
+    const layout = automation_edit_layout(nodes, position_overrides);
+    // 布局会随 edit_nodes 变化（插入节点把后面的整体右移），模型里的坐标要一起走，
+    // 否则下次从该节点开始拖拽会以旧坐标起算，节点会跳回老位置
+    Object.entries(layout.positions).forEach(([node_id, position]) => {
+      const flow_node = flow_node_models.get(node_id);
+      if (flow_node) flow_node.position = { x: position.left, y: position.top };
+    });
+    return layout;
   }
 
   function stop_active_pointer() {
@@ -530,16 +700,24 @@ export function AutomationFlowGraph(props) {
     const geometry = minimap_geometry_.value;
     if (!geometry || geometry.scale <= 0) return;
     const rect = minimap_element.getBoundingClientRect();
+    // 面板有 1px 边框：绘制用的 left/top 以 padding 盒为原点，
+    // 所以点击坐标也要减去边框宽度，才能和画出来的节点/视口框对齐
+    const origin_x = rect.left + minimap_element.clientLeft;
+    const origin_y = rect.top + minimap_element.clientTop;
+    // 以缩略图整框为可拖范围：内容之外的留白同样映射到世界坐标，
+    // 否则宽扁流程图的竖直方向只能在内容那一条细带里拖
     const local_x = Math.min(
-      geometry.offset_x + geometry.world_width * geometry.scale,
-      Math.max(geometry.offset_x, event.clientX - rect.left),
+      geometry.width,
+      Math.max(0, event.clientX - origin_x),
     );
     const local_y = Math.min(
-      geometry.offset_y + geometry.world_height * geometry.scale,
-      Math.max(geometry.offset_y, event.clientY - rect.top),
+      geometry.height,
+      Math.max(0, event.clientY - origin_y),
     );
-    const world_x = (local_x - geometry.offset_x) / geometry.scale;
-    const world_y = (local_y - geometry.offset_y) / geometry.scale;
+    const world_x =
+      geometry.world_left + (local_x - geometry.offset_x) / geometry.scale;
+    const world_y =
+      geometry.world_top + (local_y - geometry.offset_y) / geometry.scale;
     const size = viewport_size();
     flow$.setViewport({
       x: size.width / 2 - world_x * flow$.viewport.zoom,
@@ -601,6 +779,8 @@ export function AutomationFlowGraph(props) {
 
   function start_node_drag(event, node, flow_node) {
     if (!editable || event.button !== 0) return;
+    // 开始节点位置固定，不进入拖拽（选中/编辑配置不受影响）
+    if (node.id === vm$.state.edit_start_node_id.value) return;
     event.preventDefault();
     event.stopPropagation();
     vm$.methods.selectEditNode(node.id);
@@ -617,9 +797,10 @@ export function AutomationFlowGraph(props) {
 
     const handle_move = (move_event) => {
       flow_node.pointerMove(move_event.clientX, move_event.clientY);
+      // 不做边界限制：可以拖到画布原点的左上（负坐标）
       const position = {
-        left: Math.max(16, flow_node.position.x),
-        top: Math.max(16, flow_node.position.y),
+        left: flow_node.position.x,
+        top: flow_node.position.y,
       };
       has_moved = true;
       flow_node.position = { x: position.left, y: position.top };
@@ -695,8 +876,14 @@ export function AutomationFlowGraph(props) {
       );
       const position = layout.positions[node.id] || { left: 0, top: 0 };
       return {
-        left: `${geometry.offset_x + position.left * geometry.scale}px`,
-        top: `${geometry.offset_y + position.top * geometry.scale}px`,
+        left: `${
+          geometry.offset_x +
+          (position.left - geometry.world_left) * geometry.scale
+        }px`,
+        top: `${
+          geometry.offset_y +
+          (position.top - geometry.world_top) * geometry.scale
+        }px`,
         width: `${Math.max(4, 180 * geometry.scale)}px`,
         height: `${Math.max(4, 104 * geometry.scale)}px`,
       };
@@ -828,9 +1015,46 @@ export function AutomationFlowGraph(props) {
                       dataset: {
                         "flow-from": edge.from,
                         "flow-to": edge.to,
+                        "flow-index": String(edge.index || 0),
                       },
                     }),
                   ],
+                );
+              },
+            }),
+          ]),
+          // 条件分支出边上的分支标签（是 / 否 / case 值），贴在曲线中点。
+          // 这里刻意不用 Show：Show 在 For 的 DOM 补丁路径（新增/复用）下不会重建子树，
+          // 没有分支的边也要渲染一个 div，靠 is-hidden 类隐藏。
+          FlowPrimitive.NodeLayer({ class: "automation-flow-edge-labels" }, [
+            For({
+              each: flow_edges_,
+              key: "id",
+              render(edge) {
+                const label_ = computed(
+                  flow_edge_labels_,
+                  (labels) => labels[edge.id] || null,
+                );
+                return View(
+                  {
+                    class: computed(label_, (label) =>
+                      label
+                        ? `automation-flow-edge-label is-${label.kind}`
+                        : "automation-flow-edge-label is-hidden",
+                    ),
+                    style: computed(label_, (label) => ({
+                      left: `${label ? label.left : 0}px`,
+                      top: `${label ? label.top : 0}px`,
+                    })),
+                    attributes: {
+                      n: `automation-flow-edge-label-${edge.from}-${edge.to}`,
+                      "data-flow-edge": edge.id,
+                      title: computed(label_, (label) =>
+                        label ? label.title : "",
+                      ),
+                    },
+                  },
+                  [computed(label_, (label) => (label ? label.label : ""))],
                 );
               },
             }),
@@ -841,17 +1065,23 @@ export function AutomationFlowGraph(props) {
             render(node_) {
               const node =
                 node_ && node_.value !== undefined ? node_.value : node_;
-              const layout = automation_edit_layout(
-                vm$.state.edit_nodes.value,
-                position_overrides,
-              );
-              const position = layout.positions[node.id] || {
-                left: 20,
-                top: 20,
-              };
+              // 坐标必须是响应式的：For 只对新增的 key 重跑 render，复用的 key
+              // 只做 registry 代理更新，一次性的 left/top 会永远停在旧位置。
+              // 插入节点会把 to 及其右侧的所有节点整体右移，连线（computed）跟着走，
+              // 但节点壳停在原地 → 连线和节点脱节，必须再拖一下才恢复。
+              const position_ = computed(vm$.state.edit_nodes, () => {
+                const layout = automation_edit_layout(
+                  vm$.state.edit_nodes.value,
+                  position_overrides,
+                );
+                return layout.positions[node.id] || { left: 20, top: 20 };
+              });
+              const position = position_.value;
               const is_start =
                 node.id === vm$.state.edit_start_node_id.value ||
                 node.type === "StartNode";
+              // 结束节点是流程终点，不再挂连接圆点
+              const is_end = node.type === "EndNode";
               const selected = computed(
                 vm$.state.selected_edit_node_id,
                 (node_id) => editable && node_id === node.id,
@@ -860,16 +1090,25 @@ export function AutomationFlowGraph(props) {
                 vm$.state.node_execution_states,
                 (states) => (states && states[node.id]) || null,
               );
+              // 连接圆点也要响应式：改 rules / 增删分支后 next_ids 会变，
+              // 而 For 复用节点壳时不会重跑 render，一次性的圆点列表会永远停在旧分支上
+              const connectors_ = computed(vm$.state.edit_nodes, (nodes) => {
+                const current = (nodes || []).find(
+                  (item) => item.id === node.id,
+                );
+                if (!current) return [];
+                return automation_node_connectors(current, nodes);
+              });
               const flow_node = ensure_flow_node(node, position);
               return FlowPrimitive.Node(
                 {
                   store: flow$,
                   nodeId: node.id,
                   class: "automation-flow-node-shell",
-                  style: {
-                    left: `${position.left}px`,
-                    top: `${position.top}px`,
-                  },
+                  style: computed(position_, (p) => ({
+                    left: `${p.left}px`,
+                    top: `${p.top}px`,
+                  })),
                 },
                 [
                   View(
@@ -897,14 +1136,16 @@ export function AutomationFlowGraph(props) {
                       onMouseDown(event) {
                         start_node_drag(event, node, flow_node);
                       },
+                      // 点节点只做选中/编辑，执行日志走 header 上的日志浮标
                       onClick() {
-                        if (editable) vm$.methods.selectEditNode(node.id);
+                        if (!editable) return;
+                        vm$.methods.selectEditNode(node.id);
                       },
                       onKeyDown(event) {
                         if (!editable) return;
-                        automation_activate(event, () =>
-                          vm$.methods.selectEditNode(node.id),
-                        );
+                        automation_activate(event, () => {
+                          vm$.methods.selectEditNode(node.id);
+                        });
                       },
                     },
                     [
@@ -912,13 +1153,60 @@ export function AutomationFlowGraph(props) {
                         View({ class: "automation-flow-node__name" }, [
                           node.name || node.id,
                         ]),
-                        Tag(
-                          {
-                            variant: is_start ? "success" : "info",
-                            class: "automation-flow-node__type",
-                          },
-                          [vm$.methods.flowLabel(node.type)],
-                        ),
+                        View({ class: "automation-flow-node__badges" }, [
+                          // 执行过的节点才有日志可看（when 为空则不渲染）；
+                          // 浮标只在可编辑的画布上出现，只读页没有浮窗容器
+                          editable
+                            ? Show({
+                                when: execution_status,
+                                ok() {
+                                  return View(
+                                    {
+                                      as: "button",
+                                      class:
+                                        "dm-button dm-button--ghost automation-flow-node__log dm-focus-ring",
+                                      attributes: {
+                                        n: `automation-flow-node-log-${node.id}`,
+                                        type: "button",
+                                        title: `查看「${node.name || node.id}」执行日志`,
+                                        "aria-label": `查看「${node.name || node.id}」执行日志`,
+                                      },
+                                      onMouseDown(event) {
+                                        // 不要冒泡到节点根，否则会顺带触发节点拖拽
+                                        event.stopPropagation();
+                                      },
+                                      onClick(event) {
+                                        if (!editable) return;
+                                        event.stopPropagation();
+                                        vm$.methods.selectEditNode(node.id);
+                                        vm$.methods.openNodeExecutionWindow(
+                                          node.id,
+                                          {
+                                            x: event.clientX,
+                                            y: event.clientY,
+                                          },
+                                        );
+                                      },
+                                    },
+                                    [
+                                      Timeless.Icon({
+                                        name: "scroll-text",
+                                        size: 12,
+                                        attributes: { "aria-hidden": "true" },
+                                      }),
+                                    ],
+                                  );
+                                },
+                              })
+                            : null,
+                          Tag(
+                            {
+                              variant: is_start ? "success" : "info",
+                              class: "automation-flow-node__type",
+                            },
+                            [vm$.methods.flowLabel(node.type)],
+                          ),
+                        ]),
                       ]),
                       View({ class: "automation-flow-node__id" }, [node.id]),
                       Show({
@@ -957,29 +1245,62 @@ export function AutomationFlowGraph(props) {
                     }),
                     ],
                   ),
-                  editable
+                  editable && !is_end
                     ? View(
                         {
-                          as: "button",
-                          class:
-                            "dm-button dm-button--outline dm-button--icon dm-focus-ring automation-flow-node__add-next",
+                          class: "automation-flow-node__connectors",
                           attributes: {
-                            n: `automation-flow-add-next-${node.id}`,
-                            type: "button",
-                            title: `在「${node.name || node.id}」后新增节点`,
-                            "aria-label": `在「${node.name || node.id}」后新增节点`,
-                            "aria-haspopup": "dialog",
-                          },
-                          onClick(event) {
-                            event.stopPropagation();
-                            vm$.methods.openAddDialog("", node.id);
+                            n: `automation-flow-connectors-${node.id}`,
                           },
                         },
                         [
-                          Timeless.Icon({
-                            name: "plus",
-                            size: 16,
-                            attributes: { "aria-hidden": "true" },
+                          For({
+                            each: connectors_,
+                            key: "id",
+                            render(connector, index_) {
+                              const is_insert = connector.kind === "insert";
+                              return View(
+                                {
+                                  as: "button",
+                                  class: `dm-focus-ring automation-flow-connector ${
+                                    is_insert ? "is-connected" : "is-empty"
+                                  }`,
+                                  attributes: {
+                                    n: is_insert
+                                      ? `automation-flow-insert-${node.id}-${connector.to}`
+                                      : `automation-flow-add-next-${node.id}`,
+                                    type: "button",
+                                    title: connector.title,
+                                    "aria-label": connector.title,
+                                    "aria-haspopup": "dialog",
+                                  },
+                                  // 第几个圆点决定它的纵向位置，插入/删除分支后要跟着挪
+                                  style: computed(index_, (idx) => ({
+                                    top: `${
+                                      automation_flow_connector_anchor +
+                                      Math.max(0, idx) *
+                                        automation_flow_connector_gap
+                                    }px`,
+                                  })),
+                                  onMouseDown(event) {
+                                    // 不要冒泡到节点根，否则会顺带触发节点拖拽
+                                    event.stopPropagation();
+                                  },
+                                  onClick(event) {
+                                    event.stopPropagation();
+                                    if (is_insert) {
+                                      vm$.methods.openInsertDialog(
+                                        node.id,
+                                        connector.to,
+                                      );
+                                    } else {
+                                      vm$.methods.openAddDialog("", node.id);
+                                    }
+                                  },
+                                },
+                                [],
+                              );
+                            },
                           }),
                         ],
                       )
@@ -1221,4 +1542,210 @@ export function AutomationRunPipelineDialog(props) {
       ]),
     ],
   );
+}
+
+/** For 的 render 回调里拿到的是 ref，取值时统一解包 */
+export function automation_unwrap_ref(value) {
+  return value && value.value !== undefined ? value.value : value;
+}
+
+/** 单条执行日志的入参 / 节点行为 / 输出 / error，面板与浮窗共用 */
+export function automation_execution_log_data(entry, vm$) {
+  const data = [
+    ["入参", entry.input],
+    ["节点行为", entry.behavior],
+    ["输出", entry.output],
+  ].map(([label, value]) =>
+    View({ class: "automation-execution-log__data" }, [
+      View({ class: "automation-execution-log__label" }, [label]),
+      View({ as: "pre", class: "automation-execution-log__value" }, [
+        vm$.methods.formatExecutionValue(value),
+      ]),
+    ]),
+  );
+  if (entry.error) {
+    data.push(
+      View({ class: "automation-execution-log__error" }, [entry.error]),
+    );
+  }
+  return data;
+}
+
+/**
+ * 画布节点执行日志浮窗容器。多窗口同时存在，各自独立位置；
+ * Portal 挂到 body，彻底脱离画布的 transform / overflow。
+ *
+ * 必须 Portal 包住 For：For 通过自己的 host 在挂载点内增删节点，而 primitive
+ * Portal 没有 destroy、「For 里放 Portal」会在每次关窗时把窗口 DOM 泄漏在 body 里。
+ * onUnmounted 时 closeAll，路由离开先清掉窗口节点。
+ */
+export function AutomationNodeExecutionWindows(props) {
+  const vm$ = props.store;
+  return Timeless.Portal(
+    {
+      onUnmounted() {
+        vm$.methods.closeAllNodeExecutionWindows();
+      },
+    },
+    [
+      For({
+        each: vm$.state.execution_windows,
+        key: "id",
+        render(item_) {
+          return AutomationNodeExecutionWindow({
+            store: vm$,
+            node_id: item_.id,
+          });
+        },
+      }),
+    ],
+  );
+}
+
+/**
+ * 单个节点的执行日志浮窗。窗口自身位置只被 Window 构建时读一次，
+ * 因此天然独立；拖动只改本窗口，结束拖拽时回写 WindowManager。
+ */
+export function AutomationNodeExecutionWindow(props) {
+  const vm$ = props.store;
+  const node_id = props.node_id;
+  const node_id_ = ref(node_id);
+  const node_ = computed(
+    combine({ nodes: vm$.state.edit_nodes, node_id: node_id_ }, (v) => v),
+    ({ nodes, node_id: id }) =>
+      (nodes || []).find((item) => item.id === id) || null,
+  );
+  const status_ = computed(
+    combine(
+      { states: vm$.state.node_execution_states, node_id: node_id_ },
+      (v) => v,
+    ),
+    ({ states, node_id: id }) => (states && states[id]) || null,
+  );
+  const logs_ = computed(
+    combine({ logs: vm$.state.execution_logs, node_id: node_id_ }, (v) => v),
+    ({ logs, node_id: id }) =>
+      (logs || []).filter((entry) => entry.node_id === id).reverse(),
+  );
+  const z_ = computed(
+    combine(
+      { z: vm$.state.execution_window_z, node_id: node_id_ },
+      (v) => v,
+    ),
+    ({ z, node_id: id }) => (z && z[id]) || 240,
+  );
+  const focused_ = computed(
+    combine(
+      { active: vm$.state.execution_window_active_id, node_id: node_id_ },
+      (v) => v,
+    ),
+    ({ active, node_id: id }) => active === id,
+  );
+
+  const position = vm$.methods.executionWindowPosition(node_id);
+
+  const window$ = Timeless.Window(
+    {
+      title: computed(
+        node_,
+        (node) =>
+          `${(node && (node.name || node.id)) || node_id} · 执行日志`,
+      ),
+      x: position.x,
+      y: position.y,
+      width: 420,
+      // ref → 层级变化只改 style，不重建窗口
+      zIndex: z_,
+      class: computed(
+        focused_,
+        (is_focused) =>
+          `automation-node-log-window${is_focused ? " is-focused" : ""}`,
+      ),
+      headerClass: "automation-node-log-window__header",
+      bodyClass: "automation-node-log-window__body",
+      closeClass: "automation-node-log-window__close dm-focus-ring",
+      closeLabel: "关闭执行日志",
+      attributes: {
+        n: "automation-node-execution-window",
+        "data-node-id": node_id,
+      },
+      onActivate() {
+        vm$.methods.focusNodeExecutionWindow(node_id);
+      },
+      onDragFinish(next) {
+        const applied = vm$.methods.moveNodeExecutionWindow(node_id, next);
+        // clamp 生效时把最终位置同步回窗口
+        if (applied && (applied.x !== next.x || applied.y !== next.y)) {
+          window$.methods.setPosition(applied);
+        }
+      },
+      onClose() {
+        vm$.methods.closeNodeExecutionWindow(node_id);
+      },
+    },
+    [
+      Show({
+        when: status_,
+        ok() {
+          return View(
+            {
+              class: computed(
+                status_,
+                (status) =>
+                  `automation-node-log-window__status automation-execution-log__status is-${automation_execution_status_class(
+                    status.status,
+                  )}`,
+              ),
+            },
+            [
+              computed(status_, (status) =>
+                vm$.methods.nodeExecutionStatusLabel(status.status),
+              ),
+            ],
+          );
+        },
+      }),
+      Show({
+        when: computed(logs_, (logs) => logs.length === 0),
+        ok() {
+          return View({ class: "automation-node-log-window__empty" }, [
+            "本次执行暂无该节点的日志。",
+          ]);
+        },
+      }),
+      For({
+        each: logs_,
+        key: "_execution_key",
+        render(entry_) {
+          const entry = automation_unwrap_ref(entry_);
+          return View(
+            {
+              class: "automation-node-log-window__entry",
+              attributes: { n: `automation-node-log-${entry.node_id}` },
+            },
+            [
+              View({ class: "automation-node-log-window__meta" }, [
+                View(
+                  {
+                    class: `automation-execution-log__status is-${automation_execution_status_class(
+                      entry.outcome,
+                    )}`,
+                  },
+                  [vm$.methods.nodeExecutionStatusLabel(entry.outcome)],
+                ),
+                View({ class: "automation-execution-log__meta" }, [
+                  `第 ${entry.attempt || 1} 次 · ${entry.duration_ms || 0} ms`,
+                ]),
+              ]),
+              View(
+                { class: "automation-execution-log__body" },
+                automation_execution_log_data(entry, vm$),
+              ),
+            ],
+          );
+        },
+      }),
+    ],
+  );
+  return window$;
 }
