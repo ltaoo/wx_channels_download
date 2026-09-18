@@ -29,16 +29,21 @@ func (n *WorkflowNode) Execute(ctx *engine.ProcessContext) (bool, []string, erro
 	// Register/ensure sub-flow exists in engine
 	ctx.EngineRef.FlowDefinitions[wf.ID] = wf
 
-	// Use the parent context's Data so sub-flow can read/write shared variables
+	// Use the parent context's Data so sub-flow can read/write shared variables.
+	// NodeOutputs / Globals are aliases: they are the runtime index roots, so a
+	// sub-flow sees the same producers and globals as its parent. InputKeys is
+	// NOT aliased: input.<key> is validated against the sub-flow's own
+	// ContextSchema, so the runtime projection has to use that same schema or a
+	// flow that passes validation could still fail to resolve at run time.
 	subCtx := &engine.ProcessContext{
-		InstanceID: ctx.InstanceID + ":sub:" + n.Id,
-		FlowID:     wf.ID,
-		Data:       ctx.Data,
-		Inputs:     ctx.Inputs,
-		Outputs:    ctx.Outputs,
-		Globals:    ctx.Globals,
-		NodeStates: map[string]engine.NodeState{},
-		EngineRef:  ctx.EngineRef,
+		InstanceID:  ctx.InstanceID + ":sub:" + n.Id,
+		FlowID:      wf.ID,
+		Data:        ctx.Data,
+		NodeOutputs: ctx.NodeOutputs,
+		Globals:     ctx.Globals,
+		InputKeys:   engine.ContextSchemaKeys(wf.ContextSchema),
+		NodeStates:  map[string]engine.NodeState{},
+		EngineRef:   ctx.EngineRef,
 	}
 
 	// Simple inline driver for the sub-workflow
@@ -70,7 +75,12 @@ func (n *WorkflowNode) Execute(ctx *engine.ProcessContext) (bool, []string, erro
 		}
 		impl := constructor(nodeDef.Config)
 
+		// Sub-flow nodes are driven here rather than by driveFlow, so index
+		// their produced keys explicitly; otherwise output.<node_id> would not
+		// resolve for nodes inside a sub-flow.
+		before := subCtx.SnapshotData()
 		ok, nextIDs, err := impl.Execute(subCtx)
+		subCtx.RecordNodeOutputs(nodeID, engine.ChangedContextValues(before, subCtx.SnapshotData()))
 		if err != nil || !ok {
 			if err == nil {
 				err = errors.New("subflow node execution failed")

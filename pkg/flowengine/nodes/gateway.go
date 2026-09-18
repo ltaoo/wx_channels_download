@@ -3,8 +3,6 @@ package nodes
 import (
 	"errors"
 	"wx_channel/pkg/flowengine/engine"
-
-	"github.com/expr-lang/expr"
 )
 
 type GatewayNode struct {
@@ -50,13 +48,16 @@ func (n *GatewayNode) Execute(ctx *engine.ProcessContext) (bool, []string, error
 		if err != nil {
 			return false, nil, err
 		}
+		// The language is a node-level setting, not a per-rule one, so it is
+		// resolved once outside the loop.
+		language := ConditionLanguage(n.Config)
 		for _, rule := range rules {
 			condition, _ := rule["condition"].(string)
-			ok, err := n.evaluateCondition(ctx, condition)
+			ok, err := EvaluateCondition(ctx, condition, language)
 			if err != nil {
 				return false, nil, err
 			}
-			if ok { // 假设表达式求值器
+			if ok {
 				return true, []string{rule["target_id"].(string)}, nil
 			}
 		}
@@ -125,21 +126,4 @@ func gateway_rules(value interface{}) ([]map[string]interface{}, error) {
 	default:
 		return nil, errors.New("GatewayNode: rules must be an array")
 	}
-}
-
-// evaluateCondition 负责解析和执行条件表达式
-func (n *GatewayNode) evaluateCondition(ctx *engine.ProcessContext, condition string) (bool, error) {
-	program, err := expr.Compile(condition)
-	if err != nil {
-		return false, err
-	}
-	out, err := expr.Run(program, ctx.Data)
-	if err != nil {
-		return false, err
-	}
-	b, ok := out.(bool)
-	if !ok {
-		return false, nil
-	}
-	return b, nil
 }
