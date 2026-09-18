@@ -11,6 +11,7 @@ import (
 	"wx_channel/internal/mcpserver"
 	"wx_channel/pkg/flowengine"
 	"wx_channel/pkg/flowengine/engine"
+	"wx_channel/pkg/flowengine/nodes"
 )
 
 const (
@@ -43,7 +44,7 @@ func user_flow_node_catalog() []UserFlowNodeCatalogItem {
 			Name:        "表达式计算",
 			Description: "对流程上下文执行表达式并写回结果",
 			ConfigKeys: []UserFlowConfigKey{
-				{Key: "expression", Type: "string", Required: true, Description: "表达式，如 len(items) > 0"},
+				{Key: "expression", Type: "string", Required: true, Description: "表达式，只能读 input.<键> / output.<节点id>.<键> / global.<键>，如 len(output.fetch.videos) > 0"},
 				{Key: "output_key", Type: "string", Required: false, Description: "结果写入上下文的键，默认 calc_out"},
 			},
 		},
@@ -54,16 +55,16 @@ func user_flow_node_catalog() []UserFlowNodeCatalogItem {
 			ConfigKeys: []UserFlowConfigKey{
 				{Key: "url", Type: "string", Required: true, Description: "请求地址"},
 				{Key: "method", Type: "string", Required: false, Description: "GET 或 POST，默认 GET"},
-				{Key: "keys", Type: "array", Required: false, Description: "随请求携带的上下文键列表"},
+				{Key: "keys", Type: "object", Required: false, Description: "请求参数名到作用域路径的对象映射，如 {\"username\": \"output.cleanup.username\"}"},
 			},
 		},
 		{
 			Type:        "JSCodeNode",
 			Name:        "执行 JS",
-			Description: "用 JavaScript 处理流程上下文，返回值写回上下文",
+			Description: "用 JavaScript 处理流程上下文，返回值写入 output_key",
 			ConfigKeys: []UserFlowConfigKey{
-				{Key: "code", Type: "string", Required: true, Description: "JavaScript 代码，可通过 data 访问流程上下文"},
-				{Key: "output_key", Type: "string", Required: false, Description: "结果写入上下文的键；留空且返回对象时，对象字段合并回上下文"},
+				{Key: "code", Type: "string", Required: true, Description: "JavaScript 代码，可通过 input / output / global 访问三个作用域"},
+				{Key: "output_key", Type: "string", Required: true, Description: "结果写入上下文的键，下游用 output.<节点id>.<键> 读取"},
 			},
 		},
 		{
@@ -72,7 +73,8 @@ func user_flow_node_catalog() []UserFlowNodeCatalogItem {
 			Description: "按条件表达式路由到不同节点",
 			ConfigKeys: []UserFlowConfigKey{
 				{Key: "gateway_type", Type: "string", Required: false, Description: "Exclusive 或 Parallel"},
-				{Key: "rules", Type: "array", Required: false, Description: "Exclusive 规则列表 [{condition, target_id}]"},
+				{Key: "condition_language", Type: "string", Required: false, Description: "条件语言：expr（默认）或 js。js 下只能访问 input./output./global. 作用域和 Math/JSON/Number 等内置对象，按 JS 真值判断（非空字符串/对象/数组为真，而 expr 只认 bool），单条条件超过 1 秒会被中断"},
+				{Key: "rules", Type: "array", Required: false, Description: "Exclusive 规则列表 [{condition, target_id}]，condition 按 condition_language 求值"},
 			},
 		},
 		{
@@ -86,12 +88,19 @@ func user_flow_node_catalog() []UserFlowNodeCatalogItem {
 			Description: "调用应用内 service tool，并将结构化结果写回流程上下文",
 			ConfigKeys: []UserFlowConfigKey{
 				{Key: "tool_name", Type: "string", Required: true, Description: "要调用的 service tool 名称"},
-				{Key: "arguments", Type: "object", Required: false, Description: "传给 tool 的静态参数"},
-				{Key: "input_map", Type: "object", Required: false, Description: "tool 参数名到流程上下文键的映射"},
+				{Key: "arguments", Type: "object", Required: false, Description: "传给 tool 的参数；值可用 {{input.<键>}} / {{output.<节点id>.<键>}} / {{global.<键>}} 模板"},
 				{Key: "output_key", Type: "string", Required: false, Description: "结构化结果写入上下文的键，默认 service_result"},
 				{Key: "timeout_seconds", Type: "number", Required: false, Description: "节点调用超时时间；不填时由具体 tool 控制"},
 			},
 			Tools: mcpserver.ToolCatalog(),
+		},
+		{
+			Type:        "SetVariableNode",
+			Name:        "设置全局变量",
+			Description: "写入显式全局变量，下游用 {{global.<键>}} 读取",
+			ConfigKeys: []UserFlowConfigKey{
+				{Key: "variables", Type: "object", Required: true, Description: "变量名到值的对象映射，值可用作用域模板"},
+			},
 		},
 		{
 			Type:        "EndNode",
@@ -349,7 +358,7 @@ func normalize_user_flow_definition(definition *engine.FlowDefinition) error {
 	definition.Name = name
 	definition.StartNodeID = start_node_id
 	definition.Nodes = normalized
-	return nil
+	return nodes.ValidateFlowScopes(*definition)
 }
 
 // GetUserFlow loads one user pipeline by id.
@@ -402,68 +411,8 @@ func (s *AutomationService) UpdateUserFlow(id string, input UpdateUserFlowInput)
 	if input.ContextSchema != nil {
 		definition.ContextSchema = input.ContextSchema
 	}
-	if len(input.Nodes) > 0 {
-		nodes := map[string]engine.NodeDefinition{}
-		for _, node := range input.Nodes {
-			node_id := strings.TrimSpace(node.ID)
-			if node_id == "" {
-				return nil, fmt.Errorf("节点 id 不能为空")
-			}
-			if !user_flow_allows_node_type(node.Type) {
-				return nil, fmt.Errorf("节点类型不支持: %s", node.Type)
-			}
-			if _, exists := nodes[node_id]; exists {
-				return nil, fmt.Errorf("节点 id 重复: %s", node_id)
-			}
-			config := node.Config
-			if config == nil {
-				config = map[string]interface{}{}
-			}
-			if err := validate_user_flow_node_config(node.Type, config); err != nil {
-				return nil, fmt.Errorf("节点 %s 配置无效: %w", node_id, err)
-			}
-			config["id"] = node_id
-			next_nodes := make([]engine.TargetNode, 0, len(node.NextIDs))
-			for _, next := range node.NextIDs {
-				next = strings.TrimSpace(next)
-				if next == "" {
-					continue
-				}
-				next_nodes = append(next_nodes, engine.TargetNode{TargetID: next})
-			}
-			nodes[node_id] = engine.NodeDefinition{
-				ID:          node_id,
-				Type:        node.Type,
-				Name:        node.Name,
-				Config:      config,
-				Position:    node.Position,
-				NextNodes:   next_nodes,
-				NextNodeIDs: node.NextIDs,
-				InputSchema: node.InputSchema,
-			}
-		}
-		// Every referenced target must exist to keep the graph runnable.
-		for _, node := range nodes {
-			for _, next_id := range node.NextNodeIDs {
-				if _, ok := nodes[next_id]; !ok {
-					return nil, fmt.Errorf("节点 %s 指向了不存在的节点: %s", node.ID, next_id)
-				}
-			}
-			for _, target := range node.NextNodes {
-				if _, ok := nodes[target.TargetID]; !ok {
-					return nil, fmt.Errorf("节点 %s 指向了不存在的节点: %s", node.ID, target.TargetID)
-				}
-			}
-		}
-		start_node_id := strings.TrimSpace(input.StartNodeID)
-		if start_node_id == "" {
-			start_node_id = definition.StartNodeID
-		}
-		if _, ok := nodes[start_node_id]; !ok {
-			return nil, fmt.Errorf("开始节点不存在: %s", start_node_id)
-		}
-		definition.StartNodeID = start_node_id
-		definition.Nodes = nodes
+	if err := apply_user_flow_update(definition, input); err != nil {
+		return nil, err
 	}
 	encoded, err := json.Marshal(definition)
 	if err != nil {
@@ -483,6 +432,62 @@ func (s *AutomationService) UpdateUserFlow(id string, input UpdateUserFlowInput)
 	}
 	s.register_user_flow(*definition)
 	return s.GetUserFlow(id)
+}
+
+// apply_user_flow_update folds an editor save into definition: it rebuilds the
+// node map from the submitted nodes and then runs the shared normalization so
+// the save path enforces the same graph and scope contract as an import.
+// Skipping that normalization is how a definition the engine only rejects at
+// run time could get persisted.
+func apply_user_flow_update(definition *engine.FlowDefinition, input UpdateUserFlowInput) error {
+	if len(input.Nodes) > 0 {
+		rebuilt := map[string]engine.NodeDefinition{}
+		for _, node := range input.Nodes {
+			node_id := strings.TrimSpace(node.ID)
+			if node_id == "" {
+				return fmt.Errorf("节点 id 不能为空")
+			}
+			if !user_flow_allows_node_type(node.Type) {
+				return fmt.Errorf("节点类型不支持: %s", node.Type)
+			}
+			if _, exists := rebuilt[node_id]; exists {
+				return fmt.Errorf("节点 id 重复: %s", node_id)
+			}
+			config := node.Config
+			if config == nil {
+				config = map[string]interface{}{}
+			}
+			if err := validate_user_flow_node_config(node.Type, config); err != nil {
+				return fmt.Errorf("节点 %s 配置无效: %w", node_id, err)
+			}
+			config["id"] = node_id
+			next_nodes := make([]engine.TargetNode, 0, len(node.NextIDs))
+			for _, next := range node.NextIDs {
+				next = strings.TrimSpace(next)
+				if next == "" {
+					continue
+				}
+				next_nodes = append(next_nodes, engine.TargetNode{TargetID: next})
+			}
+			rebuilt[node_id] = engine.NodeDefinition{
+				ID:          node_id,
+				Type:        node.Type,
+				Name:        node.Name,
+				Config:      config,
+				Position:    node.Position,
+				NextNodes:   next_nodes,
+				NextNodeIDs: node.NextIDs,
+				InputSchema: node.InputSchema,
+			}
+		}
+		start_node_id := strings.TrimSpace(input.StartNodeID)
+		if start_node_id == "" {
+			start_node_id = definition.StartNodeID
+		}
+		definition.StartNodeID = start_node_id
+		definition.Nodes = rebuilt
+	}
+	return normalize_user_flow_definition(definition)
 }
 
 // DeleteUserFlow soft-deletes a user pipeline and detaches it from the engine.
@@ -535,7 +540,7 @@ func (s *AutomationService) UserFlowVisualization(flow_id string) (*flowengine.F
 // behaviour is fully described by JSON config.
 func user_flow_allows_node_type(node_type string) bool {
 	switch node_type {
-	case "StartNode", "EndNode", "ExprNode", "GatewayNode", "APICallNode", "ManualNode", "ServiceNode", "JSCodeNode":
+	case "StartNode", "EndNode", "ExprNode", "GatewayNode", "APICallNode", "ManualNode", "ServiceNode", "JSCodeNode", "SetVariableNode":
 		return true
 	default:
 		return false
@@ -564,21 +569,6 @@ func validate_user_flow_node_config(node_type string, config map[string]interfac
 	if arguments, exists := config["arguments"]; exists && arguments != nil {
 		if _, ok := arguments.(map[string]interface{}); !ok {
 			return fmt.Errorf("arguments 必须是 JSON 对象")
-		}
-	}
-	if input_map_value, exists := config["input_map"]; exists && input_map_value != nil {
-		input_map, ok := input_map_value.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("input_map 必须是 JSON 对象")
-		}
-		for argument_name, context_key := range input_map {
-			if strings.TrimSpace(argument_name) == "" {
-				return fmt.Errorf("input_map 参数名不能为空")
-			}
-			context_key_text, ok := context_key.(string)
-			if !ok || strings.TrimSpace(context_key_text) == "" {
-				return fmt.Errorf("input_map.%s 必须是上下文键字符串", argument_name)
-			}
 		}
 	}
 	if output_key, exists := config["output_key"]; exists && output_key != nil {
@@ -613,10 +603,16 @@ func SortedUserFlowNodeCatalog() []UserFlowNodeCatalogItem {
 	return catalog
 }
 
-// TriggerFlowDirect runs any user pipeline immediately as a manual/debug
+// TriggerFlowDirect starts any user pipeline immediately as a manual/debug
 // execution. The flow's persisted Cron/Event trigger configuration remains
 // unchanged and continues to control automatic executions. initial_data, when
 // non-empty, seeds the flow context with the caller-supplied input parameters.
+//
+// The run is detached: this returns as soon as the flow is claimed and the
+// execution goroutine is launched, and callers follow the progress through the
+// event bus (the same stream a scheduled run uses). The returned record is a
+// placeholder describing the started run — the persisted record, with its real
+// id and final status, is written by the execution goroutine.
 func (s *AutomationService) TriggerFlowDirect(flow_id string, initial_data map[string]interface{}) (*model.FlowRunRecord, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("自动化服务未初始化")
@@ -639,12 +635,25 @@ func (s *AutomationService) TriggerFlowDirect(flow_id string, initial_data map[s
 	if _, claimed := s.running.LoadOrStore(run_key, struct{}{}); claimed {
 		return nil, fmt.Errorf("流程 %s 正在执行中", flow.ID)
 	}
-	defer s.running.Delete(run_key)
-	return s.execute_schedule(model.FlowSchedule{
+	schedule := model.FlowSchedule{
 		ID:          "",
 		FlowID:      flow.ID,
 		CronExpr:    "@daily",
 		InitialData: encoded_initial_data,
 		TimeoutSec:  default_schedule_timeout_sec,
-	}, model.FlowRunTriggerManual, ""), nil
+	}
+	// Claiming the slot above stays synchronous so a double click is still
+	// rejected while a run is in flight; the goroutine hands it back when the
+	// flow finishes.
+	s.wg.Add(1)
+	go func(schedule model.FlowSchedule) {
+		defer s.wg.Done()
+		defer s.running.Delete(run_key)
+		s.execute_schedule(schedule, model.FlowRunTriggerManual, "")
+	}(schedule)
+	return &model.FlowRunRecord{
+		FlowID:      flow.ID,
+		TriggerType: model.FlowRunTriggerManual,
+		Status:      model.FlowRunStatusRunning,
+	}, nil
 }

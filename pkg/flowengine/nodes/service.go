@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,7 +13,11 @@ import (
 
 const default_service_output_key = "service_result"
 
-var service_template_re = regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_]*)(?:\s*\.\s*([A-Za-z_][A-Za-z0-9_]*))?\s*\}\}`)
+// service_template_re matches a {{a.b.c}} token and captures the whole dotted
+// path. The path is resolved scope-then-path: the first segment names one of
+// the three scopes (input/output/global) and the remaining segments drill
+// through maps and numeric slice indexes.
+var service_template_re = regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\s*\.\s*[A-Za-z_][A-Za-z0-9_]*)*)\s*\}\}`)
 
 // ServiceToolExecutor runs one named service tool with JSON-compatible
 // arguments and returns its structured output.
@@ -51,6 +56,9 @@ func (n *ServiceNode) Execute(process_context *engine.ProcessContext) (bool, []s
 	if err != nil {
 		return false, nil, err
 	}
+	// Audit the arguments that were actually resolved from the templates, not
+	// just the raw config, so the execution log matches the request that ran.
+	process_context.SetExecutionDetail("arguments", arguments)
 	execution_context := context.Background()
 	cancel := func() {}
 	if timeout_seconds := service_timeout_seconds(n.Config); timeout_seconds > 0 {
@@ -67,7 +75,7 @@ func (n *ServiceNode) Execute(process_context *engine.ProcessContext) (bool, []s
 		output_key = strings.TrimSpace(configured_key)
 	}
 	process_context.Mu.Lock()
-	process_context.SetOutput(output_key, result)
+	process_context.Data[output_key] = result
 	process_context.Mu.Unlock()
 
 	next_ids := process_context.EngineRef.GetNextNodeIDsFromDefinition(process_context, n.node_id)
@@ -89,24 +97,6 @@ func service_arguments(config map[string]interface{}, process_context *engine.Pr
 	process_context.Mu.Lock()
 	defer process_context.Mu.Unlock()
 
-	if configured_input_map, ok := config["input_map"]; ok && configured_input_map != nil {
-		input_map, ok := configured_input_map.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("service input_map must be an object")
-		}
-		for argument_name, context_key_value := range input_map {
-			context_key, ok := context_key_value.(string)
-			if !ok || strings.TrimSpace(context_key) == "" {
-				return nil, fmt.Errorf("service input_map.%s must be a context key", argument_name)
-			}
-			value, exists := process_context.Data[context_key]
-			if !exists {
-				return nil, fmt.Errorf("service context value not found: %s", context_key)
-			}
-			arguments[argument_name] = value
-		}
-	}
-
 	for key, value := range arguments {
 		resolved, err := resolve_service_template(value, process_context)
 		if err != nil {
@@ -117,15 +107,17 @@ func service_arguments(config map[string]interface{}, process_context *engine.Pr
 	return arguments, nil
 }
 
-// resolve_service_template renders {{key}} / {{namespace.key}} templates in a
-// single argument value against the process context. A value that is not a
-// string, or a string without "{{", is returned unchanged. A string that is
-// exactly one token resolves to the raw context value (preserving its type);
-// otherwise each token is interpolated into the rendered string.
+// resolve_service_template renders {{scope.path}} templates in a single
+// argument value against the process context. A value that is not a string, or
+// a string without "{{", is returned unchanged. A string that is exactly one
+// token resolves to the raw context value (preserving its type); otherwise each
+// token is interpolated into the rendered string.
 //
-// Namespaces route the key to a source projection: the bare form {{key}} reads
-// the flat Data union; {{input.*}}, {{output.*}} and {{global.*}} read the
-// corresponding projections.
+// Every read must declare its scope: input.<key> for run parameters declared by
+// the flow context schema, output.<node_id>.<key> for a specific upstream
+// producer, and global.<key> for variables written by SetVariableNode. A bare
+// {{key}} or {{ctx.key}} is rejected, and a "{{" that matches no token at all
+// is an error rather than a silent passthrough.
 func resolve_service_template(value any, ctx *engine.ProcessContext) (any, error) {
 	text, ok := value.(string)
 	if !ok || !strings.Contains(text, "{{") {
@@ -133,75 +125,114 @@ func resolve_service_template(value any, ctx *engine.ProcessContext) (any, error
 	}
 	matches := service_template_re.FindAllStringSubmatchIndex(text, -1)
 	if len(matches) == 0 {
-		return value, nil
+		return nil, fmt.Errorf("invalid template expression: %s", text)
 	}
 	if len(matches) == 1 {
 		start, end := matches[0][0], matches[0][1]
 		if start == 0 && end == len(text) {
-			namespace, key := service_template_token(text, matches[0])
-			resolved, err := service_template_lookup(ctx, namespace, key)
-			if err != nil {
-				return nil, err
-			}
-			return resolved, nil
+			return service_template_lookup(ctx, text[matches[0][2]:matches[0][3]])
 		}
 	}
 	for _, match := range matches {
-		namespace, key := service_template_token(text, match)
-		if _, err := service_template_lookup(ctx, namespace, key); err != nil {
+		if _, err := service_template_lookup(ctx, text[match[2]:match[3]]); err != nil {
 			return nil, err
 		}
 	}
 	replaced := service_template_re.ReplaceAllStringFunc(text, func(match string) string {
-		sub := service_template_re.FindStringSubmatch(match)
-		namespace, key := service_template_namespace_key(sub[1], sub[2])
-		value, _ := service_template_lookup(ctx, namespace, key)
-		return fmt.Sprint(value)
+		path := service_template_re.FindStringSubmatch(match)[1]
+		resolved, _ := service_template_lookup(ctx, path)
+		return fmt.Sprint(resolved)
 	})
 	return replaced, nil
 }
 
-// service_template_token extracts the (namespace, key) pair from a matched
-// token's submatch index pairs. Group 1 is the namespace when a dotted key is
-// present, otherwise it is the bare key; group 2 (if present) is the key.
-func service_template_token(text string, match []int) (namespace, key string) {
-	first := text[match[2]:match[3]]
-	second := ""
-	if match[4] >= 0 {
-		second = text[match[4]:match[5]]
+// service_template_lookup resolves one dotted scope path. The first segment
+// names the scope, the second addresses the key (or producer node), and any
+// further segments drill through maps by key and through slices by numeric
+// index. Missing scopes, producers, keys and bad indexes are hard errors.
+func service_template_lookup(ctx *engine.ProcessContext, path string) (any, error) {
+	segments := strings.Split(path, ".")
+	for index := range segments {
+		segments[index] = strings.TrimSpace(segments[index])
 	}
-	return service_template_namespace_key(first, second)
-}
-
-func service_template_namespace_key(first, second string) (namespace, key string) {
-	if second == "" {
-		return "", first
-	}
-	return first, second
-}
-
-func service_template_lookup(ctx *engine.ProcessContext, namespace, key string) (any, error) {
-	var source map[string]any
-	switch namespace {
-	case "":
-		source = ctx.Data
+	not_found := fmt.Errorf("context value not found: %s", path)
+	switch segments[0] {
 	case "input":
-		source = ctx.Inputs
-	case "output":
-		source = ctx.Outputs
-	case "global":
-		source = ctx.Globals
-	default:
-		return nil, fmt.Errorf("unknown template namespace: %s", namespace)
-	}
-	value, exists := source[key]
-	if !exists {
-		if namespace == "" {
-			return nil, fmt.Errorf("context value not found: %s", key)
+		if len(segments) < 2 || !input_key_declared(ctx, segments[1]) {
+			return nil, not_found
 		}
-		return nil, fmt.Errorf("context value not found: %s.%s", namespace, key)
+		value, exists := ctx.Data[segments[1]]
+		if !exists {
+			return nil, not_found
+		}
+		return drill_template_path(value, segments[2:], not_found)
+	case "output":
+		if len(segments) < 3 {
+			return nil, not_found
+		}
+		produced, exists := ctx.NodeOutputs[segments[1]]
+		if !exists {
+			return nil, not_found
+		}
+		value, exists := produced[segments[2]]
+		if !exists {
+			return nil, not_found
+		}
+		return drill_template_path(value, segments[3:], not_found)
+	case "global":
+		if len(segments) < 2 {
+			return nil, not_found
+		}
+		value, exists := ctx.Globals[segments[1]]
+		if !exists {
+			return nil, not_found
+		}
+		return drill_template_path(value, segments[2:], not_found)
 	}
-	return value, nil
+	if len(segments) == 1 {
+		return nil, fmt.Errorf("template %s must declare an explicit scope (input/output/global)", path)
+	}
+	return nil, fmt.Errorf("unknown template namespace: %s", segments[0])
+}
+
+func input_key_declared(ctx *engine.ProcessContext, key string) bool {
+	for _, declared := range ctx.InputKeys {
+		if declared == key {
+			return true
+		}
+	}
+	return false
+}
+
+func drill_template_path(value any, segments []string, not_found error) (any, error) {
+	current := value
+	for _, segment := range segments {
+		next, ok := drill_template_segment(current, segment)
+		if !ok {
+			return nil, not_found
+		}
+		current = next
+	}
+	return current, nil
+}
+
+func drill_template_segment(value any, segment string) (any, bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		nested, ok := typed[segment]
+		return nested, ok
+	case map[string]string:
+		nested, ok := typed[segment]
+		return nested, ok
+	case []any:
+		index, err := strconv.Atoi(segment)
+		if err != nil || index < 0 || index >= len(typed) {
+			return nil, false
+		}
+		return typed[index], true
+	default:
+		return nil, false
+	}
 }
 
 func service_timeout_seconds(config map[string]interface{}) int {

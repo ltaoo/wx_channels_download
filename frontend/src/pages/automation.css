@@ -617,6 +617,10 @@
   color: var(--dm-color-danger);
 }
 
+.automation-flow-edge-label.is-js {
+  font-family: var(--dm-font-family-mono);
+}
+
 .automation-flow-edge-label.is-hidden {
   display: none;
 }

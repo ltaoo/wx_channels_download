@@ -2,19 +2,19 @@ package nodes
 
 import (
 	"fmt"
+	"strings"
 
 	"wx_channel/pkg/flowengine/engine"
-
-	"github.com/dop251/goja"
 )
 
 // JSCodeNode executes a JavaScript snippet via goja.
 //
-// The full process context is exposed to the script as a `data` object
-// (a snapshot of ctx.Data). The script's completion value is written back:
-//   - if `output_key` is set, the value is written to ctx.Data[output_key];
-//   - otherwise, if the value is a plain object, its entries are merged into
-//     ctx.Data, letting one node emit multiple fields at once.
+// The three variable scopes are exposed to the script as `input`, `output` and
+// `global` objects, matching the template/expression namespaces. The script's
+// completion value is written to ctx.Data[output_key]; output_key is required,
+// because an implicit multi-key merge would let a script silently overwrite
+// unrelated context keys (e.g. an account `username` clobbered by a live-stream
+// object).
 type JSCodeNode struct {
 	Id     string
 	Config map[string]interface{}
@@ -33,9 +33,14 @@ func (n *JSCodeNode) Execute(ctx *engine.ProcessContext) (bool, []string, error)
 	if code == "" {
 		return false, nil, fmt.Errorf("JSCodeNode: code not provided")
 	}
+	outKey, _ := n.Config["output_key"].(string)
+	outKey = strings.TrimSpace(outKey)
+	if outKey == "" {
+		return false, nil, fmt.Errorf("JSCodeNode: output_key is required")
+	}
 
-	vm := goja.New()
-	if err := vm.Set("data", ctx.Data); err != nil {
+	vm, err := new_scope_vm(ctx.ScopeEnv())
+	if err != nil {
 		return false, nil, err
 	}
 
@@ -44,15 +49,7 @@ func (n *JSCodeNode) Execute(ctx *engine.ProcessContext) (bool, []string, error)
 		return false, nil, err
 	}
 
-	if outKey, _ := n.Config["output_key"].(string); outKey != "" {
-		ctx.Data[outKey] = result.Export()
-	} else if obj, ok := result.(*goja.Object); ok {
-		if m, ok := obj.Export().(map[string]interface{}); ok {
-			for k, v := range m {
-				ctx.Data[k] = v
-			}
-		}
-	}
+	ctx.Data[outKey] = result.Export()
 
 	next := ctx.EngineRef.GetNextNodeIDsFromDefinition(ctx, n.Id)
 	return true, next, nil
