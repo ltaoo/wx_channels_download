@@ -304,7 +304,9 @@ function automation_is_fallback_rule(rule) {
 // 判断不出来（有 && / ||、或多个 ==）就退回条件本身，截断后用 tooltip 补全
 function automation_case_label(condition) {
   const text = String(condition || "").trim();
-  const parts = text.split("==");
+  // Match the longest comparator first so `a === "X"` does not split on the
+  // inner `==` and leave a stray `=` in the label.
+  const parts = text.split(/(?:===|!==|==|!=)/);
   if (parts.length !== 2 || /(&&|\|\|)/.test(text)) {
     return text.length > 10 ? `${text.slice(0, 10)}…` : text;
   }
@@ -314,6 +316,13 @@ function automation_case_label(condition) {
 function automation_gateway_branch(node, target_id) {
   const rules = automation_gateway_rules(node);
   if (rules.length === 0) return null;
+  // JS 条件（condition_language: "js"）在标签上没有任何差别，只在 tooltip
+  // 里加个 [JS] 前缀，免得把两种语法的条件看混。
+  const is_js =
+    String((node.config && node.config.condition_language) || "")
+      .trim()
+      .toLowerCase() === "js";
+  const prefix = is_js ? "[JS] " : "";
   const target = String(target_id || "");
   const rule = rules.find(
     (item) => String(item.target_id || item.target || "") === target,
@@ -321,16 +330,18 @@ function automation_gateway_branch(node, target_id) {
   if (!rule) {
     return {
       kind: "unconfigured",
+      is_js,
       label: "未配置",
-      title: `这条连线在「${node.name || node.id}」的 rules 里没有对应条件，引擎不会走到这个节点`,
+      title: `${prefix}这条连线在「${node.name || node.id}」的 rules 里没有对应条件，引擎不会走到这个节点`,
     };
   }
   const condition = String(rule.condition || "").trim();
   if (automation_is_fallback_rule(rule)) {
     return {
       kind: "no",
+      is_js,
       label: "否",
-      title: `其它情况（condition: true）→ ${target}`,
+      title: `${prefix}其它情况（condition: true）→ ${target}`,
     };
   }
   const condition_count = rules.filter(
@@ -338,12 +349,18 @@ function automation_gateway_branch(node, target_id) {
   ).length;
   // 只有一个条件分支时就是 yes/no 语义；多个条件（case）时直接标出各自的条件值
   if (condition_count === 1) {
-    return { kind: "yes", label: "是", title: `${condition} → ${target}` };
+    return {
+      kind: "yes",
+      is_js,
+      label: "是",
+      title: `${prefix}${condition} → ${target}`,
+    };
   }
   return {
     kind: "case",
+    is_js,
     label: automation_case_label(condition),
-    title: `${condition} → ${target}`,
+    title: `${prefix}${condition} → ${target}`,
   };
 }
 
@@ -1039,7 +1056,9 @@ export function AutomationFlowGraph(props) {
                   {
                     class: computed(label_, (label) =>
                       label
-                        ? `automation-flow-edge-label is-${label.kind}`
+                        ? `automation-flow-edge-label is-${label.kind}${
+                            label.is_js ? " is-js" : ""
+                          }`
                         : "automation-flow-edge-label is-hidden",
                     ),
                     style: computed(label_, (label) => ({
@@ -1475,9 +1494,9 @@ export function AutomationRunPipelineDialog(props) {
     },
     [
       DialogHeader({}, [
-        DialogTitle({}, ["立即执行"]),
+        DialogTitle({}, ["开始执行"]),
         DialogDescription({}, [
-          "填写开始节点需要的参数后执行；可选参数可留空。",
+          "填写开始节点需要的参数后开始执行；可选参数可留空。开始后立即返回，执行进度在画布上实时更新。",
         ]),
       ]),
       DialogBody({}, [
@@ -1537,7 +1556,7 @@ export function AutomationRunPipelineDialog(props) {
             store: vm$.ui.btn_run_submit$,
             attributes: { n: "automation-run-submit", type: "button" },
           },
-          ["执行"],
+          ["开始执行"],
         ),
       ]),
     ],

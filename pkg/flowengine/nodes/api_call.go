@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"wx_channel/pkg/flowengine/engine"
 )
+
+const default_api_output_key = "api_response"
 
 type APICallNode struct {
 	Id     string
@@ -33,15 +36,21 @@ func (n *APICallNode) Execute(ctx *engine.ProcessContext) (bool, []string, error
 	if v, ok := n.Config["method"].(string); ok && v != "" {
 		method = v
 	}
-	keys := []string{}
-	if v, ok := n.Config["keys"].([]string); ok {
-		keys = v
-	} else if v, ok := n.Config["keys"].([]interface{}); ok {
-		for _, kv := range v {
-			if s, ok := kv.(string); ok {
-				keys = append(keys, s)
-			}
+	// keys maps the outgoing request parameter name to the scope path its
+	// value is read from, e.g. {"username": "output.cleanup.username"}. An
+	// object (rather than a list of context keys) lets the request parameter
+	// name differ from the producer's key name.
+	keys, err := api_call_keys(n.Config["keys"])
+	if err != nil {
+		return false, nil, err
+	}
+	values := make(map[string]interface{}, len(keys))
+	for parameter_name, path := range keys {
+		resolved, err := resolve_scope_path(ctx, path)
+		if err != nil {
+			return false, nil, fmt.Errorf("keys.%s: %w", parameter_name, err)
 		}
+		values[parameter_name] = resolved
 	}
 	var req *http.Request
 	if method == "GET" {
@@ -50,21 +59,13 @@ func (n *APICallNode) Execute(ctx *engine.ProcessContext) (bool, []string, error
 			return false, nil, err
 		}
 		q := r.URL.Query()
-		for _, k := range keys {
-			if val, ok := ctx.Data[k]; ok {
-				q.Set(k, fmt.Sprint(val))
-			}
+		for parameter_name, value := range values {
+			q.Set(parameter_name, fmt.Sprint(value))
 		}
 		r.URL.RawQuery = q.Encode()
 		req = r
 	} else {
-		payload := map[string]interface{}{}
-		for _, k := range keys {
-			if val, ok := ctx.Data[k]; ok {
-				payload[k] = val
-			}
-		}
-		b, err := json.Marshal(payload)
+		b, err := json.Marshal(values)
 		if err != nil {
 			return false, nil, err
 		}
@@ -92,7 +93,7 @@ func (n *APICallNode) Execute(ctx *engine.ProcessContext) (bool, []string, error
 	} else {
 		out = string(body)
 	}
-	outKey := "api_response"
+	outKey := default_api_output_key
 	if v, ok := n.Config["output_key"].(string); ok && v != "" {
 		outKey = v
 	}
@@ -100,4 +101,42 @@ func (n *APICallNode) Execute(ctx *engine.ProcessContext) (bool, []string, error
 	ctx.Data[outKey+"_status"] = resp.StatusCode
 	next := ctx.EngineRef.GetNextNodeIDsFromDefinition(ctx, n.Id)
 	return true, next, nil
+}
+
+// api_call_keys normalizes config["keys"] into {request parameter: scope path}.
+// Both map[string]string and the JSON-decoded map[string]interface{} shape are
+// accepted; the legacy list form is rejected.
+func api_call_keys(value interface{}) (map[string]string, error) {
+	switch configured := value.(type) {
+	case nil:
+		return map[string]string{}, nil
+	case map[string]string:
+		return configured, nil
+	case map[string]interface{}:
+		keys := make(map[string]string, len(configured))
+		for parameter_name, raw_path := range configured {
+			path, ok := raw_path.(string)
+			if !ok || strings.TrimSpace(path) == "" {
+				return nil, fmt.Errorf("keys.%s must be a scope path string", parameter_name)
+			}
+			keys[parameter_name] = strings.TrimSpace(path)
+		}
+		return keys, nil
+	default:
+		return nil, fmt.Errorf("keys must be an object mapping request parameter names to scope paths")
+	}
+}
+
+// resolve_scope_path resolves a keys value: a {{...}} template is rendered by
+// the template resolver, a bare dotted path is looked up directly in the three
+// scopes.
+func resolve_scope_path(ctx *engine.ProcessContext, path string) (any, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, fmt.Errorf("empty scope path")
+	}
+	if strings.Contains(path, "{{") {
+		return resolve_service_template(path, ctx)
+	}
+	return service_template_lookup(ctx, path)
 }

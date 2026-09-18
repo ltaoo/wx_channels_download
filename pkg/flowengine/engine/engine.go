@@ -219,9 +219,10 @@ func (e *FlowEngine) StartFlowWithOptions(flow_id string, initial_data map[strin
 		EngineRef:    e,
 		TriggerType:  string(trigger.Type),
 		TriggerKey:   trigger.Key,
+		InputKeys:    ContextSchemaKeys(ref_flow.ContextSchema),
 	}
 	for key, value := range initial_data {
-		ctx.SetInput(key, value)
+		ctx.Data[key] = value
 	}
 
 	e.Lock()
@@ -441,12 +442,13 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 			ctx.NodeStates[node_id] = StateRunning
 			ctx.NodeAttempts[node_id]++
 			attempt := ctx.NodeAttempts[node_id]
+			ctx.ExecutionDetails = nil
 			ctx.Mu.Unlock()
 
 			e.persistContext(ctx)
 			e.update_run_record(ctx, RunStatusRunning, nil)
 
-			input_snapshot := snapshot_process_data(ctx)
+			input_snapshot := ctx.SnapshotData()
 			started_at := time.Now()
 			e.emit_node_execution_status(NodeExecutionStatus{
 				Timestamp: started_at,
@@ -460,9 +462,15 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 			})
 			success, nextNodeIDs, err := nodeImpl.Execute(ctx)
 			duration := time.Since(started_at)
-			output_snapshot := snapshot_process_data(ctx)
+			output_snapshot := ctx.SnapshotData()
 			returned_state := current_node_state(ctx, node_id)
 			outcome := node_execution_outcome(nodeDef, attempt, returned_state, success, err)
+			// Every node type becomes a producer automatically: whatever it
+			// changed in the flat union is indexed under its own node id, so
+			// downstream templates can address output.<node_id>.<key> without
+			// the node doing any extra bookkeeping.
+			changed_values := changed_context_values(input_snapshot, output_snapshot)
+			ctx.RecordNodeOutputs(node_id, changed_values)
 			e.emit_node_execution_status(NodeExecutionStatus{
 				Timestamp: time.Now(),
 				FlowID:    ctx.FlowID,
@@ -485,8 +493,8 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 				Outcome:           outcome,
 				DurationMs:        duration.Milliseconds(),
 				Input:             redact_log_map(input_snapshot),
-				Behavior:          node_execution_behavior(nodeDef),
-				Output:            redact_log_map(changed_context_values(input_snapshot, output_snapshot)),
+				Behavior:          node_execution_behavior(nodeDef, ctx.ExecutionDetails),
+				Output:            redact_log_map(changed_values),
 				RemovedOutputKeys: removed_context_keys(input_snapshot, output_snapshot),
 				Success:           success,
 				NextNodeIDs:       append([]string(nil), nextNodeIDs...),
@@ -711,9 +719,10 @@ func (e *FlowEngine) RunNodeStandalone(def NodeDefinition, input map[string]inte
 		NodeStates:   map[string]NodeState{},
 		NodeAttempts: map[string]int{},
 		EngineRef:    e,
+		InputKeys:    ContextSchemaKeys(def.InputSchema),
 	}
 	for k, v := range input {
-		ctx.SetInput(k, v)
+		ctx.Data[k] = v
 	}
 
 	node := e.createNodeImpl(def)
@@ -758,7 +767,7 @@ func (e *FlowEngine) CompleteManualTask(ins_id, node_id string, input_data map[s
 	if input_data != nil {
 		ctx.Mu.Lock()
 		for key, value := range input_data {
-			ctx.SetInput(key, value)
+			ctx.Data[key] = value
 		}
 		ctx.Mu.Unlock()
 	}
@@ -955,13 +964,20 @@ func snapshotNodeAttempts(values map[string]int) map[string]int {
 	return copied
 }
 
-func snapshot_process_data(ctx *ProcessContext) map[string]interface{} {
-	if ctx == nil {
-		return map[string]interface{}{}
+// ContextSchemaKeys extracts the declared input key list from a flow's context
+// schema. Only keys (never values) are carried into ProcessContext.
+func ContextSchemaKeys(schema []FieldSchema) []string {
+	if len(schema) == 0 {
+		return nil
 	}
-	ctx.Mu.Lock()
-	defer ctx.Mu.Unlock()
-	return snapshot_map(ctx.Data)
+	keys := make([]string, 0, len(schema))
+	for _, field := range schema {
+		key := strings.TrimSpace(field.Key)
+		if key != "" {
+			keys = append(keys, key)
+		}
+	}
+	return keys
 }
 
 func current_node_state(ctx *ProcessContext, node_id string) NodeState {
@@ -1002,7 +1018,11 @@ func node_execution_status_state(outcome string, returned_state NodeState) NodeS
 	}
 }
 
-func node_execution_behavior(def NodeDefinition) map[string]interface{} {
+// node_execution_behavior describes the node configuration/routing for one
+// attempt. details carries the extras the node reported through
+// ProcessContext.SetExecutionDetail (e.g. resolved service arguments) and is
+// merged in last so a node can expose what it actually ran with.
+func node_execution_behavior(def NodeDefinition, details map[string]interface{}) map[string]interface{} {
 	behavior := map[string]interface{}{
 		"config":             redact_log_map(snapshot_map(def.Config)),
 		"next_node_ids":      append([]string(nil), def.NextNodeIDs...),
@@ -1016,6 +1036,9 @@ func node_execution_behavior(def NodeDefinition) map[string]interface{} {
 	if def.RetryPolicy != nil {
 		policy := *def.RetryPolicy
 		behavior["retry"] = policy
+	}
+	for key, value := range details {
+		behavior[key] = redact_log_value(key, value)
 	}
 	return behavior
 }

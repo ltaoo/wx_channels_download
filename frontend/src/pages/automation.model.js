@@ -1020,14 +1020,23 @@ function AutomationPageViewModel(props, options) {
   function default_config_json(node_type) {
     const defaults = {
       ExprNode: { expression: "", output_key: "calc_out" },
-      APICallNode: { url: "", method: "GET", keys: [] },
-      GatewayNode: { gateway_type: "Exclusive", rules: [] },
+      // keys maps a request parameter name to a scope path, e.g.
+      // {"username": "output.cleanup.cleanup"}.
+      APICallNode: { url: "", method: "GET", keys: {} },
+      // condition_language 显式写出来，好在「原始 JSON」编辑框里被发现；
+      // 老流程没有这个键，缺省即 expr。
+      GatewayNode: {
+        gateway_type: "Exclusive",
+        condition_language: "expr",
+        rules: [],
+      },
       ServiceNode: {
         tool_name: "",
         arguments: {},
-        input_map: {},
         output_key: "service_result",
       },
+      JSCodeNode: { code: "", output_key: "" },
+      SetVariableNode: { variables: {} },
     };
     const config = defaults[node_type] || {};
     return JSON.stringify(config, null, 2);
@@ -1044,10 +1053,16 @@ function AutomationPageViewModel(props, options) {
     );
   }
 
-  // available_context_keys lists the context keys a ServiceNode argument may be
-  // templated from, structured as { namespace, key } entries. The pipeline's
-  // declared context schema maps to the "input" namespace; every node output
-  // key maps to the "output" namespace.
+  // available_context_keys lists the reads a template may contain, structured as
+  // { namespace, key } entries whose concatenation is the token inserted after
+  // "{{". The three namespaces are disjoint and each one is the only place its
+  // data can come from:
+  //   input  — the pipeline's declared context schema keys
+  //   output — "<node_id>.<produced_key>" for every node, so two producers
+  //            writing the same key name stay distinguishable
+  //   global — variable names written by a SetVariableNode
+  // There is deliberately no bare-key or "ctx." suggestion: the runtime
+  // resolvers reject both.
   function available_context_keys() {
     const keys = [];
     const seen = new Set();
@@ -1066,11 +1081,23 @@ function AutomationPageViewModel(props, options) {
         : [];
     schema.forEach((field) => push("input", field && field.key));
     (edit_nodes_.value || []).forEach((node) => {
+      const node_id = node && node.id;
+      if (!node_id) return;
       const config = node && node.config;
-      if (config && config.output_key) push("output", config.output_key);
+      const produced = [];
+      if (config && config.output_key) produced.push(config.output_key);
       const output_schema = node && node.output_schema;
       if (Array.isArray(output_schema)) {
-        output_schema.forEach((field) => push("output", field && field.key));
+        output_schema.forEach((field) => produced.push(field && field.key));
+      }
+      if (node.type === "APICallNode") {
+        produced.forEach((key) => push("output", `${node_id}.${key}_status`));
+      }
+      produced.forEach((key) => push("output", `${node_id}.${key}`));
+      if (node.type === "SetVariableNode" && config) {
+        Object.keys(config.variables || {}).forEach((key) =>
+          push("global", key),
+        );
       }
     });
     return keys;
@@ -1316,7 +1343,6 @@ function AutomationPageViewModel(props, options) {
     }
     config.tool_name = tool_name;
     config.arguments = arguments_value || {};
-    delete config.input_map;
     const encoded = JSON.stringify(config, null, 2);
     add_config_.as(encoded);
     ui.input_add_config$.setValue(encoded, { silence: true });

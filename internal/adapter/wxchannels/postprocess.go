@@ -15,12 +15,11 @@ import (
 	"strings"
 
 	"wx_channel/pkg/flowengine"
+	"wx_channel/pkg/flowengine/nodes"
 
 	"wx_channel/internal/adapter"
 	"wx_channel/pkg/hermes"
 	"wx_channel/pkg/scraper/wxchannels"
-
-	"github.com/expr-lang/expr"
 )
 
 const (
@@ -507,20 +506,13 @@ func (n *wxchannels_logged_gateway_node) config_value(key string) string {
 	return ""
 }
 
+// evaluate_condition delegates to the shared GatewayNode evaluator instead of
+// keeping a private copy: the built-in postprocess gateway and a user flow's
+// gateway must agree on what a condition means. The built-in configs carry no
+// condition_language, so ConditionLanguage resolves to expr and this runs the
+// exact code it ran before the delegation.
 func (n *wxchannels_logged_gateway_node) evaluate_condition(ctx *flowengine.ProcessContext, condition string) (bool, error) {
-	program, err := expr.Compile(condition)
-	if err != nil {
-		return false, err
-	}
-	out, err := expr.Run(program, ctx.Data)
-	if err != nil {
-		return false, err
-	}
-	result, ok := out.(bool)
-	if !ok {
-		return false, nil
-	}
-	return result, nil
+	return nodes.EvaluateCondition(ctx, condition, nodes.ConditionLanguage(n.config))
 }
 
 func (n *wxchannels_logged_gateway_node) logf(ctx *flowengine.ProcessContext, format string, args ...interface{}) {
@@ -701,10 +693,10 @@ var wxchannels_postprocess_flow = flowengine.FlowDefinition{
 			{Key: "log", Type: "any", Required: false},
 		}},
 	},
-	StartNodeID: "start",
+	StartNodeID: wxchannels_postprocess_flow_node_prepare_resource_context,
 	Nodes: map[string]flowengine.NodeDefinition{
-		"start": {
-			ID:   "start",
+		wxchannels_postprocess_flow_node_prepare_resource_context: {
+			ID:   wxchannels_postprocess_flow_node_prepare_resource_context,
 			Type: "FuncNode",
 			Name: "开始：准备每个资源的上下文",
 			InputSchema: []flowengine.FieldSchema{
@@ -787,8 +779,8 @@ var wxchannels_postprocess_flow = flowengine.FlowDefinition{
 				"gateway_type": "Exclusive",
 				"is_joining":   false,
 				"rules": []map[string]interface{}{
-					{"condition": `resource_type == "STREAM"`, "target_id": "stream_convert"},
-					{"condition": "resource_has_decode_key == true", "target_id": "decrypt"},
+					{"condition": `output.prepare_resource_context.resource_type == "STREAM"`, "target_id": "stream_convert"},
+					{"condition": "output.prepare_resource_context.resource_has_decode_key == true", "target_id": "decrypt"},
 					{"condition": "true", "target_id": "done"},
 				},
 			},
@@ -825,7 +817,7 @@ var wxchannels_postprocess_flow = flowengine.FlowDefinition{
 				"gateway_type": "Exclusive",
 				"is_joining":   false,
 				"rules": []map[string]interface{}{
-					{"condition": `task_config_suffix == ".mp3" || task_config_suffix == "mp3"`, "target_id": "convert_mp3"},
+					{"condition": `input.task_config_suffix == ".mp3" || input.task_config_suffix == "mp3"`, "target_id": "convert_mp3"},
 					{"condition": "true", "target_id": "done"},
 				},
 			},
@@ -1272,7 +1264,7 @@ var wxchannels_postprocess_main_flow = flowengine.FlowDefinition{
 				"gateway_type": "Exclusive",
 				"is_joining":   false,
 				"rules": []map[string]interface{}{
-					{"condition": "archive_requested == true", "target_id": "run_output_flow"},
+					{"condition": "input.archive_requested == true", "target_id": "run_output_flow"},
 					{"condition": "true", "target_id": "done"},
 				},
 			},
@@ -1465,7 +1457,7 @@ var wxchannels_output_flow = flowengine.FlowDefinition{
 				"is_joining":   false,
 				"rules": []map[string]interface{}{
 					{"condition": "false", "target_id": "zip_resources"},
-					{"condition": `task_config_suffix == ".mp3" || task_config_suffix == "mp3"`, "target_id": "convert_mp3"},
+					{"condition": `input.task_config_suffix == ".mp3" || input.task_config_suffix == "mp3"`, "target_id": "convert_mp3"},
 					{"condition": "true", "target_id": "done"},
 				},
 			},
