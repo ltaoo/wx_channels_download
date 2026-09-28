@@ -484,6 +484,13 @@ func (a *ChannelsAdapter) config_bool(key string) bool {
 	return runtime_config.GetBool(key)
 }
 
+// config_download_cover reports whether the cover should be stored alongside the
+// main resource. The current channels key and the legacy download key are both
+// honoured; either one enables it.
+func (a *ChannelsAdapter) config_download_cover() bool {
+	return a.config_bool("channels.download.cover") || a.config_bool("download.cover")
+}
+
 func (a *ChannelsAdapter) config_string(key string) string {
 	if a == nil {
 		return ""

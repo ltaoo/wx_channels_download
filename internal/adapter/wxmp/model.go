@@ -472,32 +472,33 @@ func (a *OfficialAccountAdapter) BuildDownloadTask(content_json json.RawMessage,
 		source_url = strings.TrimSpace(data.Link)
 	}
 
-	html_name := title
-	html_resource := model.DownloadResource{
-		ContentId:  &content_id,
-		Name:       html_name,
-		Kind:       "html",
-		UniqueID:   external_id + "_html",
-		MergeOrder: 0,
-		Extra:      extra_json,
-	}
-	html_endpoint := model.DownloadEndpoint{
-		Protocol: "inline",
-		URL:      data.ContentNoencode,
-		Enabled:  1,
-	}
-
 	resources := make([]*adapter.ResourceInfo, 0, len(image_resources)+len(video_resources)+1)
-	resources = append(resources, &adapter.ResourceInfo{
-		Resource:  html_resource,
-		Endpoints: []model.DownloadEndpoint{html_endpoint},
-		ContentAssets: []adapter.ContentAssetReference{{
-			Kind:     model.ContentAssetKindText,
-			Role:     model.ContentAssetRoleArticleBody,
-			AssetKey: "body:html",
-			Relation: model.DownloadResourceAssetRelationSource,
-		}},
-	})
+	// An article whose content is an embedded 视频号 feed carries nothing in
+	// content_noencode, and an html resource built from it would only add a
+	// blank endpoint that blocks the whole task.
+	if strings.TrimSpace(data.ContentNoencode) != "" {
+		resources = append(resources, &adapter.ResourceInfo{
+			Resource: model.DownloadResource{
+				ContentId:  &content_id,
+				Name:       title,
+				Kind:       "html",
+				UniqueID:   external_id + "_html",
+				MergeOrder: 0,
+				Extra:      extra_json,
+			},
+			Endpoints: []model.DownloadEndpoint{{
+				Protocol: "inline",
+				URL:      data.ContentNoencode,
+				Enabled:  1,
+			}},
+			ContentAssets: []adapter.ContentAssetReference{{
+				Kind:     model.ContentAssetKindText,
+				Role:     model.ContentAssetRoleArticleBody,
+				AssetKey: "body:html",
+				Relation: model.DownloadResourceAssetRelationSource,
+			}},
+		})
+	}
 	for _, r := range image_resources {
 		resources = append(resources, r)
 	}

@@ -1,0 +1,116 @@
+.sync-page {
+  min-height: 100vh;
+  background: var(--dm-content-canvas);
+}
+
+.sync-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dm-space-4);
+  padding-block: var(--dm-space-6);
+}
+
+.sync-page__heading,
+.sync-server-card__text {
+  min-width: 0;
+}
+
+.sync-page__title,
+.sync-server-card__name {
+  margin: 0;
+  color: var(--dm-content-text);
+}
+
+.sync-page__title {
+  font-size: var(--dm-font-size-xl);
+}
+
+.sync-page__description,
+.sync-server-card__url,
+.sync-page__empty {
+  color: var(--dm-content-muted);
+}
+
+.sync-page__description {
+  margin-top: var(--dm-space-1);
+}
+
+.sync-server-list {
+  display: grid;
+  gap: var(--dm-space-3);
+}
+
+.sync-server-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--dm-space-4);
+  padding: var(--dm-space-4);
+  border: 1px solid var(--dm-content-border);
+  border-radius: var(--dm-radius-lg);
+  background: var(--dm-content-panel);
+}
+
+.sync-server-card__identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--dm-space-3);
+}
+
+.sync-server-card__icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--dm-color-primary);
+  border-radius: var(--dm-radius-md);
+  background: var(--dm-content-panel-soft);
+}
+
+.sync-server-card__name {
+  font-size: var(--dm-font-size-base);
+}
+
+.sync-server-card__url {
+  overflow: hidden;
+  margin-top: var(--dm-space-1);
+  font-family: var(--dm-font-family-mono, monospace);
+  font-size: var(--dm-font-size-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-server-card__message {
+  grid-column: 1 / -1;
+  font-size: var(--dm-font-size-sm);
+}
+
+.sync-server-card__message.is-success {
+  color: var(--dm-color-success);
+}
+
+.sync-server-card__message.is-error,
+.sync-page__error {
+  color: var(--dm-color-danger);
+}
+
+.sync-page__empty,
+.sync-page__error {
+  padding: var(--dm-space-8);
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .sync-page__header,
+  .sync-server-card {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .sync-page__header {
+    flex-direction: column;
+  }
+}
