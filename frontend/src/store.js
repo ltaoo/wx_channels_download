@@ -241,6 +241,12 @@ const routes_configure = {
         component: lazy("src/pages/automation.js", "src/pages/automation.css"),
         // options: animated_route_options,
       },
+      sync: {
+        title: "下载服务同步",
+        pathname: "/sync",
+        component: lazy("src/pages/sync.js", "src/pages/sync.css"),
+        // options: animated_route_options,
+      },
       logs: {
         title: "日志",
         pathname: "/logs",

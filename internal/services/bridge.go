@@ -353,6 +353,64 @@ type bridge_wxmp_biz_msg_list_args struct {
 	Offset   string `json:"offset"`
 }
 
+type bridge_wxmp_article struct {
+	ID          int64  `json:"id"`
+	Idx         int    `json:"idx"`
+	Title       string `json:"title"`
+	Digest      string `json:"digest"`
+	URL         string `json:"url"`
+	CoverURL    string `json:"cover_url"`
+	PublishTime int64  `json:"publish_time"`
+}
+
+type bridge_wxmp_article_list struct {
+	Account  bridge_wxchannels_account `json:"account"`
+	Articles []bridge_wxmp_article     `json:"articles"`
+	Offset   string                    `json:"offset"`
+	IsEnd    bool                      `json:"is_end"`
+}
+
+type bridge_wxmp_raw_response struct {
+	ErrorCode    *int   `json:"err_code"`
+	ErrorMessage string `json:"err_msg"`
+	BaseResponse struct {
+		Ret    int `json:"Ret"`
+		ErrMsg struct {
+			String string `json:"String"`
+		} `json:"ErrMsg"`
+	} `json:"BaseResponse"`
+	AccountInfo struct {
+		Username  string `json:"UserName"`
+		Nickname  string `json:"NickName"`
+		AvatarURL string `json:"HeadImgUrl"`
+		Signature string `json:"Signature"`
+	} `json:"AccountInfo"`
+	MsgList struct {
+		Messages []struct {
+			BaseInfo struct {
+				MessageID int64 `json:"MsgId"`
+			} `json:"BaseInfo"`
+			AppMessage struct {
+				Details []struct {
+					Title        string `json:"Title"`
+					Digest       string `json:"Digest"`
+					ItemIndex    int    `json:"ItemIndex"`
+					ContentURL   string `json:"ContentUrl"`
+					CoverURL     string `json:"CoverImgUrl"`
+					PublishTime  int64  `json:"send_time"`
+					FeaturedInfo struct {
+						MessageID int64 `json:"MsgId"`
+					} `json:"featured_info"`
+				} `json:"DetailInfo"`
+			} `json:"AppMsg"`
+		} `json:"Msg"`
+		PagingInfo struct {
+			Offset string `json:"Offset"`
+			IsEnd  int    `json:"IsEnd"`
+		} `json:"PagingInfo"`
+	} `json:"MsgList"`
+}
+
 // The Bridge owns its platform-call interfaces instead of borrowing the MCP
 // tool layer's. Both entry points talk to the same in-process adapter, but the
 // Bridge serves its own wire protocol and must not inherit MCP's API surface.
@@ -885,7 +943,61 @@ func (s *BridgeService) execute_wxmp_biz_msg_list(
 		return nil, err
 	}
 	response, err := s.wxmp_adapter.FetchBizMsgList(username, strings.TrimSpace(request.Offset))
-	return encode_bridge_method_result(task_context, response, err)
+	if err != nil {
+		return nil, err
+	}
+	result, err := normalize_bridge_wxmp_biz_msg_list(response)
+	return encode_bridge_method_result(task_context, result, err)
+}
+
+func normalize_bridge_wxmp_biz_msg_list(response_json json.RawMessage) (*bridge_wxmp_article_list, error) {
+	var response bridge_wxmp_raw_response
+	if err := json.Unmarshal(response_json, &response); err != nil {
+		return nil, fmt.Errorf("解析公众号历史消息响应失败: %w", err)
+	}
+	if response.ErrorCode != nil && *response.ErrorCode != 0 {
+		message := strings.TrimSpace(response.ErrorMessage)
+		if message == "" {
+			message = fmt.Sprintf("公众号页面桥返回错误码 %d", *response.ErrorCode)
+		}
+		return nil, errors.New(message)
+	}
+	if response.BaseResponse.Ret != 0 {
+		message := strings.TrimSpace(response.BaseResponse.ErrMsg.String)
+		if message == "" {
+			message = "bizmsglist failed"
+		}
+		return nil, errors.New(message)
+	}
+	result := &bridge_wxmp_article_list{
+		Account: bridge_wxchannels_account{
+			Username:  response.AccountInfo.Username,
+			Nickname:  response.AccountInfo.Nickname,
+			AvatarURL: response.AccountInfo.AvatarURL,
+			Signature: response.AccountInfo.Signature,
+		},
+		Articles: make([]bridge_wxmp_article, 0),
+		Offset:   response.MsgList.PagingInfo.Offset,
+		IsEnd:    response.MsgList.PagingInfo.IsEnd == 1,
+	}
+	for _, message := range response.MsgList.Messages {
+		for _, article := range message.AppMessage.Details {
+			message_id := article.FeaturedInfo.MessageID
+			if message_id == 0 {
+				message_id = message.BaseInfo.MessageID
+			}
+			result.Articles = append(result.Articles, bridge_wxmp_article{
+				ID:          message_id,
+				Idx:         article.ItemIndex,
+				Title:       article.Title,
+				Digest:      article.Digest,
+				URL:         article.ContentURL,
+				CoverURL:    article.CoverURL,
+				PublishTime: article.PublishTime,
+			})
+		}
+	}
+	return result, nil
 }
 
 func decode_bridge_method_args(args json.RawMessage, target any) error {
@@ -915,4 +1027,3 @@ func encode_bridge_method_result(
 	}
 	return data, nil
 }
-

@@ -1,8 +1,8 @@
 /**
  * 微信公众号页面工具。
  *
- * 该文件只提供无状态的数据读取、解析与转换工具，必须在 mp.components.js
- * 和 mp.main.js 之前加载。
+ * 该文件提供无状态的数据读取、解析与转换工具，并向 WXU 注册文章页视频号
+ * 的事件入口，必须在 mp.components.js 和 mp.main.js 之前加载。
  */
 (() => {
   function first_non_empty() {
@@ -188,15 +188,198 @@
     };
   }
 
+  // 文章页内嵌的视频号 feed 只能通过 WeixinJSBridge 调用 getCommentDetails
+  // 拿到，服务端无法代取，所以由 interceptor 改写后的 getCommentDetail 触发
+  // channels:OnFeedProfileLoaded，这里把它缓存下来供「下载」提交。
+  const captured_finder_feeds = [];
+
+  // 与 common_share_video 的 getUrl 保持一致：换成公网 CDN 主机、补上 token，
+  // 否则离开微信客户端后这个地址不可用。
+  function normalize_finder_media_url(media) {
+    if (!media) {
+      return "";
+    }
+    let url = String(media.url || "");
+    if (!url) {
+      return "";
+    }
+    const url_token = String(media.urlToken || "");
+    url = url.split("wxapp.tc.qq.com").join("finder.video.qq.com");
+    if (url_token && !url.includes("&token=")) {
+      url = url + url_token;
+    }
+    if (/^http:\/\//i.test(url)) {
+      url = url.replace(/^http:\/\//i, "https://");
+    }
+    if (!url.includes("web=1")) {
+      url = url + "&web=1";
+    }
+    if (!url.includes("&fexam=1")) {
+      url = url + "&fexam=1";
+    }
+    return url;
+  }
+
+  // 与 getMediaObject 一致：附件视频优先，其次 objectDesc.media。
+  function finder_media_from_feed(feed) {
+    const object = feed && feed.object ? feed.object : feed;
+    if (!object) {
+      return null;
+    }
+    const attachment = object.attachmentList?.attachments?.[0];
+    if (attachment && attachment.type === 1) {
+      const attachment_media = attachment.video?.video?.desc?.media?.[0];
+      if (attachment_media) {
+        return attachment_media;
+      }
+    }
+    const media_list = object.objectDesc?.media;
+    return Array.isArray(media_list) && media_list.length ? media_list[0] : null;
+  }
+
+  // 规整成 pkg/scraper/wxchannels/types.go 的 ChannelsObject，下载端据此解密
+  // （objectDesc.media[0].decodeKey）并下载。
+  function normalize_finder_feed(feed) {
+    const object = feed && feed.object ? feed.object : feed;
+    const media = finder_media_from_feed(object);
+    if (!media) {
+      return null;
+    }
+    const desc = (object && object.objectDesc) || {};
+    // 只处理视频形态；图片/直播形态不能按视频分支下载。
+    const media_type =
+      Number(media.mediaType || 0) || Number(desc.mediaType || 0) || 4;
+    if (media_type !== 4) {
+      return null;
+    }
+    const url = normalize_finder_media_url(media);
+    if (!url) {
+      return null;
+    }
+    const contact = (object && object.contact) || {};
+    const decode_key =
+      media.decodeKey === undefined || media.decodeKey === null
+        ? ""
+        : String(media.decodeKey);
+    return {
+      id: String((object && object.id) || decode_key || url),
+      objectNonceId: String((object && object.objectNonceId) || ""),
+      createtime: Number((object && object.createtime) || 0),
+      type: "video",
+      source_url: String((object && object.source_url) || window.location.href),
+      contact: {
+        username: String(contact.username || ""),
+        nickname: String(contact.nickname || ""),
+        headUrl: String(contact.headUrl || ""),
+        signature: String(contact.signature || ""),
+        coverImgUrl: String(contact.coverImgUrl || ""),
+        liveCoverImgUrl: String(contact.liveCoverImgUrl || ""),
+      },
+      objectDesc: {
+        description: String(desc.description || ""),
+        mediaType: 4,
+        media: [
+          {
+            url,
+            urlToken: "",
+            mediaType: 4,
+            thumbUrl: String(media.thumbUrl || ""),
+            coverUrl: String(media.coverUrl || ""),
+            videoPlayLen: Number(media.videoPlayLen || 0),
+            width: Number(media.width || 0),
+            height: Number(media.height || 0),
+            fileSize: Number(media.fileSize || 0),
+            decodeKey: decode_key,
+            spec: Array.isArray(media.spec) ? media.spec : [],
+          },
+        ],
+      },
+    };
+  }
+
+  function capture_finder_feed(feed) {
+    // 事件在文章页自己的 promise 链里派发，抛错会打断页面渲染，必须全吞。
+    try {
+      const object = normalize_finder_feed(feed);
+      if (!object) {
+        return null;
+      }
+      const duplicated = captured_finder_feeds.some(
+        (item) => item.id && item.id === object.id,
+      );
+      if (!duplicated) {
+        captured_finder_feeds.push(object);
+      }
+      return object;
+    } catch (error) {
+      try {
+        WXU.log.Error(error).Msg("[mp.utils.js]capture_finder_feed");
+      } catch (_) {
+        // 日志不可用时忽略，绝不影响文章页。
+      }
+      return null;
+    }
+  }
+
+  function collect_finder_feeds() {
+    return captured_finder_feeds.slice();
+  }
+
+  // 文章是否含 wxmp 适配器能直接下载的内容（正文/图片/内嵌视频）。
+  function wxmp_article_downloadable(article) {
+    if (!article) {
+      return false;
+    }
+    if (String(article.content_noencode || "").trim()) {
+      return true;
+    }
+    if (
+      Array.isArray(article.picture_page_info_list) &&
+      article.picture_page_info_list.length
+    ) {
+      return true;
+    }
+    return (
+      Array.isArray(article.video_page_infos) &&
+      article.video_page_infos.length > 0
+    );
+  }
+
+  // 文章页内嵌的视频号 feed 由 interceptor 改写后的 getCommentDetail 通过
+  // WXU.emit("channels:OnFeedProfileLoaded", feed) 派发，公众号页面不加载
+  // channels.events.js，所以在这里补上同名的注册入口。
+  Object.assign(WXE.Events, {
+    FeedProfileLoaded: "channels:OnFeedProfileLoaded",
+  });
+  Object.assign(WXU, {
+    /**
+     * 获取到视频详情（文章页内嵌的视频号视频）
+     * @param {(feed: ChannelsFeed) => void} handler
+     */
+    onFetchFeedProfile: function (handler) {
+      WXE.on(WXE.Events.FeedProfileLoaded, handler);
+      return function () {
+        WXE.off(WXE.Events.FeedProfileLoaded, handler);
+      };
+    },
+  });
+  WXU.onFetchFeedProfile(capture_finder_feed);
+
   window.WXMPUtils = Object.freeze({
     article_ids_from_url,
     build_download_article,
+    capture_finder_feed,
+    collect_finder_feeds,
     collect_push_article_entries,
     decode_html_text,
     decode_official_account_url,
+    finder_media_from_feed,
     first_non_empty,
     get_page_data_value,
     get_url_param,
+    normalize_finder_feed,
+    normalize_finder_media_url,
     parse_official_account_msg_list,
+    wxmp_article_downloadable,
   });
 })();
