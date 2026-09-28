@@ -236,7 +236,7 @@ func (d *HermesEngine) copy_reader(
 			if expected_size > 0 {
 				pct := float64(*downloaded) * 100 / float64(expected_size)
 				log_speed := calc_speed(last_log, last_log_downloaded, now, *downloaded)
-				d.logger.Info().
+				d.logger.Debug().
 					Int("task_id", task_id).
 					Int("resource_id", resource_id).
 					Int64("downloaded", *downloaded).
@@ -245,7 +245,7 @@ func (d *HermesEngine) copy_reader(
 					Str("speed", format_speed(log_speed)).
 					Msg("download progress")
 			} else {
-				d.logger.Info().
+				d.logger.Debug().
 					Int("task_id", task_id).
 					Int("resource_id", resource_id).
 					Int64("downloaded", *downloaded).
@@ -433,7 +433,7 @@ func (d *HermesEngine) download_segments(
 			// Count how many progress events were received per second in this window
 			event_window := time.Since(last_progress_event_count)
 			events_per_sec := float64(progress_event_count-last_progress_event_count_n) / event_window.Seconds()
-			d.logger.Info().
+			d.logger.Debug().
 				Int("task_id", task_id).
 				Int("resource_id", resource_id).
 				Int64("downloaded", total_dl).
@@ -451,7 +451,7 @@ func (d *HermesEngine) download_segments(
 				if seg_size > 0 {
 					seg_pct = float64(s.downloaded) * 100 / float64(seg_size)
 				}
-				d.logger.Info().
+				d.logger.Debug().
 					Int("slot", s.slot).
 					Int64("downloaded", s.downloaded).
 					Int64("size", seg_size).
@@ -565,7 +565,7 @@ func (d *HermesEngine) download_segment(
 		attempt_start := downloaded
 		request := ReadRequest{OffsetStart: segment.OffsetStart + downloaded, OffsetEnd: segment.OffsetEnd, UseRange: true}
 		open_start := time.Now()
-		d.logger.Info().
+		d.logger.Debug().
 			Int("slot", slot).
 			Int("attempt", connection_attempt).
 			Int("consecutive_stalls", stalled_attempts).
@@ -577,7 +577,7 @@ func (d *HermesEngine) download_segment(
 		if err != nil {
 			last_err = err
 			stalled_attempts++
-			d.logger.Info().
+			d.logger.Debug().
 				Int("slot", slot).
 				Int("attempt", connection_attempt).
 				Int("consecutive_stalls", stalled_attempts).
@@ -594,7 +594,7 @@ func (d *HermesEngine) download_segment(
 			}
 			continue
 		}
-		d.logger.Info().
+		d.logger.Debug().
 			Int("slot", slot).
 			Int("attempt", connection_attempt).
 			Dur("open_elapsed", open_elapsed).
@@ -655,7 +655,7 @@ func (d *HermesEngine) download_segment(
 			if time.Since(last_seg_log) >= 1500*time.Millisecond ||
 				int64(seg_pct) >= int64(float64(last_seg_log_downloaded)*100/float64(segment.Size))+5 {
 				seg_log_speed := calc_speed(last_seg_log, last_seg_log_downloaded, now, downloaded)
-				d.logger.Info().
+				d.logger.Debug().
 					Int("slot", slot).
 					Int("index", segment.Index).
 					Int64("dl", downloaded).
@@ -674,13 +674,13 @@ func (d *HermesEngine) download_segment(
 					last_err = read_err
 				}
 				if errors.Is(read_err, err_read_timeout) {
-					d.logger.Info().
+					d.logger.Debug().
 						Int("slot", slot).
 						Int64("progress", downloaded).
 						Int64("total", segment.Size).
 						Msg("seg: Read() timeout, will retry")
 				} else {
-					d.logger.Info().
+					d.logger.Debug().
 						Int("slot", slot).
 						Err(read_err).
 						Int64("progress", downloaded).
@@ -696,7 +696,7 @@ func (d *HermesEngine) download_segment(
 		}
 		close_reader()
 		if downloaded == segment.Size {
-			d.logger.Info().
+			d.logger.Debug().
 				Int("slot", slot).
 				Int64("size", segment.Size).
 				Msg("seg: finished")

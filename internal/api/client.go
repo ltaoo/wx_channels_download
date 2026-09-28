@@ -1,9 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -44,6 +46,32 @@ type APIClient struct {
 	service_tag            *services.TagService
 }
 
+// gin_debug_writer redirects gin's per-request access log into zerolog at Debug
+// level, so a busy instance no longer floods stdout with one line per request.
+type gin_debug_writer struct {
+	logger *zerolog.Logger
+	mu     sync.Mutex
+	tail   []byte
+}
+
+func (w *gin_debug_writer) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.tail = append(w.tail, p...)
+	for {
+		index := bytes.IndexByte(w.tail, '\n')
+		if index < 0 {
+			break
+		}
+		line := strings.TrimSpace(string(w.tail[:index]))
+		w.tail = w.tail[index+1:]
+		if line != "" {
+			w.logger.Debug().Msg(line)
+		}
+	}
+	return len(p), nil
+}
+
 func NewAPIClient(
 	cfg *APIConfig,
 	parent_logger *zerolog.Logger,
@@ -69,6 +97,7 @@ func NewAPIClient(
 	engine.Use(
 		gin.LoggerWithConfig(gin.LoggerConfig{
 			SkipPaths: []string{"/report"},
+			Output:    &gin_debug_writer{logger: &logger},
 		}),
 		gin.Recovery(),
 	)

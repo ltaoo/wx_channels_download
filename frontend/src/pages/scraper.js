@@ -1635,6 +1635,16 @@ function ScraperTreeRow(props) {
       View({ class: "file-tree-name dm-truncate" }, [
         (node && node.name) || "文件",
       ]),
+      resource && resource.is_cover
+        ? Tag(
+            {
+              name: "scraper-tree-file-cover",
+              class: "home-download-cover-badge",
+              attributes: { title: "额外下载的封面图片" },
+            },
+            ["封面"],
+          )
+        : null,
       View({ class: "file-tree-meta" }, [
         resource
           ? [resource.kind, format_file_size(resource.size)]
@@ -1733,6 +1743,23 @@ function ScraperDownloadInfo(props) {
                   count: download_info.resource_count_text,
                 },
                 [
+                  Show({
+                    when: download_info.has_cover,
+                    ok() {
+                      return View(
+                        {
+                          class: "dm-notice-row home-download-cover-notice",
+                          attributes: { n: "scraper-download-cover-notice" },
+                        },
+                        [
+                          Timeless.Icon({ name: "image", size: 15 }),
+                          View({ class: "dm-min-w-0 dm-flex-1" }, [
+                            download_info.cover_notice_text,
+                          ]),
+                        ],
+                      );
+                    },
+                  }),
                   FileTreeView({
                     resources_: download_info.resources,
                     renderRow(row_props) {

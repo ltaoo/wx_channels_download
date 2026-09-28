@@ -8,7 +8,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     WX_VIDEO_HOME=/config/wx_video_download \
     WX_VIDEO_SEED_HOME=/usr/local/share/wx_video_download \
     WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH=/config/wx_video_download/config.yaml \
-    WECHAT_BIN=/usr/bin/wechat
+    WECHAT_BIN=/usr/bin/wechat \
+    WX_LOG_DIR=/config/logs \
+    WX_OUT_LOG_MAX_BYTES=52428800 \
+    WX_OUT_LOG_KEEP_BYTES=5242880
 
 # Copy files that rarely change and are needed by the install step
 COPY SunnyNet.cer /usr/local/share/ca-certificates/SunnyNet.crt
@@ -84,6 +87,6 @@ RUN set -eux; \
     setcap cap_net_admin,cap_net_raw+ep /usr/local/share/wx_video_download/wx_video_download || true
 
 COPY rootfs/ /
-RUN chmod +x /usr/local/bin/wx-* /custom-cont-init.d/*
+RUN chmod +x /usr/local/bin/wx-* /custom-cont-init.d/* /custom-services.d/*
 
 EXPOSE 3000 3001 2022 2023

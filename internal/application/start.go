@@ -213,7 +213,7 @@ func Start(cfg *config.Config) error {
 		if !ok {
 			return
 		}
-		logger.Info().Str("file", "/application/start.go").Int("task_id", task_id).Str("event", string(event)).Msg("Hermes task event")
+		logger.Debug().Str("file", "/application/start.go").Int("task_id", task_id).Str("event", string(event)).Msg("Hermes task event")
 		download_task_broadcaster.Notify(task_id, event, progress, finished_resources)
 		if event == hermes.EventFinished {
 			go bus.Publish(events.DownloadTaskFinished{TaskID: task_id})

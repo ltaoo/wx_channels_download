@@ -9,6 +9,8 @@ download:
   dir: "%UserDownloads%"
   playDoneAudio: true
   defaultActionWhenExisting: ""
+  # 除主资源外额外保存一份封面图片（与 channels.download.cover 任一开启即生效）
+  cover: false
   maxRunning: 3
   resourceConcurrency: 100
   segmentConcurrency: 10
@@ -23,6 +25,14 @@ api:
   protocol: "http"
   hostname: "127.0.0.1"
   port: 2022
+
+# 数据同步接收令牌；源服务 servers[].token 必须与目标服务的 token 一致
+sync:
+  token: ""
+  servers: []
+  # - name: "备用下载机"
+  #   url: "http://192.168.1.3:2022"
+  #   token: "请设置为目标服务的 sync.token"
 
 mcp:
   enabled: false

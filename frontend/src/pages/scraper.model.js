@@ -559,6 +559,14 @@ function ScraperPageViewModel(props) {
       normalized_download_info_,
       (download_info) => download_info.resources,
     ),
+    has_cover: computed(
+      normalized_download_info_,
+      (download_info) => download_info.has_cover,
+    ),
+    cover_notice_text: computed(
+      normalized_download_info_,
+      (download_info) => download_info.cover_notice_text,
+    ),
     preferred_third_party_resource: preferred_third_party_resource_,
     third_party_download_disabled: third_party_download_disabled_,
     hide_resources: computed(normalized_content_details_, (details) =>
@@ -2839,20 +2847,23 @@ function normalize_download_resource(resource_info, index, content_id) {
     suffix && !name.toLowerCase().endsWith(suffix.toLowerCase())
       ? `${name}${suffix}`
       : name;
+  const unique_id = String(
+    first_non_empty(resource.unique_id, resource.UniqueID, `${name}:${index}`),
+  );
+  // The adapter stores the extra cover as a sidecar resource so the main media is
+  // not mixed with it; flag it so the UI can call it out instead of listing it as
+  // another anonymous file. Only the sidecar id marks the *extra* cover: a
+  // cover-only download also carries a `cover` asset, but it is the main resource.
+  const is_cover = unique_id.endsWith("_sidecar_cover");
   return {
-    key: String(
-      first_non_empty(
-        resource.unique_id,
-        resource.UniqueID,
-        `${name}:${index}`,
-      ),
-    ),
+    key: unique_id,
     index_text: String(index + 1).padStart(2, "0"),
     resource_index: index,
     name,
     display_name,
     kind,
     icon: download_resource_icon(kind),
+    is_cover,
     meta_text: [
       kind,
       format_bytes(first_non_empty(resource.size, resource.Size)) || "unknown",
@@ -2884,6 +2895,8 @@ function normalize_download_info(result) {
       present: false,
       resource_count_text: "0",
       resources: [],
+      has_cover: false,
+      cover_notice_text: "",
       task: {
         id_text: "-",
         name: "下载任务",
@@ -2925,10 +2938,16 @@ function normalize_download_info(result) {
     0,
   );
   const task_id = number_or_default(first_non_empty(task.id, task.Id), 0);
+  const cover_count = resources.filter((resource) => resource.is_cover).length;
   return {
     present: true,
     resource_count_text: String(resources.length),
     resources,
+    has_cover: cover_count > 0,
+    cover_notice_text:
+      cover_count > 0
+        ? `除主资源外，还将额外下载 ${cover_count} 张封面图片`
+        : "",
     task: {
       id_text: task_id > 0 ? `#${task_id}` : "-",
       name: String(first_non_empty(task.name, task.Name, "下载任务")),
@@ -3213,6 +3232,32 @@ function normalize_generic_detail_fields(data) {
   return fields;
 }
 
+// Platforms whose CDN rejects a browser request from the local app. X's video
+// host returns 403 for any Referer that is not an x.com origin, and browsers
+// ignore `referrerpolicy` on <video>, so the raw URL can never play here. Send
+// those videos through the app's own media proxy (the one the Channels player
+// uses): it re-requests the CDN server-side, and the CDN sees no Referer.
+const proxied_video_platforms = new Set(["x"]);
+
+function video_playback_url(platform_id, raw_url) {
+  const video_url = String(raw_url || "").trim();
+  const platform = String(platform_id || "")
+    .trim()
+    .toLowerCase();
+  if (!video_url || !proxied_video_platforms.has(platform)) {
+    return video_url;
+  }
+  if (!/^https?:\/\//i.test(video_url)) {
+    return video_url;
+  }
+  const proxy_url = new URL(
+    "/play",
+    window.API_ORIGIN || window.location.origin,
+  );
+  proxy_url.searchParams.set("url", video_url);
+  return proxy_url.href;
+}
+
 function normalize_video_detail_media(data, content) {
   const video_url = String(
     first_non_empty(
@@ -3258,7 +3303,7 @@ function normalize_video_detail_media(data, content) {
   ).trim();
   return {
     present: Boolean(video_url || cover_url),
-    video_url,
+    video_url: video_playback_url(content && content.platform_id, video_url),
     cover_url: proxy_image_url(content && content.platform_id, cover_url),
     has_video: Boolean(video_url),
     has_cover: Boolean(cover_url),
@@ -3866,6 +3911,8 @@ function normalize_typed_content_detail(
     has_variants: variants.length > 0,
     has_text_tracks: text_tracks.length > 0,
     is_collection: kind === "collection",
+    // 内容为视频号内嵌/纯媒体的文章，正文为空，只会渲染出一张空白卡片。
+    empty: kind === "article" && !article_body.present,
     link_url: String(first_non_empty(data.url, data.stream_url)).trim(),
   };
 }
@@ -3977,15 +4024,17 @@ function normalize_content_details(
       });
       continue;
     }
-    items.push(
-      normalize_typed_content_detail(
-        detail,
-        detail_index,
-        content,
-        create_article_html_content,
-        selected_video_variant,
-      ),
+    const typed_detail = normalize_typed_content_detail(
+      detail,
+      detail_index,
+      content,
+      create_article_html_content,
+      selected_video_variant,
     );
+    if (typed_detail.empty) {
+      continue;
+    }
+    items.push(typed_detail);
   }
 
   volumes.sort((left, right) => left.idx - right.idx);

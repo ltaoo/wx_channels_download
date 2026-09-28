@@ -15,7 +15,33 @@ import (
 	"wx_channel/frontend"
 )
 
-var csp_nonce_reg = regexp.MustCompile(`'nonce-([^']+)'`)
+var (
+	csp_nonce_reg = regexp.MustCompile(`'nonce-([^']+)'`)
+
+	// WeChat serves its H5 bundles with a one-year cache header and references
+	// them with its own ?v=<build> query, so both the article HTML and the
+	// bundles themselves are stamped with the app version to force a refetch
+	// through the proxy. The original query is swallowed and replaced; the CDN
+	// serves the same bytes either way. Same rules as the wxchannels scraper.
+	html_script_src_reg  = regexp.MustCompile(`src="([^"]{1,})\.js(\?[^"]*)?"`)
+	html_script_href_reg = regexp.MustCompile(`href="([^"]{1,})\.js(\?[^"]*)?"`)
+	js_from_reg          = regexp.MustCompile(`from {0,1}"([^"]{1,})\.js(\?[^"]*)?"`)
+	js_dep_reg           = regexp.MustCompile(`"js/([^"]{1,})\.js(\?[^"]*)?"`)
+	js_lazy_import_reg   = regexp.MustCompile(`import\("([^"]{1,})\.js(\?[^"]*)?"\)`)
+	js_import_reg        = regexp.MustCompile(`import {0,1}"([^"]{1,})\.js(\?[^"]*)?"`)
+
+	// res.wx.qq.com ships the official-account H5 bundles minified in a single
+	// line, so FeedObejectHandler.getCommentDetail has to be matched with a
+	// regex instead of a parser.
+	//
+	// Groups: 1/2 = method arguments, 3 = the whole __awaiter(...) expression
+	// that the method returns.
+	js_mp_get_comment_detail_reg = regexp.MustCompile(
+		`getCommentDetail\(([A-Za-z_$][\w$]*),([A-Za-z_$][\w$]*)\)\{return ` +
+			`([A-Za-z_$][\w$]*\(this,void 0,void 0,\(function\*\(\)\{(?s:.*?)\}\)\))` +
+			`\}`,
+	)
+)
 
 // InterceptorConfig contains the application values needed by the
 // official-account injection rule.
@@ -74,6 +100,12 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 				return
 			}
 			html_content := response_body
+			// The webview would otherwise reuse the cached bundles and never ask
+			// the proxy for them, so the version stamp is what makes the
+			// res.wx.qq.com rewrite below reach the page.
+			v := "?t=" + cfg.Version
+			html_content = html_script_src_reg.ReplaceAllString(html_content, `src="$1.js`+v+`"`)
+			html_content = html_script_href_reg.ReplaceAllString(html_content, `href="$1.js`+v+`"`)
 			csp := ctx.GetResponseHeader("Content-Security-Policy") + " " + ctx.GetResponseHeader("Content-Security-Policy-Report-Only")
 			mp_websocket_url := build_mp_websocket_url(settings)
 			rewrite_response_csp(ctx, asset_base_url, mp_websocket_url)
@@ -151,7 +183,67 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 			ctx.SetResponseBody(html_content)
 		},
 	}
-	return []*echo.Plugin{plugin}
+	// res.wx.qq.com serves the bundles used by mp.weixin.qq.com pages, so the
+	// article page cannot be patched from the HTML hook alone. Like the
+	// wxchannels plugin, every bundle gets its imports stamped and the pathname
+	// decides the extra rewrites; more pathnames can be handled by adding
+	// branches here.
+	js_plugin := &echo.Plugin{
+		Match: "res.wx.qq.com",
+		OnResponse: func(ctx *echo.Context) {
+			response_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
+			hostname := ctx.Req.URL.Hostname()
+			pathname := ctx.Req.URL.Path
+			if hostname != "res.wx.qq.com" || !strings.Contains(response_content_type, "javascript") {
+				return
+			}
+			// The wasm loader is transported untouched: stamping its imports
+			// breaks the video decoder. Same exception as the wxchannels scraper.
+			if strings.Contains(pathname, "wasm_video_decode") {
+				return
+			}
+			js_script, err := ctx.GetResponseBody()
+			if err != nil {
+				return
+			}
+			// Every import of a sibling bundle is stamped with the app version,
+			// matching the stamp put on the page's <script> tags, so the whole
+			// module graph is refetched through the proxy instead of being
+			// served from the webview cache.
+			v := "?t=" + cfg.Version
+			rewritten := js_script
+			rewritten = js_from_reg.ReplaceAllString(rewritten, `from"$1.js`+v+`"`)
+			rewritten = js_dep_reg.ReplaceAllString(rewritten, `"js/$1.js`+v+`"`)
+			rewritten = js_lazy_import_reg.ReplaceAllString(rewritten, `import("$1.js`+v+`")`)
+			rewritten = js_import_reg.ReplaceAllString(rewritten, `import"$1.js`+v+`"`)
+			// Article pages embed a 视频号 video by calling
+			// FeedObejectHandler.getCommentDetail, which fetches the feed
+			// object from /cgi-bin/micromsg-bin/h5_findergetcommentdetail.
+			// Chain a .then onto the promise it returns so the feed is
+			// emitted before the caller receives it. $1/$2 are the original
+			// arguments and $3 the original __awaiter(...) expression, so the
+			// original body and the resolved value stay untouched.
+			if strings.Contains(pathname, "common_share_video") {
+				rewritten = js_mp_get_comment_detail_reg.ReplaceAllString(
+					rewritten,
+					`getCommentDetail($1,$2){return $3.then(function(result){
+						var feed = result && result.object;
+						typeof WXU !== "undefined" && WXU.emit("channels:OnFeedProfileLoaded", feed);
+						return result;
+					})}`,
+				)
+			}
+			if rewritten == js_script {
+				return
+			}
+			logger.Info().
+				Str("file", "pkg/scraper/wxmp/interceptor.go").
+				Str("pathname", pathname).
+				Msg("wxmp interceptor rewrote res.wx.qq.com bundle")
+			ctx.SetResponseBody(rewritten)
+		},
+	}
+	return []*echo.Plugin{plugin, js_plugin}
 }
 
 func rewrite_response_csp(ctx *echo.Context, asset_base_url string, websocket_url string) {

@@ -555,6 +555,7 @@ export function ShellViewModel(props) {
     { title: "账号", name: "root.shell.account", icon: "user" },
     // { title: "视频号", name: "root.shell.wxchannels", icon: "play" },
     { title: "自动化", name: "root.shell.automation", icon: "bot" },
+    { title: "同步", name: "root.shell.sync", icon: "upload" },
     // { title: "日志", name: "root.shell.logs", icon: "user" },
   ];
   const menu$ = Timeless.kit.RouteMenusModel({
