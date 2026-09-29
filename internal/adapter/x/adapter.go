@@ -159,8 +159,22 @@ func content_details(result *x_scraper.FetchResult) []adapter.ContentDetail {
 	}
 	videos := content_videos(result)
 	details := make([]adapter.ContentDetail, 0, len(videos)+2)
-	for _, video := range videos {
-		details = append(details, adapter.ContentDetail{Type: model.ContentTypeVideo, Key: video.Id, Data: video})
+	for video_index, video := range videos {
+		details = append(details, adapter.ContentDetail{
+			Type:    model.ContentTypeVideo,
+			Key:     video.Id,
+			Content: video_content(result, video_index, video),
+			Data:    video,
+			// A post's own record cannot carry a video's downloads: the viewer
+			// lists resources filed under the post or under a `contains` child,
+			// so every video gets a child content record of its own.
+			Relation: &model.ContentRelation{
+				SourceContentId: PlatformID + ":" + result.ExternalID,
+				TargetContentId: video.Id,
+				Type:            model.ContentRelationContains,
+				SortOrder:       video_index,
+			},
+		})
 	}
 	// A photo post is a gallery: its images come before the caption so the
 	// viewer shows the grid first.
@@ -414,6 +428,36 @@ func content_video(result *x_scraper.FetchResult, video_index int) *model.Conten
 	return &model.ContentVideo{
 		Id: content_id, Duration: (video.DurationMillis + 999) / 1000, Width: video.Width, Height: video.Height,
 		Bitrate: selected_bitrate, Format: "mp4", URL: video.URL, Variants: variants,
+	}
+}
+
+// video_content is the child content record one attached video files under.
+// Resources are listed per content id, so without a record of its own a video's
+// download would never show up on the post's detail page.
+func video_content(result *x_scraper.FetchResult, video_index int, content_video *model.ContentVideo) *model.Content {
+	if result == nil || content_video == nil || video_index < 0 || video_index >= len(result.Videos) {
+		return nil
+	}
+	video := result.Videos[video_index]
+	title := post_title(result.BodyText, result.AuthorName)
+	if len(result.Videos) > 1 {
+		title = fmt.Sprintf("%s_%02d", title, video_index+1)
+	}
+	now := util.NowMillis()
+	return &model.Content{
+		Id:          content_video.Id,
+		PlatformId:  PlatformID,
+		Type:        model.ContentTypeVideo,
+		Subtype:     model.ContentSubtypeShortVideo,
+		ExternalId:  video.ID,
+		ExternalId2: result.AuthorID,
+		Title:       title,
+		Description: strings.TrimSpace(result.BodyText),
+		URL:         video.URL,
+		SourceURL:   result.SourceURL,
+		CoverURL:    first_non_empty(video.CoverURL, result.CoverURL),
+		PublishTime: positive_int64_pointer(result.PublishTime),
+		Timestamps:  model.Timestamps{CreatedAt: now, UpdatedAt: now},
 	}
 }
 
