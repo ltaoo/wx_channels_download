@@ -17,21 +17,23 @@ import (
 	"github.com/adrg/xdg"
 	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
+
+	"wx_channel/internal/logfile"
 )
 
 type Config struct {
-	RootDir  string // Directory where the binary is located
-	WorkDir  string // Runtime data directory
-	Filename string // Config file name
-	FullPath string // Full path to the config file
-	Existing bool   // Whether the config file exists
-	Error    error
-	Debug    bool
-	Version  string
-	Mode     string
-	logger   *zerolog.Logger
-	log_file *os.File
-	log_path string
+	RootDir    string // Directory where the binary is located
+	WorkDir    string // Runtime data directory
+	Filename   string // Config file name
+	FullPath   string // Full path to the config file
+	Existing   bool   // Whether the config file exists
+	Error      error
+	Debug      bool
+	Version    string
+	Mode       string
+	logger     *zerolog.Logger
+	log_writer *logfile.Writer
+	log_path   string
 
 	// Resolved global script
 	GlobalScriptPath string // Absolute path to configured global script
@@ -77,7 +79,7 @@ const EnvConfigPath = "WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH"
 
 var config_write_mu sync.Mutex
 
-func New(ver string, mode string, logger *zerolog.Logger, log_file *os.File, log_path string) *Config {
+func New(ver string, mode string, logger *zerolog.Logger, log_writer *logfile.Writer, log_path string) *Config {
 	exe, _ := os.Executable()
 	exe_dir := filepath.Dir(exe)
 	base_dir := exe_dir
@@ -103,7 +105,7 @@ func New(ver string, mode string, logger *zerolog.Logger, log_file *os.File, log
 			Version:  ver,
 			Mode:     mode,
 		}
-		c.set_logger(logger, log_file, log_path)
+		c.set_logger(logger, log_writer, log_path)
 		return c
 	}
 
@@ -140,16 +142,16 @@ func New(ver string, mode string, logger *zerolog.Logger, log_file *os.File, log
 		Version:  ver,
 		Mode:     mode,
 	}
-	c.set_logger(logger, log_file, log_path)
+	c.set_logger(logger, log_writer, log_path)
 	return c
 }
 
-func (c *Config) set_logger(logger *zerolog.Logger, log_file *os.File, log_path string) {
+func (c *Config) set_logger(logger *zerolog.Logger, log_writer *logfile.Writer, log_path string) {
 	if c == nil {
 		return
 	}
 	c.logger = logger
-	c.log_file = log_file
+	c.log_writer = log_writer
 	c.log_path = log_path
 }
 
@@ -157,8 +159,8 @@ func (c *Config) Logger() *zerolog.Logger {
 	return c.logger
 }
 
-func (c *Config) LogFile() *os.File {
-	return c.log_file
+func (c *Config) LogWriter() *logfile.Writer {
+	return c.log_writer
 }
 
 func (c *Config) LogPath() string {
@@ -487,6 +489,15 @@ func (c *Config) LoadConfig() error {
 		HotReload:   true,
 	})
 	Register(ConfigField{
+		Key:         "download.cover",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "视频号下载时，除主资源外额外保存一份封面图片；与 channels.download.cover 任一开启即生效",
+		Title:       "额外下载封面",
+		Group:       "Download",
+		HotReload:   true,
+	})
+	Register(ConfigField{
 		Key:         "download.maxRunning",
 		Type:        ConfigTypeInt,
 		Default:     3,
@@ -719,40 +730,6 @@ func (c *Config) LoadConfig() error {
 		Title:       "D1 Database Name",
 		Group:       "Cloudflare",
 		HotReload:   true,
-	})
-	Register(ConfigField{
-		Key:         "bridge.deploy.workerName",
-		Type:        ConfigTypeString,
-		Default:     "dm-bridge",
-		Description: "部署 Durable Objects Bridge 桥接/转发服务时使用的 Cloudflare Worker 名称",
-		Title:       "Bridge Worker 名称",
-		Group:       "Bridge",
-	})
-	Register(ConfigField{
-		Key:         "bridge.deploy.pagesProjectName",
-		Type:        ConfigTypeString,
-		Default:     "",
-		Description: "Bridge 管理页面的 Cloudflare Pages 项目名；留空时使用 <workerName>-admin",
-		Title:       "Bridge Pages 项目名",
-		Group:       "Bridge",
-	})
-	Register(ConfigField{
-		Key:         "bridge.deploy.token",
-		Type:        ConfigTypeString,
-		Default:     "",
-		Description: "部署为 BRIDGE_TOKEN secret 的设备连接凭证；不要分发给外部调用者",
-		Title:       "Bridge 设备 Secret",
-		Group:       "Bridge",
-		Sensitive:   true,
-	})
-	Register(ConfigField{
-		Key:         "bridge.deploy.adminToken",
-		Type:        ConfigTypeString,
-		Default:     "",
-		Description: "保护 Bridge 管理页面和调用 Token 管理 API 的独立管理员密码，不能与设备 Secret 相同",
-		Title:       "Bridge 管理员 Token",
-		Group:       "Bridge",
-		Sensitive:   true,
 	})
 	Register(ConfigField{
 		Key:         "bridge.enabled",

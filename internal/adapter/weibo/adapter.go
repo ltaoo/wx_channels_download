@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/PuerkitoBio/goquery"
 
@@ -215,11 +216,72 @@ func (h *handler) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	content_video := content_video_from_result(result)
-	if content_video == nil {
-		return nil, nil
+	return content_details_from_result(result), nil
+}
+
+// content_details_from_result is the post's detail list: the video, then the
+// photo grid, then the post body. Every detail shares the post's content id,
+// so each key carries its own suffix to stay addressable.
+func content_details_from_result(result *FetchResult) []adapter.ContentDetail {
+	details := make([]adapter.ContentDetail, 0, 3)
+	if video := content_video_from_result(result); video != nil {
+		details = append(details, adapter.ContentDetail{Type: model.ContentTypeVideo, Key: video.Id + ":video", Data: video})
 	}
-	return []adapter.ContentDetail{{Type: model.ContentTypeVideo, Key: content_video.Id, Data: content_video}}, nil
+	if album := content_album_from_result(result); album != nil {
+		details = append(details, adapter.ContentDetail{Type: model.ContentTypeAlbum, Key: album.Id + ":album", Data: album})
+	}
+	// A post whose whole content is its text still needs one detail record.
+	if article := content_article_from_result(result); article != nil {
+		details = append(details, adapter.ContentDetail{Type: model.ContentTypePost, Key: article.Id + ":post", Data: article})
+	}
+	return details
+}
+
+// content_album_from_result turns the post's photos into a gallery detail. The
+// images are only reachable through it: Weibo renders the picture list outside
+// the body HTML, so a text-only detail never shows them.
+func content_album_from_result(result *FetchResult) *model.ContentAlbum {
+	if result == nil || len(result.Images) == 0 {
+		return nil
+	}
+	album := &model.ContentAlbum{
+		Id:          PlatformID + ":" + result.ExternalID,
+		ImageCount:  len(result.Images),
+		Description: strings.TrimSpace(result.BodyText),
+	}
+	for image_index, source_image := range result.Images {
+		album.Images = append(album.Images, model.ContentImage{
+			AlbumId:   album.Id,
+			ImageKey:  model.BuildContentAlbumImageKey("", source_image.URL, image_index),
+			SortOrder: image_index,
+			URL:       source_image.URL,
+			Ext:       source_image.Ext,
+			ImageType: model.ContentImageTypeStill,
+		})
+	}
+	return album
+}
+
+func content_article_from_result(result *FetchResult) *model.ContentArticle {
+	if result == nil {
+		return nil
+	}
+	body_html := strings.TrimSpace(result.BodyHTML)
+	body_text := strings.TrimSpace(result.BodyText)
+	if body_html == "" && body_text == "" {
+		return nil
+	}
+	article := &model.ContentArticle{
+		Id:        PlatformID + ":" + result.ExternalID,
+		Type:      model.ContentArticleTypeText,
+		WordCount: utf8.RuneCountInString(body_text),
+		Text:      body_text,
+	}
+	if body_html != "" {
+		article.Type = model.ContentArticleTypeHTML
+		article.HTML = body_html
+	}
+	return article
 }
 
 func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_json json.RawMessage) (*adapter.DownloadTaskResult, error) {
@@ -279,8 +341,7 @@ func (h *handler) build_download_task(result *FetchResult, config_json json.RawM
 		task_name = content.Title
 	}
 	html_text := render_detail_html(result)
-	content_video := content_video_from_result(result)
-	content_details := content_video_details(content_video)
+	content_details := content_details_from_result(result)
 	resources := make([]*adapter.ResourceInfo, 0, len(result.Images)+3)
 	resources = append(resources, &adapter.ResourceInfo{
 		Resource: model.DownloadResource{
@@ -329,6 +390,10 @@ func (h *handler) build_download_task(result *FetchResult, config_json json.RawM
 		if len(result.Images) > 1 {
 			image_name += fmt.Sprintf("_%02d", image_index+1)
 		}
+		// Weibo exposes no per-photo id, so the gallery addresses each image by
+		// its URL. The resource carries the same key as the album detail so the
+		// saved photo is the one the gallery renders.
+		image_key := model.BuildContentAlbumImageKey("", image.URL, image_index)
 		resources = append(resources, &adapter.ResourceInfo{
 			Resource: model.DownloadResource{
 				ContentId: &content.Id,
@@ -343,10 +408,13 @@ func (h *handler) build_download_task(result *FetchResult, config_json json.RawM
 				Headers:  string(image_headers),
 			}},
 			ContentAssets: []adapter.ContentAssetReference{{
-				Kind:     model.ContentAssetKindImage,
-				Role:     model.ContentAssetRoleAttachment,
-				AssetKey: fmt.Sprintf("image:%d:%s", image_index+1, image.Ext),
-				Relation: model.DownloadResourceAssetRelationSource,
+				Kind:            model.ContentAssetKindImage,
+				Role:            model.ContentAssetRolePrimary,
+				AssetKey:        model.BuildContentAlbumImageAssetKey(image_key, "original"),
+				Relation:        model.DownloadResourceAssetRelationSource,
+				SubjectType:     model.ContentAssetSubjectAlbumImage,
+				SubjectKey:      image_key,
+				SubjectRelation: model.ContentAssetSubjectRelationRepresentation,
 			}},
 		})
 	}
@@ -377,6 +445,12 @@ func (h *handler) build_download_task(result *FetchResult, config_json json.RawM
 			}},
 		})
 	}
+	// The preview is only valid when the primary detail is backed by a published
+	// detail record, so derive it from the same list instead of a bare pointer.
+	var content_detail any
+	if len(content_details) > 0 {
+		content_detail = content_details[0].Data
+	}
 	return &adapter.DownloadTaskResult{
 		Task: &model.DownloadTask{
 			ContentId:    &content.Id,
@@ -390,7 +464,7 @@ func (h *handler) build_download_task(result *FetchResult, config_json json.RawM
 			MetadataJSON: content.Metadata,
 		},
 		Resources:      resources,
-		ContentDetail:  content_video,
+		ContentDetail:  content_detail,
 		ContentDetails: content_details,
 		Account:        account,
 		Content:        content,

@@ -1,3 +1,4 @@
+import { format_time } from "@/utils.js";
 import {
   BatchOverwriteConfirmDialog,
   ClearTasksConfirmDialog,
@@ -123,13 +124,13 @@ function DownloadV2Page(props) {
       cellAttributes(task$) {
         return {
           title: computed(task$.state.raw, (raw) =>
-            window.format_time(raw && raw.created_at),
+            format_time(raw && raw.created_at),
           ),
         };
       },
       render(task$) {
         return computed(task$.state.raw, (raw) =>
-          window.format_time(raw && raw.created_at),
+          format_time(raw && raw.created_at),
         );
       },
     },
@@ -149,8 +150,7 @@ function DownloadV2Page(props) {
 
   return View(
     {
-      class:
-        "content-page content-library-page dl-page-root page",
+      class: "content-page content-library-page dl-page-root page",
       attributes: { n: "download-page" },
       onMounted() {
         vm$.methods.ready();

@@ -9,9 +9,9 @@ MCP（Model Context Protocol）让支持 MCP 的 AI 客户端以工具调用的�
 下载器支持两种接入方式：
 
 - **Streamable HTTP（推荐）**：使用主服务的 `/mcp` 端点。内置 MCP 直接访问当前进程中的数据库和运行时服务。
-- **stdio**：由 AI 客户端启动 `wx_video_download mcp` 子进程，再通过已经运行的下载器 API 完成操作。
+- **stdio**：由 AI 客户端启动 `wx_video_download mcp` 子进程，再通过已经运行的下载器 API 完成操作。下载器必须处于运行状态；启动时若探测不到，会向 stderr 打印警告但不终止进程。
 
-两种接入方式提供相同的 MCP 工具。需要更完整的 stdio 配置与视频号外部下载说明，可参阅 [MCP Server 命令行文档](/cli/mcp)。
+两种接入方式共用同一份工具定义，仅按各进程实际拥有的后端裁剪可用性：Streamable HTTP 能访问进程内全部服务，stdio 受限于下载器 API 暴露的能力。需要更完整的 stdio 配置与视频号外部下载说明，可参阅 [MCP Server 命令行文档](/cli/mcp)。
 
 ## 文档
 

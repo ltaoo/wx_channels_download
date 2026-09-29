@@ -382,6 +382,9 @@ func request_host(raw_url string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("minib: parse request URL: %w", err)
 	}
+	if parsed_url.Scheme == "file" {
+		return "file", nil
+	}
 	if parsed_url.Scheme != "http" && parsed_url.Scheme != "https" && parsed_url.Scheme != "ws" && parsed_url.Scheme != "wss" {
 		return "", fmt.Errorf("minib: unsupported request URL scheme %q", parsed_url.Scheme)
 	}

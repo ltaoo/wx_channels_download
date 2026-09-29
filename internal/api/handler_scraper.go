@@ -43,7 +43,7 @@ func (c *APIClient) handle_scraper_cache_content(ctx *gin.Context) {
 		result.Err(ctx, api_code_invalid_params, "缺少参数：id 或 key")
 		return
 	}
-	cache_entry := c.scraper_job_service.GetCacheEntry(job_id, cache_key)
+	cache_entry := c.service_scraper_job.GetCacheEntry(job_id, cache_key)
 	if cache_entry == nil {
 		result.Err(ctx, api_code_invalid_params, "缓存条目不存在")
 		return

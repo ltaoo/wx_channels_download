@@ -176,7 +176,7 @@ func (c *APIClient) add_scraper_ws_client(client *scraper_ws_client) {
 
 func (c *APIClient) scraper_platform_status_snapshots() []events.PlatformStatusChanged {
 	descriptors := adapter.StatusDescriptors()
-	current_statuses := c.runtime_status_service.PlatformStatuses()
+	current_statuses := c.service_runtime_status.PlatformStatuses()
 	statuses := make([]events.PlatformStatusChanged, 0, len(descriptors))
 	for _, descriptor := range descriptors {
 		status, exists := current_statuses[descriptor.Key]

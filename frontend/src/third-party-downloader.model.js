@@ -1,3 +1,5 @@
+import { request } from "./biz/request.js";
+
 const third_party_downloader_storage_key = "third_party_downloader";
 
 export const THIRD_PARTY_DOWNLOADER_OPTIONS = Object.freeze([
@@ -54,7 +56,9 @@ function default_profiles() {
 
 function read_saved_settings(storage) {
   try {
-    const saved = storage ? storage.get(third_party_downloader_storage_key) : {};
+    const saved = storage
+      ? storage.get(third_party_downloader_storage_key)
+      : {};
     const profiles = default_profiles();
     Object.keys(profiles).forEach((kind) => {
       const profile = saved.profiles && saved.profiles[kind];
@@ -237,12 +241,20 @@ export function ThirdPartyDownloaderModel(props = {}) {
   const check_disabled_ = combine(
     { endpoint: endpoint_, checking: checking_, submitting: submitting_ },
     (state) =>
-      !String(state.endpoint || "").trim() || state.checking || state.submitting,
+      !String(state.endpoint || "").trim() ||
+      state.checking ||
+      state.submitting,
   );
   const refresh_disabled_ = combine(
-    { result: last_result_, checking: status_checking_, decrypting: decrypting_ },
+    {
+      result: last_result_,
+      checking: status_checking_,
+      decrypting: decrypting_,
+    },
     (state) =>
-      !state.result?.task_id || Boolean(state.checking) || Boolean(state.decrypting),
+      !state.result?.task_id ||
+      Boolean(state.checking) ||
+      Boolean(state.decrypting),
   );
 
   const methods = {};
@@ -426,27 +438,17 @@ export function ThirdPartyDownloaderModel(props = {}) {
   });
 
   const probe_request = new Timeless.kit.RequestCore(
-    (body) =>
-      window.request.post(
-        "/api/v1/third_party_downloader/probe",
-        body,
-      ),
+    (body) => request.post("/api/v1/third_party_downloader/probe", body),
     { client: props.client },
   );
   const create_request = new Timeless.kit.RequestCore(
     (body) =>
-      window.request.post(
-        "/api/v1/third_party_downloader/create",
-        body,
-      ),
+      request.post("/api/v1/third_party_downloader/create", body),
     { client: props.client },
   );
   const status_request = new Timeless.kit.RequestCore(
     (body) =>
-      window.request.post(
-        "/api/v1/third_party_downloader/status",
-        body,
-      ),
+      request.post("/api/v1/third_party_downloader/status", body),
     { client: props.client },
   );
   const decrypt_request = new Timeless.kit.RequestCore(
@@ -455,7 +457,7 @@ export function ThirdPartyDownloaderModel(props = {}) {
         filepath: String(body.file_path || ""),
         key: String(body.decode_key || ""),
       });
-      return window.request.post(
+      return request.post(
         `/api/channels/decrypt?${query.toString()}`,
         {},
       );

@@ -1712,6 +1712,21 @@
   padding: var(--dm-space-2-5);
 }
 
+/* Extra cover sidecar: the adapter downloads it alongside the main resource, so
+   the file list has to say so instead of showing a second anonymous image. */
+.home-download-cover-notice {
+  margin-bottom: var(--dm-space-2-5);
+  color: var(--dm-color-text-secondary);
+  font-size: var(--dm-font-size-xs);
+  line-height: var(--dm-line-height-base);
+}
+
+.home-download-cover-badge {
+  flex-shrink: 0;
+  background: var(--dm-content-primary-soft);
+  color: var(--dm-content-primary);
+}
+
 .home-download-resource-list,
 .home-download-task-list,
 .home-download-relations {
@@ -1783,6 +1798,15 @@
   font-size: var(--dm-font-size-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.scraper-tree-file {
+  grid-template-columns: 18px 20px minmax(0, 1fr) auto auto;
+}
+
+.scraper-tree-file button {
+  flex: 0 0 auto;
+  margin-left: var(--dm-space-1);
 }
 
 .home-download-relations {

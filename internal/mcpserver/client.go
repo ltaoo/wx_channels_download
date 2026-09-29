@@ -4,285 +4,201 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
+	"errors"
 	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
 	"time"
+
+	"wx_channel/pkg/dm"
 )
 
-const default_poll_interval = 500 * time.Millisecond
+const default_poll_interval = dm.DefaultPollInterval
 
+// Type aliases keep this package's existing names while the wire types live in
+// the shared pkg/dm SDK. DownloadTaskCreateRequest aliases the REST create body
+// on purpose: the MCP tool contract and the REST contract must not drift, so a
+// JSON tag change in one place is a compile-time change in the other.
+type (
+	ScraperJob                = dm.ScraperJob
+	scraper_output            = dm.ScraperOutput
+	download_task             = dm.DownloadTask
+	download_create_response  = dm.DownloadCreateResponse
+	download_create_item      = dm.DownloadCreateItem
+	DownloadTaskListQuery     = dm.DownloadTaskListQuery
+	AccountListQuery          = dm.AccountListQuery
+	BrowseHistoryListQuery    = dm.BrowseHistoryListQuery
+	LogListQuery              = dm.LogListQuery
+	DownloadTaskCreateRequest = dm.CreateDownloadTaskBody
+)
+
+// api_client is the MCP-facing shim over the pkg/dm SDK. It deliberately does
+// not embed *dm.Client: callers read poll_interval directly, and embedding
+// would leak unmapped dm methods that new call sites could reach without the
+// tool-error mapping below.
 type api_client struct {
-	base_url      string
-	http_client   *http.Client
+	client        *dm.Client
 	poll_interval time.Duration
 }
 
-type api_envelope struct {
-	Code int             `json:"code"`
-	Msg  string          `json:"msg"`
-	Data json.RawMessage `json:"data"`
-}
-
-// ScraperJob is the transport-neutral snapshot consumed by MCP scraper tools.
-type ScraperJob struct {
-	ID       string          `json:"id"`
-	Platform string          `json:"platform"`
-	URL      string          `json:"url"`
-	Status   string          `json:"status"`
-	Progress json.RawMessage `json:"progress"`
-	Output   json.RawMessage `json:"output"`
-	Error    string          `json:"error"`
-}
-
-type scraper_output struct {
-	JobID        string          `json:"job_id"`
-	Platform     string          `json:"platform"`
-	URL          string          `json:"url"`
-	Result       json.RawMessage `json:"result"`
-	DownloadInfo json.RawMessage `json:"download_info"`
-}
-
-type download_create_response struct {
-	Tasks []download_create_item `json:"tasks"`
-	IDs   []int                  `json:"ids"`
-}
-
-type download_create_item struct {
-	Code int             `json:"code"`
-	Msg  string          `json:"msg"`
-	Data json.RawMessage `json:"data"`
-}
-
-type task_list_response struct {
-	List []download_task `json:"list"`
-}
-
-type download_task struct {
-	ID           int             `json:"id"`
-	Name         string          `json:"name"`
-	Status       int             `json:"status"`
-	Error        string          `json:"error"`
-	ErrorMessage string          `json:"error_message"`
-	Files        json.RawMessage `json:"files"`
-}
-
 func new_api_client(raw_base_url string, http_client *http.Client, poll_interval time.Duration) (*api_client, error) {
-	raw_base_url = strings.TrimSpace(raw_base_url)
-	if raw_base_url == "" {
-		return nil, fmt.Errorf("API 地址不能为空")
+	client, err := dm.NewClient(dm.ClientOptions{
+		BaseURL:      raw_base_url,
+		HTTPClient:   http_client,
+		PollInterval: poll_interval,
+	})
+	if err != nil {
+		return nil, err
 	}
-	parsed_url, err := url.Parse(raw_base_url)
-	if err != nil || parsed_url.Host == "" || (parsed_url.Scheme != "http" && parsed_url.Scheme != "https") {
-		return nil, fmt.Errorf("无效的 API 地址: %s", raw_base_url)
+	return &api_client{client: client, poll_interval: client.PollInterval()}, nil
+}
+
+// map_api_error converts SDK errors into MCP tool errors here, inside the shim,
+// so callers that wrap the result with %w still surface structured details.
+func map_api_error(err error) error {
+	if err == nil {
+		return nil
 	}
-	if parsed_url.RawQuery != "" || parsed_url.Fragment != "" {
-		return nil, fmt.Errorf("API 地址不能包含 query 或 fragment")
+	var api_error *dm.APIError
+	if errors.As(err, &api_error) {
+		return new_tool_execution_error(api_error.Msg, raw_json_value(api_error.Data))
 	}
-	if http_client == nil {
-		http_client = &http.Client{}
+	var task_error *dm.TaskFailedError
+	if errors.As(err, &task_error) {
+		return new_tool_execution_error(task_error.Message, task_error.Task)
 	}
-	if poll_interval <= 0 {
-		poll_interval = default_poll_interval
-	}
-	return &api_client{
-		base_url:      strings.TrimRight(parsed_url.String(), "/"),
-		http_client:   http_client,
-		poll_interval: poll_interval,
-	}, nil
+	return err
 }
 
 func (c *api_client) get_platform_status(ctx context.Context) (json.RawMessage, error) {
-	return c.do_json(ctx, http.MethodGet, "/api/scraper/platform/status", nil)
+	raw_status, err := c.client.PlatformStatus(ctx)
+	return raw_status, map_api_error(err)
 }
 
 func (c *api_client) get_config(ctx context.Context) (json.RawMessage, error) {
-	return c.do_json(ctx, http.MethodGet, "/api/config", nil)
+	raw_config, err := c.client.Config(ctx)
+	return raw_config, map_api_error(err)
 }
 
 func (c *api_client) update_config(ctx context.Context, values map[string]any) (json.RawMessage, error) {
-	return c.do_json(ctx, http.MethodPost, "/api/config", map[string]any{"values": values})
+	raw_result, err := c.client.UpdateConfig(ctx, values)
+	return raw_result, map_api_error(err)
 }
 
 func (c *api_client) get_restart_status(ctx context.Context, restart_token string) (json.RawMessage, error) {
-	query := url.Values{"restart_token": []string{restart_token}}
-	return c.do_json(ctx, http.MethodGet, "/api/restart/status?"+query.Encode(), nil)
-}
-
-func (c *api_client) decrypt_wxchannels_video(ctx context.Context, file_path string, key string) (json.RawMessage, error) {
-	query := url.Values{
-		"filepath": []string{file_path},
-		"key":      []string{key},
-	}
-	return c.do_json(ctx, http.MethodPost, "/api/channels/decrypt?"+query.Encode(), nil)
-}
-
-func (c *api_client) get_wxchannels_api(ctx context.Context, path string, query url.Values) (json.RawMessage, error) {
-	if len(query) > 0 {
-		path += "?" + query.Encode()
-	}
-	return c.do_json(ctx, http.MethodGet, path, nil)
+	raw_result, err := c.client.RestartStatus(ctx, restart_token)
+	return raw_result, map_api_error(err)
 }
 
 func (c *api_client) create_scraper_job(ctx context.Context, raw_url string, force_refresh bool) (*ScraperJob, error) {
-	body := map[string]any{"url": raw_url, "force_refresh": force_refresh}
-	raw_data, err := c.do_json(ctx, http.MethodPost, "/api/scraper/fetch", body)
-	if err != nil {
-		return nil, err
-	}
-	return decode_scraper_job(raw_data)
+	job, err := c.client.CreateScraperJob(ctx, raw_url, force_refresh)
+	return job, map_api_error(err)
 }
 
 func (c *api_client) get_scraper_job(ctx context.Context, job_id string) (*ScraperJob, error) {
-	query := url.Values{"id": []string{job_id}}
-	raw_data, err := c.do_json(ctx, http.MethodGet, "/api/scraper/job?"+query.Encode(), nil)
-	if err != nil {
-		return nil, err
-	}
-	return decode_scraper_job(raw_data)
+	job, err := c.client.GetScraperJob(ctx, job_id)
+	return job, map_api_error(err)
 }
 
-func (c *api_client) create_download_task(ctx context.Context, body any) (*download_create_response, error) {
-	raw_data, err := c.do_json(ctx, http.MethodPost, "/api/v1/download_task/create", body)
-	if err != nil {
-		return nil, err
-	}
-	var response download_create_response
-	if err := json.Unmarshal(raw_data, &response); err != nil {
-		return nil, fmt.Errorf("解析下载任务响应失败: %w", err)
-	}
-	if len(response.Tasks) == 0 {
-		return nil, fmt.Errorf("下载任务响应缺少 tasks")
-	}
-	return &response, nil
+func (c *api_client) create_download_task(ctx context.Context, request DownloadTaskCreateRequest) (*download_create_response, error) {
+	response, err := c.client.CreateDownloadTask(ctx, dm.CreateDownloadTaskRequest{
+		Objects: []dm.CreateDownloadTaskBody{request},
+	})
+	return response, map_api_error(err)
 }
 
 func (c *api_client) wait_download_task(ctx context.Context, task_id int) (*download_task, error) {
-	var poll_timer *time.Timer
-	defer func() {
-		if poll_timer != nil {
-			poll_timer.Stop()
-		}
-	}()
-	for {
-		query := url.Values{"task_id": []string{strconv.Itoa(task_id)}}
-		raw_data, err := c.do_json(ctx, http.MethodGet, "/api/v1/download_task/list?"+query.Encode(), nil)
-		if err != nil {
-			return nil, err
-		}
-		task, err := decode_download_task(raw_data, task_id)
-		if err != nil {
-			return nil, err
-		}
-		if task == nil {
-			return nil, fmt.Errorf("下载任务不存在: %d", task_id)
-		}
-		switch task.Status {
-		case 5:
-			return task, nil
-		case 6, 7:
-			message := value_or_default(task.ErrorMessage, task.Error)
-			message = value_or_default(message, fmt.Sprintf("下载任务以状态 %d 结束", task.Status))
-			return nil, new_tool_execution_error(message, task)
-		}
-
-		if poll_timer == nil {
-			poll_timer = time.NewTimer(c.poll_interval)
-		} else {
-			poll_timer.Reset(c.poll_interval)
-		}
-		select {
-		case <-ctx.Done():
-			return nil, new_tool_execution_error("等待下载完成超时或已取消: "+ctx.Err().Error(), task)
-		case <-poll_timer.C:
-		}
-	}
+	task, err := c.client.WaitDownloadTask(ctx, task_id)
+	return task, map_api_error(err)
 }
 
-func decode_download_task(raw_data json.RawMessage, task_id int) (*download_task, error) {
-	var task download_task
-	if err := json.Unmarshal(raw_data, &task); err != nil {
-		return nil, fmt.Errorf("解析下载进度响应失败: %w", err)
-	}
-	if task.ID > 0 {
-		if task_id <= 0 || task.ID == task_id {
-			return &task, nil
-		}
-		return nil, nil
-	}
-
-	var response task_list_response
-	if err := json.Unmarshal(raw_data, &response); err != nil {
-		return nil, fmt.Errorf("解析下载进度响应失败: %w", err)
-	}
-	for index := range response.List {
-		if task_id <= 0 || response.List[index].ID == task_id {
-			return &response.List[index], nil
-		}
-	}
-	return nil, nil
+func (c *api_client) download_tasks(ctx context.Context, query DownloadTaskListQuery) (json.RawMessage, error) {
+	raw_result, err := c.client.DownloadTasks(ctx, query)
+	return raw_result, map_api_error(err)
 }
 
-func (c *api_client) do_json(ctx context.Context, method string, path string, body any) (json.RawMessage, error) {
-	var request_body io.Reader
-	if body != nil {
-		encoded_body, err := json.Marshal(body)
-		if err != nil {
-			return nil, fmt.Errorf("编码下载器请求失败: %w", err)
-		}
-		request_body = bytes.NewReader(encoded_body)
-	}
-	request, err := http.NewRequestWithContext(ctx, method, c.base_url+path, request_body)
-	if err != nil {
-		return nil, fmt.Errorf("创建下载器请求失败: %w", err)
-	}
-	request.Header.Set("Accept", "application/json")
-	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	response, err := c.http_client.Do(request)
-	if err != nil {
-		return nil, fmt.Errorf("调用下载器服务失败（请确认主服务已启动）: %w", err)
-	}
-	defer response.Body.Close()
-	response_data, err := io.ReadAll(io.LimitReader(response.Body, 64*1024*1024+1))
-	if err != nil {
-		return nil, fmt.Errorf("读取下载器响应失败: %w", err)
-	}
-	if len(response_data) > 64*1024*1024 {
-		return nil, fmt.Errorf("下载器响应超过 64 MB")
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("下载器服务返回状态码 %d: %s", response.StatusCode, strings.TrimSpace(string(response_data)))
-	}
-	var envelope api_envelope
-	if err := json.Unmarshal(response_data, &envelope); err != nil {
-		return nil, fmt.Errorf("解析下载器响应失败: %w", err)
-	}
-	if envelope.Code != 0 {
-		return nil, new_tool_execution_error(
-			value_or_default(envelope.Msg, fmt.Sprintf("下载器返回错误码 %d", envelope.Code)),
-			raw_json_value(envelope.Data),
-		)
-	}
-	if !has_json_value(envelope.Data) {
-		return json.RawMessage("{}"), nil
-	}
-	return envelope.Data, nil
+func (c *api_client) download_task_detail(ctx context.Context, task_id int) (json.RawMessage, error) {
+	raw_result, err := c.client.DownloadTaskDetail(ctx, task_id)
+	return raw_result, map_api_error(err)
 }
 
-func decode_scraper_job(raw_data json.RawMessage) (*ScraperJob, error) {
-	var job ScraperJob
-	if err := json.Unmarshal(raw_data, &job); err != nil {
-		return nil, fmt.Errorf("解析抓取任务响应失败: %w", err)
-	}
-	if strings.TrimSpace(job.ID) == "" {
-		return nil, fmt.Errorf("抓取任务响应缺少 id")
-	}
-	return &job, nil
+func (c *api_client) accounts(ctx context.Context, query AccountListQuery) (json.RawMessage, error) {
+	raw_result, err := c.client.Accounts(ctx, query)
+	return raw_result, map_api_error(err)
+}
+
+func (c *api_client) browse_history(ctx context.Context, query BrowseHistoryListQuery) (json.RawMessage, error) {
+	raw_result, err := c.client.BrowseHistory(ctx, query)
+	return raw_result, map_api_error(err)
+}
+
+func (c *api_client) logs(ctx context.Context, query LogListQuery) (json.RawMessage, error) {
+	raw_result, err := c.client.Logs(ctx, query)
+	return raw_result, map_api_error(err)
+}
+
+func (c *api_client) certificate_status(ctx context.Context) (json.RawMessage, error) {
+	raw_result, err := c.client.CertificateStatus(ctx)
+	return raw_result, map_api_error(err)
+}
+
+func (c *api_client) search_contact(ctx context.Context, keyword string, next_marker string) (json.RawMessage, error) {
+	raw_result, err := c.client.SearchContact(ctx, keyword, next_marker)
+	return raw_result, map_api_error(err)
+}
+
+func (c *api_client) contact_feed_list(ctx context.Context, username string, next_marker string) (json.RawMessage, error) {
+	raw_result, err := c.client.ContactFeedList(ctx, username, next_marker)
+	return raw_result, map_api_error(err)
+}
+
+func (c *api_client) live_replay_list(ctx context.Context, username string, next_marker string) (json.RawMessage, error) {
+	raw_result, err := c.client.LiveReplayList(ctx, username, next_marker)
+	return raw_result, map_api_error(err)
+}
+
+func (c *api_client) feed_profile(ctx context.Context, oid string, nid string, request_url string, eid string) (json.RawMessage, error) {
+	raw_result, err := c.client.FeedProfile(ctx, oid, nid, request_url, eid)
+	return raw_result, map_api_error(err)
+}
+
+func (c *api_client) feed_comment_list(ctx context.Context, oid string, nid string, comment_id string, next_marker string) (json.RawMessage, error) {
+	raw_result, err := c.client.FeedCommentList(ctx, oid, nid, comment_id, next_marker)
+	return raw_result, map_api_error(err)
+}
+
+func (c *api_client) feed_share_url(ctx context.Context, oid string) (json.RawMessage, error) {
+	raw_result, err := c.client.FeedShareURL(ctx, oid)
+	return raw_result, map_api_error(err)
+}
+
+func (c *api_client) channel_status(ctx context.Context) (json.RawMessage, error) {
+	raw_result, err := c.client.ChannelStatus(ctx)
+	return raw_result, map_api_error(err)
+}
+
+func (c *api_client) live_profile(ctx context.Context, username string, oid string, nid string, live_id string) (json.RawMessage, error) {
+	raw_result, err := c.client.LiveProfile(ctx, username, oid, nid, live_id)
+	return raw_result, map_api_error(err)
+}
+
+func (c *api_client) interacted_feed_list(ctx context.Context, flag int, next_marker string) (json.RawMessage, error) {
+	raw_result, err := c.client.InteractedFeedList(ctx, flag, next_marker)
+	return raw_result, map_api_error(err)
+}
+
+func (c *api_client) followed_accounts(ctx context.Context, next_marker string) (json.RawMessage, error) {
+	raw_result, err := c.client.FollowedAccounts(ctx, next_marker)
+	return raw_result, map_api_error(err)
+}
+
+func (c *api_client) play_history(ctx context.Context, next_marker string) (json.RawMessage, error) {
+	raw_result, err := c.client.PlayHistory(ctx, next_marker)
+	return raw_result, map_api_error(err)
+}
+
+func (c *api_client) decrypt_wxchannels_video(ctx context.Context, file_path string, key uint64) (json.RawMessage, error) {
+	raw_result, err := c.client.DecryptVideo(ctx, file_path, key)
+	return raw_result, map_api_error(err)
 }
 
 func has_json_value(raw json.RawMessage) bool {

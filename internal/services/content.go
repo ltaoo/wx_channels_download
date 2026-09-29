@@ -160,11 +160,18 @@ type ContentListOptions struct {
 	Type       string
 	Scope      string
 	Keyword    string
+	TagIDs     []int // Restrict to content carrying every one of these tag ids.
 	StartAt    *int64 // Inclusive Unix timestamp in milliseconds.
 	EndAt      *int64 // Exclusive Unix timestamp in milliseconds.
 	Page       int
 	PageSize   int
 	Offset     *int
+}
+
+// ContentTagRecord is the id+name pair attached to a content or account item.
+type ContentTagRecord struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
 }
 
 const (
@@ -284,6 +291,7 @@ type ContentListItem struct {
 	Influencers   []ContentInfluencerRecord   `json:"influencers"`
 	DownloadTasks []ContentDownloadTaskRecord `json:"download_tasks"`
 	FileCount     int64                       `json:"file_count"`
+	Tags          []ContentTagRecord          `json:"tags"`
 }
 
 const (
@@ -682,6 +690,47 @@ func (s *ContentService) load_content_relations(content_ids []string, include_re
 	}
 
 	return accounts_by_content_id, influencers_by_content_id, download_tasks_by_content_id, resources_by_content_id, nil
+}
+
+// load_content_tags returns the tag id+name pairs for the requested content ids,
+// keyed by content id with a non-nil empty slice for ids that have no tags.
+func (s *ContentService) load_content_tags(content_ids []string) (map[string][]ContentTagRecord, error) {
+	by_content_id := make(map[string][]ContentTagRecord, len(content_ids))
+	for _, id := range content_ids {
+		by_content_id[strings.TrimSpace(id)] = []ContentTagRecord{}
+	}
+	if len(content_ids) == 0 {
+		return by_content_id, nil
+	}
+	type tag_link_row struct {
+		ContentID string `gorm:"column:content_id"`
+		TagID     int    `gorm:"column:tag_id"`
+		Name      string `gorm:"column:name"`
+	}
+	var rows []tag_link_row
+	if err := s.db.Table("tag").
+		Select("content_tag.content_id AS content_id, tag.id AS tag_id, tag.name AS name").
+		Joins("JOIN content_tag ON content_tag.tag_id = tag.id").
+		Where("content_tag.content_id IN ? AND tag.deleted_at IS NULL", content_ids).
+		Order("tag.id ASC").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		by_content_id[row.ContentID] = append(by_content_id[row.ContentID], ContentTagRecord{
+			ID:   row.TagID,
+			Name: row.Name,
+		})
+	}
+	return by_content_id, nil
+}
+
+// tags_or_empty guarantees a non-nil slice so the JSON field serializes as [].
+func tags_or_empty(tags []ContentTagRecord) []ContentTagRecord {
+	if tags == nil {
+		return []ContentTagRecord{}
+	}
+	return tags
 }
 
 func (s *ContentService) load_content_extension(content model.Content) (string, any, error) {
@@ -1483,6 +1532,28 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 			pattern := "%" + keyword + "%"
 			query = query.Where("content.title LIKE ? OR content.description LIKE ?", pattern, pattern)
 		}
+		if len(options.TagIDs) > 0 {
+			distinct := make([]int, 0, len(options.TagIDs))
+			seen := make(map[int]struct{}, len(options.TagIDs))
+			for _, id := range options.TagIDs {
+				if id <= 0 {
+					continue
+				}
+				if _, ok := seen[id]; ok {
+					continue
+				}
+				seen[id] = struct{}{}
+				distinct = append(distinct, id)
+			}
+			if len(distinct) > 0 {
+				tagged := s.db.Table("content_tag").
+					Select("content_id").
+					Where("tag_id IN ?", distinct).
+					Group("content_id").
+					Having("COUNT(DISTINCT tag_id) = ?", len(distinct))
+				query = query.Where("content.id IN (?)", tagged)
+			}
+		}
 		if options.StartAt != nil {
 			query = query.Where("content.created_at >= ?", *options.StartAt)
 		}
@@ -1517,6 +1588,10 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 	}
 
 	accounts_by_content_id, influencers_by_content_id, download_tasks_by_content_id, _, err := s.load_content_relations(content_ids, false)
+	if err != nil {
+		return nil, err
+	}
+	tags_by_content_id, err := s.load_content_tags(content_ids)
 	if err != nil {
 		return nil, err
 	}
@@ -1605,6 +1680,7 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 			Influencers:   influencers,
 			DownloadTasks: download_tasks,
 			FileCount:     file_counts_by_content_id[content.Id],
+			Tags:          tags_or_empty(tags_by_content_id[content.Id]),
 		})
 	}
 

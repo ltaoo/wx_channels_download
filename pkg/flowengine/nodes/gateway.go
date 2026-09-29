@@ -3,8 +3,6 @@ package nodes
 import (
 	"errors"
 	"wx_channel/pkg/flowengine/engine"
-
-	"github.com/expr-lang/expr"
 )
 
 type GatewayNode struct {
@@ -22,8 +20,9 @@ func (n *GatewayNode) Type() string { return "GatewayNode" }
 
 func (n *GatewayNode) Execute(ctx *engine.ProcessContext) (bool, []string, error) {
 	gatewayType, _ := n.Config["gateway_type"].(string)
+	isJoining, _ := n.Config["is_joining"].(bool)
 
-	if n.Config["is_joining"].(bool) {
+	if isJoining {
 		// --- 汇聚逻辑 (Joining) ---
 		return n.handleMerge(ctx)
 	}
@@ -45,13 +44,20 @@ func (n *GatewayNode) Execute(ctx *engine.ProcessContext) (bool, []string, error
 
 	case "Exclusive":
 		// 遍历 rules，找到第一个条件满足的 target_id 并返回
-		for _, rule := range n.Config["rules"].([]map[string]interface{}) {
-			condition := rule["condition"].(string)
-			ok, err := n.evaluateCondition(ctx, condition)
+		rules, err := gateway_rules(n.Config["rules"])
+		if err != nil {
+			return false, nil, err
+		}
+		// The language is a node-level setting, not a per-rule one, so it is
+		// resolved once outside the loop.
+		language := ConditionLanguage(n.Config)
+		for _, rule := range rules {
+			condition, _ := rule["condition"].(string)
+			ok, err := EvaluateCondition(ctx, condition, language)
 			if err != nil {
 				return false, nil, err
 			}
-			if ok { // 假设表达式求值器
+			if ok {
 				return true, []string{rule["target_id"].(string)}, nil
 			}
 		}
@@ -99,19 +105,25 @@ func (n *GatewayNode) handleMerge(ctx *engine.ProcessContext) (bool, []string, e
 	return true, nil, nil
 }
 
-// evaluateCondition 负责解析和执行条件表达式
-func (n *GatewayNode) evaluateCondition(ctx *engine.ProcessContext, condition string) (bool, error) {
-	program, err := expr.Compile(condition)
-	if err != nil {
-		return false, err
+// gateway_rules normalizes the Exclusive gateway rules into the slice-of-maps
+// shape the node iterates over. Programmatic configs already provide
+// []map[string]interface{}; JSON-decoded configs produce []interface{} of
+// map[string]interface{}, which is converted here so both paths run safely.
+func gateway_rules(value interface{}) ([]map[string]interface{}, error) {
+	switch rules := value.(type) {
+	case []map[string]interface{}:
+		return rules, nil
+	case []interface{}:
+		converted := make([]map[string]interface{}, 0, len(rules))
+		for _, raw := range rules {
+			rule, ok := raw.(map[string]interface{})
+			if !ok {
+				return nil, errors.New("GatewayNode: rule must be an object")
+			}
+			converted = append(converted, rule)
+		}
+		return converted, nil
+	default:
+		return nil, errors.New("GatewayNode: rules must be an array")
 	}
-	out, err := expr.Run(program, ctx.Data)
-	if err != nil {
-		return false, err
-	}
-	b, ok := out.(bool)
-	if !ok {
-		return false, nil
-	}
-	return b, nil
 }

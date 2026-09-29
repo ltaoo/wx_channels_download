@@ -1,6 +1,11 @@
-import { ContentDetailViewModel, ContentDetailDescriptionModel } from "./content_detail.model.js";
+import { TagSelect, ContentTagBadge } from "@/components/index.js";
+
+import {
+  ContentDetailViewModel,
+  ContentDetailDescriptionModel,
+  ContentDetailExtensionModel,
+} from "./content_detail.model.js";
 import { PreviewGalleryMediaView } from "./preview.js";
-import { BrandError, Tag, PlatformTag } from "../dmui.js";
 
 function ContentDetailAction(props) {
   const semantic_name = props.name || "content-detail-action";
@@ -87,10 +92,9 @@ function ContentDetailAccount(props) {
           });
         },
         else() {
-          return View(
-            { class: "content-avatar content-avatar-fallback" },
-            [String(name).slice(0, 1)],
-          );
+          return View({ class: "content-avatar content-avatar-fallback" }, [
+            String(name).slice(0, 1),
+          ]);
         },
       }),
       View({ class: "content-account-name", attributes: { title: name } }, [
@@ -118,6 +122,32 @@ function ContentDetailAccounts(props) {
   ]);
 }
 
+function ContentDetailTags(props) {
+  const vm$ = props.store;
+  return View(
+    {
+      class: "content-detail-tags",
+      attributes: { n: "content-detail-tags", "aria-label": "内容标签" },
+    },
+    [
+      TagSelect({
+        contentId: props.content.id,
+        tagsRef: vm$.state.tags,
+        client: props.client,
+        onChange(next_tags) {
+          vm$.methods.setTags(next_tags);
+        },
+      }),
+      For({
+        each: vm$.state.tags,
+        render(tag) {
+          return ContentTagBadge({ tag });
+        },
+      }),
+    ],
+  );
+}
+
 function ContentDetailPlatform(props) {
   const vm$ = props.store;
   const content = props.content;
@@ -132,14 +162,21 @@ function ContentDetailPlatform(props) {
 
 function ContentDetailSection(props) {
   return View({ class: "content-detail-section" }, [
-    View({ class: "content-detail-section-head" }, [
-      View({ class: "content-detail-section-title" }, [props.title]),
-      props.count !== undefined
-        ? Tag({ name: "content-detail-section-count", class: "content-detail-section-count" }, [
-            String(props.count),
-          ])
-        : null,
-    ].filter(Boolean)),
+    View(
+      { class: "content-detail-section-head" },
+      [
+        View({ class: "content-detail-section-title" }, [props.title]),
+        props.count !== undefined
+          ? Tag(
+              {
+                name: "content-detail-section-count",
+                class: "content-detail-section-count",
+              },
+              [String(props.count)],
+            )
+          : null,
+      ].filter(Boolean),
+    ),
     View({ class: "content-detail-section-body" }, props.children || []),
   ]);
 }
@@ -264,15 +301,16 @@ function content_asset_resources(asset, content_resources) {
   );
   if (!Array.isArray(linked_resources)) return [];
   return linked_resources.map((resource) => {
-    const resource_id = String(
-      detail_object_value(resource, "id", "ID") || "",
-    );
+    const resource_id = String(detail_object_value(resource, "id", "ID") || "");
     return resources_by_id.get(resource_id) || resource;
   });
 }
 
 function content_media_type(resource, asset) {
-  const normalize = (value) => String(value || "").trim().toLowerCase();
+  const normalize = (value) =>
+    String(value || "")
+      .trim()
+      .toLowerCase();
   const asset_kind = normalize(detail_object_value(asset, "kind", "Kind"));
   const resource_type = normalize(
     detail_object_value(resource, "file_type", "FileType"),
@@ -440,10 +478,7 @@ function content_asset_previews(content, vm$) {
     content_detail_assets(content),
   );
   for (const asset of content_assets) {
-    const linked_resources = content_asset_resources(
-      asset,
-      content.resources,
-    );
+    const linked_resources = content_asset_resources(asset, content.resources);
     if (linked_resources.length) {
       linked_resources.forEach((resource) => append_resource(resource, asset));
     }
@@ -480,35 +515,44 @@ function ContentDetailMediaStage(props) {
       attributes: { n: "content-detail-media-stage" },
     },
     [
-      View({
-        class: "content-detail-media-viewport preview-gallery-viewport",
-        attributes: { n: "content-detail-media-viewport" },
-      }, [player]),
-      View({ class: "content-detail-media-caption" }, [
-        View({ class: "content-detail-media-caption-icon" }, [
-          Timeless.Icon({ name: content_media_type_icon(media.type), size: 16 }),
-        ]),
-        View({ class: "content-detail-media-caption-main" }, [
-          View(
-            {
-              class: "content-detail-media-name",
-              attributes: { title: media.name },
-            },
-            [media.name],
-          ),
-          View({ class: "content-detail-media-meta" }, [meta]),
-        ]),
-        media.available
-          ? ContentDetailAction({
-              name: "content-detail-open-media-action",
-              icon: "external-link",
-              label: "打开原文件",
-              onClick() {
-                vm$.methods.openResource(media.resource);
+      View(
+        {
+          class: "content-detail-media-viewport preview-gallery-viewport",
+          attributes: { n: "content-detail-media-viewport" },
+        },
+        [player],
+      ),
+      View(
+        { class: "content-detail-media-caption" },
+        [
+          View({ class: "content-detail-media-caption-icon" }, [
+            Timeless.Icon({
+              name: content_media_type_icon(media.type),
+              size: 16,
+            }),
+          ]),
+          View({ class: "content-detail-media-caption-main" }, [
+            View(
+              {
+                class: "content-detail-media-name",
+                attributes: { title: media.name },
               },
-            })
-          : null,
-      ].filter(Boolean)),
+              [media.name],
+            ),
+            View({ class: "content-detail-media-meta" }, [meta]),
+          ]),
+          media.available
+            ? ContentDetailAction({
+                name: "content-detail-open-media-action",
+                icon: "external-link",
+                label: "打开原文件",
+                onClick() {
+                  vm$.methods.openResource(media.resource);
+                },
+              })
+            : null,
+        ].filter(Boolean),
+      ),
     ],
   );
 }
@@ -516,24 +560,23 @@ function ContentDetailMediaStage(props) {
 function ContentDetailMediaPicker(props) {
   const vm$ = props.store;
   const media = props.media;
-  const selected_ = props.selected;
   return View(
     {
       type: "button",
-      class: computed(selected_, (selected) =>
+      class: computed(props.selected, (selected) =>
         selected && selected.key === media.key
           ? "content-detail-media-choice dm-focus-ring is-selected"
           : "content-detail-media-choice dm-focus-ring",
       ),
       attributes: {
         type: "button",
-        "aria-pressed": computed(selected_, (selected) =>
+        "aria-pressed": computed(props.selected, (selected) =>
           selected && selected.key === media.key ? "true" : "false",
         ),
         title: `查看 ${media.name}`,
       },
       onClick() {
-        selected_.as(media);
+        props.onSelect(media);
       },
     },
     [
@@ -573,50 +616,89 @@ function ContentDetailExtension(props) {
       View({ class: "content-detail-media-empty-icon" }, [
         Timeless.Icon({ name: "play", size: 24 }),
       ]),
-      View({ class: "content-detail-media-empty-title" }, [
-        "还没有内容资产",
-      ]),
+      View({ class: "content-detail-media-empty-title" }, ["还没有内容资产"]),
       View({ class: "content-detail-media-empty-text" }, [
         "视频、音频、图片、HTML、PDF 及其他下载文件会显示在这里。",
       ]),
     ]);
   }
-  const selected_ = ref(media.find((item) => item.available) || media[0]);
-  return View({ class: "content-detail-extension" }, [
-    View({ class: "content-detail-media-stage-list" }, [
-      For({
-        each: media,
-        render(item) {
-          return Show({
-            when: computed(selected_, (selected) =>
-              Boolean(selected && selected.key === item.key),
-            ),
-            ok() {
-              return ContentDetailMediaStage({
-                store: vm$,
-                content,
-                media: item,
-              });
-            },
-          });
+  const extension_vm$ = ContentDetailExtensionModel(media);
+  return View(
+    {
+      class: "content-detail-content-block",
+      attributes: { n: "content-detail-content-block" },
+    },
+    [
+      View(
+        {
+          class: "content-detail-extension",
+          attributes: { n: "content-detail-extension" },
         },
-      }),
-    ]),
-    media.length > 1
-      ? View({ class: "content-detail-media-choices" }, [
-          For({
-            each: media,
-            render(item) {
-              return ContentDetailMediaPicker({
-                store: vm$,
-                media: item,
-                selected: selected_,
-              });
+        [
+          View(
+            {
+              class: "content-detail-media-stage-list",
+              attributes: { n: "content-detail-media-stage-list" },
             },
-          }),
-        ])
-      : null,
-  ].filter(Boolean));
+            [
+              For({
+                each: media,
+                render(item) {
+                  return Show({
+                    when: computed(extension_vm$.state.selected, (selected) =>
+                      Boolean(selected && selected.key === item.key),
+                    ),
+                    ok() {
+                      return ContentDetailMediaStage({
+                        store: vm$,
+                        content,
+                        media: item,
+                      });
+                    },
+                  });
+                },
+              }),
+            ],
+          ),
+          media.length > 1
+            ? View(
+                {
+                  class: "content-detail-media-choices",
+                  attributes: { n: "content-detail-media-choices" },
+                },
+                [
+                  For({
+                    each: media,
+                    render(item) {
+                      return ContentDetailMediaPicker({
+                        store: vm$,
+                        media: item,
+                        selected: extension_vm$.state.selected,
+                        onSelect: extension_vm$.methods.select,
+                      });
+                    },
+                  }),
+                ],
+              )
+            : null,
+        ].filter(Boolean),
+      ),
+      media.length > 1
+        ? ContentDetailFileNavigationButton({
+            store: extension_vm$,
+            direction: "left",
+            title: "上一个文件",
+          })
+        : null,
+      media.length > 1
+        ? ContentDetailFileNavigationButton({
+            store: extension_vm$,
+            direction: "right",
+            title: "下一个文件",
+          })
+        : null,
+    ],
+  );
 }
 
 function ContentDetailResource(props) {
@@ -642,35 +724,35 @@ function ContentDetailResource(props) {
       View({ class: "content-detail-resource-icon" }, [
         Timeless.Icon({ name: vm$.methods.fileTypeIcon(resource), size: 18 }),
       ]),
-      View({ class: "content-detail-resource-main" }, [
-        View(
-          {
-            class: deleted
-              ? "content-detail-resource-name is-deleted"
-              : "content-detail-resource-name",
-            attributes: { title: name },
-          },
-          [name],
-        ),
-        meta
-          ? View({ class: "content-detail-resource-meta" }, [meta])
-          : null,
-        resource.local_path
-          ? View(
-              {
-                class: "content-detail-resource-path",
-                attributes: { title: resource.local_path },
-              },
-              [resource.local_path],
-            )
-          : null,
-      ].filter(Boolean)),
+      View(
+        { class: "content-detail-resource-main" },
+        [
+          View(
+            {
+              class: deleted
+                ? "content-detail-resource-name is-deleted"
+                : "content-detail-resource-name",
+              attributes: { title: name },
+            },
+            [name],
+          ),
+          meta ? View({ class: "content-detail-resource-meta" }, [meta]) : null,
+          resource.local_path
+            ? View(
+                {
+                  class: "content-detail-resource-path",
+                  attributes: { title: resource.local_path },
+                },
+                [resource.local_path],
+              )
+            : null,
+        ].filter(Boolean),
+      ),
       deleted
         ? Tag(
             {
               name: "content-detail-status",
-              class:
-                "content-detail-status content-detail-status-deleted",
+              class: "content-detail-status content-detail-status-deleted",
             },
             ["已删除"],
           )
@@ -711,9 +793,7 @@ function ContentDetailTask(props) {
   const status = vm$.methods.taskStatus(task.status);
   const name = task.name || task.source_url || `任务 ${task.id || ""}`;
   return View({ class: "content-detail-task" }, [
-    View({ class: "content-detail-task-id" }, [
-      task.id ? `#${task.id}` : "-",
-    ]),
+    View({ class: "content-detail-task-id" }, [task.id ? `#${task.id}` : "-"]),
     View({ class: "content-detail-task-main" }, [
       View(
         {
@@ -794,8 +874,8 @@ function ContentDetailRelation(props) {
   const subtype = related.subtype || related.type || "内容";
   const clickable = Boolean(
     id &&
-      (typeof props.onOpenDetail === "function" ||
-        (props.history && typeof props.history.push === "function")),
+    (typeof props.onOpenDetail === "function" ||
+      (props.history && typeof props.history.push === "function")),
   );
   return View(
     {
@@ -859,25 +939,32 @@ function ContentDetailRelations(props) {
 function ContentDetailDescription(props) {
   const vm$ = ContentDetailDescriptionModel();
   return View({ attributes: { n: "content-detail-description-section" } }, [
-    View({
-      class: computed(vm$.state.expanded, (expanded) =>
-        `content-detail-description${expanded ? "" : " is-collapsed"}`,
-      ),
-      attributes: { n: "content-detail-description" },
-      onMounted(event) {
-        vm$.methods.mount(event.target.get$elm());
+    View(
+      {
+        class: computed(
+          vm$.state.expanded,
+          (expanded) =>
+            `content-detail-description${expanded ? "" : " is-collapsed"}`,
+        ),
+        attributes: { n: "content-detail-description" },
+        onMounted(event) {
+          vm$.methods.mount(event.target.get$elm());
+        },
+        onUnmounted() {
+          vm$.methods.destroy();
+        },
       },
-      onUnmounted() {
-        vm$.methods.destroy();
-      },
-    }, [props.description]),
+      [props.description],
+    ),
     Show({
       when: vm$.state.overflowing,
       ok() {
         return ContentDetailAction({
           name: "content-detail-description-toggle",
           compact: true,
-          label: computed(vm$.state.expanded, (expanded) => expanded ? "收起" : "展开"),
+          label: computed(vm$.state.expanded, (expanded) =>
+            expanded ? "收起" : "展开",
+          ),
           attributes: {
             "aria-expanded": computed(vm$.state.expanded, String),
           },
@@ -888,49 +975,96 @@ function ContentDetailDescription(props) {
   ]);
 }
 
+function ContentDetailFileNavigationButton(props) {
+  const vm$ = props.store;
+  const direction = props.direction === "left" ? "previous" : "next";
+  const semantic_name = `content-detail-${direction}-file-action`;
+  return Button(
+    {
+      store: vm$.ui[`btn_${direction}$`],
+      class: `content-detail-content-nav-button is-${props.direction}`,
+      attributes: {
+        n: semantic_name,
+        type: "button",
+        title: props.title,
+        "aria-label": props.title,
+      },
+      onClick() {
+        vm$.methods[direction]();
+      },
+    },
+    [
+      Timeless.Icon({
+        name: props.direction === "left" ? "chevron-left" : "chevron-right",
+        size: 18,
+        attributes: { n: `${semantic_name}-icon` },
+      }),
+    ],
+  );
+}
+
 function ContentDetailMain(props) {
   const vm$ = props.store;
   const content = props.content;
   const description = String(content.description || "").trim();
   const cover_url = vm$.methods.coverURL(content);
   return View({ class: "content-detail-layout" }, [
-    View({
-      class: [
-        "content-detail-summary dm-panel",
-        cover_url ? "" : "content-detail-summary-no-cover",
-      ]
-        .filter(Boolean)
-        .join(" "),
-    }, [
-      cover_url
-        ? View({ class: "content-detail-cover" }, [
-            ContentDetailCover({ store: vm$, content, coverURL: cover_url }),
-          ])
-        : null,
-      View({ class: "content-detail-info" }, [
-        View({ class: "content-card-tags" }, [
-          ContentDetailPlatform({ store: vm$, content }),
-          Tag({ name: "content-type-badge", class: "content-type-badge" }, [
-            vm$.methods.typeLabel(content.content_type),
-          ]),
-        ]),
-        View(
-          {
-            class: "content-detail-title",
-            attributes: { title: content.title },
-          },
-          [content.title],
-        ),
-        ContentDetailAccounts({ content, history: props.history }),
-        description
-          ? ContentDetailDescription({ description })
+    View(
+      {
+        class: [
+          "content-detail-summary dm-panel",
+          cover_url ? "" : "content-detail-summary-no-cover",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      },
+      [
+        cover_url
+          ? View({ class: "content-detail-cover" }, [
+              ContentDetailCover({ store: vm$, content, coverURL: cover_url }),
+            ])
           : null,
-        View({ class: "content-detail-publish-time" }, [
-          Timeless.Icon({ name: "clock3", size: 14 }),
-          `发布于 ${vm$.methods.formatTime(content.publish_time)}`,
-        ]),
-      ].filter(Boolean)),
-    ].filter(Boolean)),
+        View(
+          { class: "content-detail-info" },
+          [
+            View({ class: "content-card-tags" }, [
+              ContentDetailPlatform({ store: vm$, content }),
+              Tag({ name: "content-type-badge", class: "content-type-badge" }, [
+                vm$.methods.typeLabel(content.content_type),
+              ]),
+            ]),
+            View(
+              {
+                class: "content-detail-title",
+                attributes: { n: "content-detail-title", title: content.title },
+              },
+              [content.title],
+            ),
+            View(
+              {
+                class: "content-detail-publish-time",
+                attributes: { n: "content-detail-publish-time" },
+              },
+              [
+                Timeless.Icon({
+                  name: "clock3",
+                  size: 14,
+                  attributes: { n: "content-detail-publish-time-icon" },
+                }),
+                `发布于 ${vm$.methods.formatTime(content.publish_time)}`,
+              ],
+            ),
+            ContentDetailAccounts({ content, history: props.history }),
+            ContentDetailTags({
+              store: vm$,
+              content,
+              client: props.client,
+            }),
+            description ? ContentDetailDescription({ description }) : null,
+          ].filter(Boolean),
+        ),
+      ].filter(Boolean),
+    ),
     ContentDetailSection({
       title: "内容",
       children: [ContentDetailExtension({ store: vm$, content })],
@@ -1019,6 +1153,7 @@ function ContentDetailBody(props) {
                   content: vm$.state.detail.value,
                   history: props.history,
                   onOpenDetail: props.onOpenDetail,
+                  client: props.client,
                 });
               },
               else() {
@@ -1059,6 +1194,7 @@ function ContentDetailPageView(props) {
         onOpenDetail: props.embedded
           ? (content_id) => vm$.methods.openDetail(content_id)
           : null,
+        client: props.client,
       }),
     ],
   );

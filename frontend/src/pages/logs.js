@@ -1,5 +1,4 @@
 import { LogsPageViewModel } from "./logs.model.js";
-import { FilePicker, Tag } from "../dmui.js";
 
 function LogsPageView(props) {
   const vm$ = LogsPageViewModel(props);
@@ -44,8 +43,7 @@ function LogsPageClearConfirm(props) {
     class: "dm-dialog--sm",
     name: "logs-clear-confirm",
     title: "清空日志",
-    description:
-      "这会同时清空当前页面记录和日志文件内容，此操作不可恢复。",
+    description: "这会同时清空当前页面记录和日志文件内容，此操作不可恢复。",
     cancelText: "取消",
     okText: "清空",
   });
@@ -165,8 +163,7 @@ function LogsPageToolbar(props) {
           ),
           View(
             {
-              class:
-                "content-filter-actions dm-flex dm-items-center dm-gap-2",
+              class: "content-filter-actions dm-flex dm-items-center dm-gap-2",
               attributes: { n: "logs-primary-actions" },
             },
             [
@@ -554,8 +551,7 @@ function LogsPageFieldsCell(props) {
                       View(
                         {
                           type: "button",
-                          class:
-                            "logs-field-value logs-field-value-preview",
+                          class: "logs-field-value logs-field-value-preview",
                           attributes: {
                             n: "logs-json-field-preview-action",
                             type: "button",

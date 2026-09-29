@@ -29,10 +29,11 @@ func init() {
 
 // FeishuAdapter connects the Feishu document scraper to the shared registry.
 type FeishuAdapter struct {
-	runtime_mu      sync.RWMutex
-	logger          *zerolog.Logger
-	cookie_provider *cookies.Reader
-	file_cache      *cache.CacheProvider
+	runtime_mu        sync.RWMutex
+	logger            *zerolog.Logger
+	cookie_provider   *cookies.Reader
+	file_cache        *cache.CacheProvider
+	filename_template string
 }
 
 var (
@@ -42,6 +43,7 @@ var (
 	_ adapter.RuntimeAdapter              = (*FeishuAdapter)(nil)
 	_ adapter.RuntimeHandle               = (*FeishuAdapter)(nil)
 	_ adapter.PlatformStatusDescriber     = (*FeishuAdapter)(nil)
+	_ adapter.Postprocessor               = (*FeishuAdapter)(nil)
 )
 
 // NewFeishuAdapter creates a Feishu document adapter.
@@ -66,6 +68,10 @@ func (a *FeishuAdapter) RegisterRuntime(adapter_options *adapter.AdapterOptions)
 	a.logger = adapter_options.Logger
 	a.cookie_provider = adapter_options.Cookies
 	a.file_cache = adapter_options.Cache
+	a.filename_template = ""
+	if adapter_options.Config != nil {
+		a.filename_template = adapter_options.Config.GetString("download.filenameTemplate")
+	}
 	a.runtime_mu.Unlock()
 	if adapter_options.Bus != nil {
 		adapter_options.Bus.Publish(events.PlatformStatusChanged{Platform: PlatformID, Status: "available", Available: true})
@@ -82,6 +88,7 @@ func (a *FeishuAdapter) Stop() {
 	a.logger = nil
 	a.cookie_provider = nil
 	a.file_cache = nil
+	a.filename_template = ""
 	a.runtime_mu.Unlock()
 }
 
@@ -114,6 +121,15 @@ func (a *FeishuAdapter) runtime_values() (*cookies.Reader, *cache.CacheProvider,
 	a.runtime_mu.RLock()
 	defer a.runtime_mu.RUnlock()
 	return a.cookie_provider, a.file_cache, a.logger
+}
+
+func (a *FeishuAdapter) filename_template_value() string {
+	if a == nil {
+		return ""
+	}
+	a.runtime_mu.RLock()
+	defer a.runtime_mu.RUnlock()
+	return a.filename_template
 }
 
 func (a *FeishuAdapter) ToContent(data any) (*model.Content, error) {
@@ -215,6 +231,12 @@ func (a *FeishuAdapter) build_download_task(document *feishu.Document, config_js
 		Endpoints:     []model.DownloadEndpoint{{Protocol: "inline", URL: body, Enabled: 1}},
 		ContentAssets: []adapter.ContentAssetReference{{Kind: model.ContentAssetKindText, Role: model.ContentAssetRoleArticleBody, AssetKey: "body", Relation: model.DownloadResourceAssetRelationSource}},
 	})
+	if document_extra, err := json.Marshal(map[string]string{
+		feishu_resource_extra_key: feishu_resource_document,
+		"source_url":              document.URL,
+	}); err == nil {
+		result.Resources[len(result.Resources)-1].Resource.Extra = string(document_extra)
+	}
 	for asset_index, asset := range document.Assets {
 		resource_info, err := a.asset_resource(document, content_id, asset, asset_index)
 		if err != nil {
@@ -241,6 +263,13 @@ func (a *FeishuAdapter) asset_resource(document *feishu.Document, content_id str
 		UniqueID:   document.Token + "_asset_" + asset.Token,
 		Size:       asset.Size,
 		MergeOrder: asset_index + 1,
+	}
+	if asset_extra, err := json.Marshal(map[string]string{
+		feishu_resource_extra_key: feishu_resource_asset,
+		feishu_asset_path_key:     strings.TrimSpace(asset.RelativePath),
+		feishu_asset_name_key:     strings.TrimSpace(asset.Name),
+	}); err == nil {
+		resource.Extra = string(asset_extra)
 	}
 	endpoint := model.DownloadEndpoint{Enabled: 1}
 	if asset.LocalPath != "" {
@@ -316,8 +345,12 @@ func validate_document(document *feishu.Document) (*feishu.Document, error) {
 }
 
 func document_content(document *feishu.Document) *model.Content {
-	metadata, _ := json.Marshal(map[string]any{"tenant": document.Tenant, "block_count": document.BlockCount, "asset_count": len(document.Assets)})
+	metadata, _ := json.Marshal(map[string]any{"tenant": document.Tenant, "author": document.Author, "block_count": document.BlockCount, "asset_count": len(document.Assets)})
 	now := util.NowMillis()
+	var publish_time *int64
+	if document.PublishTime > 0 {
+		publish_time = &document.PublishTime
+	}
 	return &model.Content{
 		Id:          PlatformID + ":" + document.Token,
 		PlatformId:  PlatformID,
@@ -327,6 +360,7 @@ func document_content(document *feishu.Document) *model.Content {
 		Description: truncate_text(document.Text, 280),
 		URL:         document.URL,
 		SourceURL:   document.URL,
+		PublishTime: publish_time,
 		Metadata:    string(metadata),
 		Timestamps:  model.Timestamps{CreatedAt: now, UpdatedAt: now},
 	}
@@ -335,11 +369,14 @@ func document_content(document *feishu.Document) *model.Content {
 func document_account(document *feishu.Document) *model.Account {
 	now := util.NowMillis()
 	origin := "https://" + document.Tenant + "/"
+	// The meta API exposes the document owner, so the account represents the
+	// author when available and falls back to the tenant host otherwise.
+	external_id := first_non_empty(document.OwnerID, document.Author, document.Tenant)
 	return &model.Account{
-		Id:         PlatformID + ":" + document.Tenant,
+		Id:         PlatformID + ":" + external_id,
 		PlatformId: PlatformID,
-		ExternalId: document.Tenant,
-		Nickname:   document.Tenant,
+		ExternalId: external_id,
+		Nickname:   first_non_empty(document.Author, document.Tenant),
 		AvatarURL:  origin + "favicon.ico",
 		ProfileURL: origin,
 		Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},

@@ -247,7 +247,7 @@ func (c *APIClient) get_mime_type(ext string) string {
 }
 
 func (c *APIClient) handle_list_files(ctx *gin.Context) {
-	if c.fs_service == nil {
+	if c.service_fs == nil {
 		result.Err(ctx, 500, "文件服务未初始化")
 		return
 	}
@@ -256,7 +256,7 @@ func (c *APIClient) handle_list_files(ctx *gin.Context) {
 		result.Err(ctx, 400, "请求参数无效: "+err.Error())
 		return
 	}
-	files, err := c.fs_service.ListFiles(options)
+	files, err := c.service_fs.ListFiles(options)
 	if err != nil {
 		result.Err(ctx, 500, "读取文件列表失败: "+err.Error())
 		return

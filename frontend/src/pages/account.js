@@ -1,15 +1,6 @@
+import { WxChannelsPlayerView } from "@/components/wxchannels.player.js";
+
 import { AccountViewModel } from "./account.model.js";
-import {
-  BrandEmpty,
-  BrandError,
-  BrandLoading,
-  Tag,
-  PlatformTag,
-  Card,
-  Tab,
-  Tabs,
-  Waterfall,
-} from "../dmui.js";
 
 const ACCOUNT_TEXT_CONTENT_TYPES = new Set(["answer", "webpage", "text"]);
 
@@ -26,14 +17,16 @@ function AccountPageView(props) {
       },
     },
     [
-      View({
-        class: "content-toolbar-wrap account-toolbar-wrap",
-        attributes: { n: "account-toolbar-wrap" },
-      }, [
-        AccountPageToolbar({ store: vm$ }),
-      ]),
+      View(
+        {
+          class: "content-toolbar-wrap account-toolbar-wrap",
+          attributes: { n: "account-toolbar-wrap" },
+        },
+        [AccountPageToolbar({ store: vm$ })],
+      ),
       AccountPageBody({ store: vm$ }),
       AccountContentsDrawer({ store: vm$ }),
+      AccountPlayerDrawer({ store: vm$ }),
     ],
   );
 }
@@ -51,12 +44,12 @@ function account_content_card_height(content, _index, column_width) {
   const images = Array.isArray(content && content.preview_images)
     ? content.preview_images
     : [];
-  const kind = String(content && content.content_type || "").toLowerCase();
+  const kind = String((content && content.content_type) || "").toLowerCase();
   if (ACCOUNT_TEXT_CONTENT_TYPES.has(kind)) {
     const title = String(
-      content && (content.title || content.external_id) || "未命名内容",
+      (content && (content.title || content.external_id)) || "未命名内容",
     );
-    const description = String(content && content.description || "").trim();
+    const description = String((content && content.description) || "").trim();
     const characters_per_line = Math.max(12, Math.floor((width - 32) / 14));
     const title_lines = Math.min(
       4,
@@ -65,8 +58,12 @@ function account_content_card_height(content, _index, column_width) {
     const description_lines = description
       ? Math.min(6, Math.ceil(description.length / characters_per_line))
       : 0;
-    return 32 + title_lines * 24 + description_lines * 23 +
-      (description_lines > 0 ? 8 : 0);
+    return (
+      32 +
+      title_lines * 24 +
+      description_lines * 23 +
+      (description_lines > 0 ? 8 : 0)
+    );
   }
   let height = 190;
   if (images.length > 0) {
@@ -77,10 +74,7 @@ function account_content_card_height(content, _index, column_width) {
       const fallback_ratio = kind === "album" ? 4 / 3 : 16 / 9;
       const ratio = Math.max(
         0.56,
-        Math.min(
-          1.9,
-          Number(content.preview_aspect_ratio) || fallback_ratio,
-        ),
+        Math.min(1.9, Number(content.preview_aspect_ratio) || fallback_ratio),
       );
       height = Math.max(170, Math.min(420, width / ratio));
     }
@@ -147,7 +141,12 @@ function AccountContentMedia(props) {
             class: "account-content-card-media-symbol",
             attributes: { "aria-hidden": "true" },
           },
-          [Timeless.Icon({ name: kind === "answer" ? "message-circle" : "file-text", size: 42 })],
+          [
+            Timeless.Icon({
+              name: kind === "answer" ? "message-circle" : "file-text",
+              size: 42,
+            }),
+          ],
         ),
         props.coverMeta,
       ],
@@ -163,9 +162,10 @@ function AccountContentMedia(props) {
     return View(
       {
         class: `account-content-card-media account-content-card-gallery account-content-card-gallery-${Math.min(visible_images.length, 4)}`,
-        style: visible_images.length === 1
-          ? { "aspect-ratio": String(single_image_ratio) }
-          : undefined,
+        style:
+          visible_images.length === 1
+            ? { "aspect-ratio": String(single_image_ratio) }
+            : undefined,
         attributes: { n: "account-content-card-gallery" },
       },
       [
@@ -195,7 +195,7 @@ function AccountContentMedia(props) {
                   )
                 : null,
             ].filter(Boolean),
-          )
+          ),
         ),
         props.coverMeta,
       ],
@@ -206,9 +206,10 @@ function AccountContentMedia(props) {
     {
       class: "account-content-card-media account-content-card-poster",
       style: {
-        "aspect-ratio": Number(content.preview_aspect_ratio) > 0
-          ? String(content.preview_aspect_ratio)
-          : "16 / 9",
+        "aspect-ratio":
+          Number(content.preview_aspect_ratio) > 0
+            ? String(content.preview_aspect_ratio)
+            : "16 / 9",
       },
       attributes: { n: "account-content-card-poster" },
     },
@@ -274,11 +275,17 @@ function AccountContentCard(props) {
         `account-content-card-${kind}`,
         text_only ? "account-content-card-text-only" : "",
         source_url ? "account-content-card-clickable" : "",
-      ].filter(Boolean).join(" "),
+      ]
+        .filter(Boolean)
+        .join(" "),
       attributes: {
         n: "account-content-card",
         type: source_url ? "button" : undefined,
-        title: source_url ? "打开原内容" : undefined,
+        title: source_url
+          ? kind === "video" && content.decode_key
+            ? "播放视频"
+            : "打开原内容"
+          : undefined,
       },
       onClick() {
         if (source_url) vm$.methods.openContent(content);
@@ -306,6 +313,114 @@ function AccountContentCard(props) {
             : null,
         ].filter(Boolean)
       : [AccountContentMedia({ content, coverMeta: cover_meta })],
+  );
+}
+
+function AccountContentPlayer(props) {
+  const vm$ = props.store;
+  const content = props.content;
+  return View(
+    {
+      class: "account-content-player",
+      attributes: {
+        n: "account-content-player",
+        role: "region",
+        "aria-label": "账号视频播放",
+      },
+    },
+    [
+      View(
+        {
+          class: "account-content-player-header",
+          attributes: { n: "account-content-player-header" },
+        },
+        [
+          View(
+            {
+              as: "h3",
+              class: "account-content-player-title",
+              attributes: { n: "account-content-player-title" },
+            },
+            [content.title || content.external_id || "未命名视频"],
+          ),
+          View(
+            {
+              class: "account-content-player-actions",
+              attributes: { n: "account-content-player-actions" },
+            },
+            [
+              AccountPageActionButton({
+                name: "account-content-player-download-action",
+                store: vm$.ui.btn_download_player$,
+                icon: "download",
+                label: "下载",
+                title: "创建下载任务",
+              }),
+              View(
+                {
+                  as: "button",
+                  class: "account-content-player-close",
+                  attributes: {
+                    n: "account-content-player-close-action",
+                    type: "button",
+                    title: "关闭播放器",
+                  },
+                  onClick() {
+                    vm$.methods.closeContentPlayer();
+                  },
+                },
+                [
+                  Timeless.Icon({
+                    name: "x",
+                    size: 16,
+                    attributes: { n: "account-content-player-close-icon" },
+                  }),
+                  "关闭",
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+      Show({
+        when: vm$.state.drawer_player_download_success,
+        ok() {
+          return View(
+            {
+              class: "account-content-player-download-success",
+              attributes: {
+                n: "account-content-player-download-success",
+                role: "status",
+              },
+            },
+            [vm$.state.drawer_player_download_success],
+          );
+        },
+      }),
+      Show({
+        when: vm$.state.drawer_player_download_error,
+        ok() {
+          return View(
+            {
+              class: "account-content-player-download-error",
+              attributes: {
+                n: "account-content-player-download-error",
+                role: "alert",
+              },
+            },
+            [vm$.state.drawer_player_download_error],
+          );
+        },
+      }),
+      WxChannelsPlayerView({
+        url: content.url,
+        decodeKey: content.decode_key,
+        autoplay: true,
+        class: "account-content-player-media",
+        nodeName: "account-content-player-media",
+        ariaLabel: content.title || "账号视频",
+      }),
+    ],
   );
 }
 
@@ -347,7 +462,10 @@ function AccountContentsCollection(props) {
     },
     [
       Show({
-        when: computed(vm$.state.drawer_status, (status) => status === "initial"),
+        when: computed(
+          vm$.state.drawer_status,
+          (status) => status === "initial",
+        ),
         ok() {
           return AccountContentState({
             loading: true,
@@ -381,7 +499,10 @@ function AccountContentsCollection(props) {
         },
       }),
       Show({
-        when: computed(vm$.state.drawer_status, (status) => status === "normal"),
+        when: computed(
+          vm$.state.drawer_status,
+          (status) => status === "normal",
+        ),
         ok() {
           return Waterfall({
             class: "account-content-waterfall",
@@ -401,9 +522,8 @@ function AccountContentsCollection(props) {
             },
             footer: [
               Show({
-                when: computed(
-                  vm$.state.drawer_loading_more,
-                  (loading) => Boolean(loading),
+                when: computed(vm$.state.drawer_loading_more, (loading) =>
+                  Boolean(loading),
                 ),
                 ok() {
                   return View(
@@ -422,9 +542,8 @@ function AccountContentsCollection(props) {
                 },
               }),
               Show({
-                when: computed(
-                  vm$.state.drawer_more_error,
-                  (error) => Boolean(error),
+                when: computed(vm$.state.drawer_more_error, (error) =>
+                  Boolean(error),
                 ),
                 ok() {
                   return View(
@@ -446,8 +565,7 @@ function AccountContentsCollection(props) {
                     loading: vm$.state.drawer_loading_more,
                     error: vm$.state.drawer_more_error,
                   },
-                  ({ marker, loading, error }) =>
-                    !marker && !loading && !error,
+                  ({ marker, loading, error }) => !marker && !loading && !error,
                 ),
                 ok() {
                   return View(
@@ -488,18 +606,46 @@ function AccountContentsDrawer(props) {
           attributes: { n: "account-content-drawer-body" },
         },
         [
-          Tabs(
-            {
-              class: "account-content-tabs",
-              attributes: { n: "account-content-tabs" },
-              each: vm$.state.drawer_tabs,
-              key: "scope",
-              render(tab) {
-                return AccountContentTab({ store: vm$, tab });
-              },
+          Tabs({
+            class: "account-content-tabs",
+            attributes: { n: "account-content-tabs" },
+            each: vm$.state.drawer_tabs,
+            key: "scope",
+            render(tab) {
+              return AccountContentTab({ store: vm$, tab });
             },
-          ),
+          }),
           AccountContentsCollection({ store: vm$ }),
+        ],
+      ),
+    ],
+  );
+}
+
+function AccountPlayerDrawer(props) {
+  const vm$ = props.store;
+  return Drawer(
+    {
+      store: vm$.ui.player_drawer$,
+      class: "dm-drawer--wide account-player-drawer",
+      attributes: { n: "account-player-drawer" },
+    },
+    () => [
+      View(
+        {
+          class: "dm-drawer-body account-player-drawer-body",
+          attributes: { n: "account-player-drawer-body" },
+        },
+        [
+          Show({
+            when: vm$.state.drawer_player_content,
+            ok() {
+              return AccountContentPlayer({
+                store: vm$,
+                content: vm$.state.drawer_player_content.value,
+              });
+            },
+          }),
         ],
       ),
     ],
@@ -608,8 +754,7 @@ function AccountPageToolbar(props) {
       ),
       View(
         {
-          class:
-            "content-filter-actions dm-flex dm-items-center dm-gap-2",
+          class: "content-filter-actions dm-flex dm-items-center dm-gap-2",
           attributes: { n: "account-toolbar-actions" },
         },
         [
@@ -639,26 +784,29 @@ function AccountPageToolbar(props) {
 
 function AccountAvatar(props) {
   const account = props.account;
-  return View({
-    class: "account-avatar-wrap",
-    attributes: { n: "account-avatar" },
-  }, [
-    Show({
-      when: account.avatar_url,
-      ok() {
-        return LazyImg({
-          class: "account-avatar",
-          src: account.avatar_url,
-          alt: account.nickname,
-          attributes: {
-            n: "account-avatar-image",
-            loading: "lazy",
-            referrerpolicy: "no-referrer",
-          },
-        });
-      },
-    }),
-  ]);
+  return View(
+    {
+      class: "account-avatar-wrap",
+      attributes: { n: "account-avatar" },
+    },
+    [
+      Show({
+        when: account.avatar_url,
+        ok() {
+          return LazyImg({
+            class: "account-avatar",
+            src: account.avatar_url,
+            alt: account.nickname,
+            attributes: {
+              n: "account-avatar-image",
+              loading: "lazy",
+              referrerpolicy: "no-referrer",
+            },
+          });
+        },
+      }),
+    ],
+  );
 }
 
 function AccountPlatform(props) {
@@ -680,72 +828,78 @@ function AccountIdentity(props) {
   );
   return [
     AccountAvatar({ account }),
-    View({
-      class: "account-details",
-      attributes: { n: "account-details" },
-    }, [
-      View({
-        class: "account-name",
-        attributes: { n: "account-name" },
-      }, [account.nickname]),
-      View({ class: "account-meta", attributes: { n: "account-meta" } }, [
+    View(
+      {
+        class: "account-details",
+        attributes: { n: "account-details" },
+      },
+      [
         View(
           {
-            type: "button",
-            class: computed(copied_, (copied) =>
-              copied
-                ? "account-copy-id-action dm-focus-ring is-copied"
-                : "account-copy-id-action dm-focus-ring",
-            ),
-            attributes: {
-              n: "account-copy-id-action",
+            class: "account-name",
+            attributes: { n: "account-name" },
+          },
+          [account.nickname],
+        ),
+        View({ class: "account-meta", attributes: { n: "account-meta" } }, [
+          View(
+            {
               type: "button",
-              title: computed(copied_, (copied) =>
-                copied ? "已复制" : "复制账号 ID",
+              class: computed(copied_, (copied) =>
+                copied
+                  ? "account-copy-id-action dm-focus-ring is-copied"
+                  : "account-copy-id-action dm-focus-ring",
               ),
-              "aria-label": computed(copied_, (copied) =>
-                copied ? "账号 ID 已复制" : "复制账号 ID",
-              ),
-              disabled: account.id ? undefined : true,
-            },
-            onClick(event) {
-              event.stopPropagation();
-              vm$.methods.copyId(account);
-            },
-          },
-          [
-            Show({
-              when: copied_,
-              ok() {
-                return Timeless.Icon({
-                  name: "check",
-                  size: 12,
-                  attributes: { n: "account-copy-id-success-icon" },
-                });
+              attributes: {
+                n: "account-copy-id-action",
+                type: "button",
+                title: computed(copied_, (copied) =>
+                  copied ? "已复制" : "复制账号 ID",
+                ),
+                "aria-label": computed(copied_, (copied) =>
+                  copied ? "账号 ID 已复制" : "复制账号 ID",
+                ),
+                disabled: account.id ? undefined : true,
               },
-              else() {
-                return Timeless.Icon({
-                  name: "copy",
-                  size: 12,
-                  attributes: { n: "account-copy-id-icon" },
-                });
+              onClick(event) {
+                event.stopPropagation();
+                vm$.methods.copyId(account);
               },
-            }),
-          ],
-        ),
-        View(
-          {
-            class: "account-id",
-            attributes: {
-              n: "account-id",
-              title: account.id || "",
             },
-          },
-          [account.id || "-"],
-        ),
-      ]),
-      AccountPlatform({ store: vm$, account }),
-    ]),
+            [
+              Show({
+                when: copied_,
+                ok() {
+                  return Timeless.Icon({
+                    name: "check",
+                    size: 12,
+                    attributes: { n: "account-copy-id-success-icon" },
+                  });
+                },
+                else() {
+                  return Timeless.Icon({
+                    name: "copy",
+                    size: 12,
+                    attributes: { n: "account-copy-id-icon" },
+                  });
+                },
+              }),
+            ],
+          ),
+          View(
+            {
+              class: "account-id",
+              attributes: {
+                n: "account-id",
+                title: account.id || "",
+              },
+            },
+            [account.id || "-"],
+          ),
+        ]),
+        AccountPlatform({ store: vm$, account }),
+      ],
+    ),
   ];
 }
 
@@ -767,19 +921,22 @@ function AccountSkeletonRow() {
             class: "account-avatar-wrap content-skeleton",
             attributes: { n: "account-table-skeleton-avatar" },
           }),
-          View({
-            class: "account-skeleton-details",
-            attributes: { n: "account-table-skeleton-details" },
-          }, [
-            View({
-              class: "content-skeleton content-skeleton-line",
-              attributes: { n: "account-table-skeleton-name" },
-            }),
-            View({
-              class: "content-skeleton content-skeleton-line-short",
-              attributes: { n: "account-table-skeleton-id" },
-            }),
-          ]),
+          View(
+            {
+              class: "account-skeleton-details",
+              attributes: { n: "account-table-skeleton-details" },
+            },
+            [
+              View({
+                class: "content-skeleton content-skeleton-line",
+                attributes: { n: "account-table-skeleton-name" },
+              }),
+              View({
+                class: "content-skeleton content-skeleton-line-short",
+                attributes: { n: "account-table-skeleton-id" },
+              }),
+            ],
+          ),
         ],
       ),
       View(
@@ -787,20 +944,24 @@ function AccountSkeletonRow() {
           class: "dm-table-cell",
           attributes: { n: "account-table-skeleton-count", role: "cell" },
         },
-        [View({
-          class: "content-skeleton content-skeleton-line-short",
-          attributes: { n: "account-table-skeleton-count-value" },
-        })],
+        [
+          View({
+            class: "content-skeleton content-skeleton-line-short",
+            attributes: { n: "account-table-skeleton-count-value" },
+          }),
+        ],
       ),
       View(
         {
           class: "dm-table-cell",
           attributes: { n: "account-table-skeleton-time", role: "cell" },
         },
-        [View({
-          class: "content-skeleton content-skeleton-line-short",
-          attributes: { n: "account-table-skeleton-time-value" },
-        })],
+        [
+          View({
+            class: "content-skeleton content-skeleton-line-short",
+            attributes: { n: "account-table-skeleton-time-value" },
+          }),
+        ],
       ),
     ],
   );
@@ -834,9 +995,7 @@ function AccountPageBody(props) {
         width: 110,
         cellClass: "account-content-count",
         render(account) {
-          return [
-            vm$.methods.formatContentCount(account.content_count),
-          ];
+          return [vm$.methods.formatContentCount(account.content_count)];
         },
       },
       {
@@ -845,9 +1004,7 @@ function AccountPageBody(props) {
         width: 180,
         cellClass: "account-added",
         render(account) {
-          return [
-            vm$.methods.formatTime(account.created_at),
-          ];
+          return [vm$.methods.formatTime(account.created_at)];
         },
       },
     ],

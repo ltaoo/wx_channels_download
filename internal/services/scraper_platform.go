@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	douyin_scraper "wx_channel/pkg/scraper/douyin"
+	feishu_scraper "wx_channel/pkg/scraper/feishu"
 	instagram_scraper "wx_channel/pkg/scraper/instagram"
 	kuaishou_scraper "wx_channel/pkg/scraper/kuaishou"
 	weibo_scraper "wx_channel/pkg/scraper/weibo"
@@ -28,7 +29,9 @@ const (
 	scraper_platform_weibo       = "weibo"
 	scraper_platform_x           = "x"
 	scraper_platform_ucdrive     = "ucdrive"
+	scraper_platform_quark       = "quark"
 	scraper_platform_singlefile  = "singlefile"
+	scraper_platform_feishu      = "feishu"
 )
 
 type ScraperPlatformResolution struct {
@@ -50,6 +53,10 @@ type scraper_http_url_rule struct {
 }
 
 var scraper_raw_url_rules = []scraper_raw_url_rule{
+	{
+		platform_id: feishu_scraper.PlatformID,
+		match:       feishu_scraper.IsDocumentURL,
+	},
 	{
 		platform_id: instagram_scraper.PlatformID,
 		match: func(raw_url string) bool {
@@ -150,6 +157,16 @@ var scraper_http_url_rules = []scraper_http_url_rule{
 		platform_id:   scraper_platform_ucdrive,
 		exact_hosts:   []string{"drive.uc.cn"},
 		path_prefixes: []string{"/s/", "/share/"},
+	},
+	{
+		platform_id:   scraper_platform_quark,
+		exact_hosts:   []string{"pan.quark.cn"},
+		path_prefixes: []string{"/s/", "/share/"},
+	},
+	{
+		platform_id:   scraper_platform_feishu,
+		domain_hosts:  []string{"feishu.cn", "larkenterprise.com"},
+		path_prefixes: []string{"/docx/", "/wiki/"},
 	},
 	{
 		platform_id:  scraper_platform_xiaohongshu,

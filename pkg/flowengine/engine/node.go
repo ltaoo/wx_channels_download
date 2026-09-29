@@ -2,20 +2,28 @@ package engine
 
 import "fmt"
 
+// NodePosition stores the editor canvas coordinates for a node. It is ignored
+// by the execution engine and travels with the flow definition as UI metadata.
+type NodePosition struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
 // NodeDefinition 对应 JSON 配置中 nodes 数组的每一项
 type NodeDefinition struct {
-	ID     string                 `json:"id"`
-	Type   string                 `json:"type"`
-	Name   string                 `json:"name"`
-	Config map[string]interface{} `json:"config"`
+	ID       string                 `json:"id"`
+	Type     string                 `json:"type"`
+	Name     string                 `json:"name"`
+	Config   map[string]interface{} `json:"config"`
+	Position *NodePosition          `json:"position,omitempty"`
 	// NextNodes 定义了流程驱动到下一个节点的方式
 	// 这是一个 NodeDefinition 特有的字段，用于非网关节点的执行逻辑。
-	NextNodes         []TargetNode  `json:"next_nodes"`
-	NextNodeIDs       []string      `json:"next_node_ids"`
-	ErrorNextNodeID   string        `json:"error_next_node"`
-	RetryPolicy       *RetryPolicy  `json:"retry"`
-	InputSchema       []FieldSchema `json:"input_schema"`
-	OutputSchema      []FieldSchema `json:"output_schema"`
+	NextNodes       []TargetNode  `json:"next_nodes"`
+	NextNodeIDs     []string      `json:"next_node_ids"`
+	ErrorNextNodeID string        `json:"error_next_node"`
+	RetryPolicy     *RetryPolicy  `json:"retry"`
+	InputSchema     []FieldSchema `json:"input_schema"`
+	OutputSchema    []FieldSchema `json:"output_schema"`
 }
 
 // --- 流程状态常量 ---

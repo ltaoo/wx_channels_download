@@ -8,7 +8,6 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 
-	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
 )
 
@@ -166,13 +165,6 @@ func content_video_from_result(result *FetchResult) *model.ContentVideo {
 		URL:      result.Video.URL,
 		Variants: []model.ContentVideoVariant{variant},
 	}
-}
-
-func content_video_details(content_video *model.ContentVideo) []adapter.ContentDetail {
-	if content_video == nil {
-		return nil
-	}
-	return []adapter.ContentDetail{{Type: model.ContentTypeVideo, Key: content_video.Id, Data: content_video}}
 }
 
 func positive_int_pointer(value int) *int {
