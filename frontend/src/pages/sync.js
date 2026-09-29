@@ -35,12 +35,34 @@ function SyncServerCard(props) {
             },
             [
               View(
-                {
-                  as: "h2",
-                  class: "sync-server-card__name",
-                  attributes: { n: "sync-server-name" },
-                },
-                [server.name],
+                { class: "sync-server-card__title-row" },
+                [
+                  View(
+                    {
+                      as: "h2",
+                      class: "sync-server-card__name",
+                      attributes: { n: "sync-server-name" },
+                    },
+                    [server.name],
+                  ),
+                  View(
+                    {
+                      class: server.version_class,
+                      attributes: { n: "sync-server-version" },
+                    },
+                    [server.version_text],
+                  ),
+                  View(
+                    {
+                      class: server.device_status_class,
+                      attributes: {
+                        n: "sync-server-status",
+                        title: server.device_status_title,
+                      },
+                    },
+                    [server.device_status_label],
+                  ),
+                ],
               ),
               View(
                 {
@@ -88,6 +110,74 @@ function SyncServerCard(props) {
   );
 }
 
+function SyncPageToolbar(props) {
+  const model = props.store;
+  return View(
+    {
+      type: "form",
+      class: "content-toolbar content-filter-form",
+      attributes: { n: "sync-toolbar", role: "search" },
+      onSubmit(event) {
+        event.preventDefault();
+      },
+    },
+    [
+      View(
+        {
+          class: "content-filter-fields dm-flex dm-items-center dm-gap-2",
+          attributes: { n: "sync-toolbar-fields" },
+        },
+        [
+          View(
+            {
+              class: "content-filter-search",
+              attributes: { n: "sync-search-field" },
+            },
+            [
+              Input({
+                store: model.ui.input_keyword$,
+                rootAttributes: { n: "sync-search-control" },
+                prefix: Timeless.Icon({
+                  name: "search",
+                  size: 16,
+                  attributes: { n: "sync-search-icon" },
+                }),
+                attributes: {
+                  n: "sync-search-input",
+                  name: "keyword",
+                  type: "search",
+                  autocomplete: "off",
+                  "aria-label": "搜索服务名称或地址",
+                },
+              }),
+            ],
+          ),
+        ],
+      ),
+      View(
+        {
+          class: "content-filter-actions dm-flex dm-items-center dm-gap-2",
+          attributes: { n: "sync-toolbar-actions" },
+        },
+        [
+          Button(
+            {
+              store: model.ui.refresh_button$,
+              attributes: { n: "sync-refresh", type: "button" },
+              prefix: Timeless.Icon({
+                name: "refresh-cw",
+                size: 16,
+                attributes: { n: "sync-refresh-icon" },
+              }),
+            },
+            ["刷新"],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
 export default function SyncPageView(props) {
   const model = SyncPageModel(props);
   return View(
@@ -104,51 +194,15 @@ export default function SyncPageView(props) {
     [
       View(
         {
-          class: "sync-page__header container",
-          attributes: { n: "sync-page-header" },
+          class: "content-toolbar-wrap sync-toolbar-wrap",
+          attributes: { n: "sync-toolbar-wrap" },
         },
-        [
-          View(
-            {
-              class: "sync-page__heading",
-              attributes: { n: "sync-page-heading" },
-            },
-            [
-              View(
-                {
-                  as: "h1",
-                  class: "sync-page__title",
-                  attributes: { n: "sync-page-title" },
-                },
-                ["下载服务同步"],
-              ),
-              View(
-                {
-                  class: "sync-page__description",
-                  attributes: { n: "sync-page-description" },
-                },
-                ["将当前服务的下载记录、内容记录和已下载文件同步到另一台下载服务。"],
-              ),
-            ],
-          ),
-          Button(
-            {
-              store: model.ui.refresh_button$,
-              attributes: { n: "sync-page-refresh", type: "button" },
-              prefix: Timeless.Icon({
-                name: "refresh-cw",
-                size: 16,
-                attributes: { n: "sync-page-refresh-icon" },
-              }),
-            },
-            ["刷新"],
-          ),
-        ],
+        [SyncPageToolbar({ store: model })],
       ),
       View(
         {
-          class: "sync-page__body container",
-          attributes: { n: "sync-page-body" },
+          class: "content-main sync-main",
+          attributes: { n: "sync-main" },
         },
         [
           Show({
@@ -164,7 +218,10 @@ export default function SyncPageView(props) {
             },
           }),
           Show({
-            when: computed(model.state.servers, (servers) => servers.length > 0),
+            when: computed(
+              model.state.visible_servers,
+              (servers) => servers.length > 0,
+            ),
             ok() {
               return View(
                 {
@@ -173,7 +230,7 @@ export default function SyncPageView(props) {
                 },
                 [
                   For({
-                    each: model.state.servers,
+                    each: model.state.visible_servers,
                     render(server) {
                       return SyncServerCard({ server });
                     },
