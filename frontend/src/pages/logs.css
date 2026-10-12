@@ -161,7 +161,6 @@
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  padding-top: var(--dm-space-4);
 }
 
 .logs-list {

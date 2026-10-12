@@ -22,13 +22,7 @@ function LogsPageView(props) {
         },
         [LogsPageToolbar({ store: vm$ })],
       ),
-      View(
-        {
-          class: "content-main container",
-          attributes: { n: "logs-content" },
-        },
-        [LogsPageList({ store: vm$ })],
-      ),
+      LogsPageList({ store: vm$ }),
       LogsPageClearConfirm({ store: vm$ }),
       LogsPageImportDialog({ store: vm$ }),
       LogsPageJsonPreviewDialog({ store: vm$ }),
@@ -784,7 +778,7 @@ function LogsPageList(props) {
   const vm$ = props.store;
   return TableWithVirtualList({
     name: "logs-table",
-    containerClass: "logs-scroll",
+    containerClass: "content-main container logs-scroll",
     containerAttributes: { n: "logs-table-container" },
     panelClass: "logs-list logs-table",
     panelAttributes: { n: "logs-list-panel" },

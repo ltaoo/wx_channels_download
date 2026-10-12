@@ -85,7 +85,7 @@ body {
 }
 
 .content-page.content-library-page {
-  height: 100vh;
+  height: 100%;
   min-height: 0;
   overflow: hidden;
 }
@@ -173,7 +173,7 @@ body {
 .content-main {
   flex: 1 1 auto;
   min-width: 0;
-  /* padding: var(--dm-space-4) var(--dm-space-4) var(--dm-space-4); */
+  padding: var(--dm-space-4);
 }
 
 .route-loading,
@@ -721,18 +721,7 @@ body {
 }
 
 @media (max-width: 760px) {
-  .content-header-inner,
-  .content-main {
-    padding-right: var(--dm-space-4);
-    padding-left: var(--dm-space-4);
-  }
-
-  .content-main {
-    /* padding-top: var(--dm-space-4-5);
-    padding-bottom: var(--dm-space-6); */
-  }
-
-  .content-toolbar-wrap {
+  .content-header-inner {
     padding-right: var(--dm-space-4);
     padding-left: var(--dm-space-4);
   }

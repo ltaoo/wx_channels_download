@@ -1168,11 +1168,34 @@ export function AutomationFlowGraph(props) {
                       },
                     },
                     [
-                      View({ class: "automation-flow-node__header" }, [
-                        View({ class: "automation-flow-node__name" }, [
-                          node.name || node.id,
+                      View({
+                        class: "automation-flow-node__header",
+                        attributes: { n: `automation-flow-node-header-${node.id}` },
+                      }, [
+                        View({
+                          class: "automation-flow-node__icon",
+                          attributes: {
+                            n: `automation-flow-node-icon-${node.id}`,
+                            "aria-hidden": "true",
+                          },
+                        }, [
+                          Timeless.Icon({
+                            name: vm$.methods.flowIcon(node.type),
+                            size: 20,
+                            attributes: { n: `automation-flow-node-type-icon-${node.id}` },
+                          }),
                         ]),
-                        View({ class: "automation-flow-node__badges" }, [
+                        View({
+                          class: "automation-flow-node__name",
+                          attributes: {
+                            n: `automation-flow-node-name-${node.id}`,
+                            title: node.name || vm$.methods.flowLabel(node.type),
+                          },
+                        }, [node.name || vm$.methods.flowLabel(node.type)]),
+                        View({
+                          class: "automation-flow-node__badges",
+                          attributes: { n: `automation-flow-node-badges-${node.id}` },
+                        }, [
                           // 执行过的节点才有日志可看（when 为空则不渲染）；
                           // 浮标只在可编辑的画布上出现，只读页没有浮窗容器
                           editable
@@ -1218,16 +1241,28 @@ export function AutomationFlowGraph(props) {
                                 },
                               })
                             : null,
-                          Tag(
-                            {
-                              variant: is_start ? "success" : "info",
-                              class: "automation-flow-node__type",
-                            },
-                            [vm$.methods.flowLabel(node.type)],
-                          ),
                         ]),
                       ]),
-                      View({ class: "automation-flow-node__id" }, [node.id]),
+                      View({
+                        class: "automation-flow-node__meta",
+                        attributes: { n: `automation-flow-node-meta-${node.id}` },
+                      }, [
+                        Tag(
+                          {
+                            variant: is_start ? "success" : "info",
+                            class: "automation-flow-node__type",
+                            attributes: { n: `automation-flow-node-type-${node.id}` },
+                          },
+                          [vm$.methods.flowLabel(node.type)],
+                        ),
+                        View({
+                          class: "automation-flow-node__id",
+                          attributes: {
+                            n: `automation-flow-node-id-${node.id}`,
+                            title: node.id,
+                          },
+                        }, [node.id]),
+                      ]),
                       Show({
                         when:
                           node.config && Object.keys(node.config).length > 0,
@@ -1236,7 +1271,10 @@ export function AutomationFlowGraph(props) {
                           return View(
                             {
                               class: "automation-flow-node__schema",
-                              attributes: { title: config_text },
+                              attributes: {
+                                n: `automation-flow-node-schema-${node.id}`,
+                                title: config_text,
+                              },
                             },
                             [config_text],
                           );
