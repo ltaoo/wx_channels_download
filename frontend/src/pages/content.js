@@ -1119,7 +1119,7 @@ function ContentCardBody(props) {
   const vm$ = props.store;
   return View(
     {
-      class: "content-main container",
+      class: "content-main content-card-main container",
       attributes: { n: "content-card-page-main" },
     },
     [

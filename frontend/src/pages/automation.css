@@ -19,15 +19,11 @@
 .automation-feedback {
   display: grid;
   gap: var(--dm-space-2);
-  padding-top: var(--dm-space-3);
+  padding: var(--dm-space-4) var(--dm-space-4) 0;
 }
 
 .automation-feedback:empty {
   display: none;
-}
-
-.automation-index {
-  padding-bottom: var(--dm-space-6);
 }
 
 .automation-table-name-cell,
@@ -272,15 +268,11 @@
   flex-direction: column;
 }
 
-.automation-editor-toolbar-wrap {
-  padding: var(--dm-space-3) var(--dm-space-4);
-}
-
 .automation-editor-workspace {
   display: flex;
   flex: 1;
-  gap: var(--dm-space-2);
-  padding: 0 var(--dm-space-4) var(--dm-space-4);
+  gap: var(--dm-space-4);
+  padding: var(--dm-space-4);
 }
 
 .automation-node-library,
@@ -795,18 +787,35 @@
 .automation-flow-node__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--dm-space-1-5);
 }
 
+.automation-flow-node__icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 var(--dm-space-8);
+  height: var(--dm-space-8);
+  color: var(--dm-color-primary);
+  background: var(--dm-color-primary-soft);
+  border-radius: var(--dm-radius-control);
+}
+
 .automation-flow-node__name {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   color: var(--dm-color-text-primary);
-  font-size: var(--dm-font-size-sm);
-  font-weight: var(--dm-font-weight-semibold);
+  font-size: var(--dm-font-size-base);
+  font-weight: var(--dm-font-weight-bold);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.automation-flow-node__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--dm-space-1-5);
+  margin-top: var(--dm-space-1);
 }
 
 .automation-flow-node__type {
@@ -839,10 +848,13 @@
 
 .automation-flow-node__id {
   display: block;
-  margin-top: var(--dm-space-0-5);
+  min-width: 0;
+  overflow: hidden;
   color: var(--dm-color-text-secondary);
   font-family: var(--dm-font-family-mono);
   font-size: var(--dm-font-size-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .automation-flow-node__schema {
@@ -1289,12 +1301,6 @@
   max-height: 120px;
 }
 
-@media (max-width: 1180px) and (min-width: 901px) {
-  .automation-editor-workspace {
-    grid-template-columns: 220px minmax(320px, 1fr) 272px;
-  }
-}
-
 @media (max-width: 900px) {
   .automation-page .automation-toolbar,
   .automation-detail__header,
@@ -1313,7 +1319,7 @@
 
   .automation-editor-workspace {
     height: auto;
-    grid-template-columns: 1fr;
+    flex-direction: column;
   }
 
   .automation-node-library {
