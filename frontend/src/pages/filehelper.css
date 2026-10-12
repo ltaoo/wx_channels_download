@@ -15,7 +15,6 @@
   min-height: 0;
   align-items: center;
   justify-content: center;
-  padding: var(--dm-space-8);
   overflow: hidden;
   color: var(--dm-filehelper-text);
   font-family: var(--dm-font-family-sans);
@@ -31,8 +30,10 @@
 .filehelper-container {
   display: flex;
   flex: 1;
-  height: min(100%, 820px);
+  min-width: 0;
+  height: min(calc(100% - var(--dm-space-8)), 820px);
   min-height: 0;
+  margin: var(--dm-space-4);
   flex-direction: column;
   overflow: hidden;
   background: var(--dm-filehelper-white);
@@ -492,7 +493,6 @@
 
 @media (max-width: 820px) {
   .filehelper-page {
-    padding: var(--dm-space-4);
     overflow: auto;
   }
 
@@ -536,12 +536,9 @@
 }
 
 @media (max-width: 520px) {
-  .filehelper-page {
-    padding: 0;
-  }
-
   .filehelper-container {
     height: 100%;
+    margin: 0;
     border-radius: 0;
   }
 

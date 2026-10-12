@@ -191,6 +191,10 @@
   text-align: center;
 }
 
+.content-main.content-card-main {
+  padding: 0;
+}
+
 .content-card-grid {
   position: relative;
   min-height: 0;
@@ -200,7 +204,7 @@
   grid-auto-rows: 360px;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: var(--dm-space-3);
-  padding: var(--dm-space-3);
+  padding: var(--dm-space-4);
   overflow-y: auto;
 }
 

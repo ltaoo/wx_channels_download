@@ -3,10 +3,6 @@
   background: var(--dm-content-bg);
 }
 
-.home-main {
-  padding-top: var(--dm-space-8);
-}
-
 .home-content {
   display: flex;
   flex-direction: column;
@@ -1971,10 +1967,6 @@
 }
 
 @media (max-width: 620px) {
-  .home-main {
-    padding-top: var(--dm-space-4);
-  }
-
   .home-content-cover {
     min-height: 0;
     aspect-ratio: 16 / 9;

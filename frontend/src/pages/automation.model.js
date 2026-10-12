@@ -84,8 +84,27 @@ function flow_label(type) {
     LoopNode: "循环",
     WorkflowNode: "子流程",
     JSCodeNode: "执行 JS",
+    SetVariableNode: "设置变量",
   };
   return names[type] || type;
+}
+
+function flow_icon(type) {
+  const icons = {
+    StartNode: "play",
+    EndNode: "square",
+    ExprNode: "braces",
+    GatewayNode: "git-branch",
+    APICallNode: "globe",
+    ServiceNode: "wrench",
+    ManualNode: "user",
+    FuncNode: "settings",
+    LoopNode: "refresh-cw",
+    WorkflowNode: "git-fork",
+    JSCodeNode: "file-code",
+    SetVariableNode: "pen-line",
+  };
+  return icons[type] || "box";
 }
 
 function request_result_error(result, fallback) {
@@ -2597,6 +2616,7 @@ function AutomationPageViewModel(props, options) {
     formatTime: format_time,
     pipelineName: pipeline_name,
     flowLabel: flow_label,
+    flowIcon: flow_icon,
     nodeExecutionStatusLabel(status) {
       const labels = {
       PENDING: "等待",
