@@ -2320,6 +2320,16 @@ func stream_convert_node(values map[string]interface{}) (interface{}, error) {
 		}
 
 		values[ctx_mp4_file] = mp4_file
+		// Keep HLS segments available throughout conversion. Their directory is
+		// named after the recording input, which may differ from the MP4 path.
+		playback_dir := hermes.StreamPlaybackDir(input_file)
+		if err := os.RemoveAll(playback_dir); err != nil {
+			// The MP4 has already replaced the recording. Report cleanup failures
+			// without turning a successful conversion into a failed task.
+			if run.log != nil {
+				run.log("Postprocess.wxchannels: failed to clean stream playback directory %q: %v", playback_dir, err)
+			}
+		}
 		return nil, nil
 	})
 }

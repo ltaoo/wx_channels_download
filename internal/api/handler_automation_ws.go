@@ -183,18 +183,20 @@ func (client *automation_ws_client) matches(flow_id string, run_id string) bool 
 		(client.run_id == "" || client.run_id == run_id)
 }
 
-func (client *automation_ws_client) enqueue(data []byte) {
+func (client *automation_ws_client) enqueue(data []byte) bool {
 	client.send_mu.RLock()
 	defer client.send_mu.RUnlock()
 	if client.send_closed {
-		return
+		return false
 	}
 	select {
 	case client.send <- data:
+		return true
 	default:
 		// REST run detail remains the recovery source if a slow client falls
 		// behind the bounded real-time queue.
 	}
+	return false
 }
 
 func (client *automation_ws_client) close_send() {
@@ -222,20 +224,24 @@ func (c *APIClient) handle_automation_ws(ctx *gin.Context) {
 	automation_ws_bridge.add(client)
 	go client.write_pump()
 	client.read_pump()
+	pipeline_editors.remove(client)
 	automation_ws_bridge.remove(client)
 }
 
 func (client *automation_ws_client) read_pump() {
 	defer client.conn.Close()
+	client.conn.SetReadLimit(2 * 1024 * 1024)
 	client.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	client.conn.SetPongHandler(func(string) error {
 		client.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 		return nil
 	})
 	for {
-		if _, _, err := client.conn.ReadMessage(); err != nil {
+		_, message, err := client.conn.ReadMessage()
+		if err != nil {
 			return
 		}
+		pipeline_editors.receive(client, message)
 	}
 }
 

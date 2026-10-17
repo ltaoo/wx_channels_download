@@ -17,10 +17,7 @@ import (
 	"wx_channel/pkg/cookies"
 )
 
-const (
-	cookie_cloud_crypto_legacy           = "legacy"
-	cookie_cloud_crypto_aes128_cbc_fixed = "aes-128-cbc-fixed"
-)
+const cookie_cloud_crypto_aes128_cbc_fixed = "aes-128-cbc-fixed"
 
 var (
 	ErrCookieCloudInvalidRequest    = errors.New("CookieCloud request is invalid")
@@ -46,15 +43,15 @@ type CookieCloudUpdateResult struct {
 }
 
 type cookie_cloud_update_request struct {
-	UUID       string `json:"uuid"`
-	Encrypted  string `json:"encrypted"`
-	CryptoType string `json:"crypto_type"`
+	UUID       string          `json:"uuid"`
+	Encrypted  string          `json:"encrypted"`
+	CryptoType string          `json:"crypto_type"`
+	Cookies    json.RawMessage `json:"cookies"`
 }
 
 type cookie_cloud_sync_data struct {
-	CookieData       map[string][]cookie_cloud_entry `json:"cookie_data"`
-	LocalStorageData map[string]json.RawMessage      `json:"local_storage_data"`
-	UpdateTime       json.RawMessage                 `json:"update_time"`
+	Cookies          []cookie_cloud_entry       `json:"cookies"`
+	LocalStorageData map[string]json.RawMessage `json:"local_storage_data"`
 }
 
 type cookie_cloud_entry struct {
@@ -85,10 +82,11 @@ func ProcessCookieCloudUpdate(body []byte, cfg CookieCloudConfig) (CookieCloudUp
 
 	plaintext := body
 	crypto_type := "plaintext"
-	if (request.UUID == "") != (request.Encrypted == "") {
-		return CookieCloudUpdateResult{}, ErrCookieCloudIncompleteRequest
-	}
-	if request.UUID != "" {
+	has_plain_cookies := request.Cookies != nil
+	if normalize_cookie_cloud_crypto_type(request.CryptoType) != "none" && (request.Encrypted != "" || !has_plain_cookies) {
+		if request.UUID == "" || request.Encrypted == "" {
+			return CookieCloudUpdateResult{}, ErrCookieCloudIncompleteRequest
+		}
 		crypto_type = normalize_cookie_cloud_crypto_type(request.CryptoType)
 		key, err := cookie_cloud_decryption_key(cfg, request.UUID)
 		if err != nil {
@@ -144,49 +142,14 @@ func decrypt_cookie_cloud(encrypted string, crypto_type string, key []byte) ([]b
 		return nil, fmt.Errorf("decode encrypted data: %w", err)
 	}
 
-	switch normalize_cookie_cloud_crypto_type(crypto_type) {
-	case cookie_cloud_crypto_legacy:
-		return decrypt_cookie_cloud_legacy(cipher_data, key)
-	case cookie_cloud_crypto_aes128_cbc_fixed:
-		return decrypt_cookie_cloud_aes_cbc(cipher_data, key, make([]byte, aes.BlockSize))
-	default:
+	if normalize_cookie_cloud_crypto_type(crypto_type) != cookie_cloud_crypto_aes128_cbc_fixed {
 		return nil, fmt.Errorf("unsupported crypto_type %q", crypto_type)
 	}
+	return decrypt_cookie_cloud_aes_cbc(cipher_data, key, make([]byte, aes.BlockSize))
 }
 
 func normalize_cookie_cloud_crypto_type(crypto_type string) string {
-	crypto_type = strings.ToLower(strings.TrimSpace(crypto_type))
-	if crypto_type == "" {
-		return cookie_cloud_crypto_legacy
-	}
-	return crypto_type
-}
-
-func decrypt_cookie_cloud_legacy(data []byte, passphrase []byte) ([]byte, error) {
-	const openssl_header = "Salted__"
-	if len(data) < len(openssl_header)+8 || string(data[:len(openssl_header)]) != openssl_header {
-		return nil, fmt.Errorf("legacy encrypted data has no OpenSSL salt header")
-	}
-	salt := data[len(openssl_header) : len(openssl_header)+8]
-	cipher_data := data[len(openssl_header)+8:]
-	derived := cookie_cloud_evp_bytes_to_key(passphrase, salt, 32+aes.BlockSize)
-	return decrypt_cookie_cloud_aes_cbc(cipher_data, derived[:32], derived[32:])
-}
-
-func cookie_cloud_evp_bytes_to_key(passphrase []byte, salt []byte, length int) []byte {
-	derived := make([]byte, 0, length)
-	var previous []byte
-	for len(derived) < length {
-		hasher := md5.New()
-		if len(previous) > 0 {
-			_, _ = hasher.Write(previous)
-		}
-		_, _ = hasher.Write(passphrase)
-		_, _ = hasher.Write(salt)
-		previous = hasher.Sum(nil)
-		derived = append(derived, previous...)
-	}
-	return derived[:length]
+	return strings.ToLower(strings.TrimSpace(crypto_type))
 }
 
 func decrypt_cookie_cloud_aes_cbc(cipher_data []byte, key []byte, iv []byte) ([]byte, error) {
@@ -226,48 +189,33 @@ func parse_cookie_cloud_sync_data(plaintext []byte) (cookie_cloud_sync_data, err
 	if err := json.Unmarshal(plaintext, &sync_data); err != nil {
 		return cookie_cloud_sync_data{}, fmt.Errorf("parse decrypted CookieCloud data: %w", err)
 	}
-	if sync_data.CookieData == nil {
-		return cookie_cloud_sync_data{}, fmt.Errorf("decrypted CookieCloud data has no cookie_data")
-	}
-	if sync_data.LocalStorageData == nil {
-		return cookie_cloud_sync_data{}, fmt.Errorf("decrypted CookieCloud data has no local_storage_data")
-	}
-	update_time := strings.TrimSpace(string(sync_data.UpdateTime))
-	if update_time == "" || update_time == "null" {
-		return cookie_cloud_sync_data{}, fmt.Errorf("decrypted CookieCloud data has no update_time")
+	if sync_data.Cookies == nil {
+		return cookie_cloud_sync_data{}, fmt.Errorf("cookies must be an array")
 	}
 	return sync_data, nil
 }
 
 func flatten_cookie_cloud_data(sync_data cookie_cloud_sync_data) ([]cookies.Cookie, int) {
-	domain_groups := make([]string, 0, len(sync_data.CookieData))
-	for domain_group := range sync_data.CookieData {
-		domain_groups = append(domain_groups, domain_group)
-	}
-	sort.Strings(domain_groups)
-
 	cookie_list := make([]cookies.Cookie, 0)
 	identities := make(map[cookie_cloud_identity]struct{})
 	skipped := 0
-	for _, domain_group := range domain_groups {
-		for _, entry := range sync_data.CookieData[domain_group] {
-			cookie, ok := cookie_cloud_entry_to_cookie(entry, domain_group)
-			if !ok {
-				skipped++
-				continue
-			}
-			identity := cookie_cloud_identity{
-				name:   cookie.Name,
-				domain: strings.ToLower(cookie.Domain),
-				path:   cookie.Path,
-			}
-			if _, exists := identities[identity]; exists {
-				skipped++
-				continue
-			}
-			identities[identity] = struct{}{}
-			cookie_list = append(cookie_list, cookie)
+	for _, entry := range sync_data.Cookies {
+		cookie, ok := cookie_cloud_entry_to_cookie(entry)
+		if !ok {
+			skipped++
+			continue
 		}
+		identity := cookie_cloud_identity{
+			name:   cookie.Name,
+			domain: strings.ToLower(cookie.Domain),
+			path:   cookie.Path,
+		}
+		if _, exists := identities[identity]; exists {
+			skipped++
+			continue
+		}
+		identities[identity] = struct{}{}
+		cookie_list = append(cookie_list, cookie)
 	}
 
 	sort.Slice(cookie_list, func(left_index, right_index int) bool {
@@ -284,11 +232,8 @@ func flatten_cookie_cloud_data(sync_data cookie_cloud_sync_data) ([]cookies.Cook
 	return cookie_list, skipped
 }
 
-func cookie_cloud_entry_to_cookie(entry cookie_cloud_entry, domain_group string) (cookies.Cookie, bool) {
+func cookie_cloud_entry_to_cookie(entry cookie_cloud_entry) (cookies.Cookie, bool) {
 	domain := strings.TrimSpace(entry.Domain)
-	if domain == "" {
-		domain = strings.TrimSpace(domain_group)
-	}
 	if entry.Name == "" || domain == "" {
 		return cookies.Cookie{}, false
 	}

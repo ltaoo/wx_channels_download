@@ -21,6 +21,19 @@ export function automation_trigger_badge(props) {
   );
 }
 
+export function AutomationPipelineTriggerBadges(props) {
+  const vm$ = props.store;
+  return View({ class: "automation-table-badge-cell" }, [For({
+    each: computed(vm$.state.schedules, () =>
+      vm$.methods.pipelineTriggerTypes(props.pipeline).map((type) => ({ type }))),
+    key: "type",
+    render(value) {
+      const item = value && value.value !== undefined ? value.value : value;
+      return automation_trigger_badge({ type: item.type, label: vm$.methods.triggerLabel(item.type) });
+    },
+  })]);
+}
+
 export function automation_status_badge(value) {
   const normalized = String(value || "UNKNOWN").toUpperCase();
   let tone = "info";
@@ -39,6 +52,86 @@ export function automation_status_badge(value) {
     },
     [normalized],
   );
+}
+
+export function AutomationStartTriggers(props) {
+  const vm$ = props.store;
+  return View({ class: "automation-start-triggers", attributes: { n: "automation-start-triggers" } }, [
+    View({ class: "automation-editor-panel__title" }, ["开始节点触发器"]),
+    View({ class: "automation-editor-panel__hint" }, [
+      "手动执行始终可用。可同时添加多个定时和事件触发器，保存 Pipeline 后生效。",
+    ]),
+    View({ class: "automation-trigger-actions" }, [
+      Button({ store: vm$.ui.btn_add_cron_trigger$, attributes: { n: "automation-add-cron-trigger", type: "button" } }, ["添加定时触发"]),
+      Button({ store: vm$.ui.btn_add_event_trigger$, attributes: { n: "automation-add-event-trigger", type: "button" } }, ["添加事件触发"]),
+    ]),
+    Show({
+      when: computed(vm$.state.edit_triggers, (triggers) => !triggers.length),
+      ok() { return View({ class: "automation-editor-panel__hint" }, ["尚未配置定时或事件触发器，可通过顶部「立即执行」启动。"]); },
+    }),
+    For({
+      each: vm$.state.edit_triggers, key: "uid",
+      render(value) {
+        const trigger = value && value.value !== undefined ? value.value : value;
+        const prefix = `automation-trigger-${trigger.uid}`;
+        const field = (label, store, name, textarea = false) => View({ class: "automation-form__field" }, [
+          View({ as: "label", class: "automation-form__label", attributes: { for: `${prefix}-${name}` } }, [label]),
+          (textarea ? Textarea : Input)({ store, attributes: {
+            id: `${prefix}-${name}`, n: `${prefix}-${name}`, "aria-label": label,
+            ...(textarea ? { rows: "4", spellcheck: "false" } : {}),
+          } }),
+        ]);
+        return View({ class: "automation-trigger-rule", attributes: { n: prefix } }, [
+          View({ class: "automation-trigger-rule__header" }, [
+            automation_trigger_badge({ type: trigger.type, label: vm$.methods.triggerLabel(trigger.type) }),
+            Button({ store: vm$.ui.btn_remove_trigger$.bind(trigger), attributes: {
+              n: `${prefix}-remove`, type: "button", "aria-label": `移除${vm$.methods.triggerLabel(trigger.type)}触发器`,
+            } }, ["移除触发器"]),
+          ]),
+          field("触发器名称", trigger.input_name$, "name"),
+          trigger.type === "Cron" ? field("Cron 表达式", trigger.input_cron$, "cron") : null,
+          trigger.type === "Cron" ? View({ class: "automation-trigger-actions" }, [
+            Checkbox({ store: trigger.checkbox_enabled$, attributes: { id: `${prefix}-enabled`, n: `${prefix}-enabled`, "aria-label": "启用定时触发" } }),
+            View({ as: "label", class: "automation-form__label", attributes: { for: `${prefix}-enabled` } }, ["启用定时触发"]),
+          ]) : null,
+          trigger.type === "Event" ? field("事件 Key", trigger.input_event_key$, "event-key") : null,
+          field("输入参数 JSON", trigger.input_data$, "data", true),
+          View({ class: "automation-editor-panel__hint" }, ["输入参数作为开始节点的 input；所有触发器共用后续流程。"]),
+        ].filter(Boolean));
+      },
+    }),
+  ]);
+}
+
+export function AutomationTriggerSummary(props) {
+  const vm$ = props.store;
+  const triggers = combine({ flow: vm$.state.selected_pipeline, schedules: vm$.state.schedules },
+    ({ flow }) => vm$.methods.pipelineTriggers(flow));
+  return View({ class: "automation-start-triggers", attributes: { n: "automation-trigger-summary" } }, [
+    View({ class: "automation-section-title" }, ["开始节点触发器"]),
+    View({ class: "automation-editor-panel__hint" }, ["手动执行始终可用。选择「编辑 Pipeline」，在开始节点中管理触发器。"]),
+    For({ each: triggers, render(value) {
+      const trigger = value && value.value !== undefined ? value.value : value;
+      return View({ class: "automation-trigger-rule" }, [
+        View({ class: "automation-trigger-rule__header" }, [
+          View({ class: "automation-trigger-actions" }, [
+            automation_trigger_badge({ type: trigger.type, label: vm$.methods.triggerLabel(trigger.type) }),
+            View({ attributes: { title: trigger.name } }, [trigger.name]),
+          ]),
+          trigger.id ? Button({
+            store: vm$.ui.btn_schedule_trigger$.bind(trigger),
+            attributes: { type: "button", n: `automation-trigger-event-${trigger.id}` },
+          }, [trigger.type === "Event" ? "触发事件" : "手动执行"]) : null,
+        ].filter(Boolean)),
+        View({ class: "automation-code automation-code--wrap" }, [
+          trigger.type === "Cron" ? trigger.cron_expr : trigger.event_key || "手动执行",
+        ]),
+        trigger.type === "Cron" ? View({ class: "automation-editor-panel__hint" }, [
+          trigger.enabled ? `已启用 · 下次 ${vm$.methods.formatTime(trigger.next_run_at)}` : "已暂停",
+        ]) : null,
+      ].filter(Boolean));
+    } }),
+  ]);
 }
 
 export function automation_activate(event, callback) {
@@ -185,18 +278,6 @@ export function AutomationWorkspaceToolbar(props) {
           },
           ["立即执行"],
         ),
-        !is_edit
-          ? Button(
-              {
-                store: vm$.ui.btn_schedule_create$,
-                attributes: {
-                  n: "automation-create-schedule",
-                  type: "button",
-                },
-              },
-              ["创建自动化"],
-            )
-          : null,
         is_edit
           ? Button(
               {
@@ -1263,9 +1344,17 @@ export function AutomationFlowGraph(props) {
                           },
                         }, [node.id]),
                       ]),
+                      is_start ? View({
+                        class: "automation-flow-node__schema",
+                        attributes: { n: "automation-start-trigger-count" },
+                      }, [computed(vm$.state.edit_triggers, (triggers) => {
+                        const cron_count = triggers.filter((trigger) => trigger.type === "Cron").length;
+                        const event_count = triggers.filter((trigger) => trigger.type === "Event").length;
+                        return `手动 · ${cron_count} 个定时 · ${event_count} 个事件`;
+                      })]) : null,
                       Show({
                         when:
-                          node.config && Object.keys(node.config).length > 0,
+                          !is_start && node.config && Object.keys(node.config).length > 0,
                         ok() {
                           const config_text = JSON.stringify(node.config);
                           return View(
