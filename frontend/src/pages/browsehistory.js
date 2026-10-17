@@ -1,18 +1,16 @@
-import { Tag, PlatformTag } from "../dmui.js";
 import { BrowseHistoryViewModel } from "./browsehistory.model.js";
 
 function BrowseHistoryPageView(props) {
   const vm$ = BrowseHistoryViewModel(props);
   return View(
     {
-      class:
-        "content-page content-library-page browse-history-page page",
+      class: "group-content-page min-h-full flex flex-col bg-content-bg text-content-text [.group-content-page&]:h-full [.group-content-page&]:min-h-0 [.group-content-page&]:overflow-hidden [&_>_.group-content-main]:min-h-0 [&_>_.group-content-main]:flex [&_>_.group-content-main]:flex-col [&_>_.dm-pagination]:flex-[0_0_auto] max-760:[&_.dm-table-header]:hidden max-760:[&_.dm-table-row:not(.dm-table-header)]:grid-cols-[minmax(0,_1fr)_auto_auto] max-760:[&_.dm-table-row:not(.dm-table-header)]:gap-[var(--dm-space-2)_var(--dm-space-3)] max-760:[&_.dm-table-row:not(.dm-table-header)]:min-h-92px max-760:[&_.group-content-row-main-cell]:grid-row-1 max-760:[&_.group-content-row-main-cell]:grid-column-1 max-760:[&_.group-content-row-author]:grid-row-2 max-760:[&_.group-content-row-author]:grid-column-1 max-760:[&_.group-content-row-author]:ml-[calc(var(--dm-control-height-lg)_+_var(--dm-space-3))] max-760:[&_.group-content-row-no-cover_.group-content-row-author]:ml-0 max-760:[&_.group-browse-history-access]:grid-row-[1_/_3] max-760:[&_.group-browse-history-access]:grid-column-2 max-760:[&_.group-browse-history-access]:items-end max-760:[&_.group-browse-history-action-cell]:grid-row-[1_/_3] max-760:[&_.group-browse-history-action-cell]:grid-column-3 min-w-0 min-h-full font-sans",
       onMounted() {
         vm$.methods.ready();
       },
     },
     [
-      View({ class: "content-toolbar-wrap" }, [
+      View({ class: "group-content-toolbar-wrap p-[var(--dm-space-4)_var(--dm-space-4)_0]" }, [
         BrowseHistoryPageToolbar({ store: vm$ }),
       ]),
       BrowseHistoryPageBody({ store: vm$ }),
@@ -50,7 +48,7 @@ function BrowseHistoryPageToolbar(props) {
   return View(
     {
       type: "form",
-      class: "content-toolbar content-filter-form",
+      class: "group-content-toolbar flex justify-between gap-3 max-760:flex-wrap items-stretch",
       attributes: { role: "search" },
       onSubmit(event) {
         event.preventDefault();
@@ -60,67 +58,65 @@ function BrowseHistoryPageToolbar(props) {
     [
       View(
         {
-          class:
-            "content-filter-fields dm-flex dm-items-center dm-gap-2",
+          class: "min-w-0 flex-[1_1_0] max-760:flex-[1_1_100%] max-520:flex-wrap dm-flex dm-items-center dm-gap-2",
         },
         [
-        PlatformSelect({
-          name: "browse-history-platform-select",
-          store: vm$.ui.select_platform$,
-          attributes: {
-            n: "browse-history-platform-select-trigger",
-            "aria-label": "按平台筛选浏览记录",
-          },
-        }),
-        View(
-          {
-            class: "content-filter-search",
-            attributes: { n: "browse-history-search-field" },
-          },
-          [
-            Input({
-              store: vm$.ui.input_keyword$,
-              rootAttributes: { n: "browse-history-search-control" },
-              prefix: Timeless.Icon({
-                name: "search",
-                size: 16,
-                attributes: { n: "browse-history-search-icon" },
+          PlatformSelect({
+            name: "browse-history-platform-select",
+            store: vm$.ui.select_platform$,
+            attributes: {
+              n: "browse-history-platform-select-trigger",
+              "aria-label": "按平台筛选浏览记录",
+            },
+          }),
+          View(
+            {
+              class: "min-w-0 flex-[1_1_0] max-520:basis-full",
+              attributes: { n: "browse-history-search-field" },
+            },
+            [
+              Input({
+                store: vm$.ui.input_keyword$,
+                rootAttributes: { n: "browse-history-search-control" },
+                prefix: Timeless.Icon({
+                  name: "search",
+                  size: 16,
+                  attributes: { n: "browse-history-search-icon" },
+                }),
+                attributes: {
+                  n: "browse-history-search-input",
+                  name: "keyword",
+                  type: "text",
+                  autocomplete: "off",
+                  "aria-label": "搜索浏览记录标题、账号或链接",
+                },
               }),
-              attributes: {
-                n: "browse-history-search-input",
-                name: "keyword",
-                type: "text",
-                autocomplete: "off",
-                "aria-label": "搜索浏览记录标题、账号或链接",
-              },
-            }),
-          ],
-        ),
+            ],
+          ),
         ],
       ),
       View(
         {
-          class:
-            "content-filter-actions dm-flex dm-items-center dm-gap-2",
+          class: "group-content-filter-actions flex-[0_0_auto] max-760:ml-auto max-520:w-full max-520:ml-0 max-520:[&_>_.dm-button]:flex-[1_1_0] dm-flex dm-items-center dm-gap-2",
         },
         [
-        BrowseHistoryPageActionButton({
-          name: "browse-history-search-action",
-          store: vm$.ui.btn_search$,
-          icon: "search",
-          label: "搜索",
-          type: "submit",
-          onClick(event) {
-            event.preventDefault();
-            vm$.methods.search();
-          },
-        }),
-        BrowseHistoryPageActionButton({
-          name: "browse-history-reset-action",
-          store: vm$.ui.btn_refresh$,
-          icon: "rotate-ccw",
-          label: "重置",
-        }),
+          BrowseHistoryPageActionButton({
+            name: "browse-history-search-action",
+            store: vm$.ui.btn_search$,
+            icon: "search",
+            label: "搜索",
+            type: "submit",
+            onClick(event) {
+              event.preventDefault();
+              vm$.methods.search();
+            },
+          }),
+          BrowseHistoryPageActionButton({
+            name: "browse-history-reset-action",
+            store: vm$.ui.btn_refresh$,
+            icon: "rotate-ccw",
+            label: "重置",
+          }),
         ],
       ),
     ],
@@ -135,9 +131,9 @@ function BrowseHistoryRowCover(props) {
   const history = props.history;
   const cover_url = browse_history_cover_url(history);
   if (!cover_url) return null;
-  return View({ class: "content-row-cover-wrap" }, [
+  return View({ class: "w-control-height-lg h-control-height-lg relative [&_>_.group-content-row-cover]:absolute [&_>_.group-content-row-cover]:inset-0" }, [
     LazyImg({
-      class: "content-row-cover",
+      class: "group-content-row-cover w-control-height-lg h-control-height-lg grid overflow-hidden place-items-center object-cover text-content-muted border-[var(--dm-border-width)_solid_var(--dm-content-border)] rounded-md",
       src: cover_url,
       alt: history.title,
       attributes: {
@@ -151,7 +147,7 @@ function BrowseHistoryRowCover(props) {
 function BrowseHistorySourceAction(props) {
   return Link(
     {
-      class: "browse-history-source-action dm-focus-ring",
+      class: "min-h-32px inline-flex items-center justify-center gap-1-5 p-[0_var(--dm-space-2-5)] text-content-primary font-inherit text-sm bg-content-panel-soft border-[var(--dm-border-width)_solid_var(--dm-content-border)] rounded-control cursor-pointer transition-[color_var(--dm-duration-base)_var(--dm-ease-standard),_background_var(--dm-duration-base)_var(--dm-ease-standard),_border-color_var(--dm-duration-base)_var(--dm-ease-standard)] hover:text-color-primary-hover hover:bg-color-primary-soft hover:border-color-color-primary-border max-520:w-32px max-520:p-0 dm-focus-ring",
       href: props.href,
       target: "_blank",
       attributes: {
@@ -164,7 +160,7 @@ function BrowseHistorySourceAction(props) {
     [
       View(
         {
-          class: "browse-history-source-action-label",
+          class: "max-520:hidden",
           attributes: { n: "browse-history-source-action-label" },
         },
         ["源站"],
@@ -191,15 +187,14 @@ function BrowseHistoryRowMain(props) {
       [
         View(
           {
-            class: "content-row-title",
+            class: "overflow-hidden text-content-text text-base font-semibold text-ellipsis whitespace-nowrap",
             attributes: { n: "browse-history-title", title: history.title },
           },
           [history.title],
         ),
         View(
           {
-            class:
-              "content-row-badges dm-flex dm-items-center dm-gap-1-5",
+            class: "mt-1-5 min-w-0 overflow-hidden flex-nowrap dm-flex dm-items-center dm-gap-1-5",
             attributes: { n: "browse-history-badges" },
           },
           [
@@ -231,7 +226,7 @@ function BrowseHistoryRowAccounts(props) {
         return View(
           {
             class:
-              "content-row-author-account dm-flex dm-items-center dm-gap-1-5 dm-min-w-0",
+              "max-w-full dm-flex dm-items-center dm-gap-1-5 dm-min-w-0",
             attributes: { n: "browse-history-account" },
           },
           [
@@ -239,7 +234,7 @@ function BrowseHistoryRowAccounts(props) {
               when: acc.avatar_url,
               ok() {
                 return LazyImg({
-                  class: "content-row-author-avatar",
+                  class: "w-4 h-4 flex-[0_0_auto] object-cover rounded-full",
                   src: acc.avatar_url,
                   attributes: {
                     n: "browse-history-account-avatar",
@@ -252,7 +247,7 @@ function BrowseHistoryRowAccounts(props) {
             }),
             View(
               {
-                class: "content-row-author-name",
+                class: "overflow-hidden text-content-muted text-sm text-ellipsis whitespace-nowrap",
                 attributes: {
                   n: "browse-history-account-name",
                   title: acc.nickname || acc.external_id || "",
@@ -287,9 +282,7 @@ function BrowseHistoryRowAccess(props) {
           "dm-flex dm-items-center dm-gap-1-5 dm-text-muted dm-text-sm dm-tabular-nums dm-whitespace-nowrap",
         attributes: { n: "browse-history-updated-at" },
       },
-      [
-        vm$.methods.formatTime(history.updated_at),
-      ],
+      [vm$.methods.formatTime(history.updated_at)],
     ),
   ].filter(Boolean);
 }
@@ -308,21 +301,21 @@ function BrowseHistoryRowActions(props) {
 function BrowseHistorySkeletonRow() {
   return View(
     {
-      class: "dm-table-row dm-grid dm-items-center content-skeleton-row",
+      class: "dm-table-row dm-grid dm-items-center pointer-events-none",
       attributes: { n: "browse-history-skeleton-row", role: "row" },
     },
     [
       View(
         {
           class:
-            "dm-table-cell content-row-main-cell dm-flex dm-items-center dm-gap-4 dm-min-w-0",
+            "dm-table-cell group-content-row-main-cell dm-flex dm-items-center dm-gap-4 dm-min-w-0",
           attributes: { n: "browse-history-skeleton-main", role: "cell" },
         },
         [
-          View({ class: "content-row-cover content-skeleton" }),
+          View({ class: "group-content-row-cover w-control-height-lg h-control-height-lg grid overflow-hidden place-items-center object-cover text-content-muted border-[var(--dm-border-width)_solid_var(--dm-content-border)] relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite]" }),
           View({ class: "content-row-main dm-min-w-0 dm-flex-1" }, [
-            View({ class: "content-skeleton content-skeleton-title" }),
-            View({ class: "content-skeleton content-skeleton-tag" }),
+            View({ class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] w-[min(360px,_80%)] h-4" }),
+            View({ class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-16" }),
           ]),
         ],
       ),
@@ -331,26 +324,26 @@ function BrowseHistorySkeletonRow() {
           class: "dm-table-cell dm-min-w-0",
           attributes: { n: "browse-history-skeleton-account", role: "cell" },
         },
-        [View({ class: "content-skeleton content-skeleton-line" })],
+        [View({ class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-[min(180px,_80%)]" })],
       ),
       View(
         {
-          class: "dm-table-cell browse-history-access",
+          class: "dm-table-cell group-browse-history-access min-w-0 flex items-start flex-col gap-1",
           attributes: { n: "browse-history-skeleton-access", role: "cell" },
         },
         [
-          View({ class: "content-skeleton content-skeleton-line-short" }),
-          View({ class: "content-skeleton content-skeleton-line-short" }),
+          View({ class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-[min(100px,_72%)]" }),
+          View({ class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-[min(100px,_72%)]" }),
         ],
       ),
       View(
         {
-          class: "dm-table-cell browse-history-action-cell",
+          class: "dm-table-cell group-browse-history-action-cell min-w-0 flex items-center",
           attributes: { n: "browse-history-skeleton-action", role: "cell" },
         },
         [
           View({
-            class: "content-skeleton browse-history-action-skeleton",
+            class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] w-64px h-32px",
           }),
         ],
       ),
@@ -362,7 +355,7 @@ function BrowseHistoryPageBody(props) {
   const vm$ = props.store;
   return Table({
     name: "browse-history-table",
-    containerClass: "content-main container",
+    containerClass: "group-content-main flex-[1_1_auto] min-w-0 p-4 ",
     containerAttributes: { n: "browse-history-page-main" },
     panelAttributes: { n: "browse-history-table-panel" },
     columns: [
@@ -371,7 +364,7 @@ function BrowseHistoryPageBody(props) {
         title: "封面 / 标题",
         width: "minmax(300px, 2fr)",
         cellClass:
-          "content-row-main-cell dm-flex dm-items-center dm-gap-4 dm-min-w-0",
+          "group-content-row-main-cell dm-flex dm-items-center dm-gap-4 dm-min-w-0",
         render(history) {
           return BrowseHistoryRowMain({ store: vm$, history });
         },
@@ -381,7 +374,7 @@ function BrowseHistoryPageBody(props) {
         title: "账号",
         width: "minmax(150px, 1fr)",
         cellClass:
-          "content-row-author dm-flex dm-items-center dm-gap-1-5 dm-min-w-0",
+          "group-content-row-author overflow-hidden dm-flex dm-items-center dm-gap-1-5 dm-min-w-0",
         cellAttributes(history) {
           return { title: vm$.methods.authorName(history) };
         },
@@ -393,7 +386,7 @@ function BrowseHistoryPageBody(props) {
         name: "access",
         title: "最近访问时间",
         width: 180,
-        cellClass: "browse-history-access",
+        cellClass: "group-browse-history-access min-w-0 flex items-start flex-col gap-1",
         render(history) {
           return BrowseHistoryRowAccess({ store: vm$, history });
         },
@@ -402,7 +395,7 @@ function BrowseHistoryPageBody(props) {
         name: "actions",
         title: "操作",
         width: 120,
-        cellClass: "browse-history-action-cell",
+        cellClass: "group-browse-history-action-cell min-w-0 flex items-center",
         render(history) {
           return BrowseHistoryRowActions({ history });
         },
@@ -410,7 +403,7 @@ function BrowseHistoryPageBody(props) {
     ],
     rows: vm$.state.histories,
     pagination: {
-      class: "container dm-px-4",
+      class: " dm-px-4",
       summary: vm$.state.range_text,
       page: vm$.state.page,
       pageCount: vm$.state.page_count,
@@ -427,9 +420,7 @@ function BrowseHistoryPageBody(props) {
     renderSkeletonRow: BrowseHistorySkeletonRow,
     onRow(history) {
       return {
-        class: browse_history_cover_url(history)
-          ? ""
-          : "content-row-no-cover",
+        class: browse_history_cover_url(history) ? "" : "group-content-row-no-cover",
       };
     },
     errorTitle: "浏览记录加载失败",
@@ -437,9 +428,7 @@ function BrowseHistoryPageBody(props) {
       store: vm$.ui.btn_retry$,
     },
     emptyTitle: computed(vm$.state.keyword, (keyword) =>
-      String(keyword || "").trim()
-        ? "没有匹配的浏览记录"
-        : "暂无浏览记录",
+      String(keyword || "").trim() ? "没有匹配的浏览记录" : "暂无浏览记录",
     ),
     emptyDescription: computed(vm$.state.keyword, (keyword) =>
       String(keyword || "").trim()

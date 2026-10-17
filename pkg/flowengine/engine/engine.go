@@ -17,8 +17,10 @@ const (
 )
 
 type StartFlowOptions struct {
-	Trigger TriggerInfo
-	Async   bool
+	Trigger     TriggerInfo
+	Async       bool
+	StartNodeID string
+	RunID       string
 }
 
 type FlowDefinition struct {
@@ -46,9 +48,11 @@ type FlowEngine struct {
 	ContextSnapshots map[string]flowInstanceSnapshot
 	// RunHistoryLimit limits retained terminal runs and their context snapshots.
 	// Zero uses the default limit; negative values retain all terminal runs.
-	RunHistoryLimit    int
-	completed_run_ids  []string
-	completed_run_head int
+	RunHistoryLimit               int
+	completed_run_ids             []string
+	completed_run_head            int
+	node_execution_log_handler    NodeExecutionLogHandler
+	node_execution_status_handler NodeExecutionStatusHandler
 
 	// Semaphore for limiting并发执行量。0 表示不限制。
 	ConcurrencyLimit int
@@ -60,6 +64,21 @@ type FlowEngine struct {
 	}
 
 	sync.RWMutex
+}
+
+// SetNodeExecutionLogHandler installs the structured audit log sink used for
+// every node execution attempt. Passing nil disables node execution logging.
+func (e *FlowEngine) SetNodeExecutionLogHandler(handler NodeExecutionLogHandler) {
+	e.Lock()
+	defer e.Unlock()
+	e.node_execution_log_handler = handler
+}
+
+// SetNodeExecutionStatusHandler installs the live node status sink.
+func (e *FlowEngine) SetNodeExecutionStatusHandler(handler NodeExecutionStatusHandler) {
+	e.Lock()
+	defer e.Unlock()
+	e.node_execution_status_handler = handler
 }
 
 func (e *FlowEngine) ensureMaps() {
@@ -171,6 +190,13 @@ func (e *FlowEngine) StartFlowWithOptions(flow_id string, initial_data map[strin
 	if !ok {
 		return "", errors.New("flow not found")
 	}
+	start_node_id := ref_flow.StartNodeID
+	if options.StartNodeID != "" {
+		if _, exists := ref_flow.Nodes[options.StartNodeID]; !exists {
+			return "", errors.New("start node not found: " + options.StartNodeID)
+		}
+		start_node_id = options.StartNodeID
+	}
 
 	trigger := options.Trigger
 	if trigger.Type == "" {
@@ -180,7 +206,10 @@ func (e *FlowEngine) StartFlowWithOptions(flow_id string, initial_data map[strin
 		trigger.StartedAt = time.Now().Format(time.RFC3339Nano)
 	}
 
-	instanceID := fmt.Sprintf("instance-%d", time.Now().UnixNano())
+	instanceID := strings.TrimSpace(options.RunID)
+	if instanceID == "" {
+		instanceID = fmt.Sprintf("instance-%d", time.Now().UnixNano())
+	}
 	ctx := &ProcessContext{
 		InstanceID:   instanceID,
 		FlowID:       flow_id,
@@ -190,6 +219,7 @@ func (e *FlowEngine) StartFlowWithOptions(flow_id string, initial_data map[strin
 		EngineRef:    e,
 		TriggerType:  string(trigger.Type),
 		TriggerKey:   trigger.Key,
+		InputKeys:    ContextSchemaKeys(ref_flow.ContextSchema),
 	}
 	for key, value := range initial_data {
 		ctx.Data[key] = value
@@ -233,7 +263,7 @@ func (e *FlowEngine) StartFlowWithOptions(flow_id string, initial_data map[strin
 	}
 
 	exec := func() error {
-		err := e.driveFlow(ctx, []string{ref_flow.StartNodeID})
+		err := e.driveFlow(ctx, []string{start_node_id})
 		e.persistContext(ctx)
 		if err != nil {
 			e.update_run_record(ctx, RunStatusFailed, err)
@@ -412,13 +442,65 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 			ctx.NodeStates[node_id] = StateRunning
 			ctx.NodeAttempts[node_id]++
 			attempt := ctx.NodeAttempts[node_id]
+			ctx.ExecutionDetails = nil
 			ctx.Mu.Unlock()
 
 			e.persistContext(ctx)
 			e.update_run_record(ctx, RunStatusRunning, nil)
 
+			input_snapshot := ctx.SnapshotData()
+			started_at := time.Now()
+			e.emit_node_execution_status(NodeExecutionStatus{
+				Timestamp: started_at,
+				FlowID:    ctx.FlowID,
+				RunID:     ctx.InstanceID,
+				NodeID:    node_id,
+				NodeName:  nodeDef.Name,
+				NodeType:  nodeImpl.Type(),
+				Attempt:   attempt,
+				Status:    StateRunning,
+			})
 			success, nextNodeIDs, err := nodeImpl.Execute(ctx)
-			if err == nil && success && ctx.NodeStates[node_id] == StateRunning {
+			duration := time.Since(started_at)
+			output_snapshot := ctx.SnapshotData()
+			returned_state := current_node_state(ctx, node_id)
+			outcome := node_execution_outcome(nodeDef, attempt, returned_state, success, err)
+			// Every node type becomes a producer automatically: whatever it
+			// changed in the flat union is indexed under its own node id, so
+			// downstream templates can address output.<node_id>.<key> without
+			// the node doing any extra bookkeeping.
+			changed_values := changed_context_values(input_snapshot, output_snapshot)
+			ctx.RecordNodeOutputs(node_id, changed_values)
+			e.emit_node_execution_status(NodeExecutionStatus{
+				Timestamp: time.Now(),
+				FlowID:    ctx.FlowID,
+				RunID:     ctx.InstanceID,
+				NodeID:    node_id,
+				NodeName:  nodeDef.Name,
+				NodeType:  nodeImpl.Type(),
+				Attempt:   attempt,
+				Status:    node_execution_status_state(outcome, returned_state),
+				Error:     error_message(err),
+			})
+			e.emit_node_execution_log(NodeExecutionLog{
+				Timestamp:         started_at,
+				FlowID:            ctx.FlowID,
+				RunID:             ctx.InstanceID,
+				NodeID:            node_id,
+				NodeName:          nodeDef.Name,
+				NodeType:          nodeImpl.Type(),
+				Attempt:           attempt,
+				Outcome:           outcome,
+				DurationMs:        duration.Milliseconds(),
+				Input:             redact_log_map(input_snapshot),
+				Behavior:          node_execution_behavior(nodeDef, ctx.ExecutionDetails),
+				Output:            redact_log_map(changed_values),
+				RemovedOutputKeys: removed_context_keys(input_snapshot, output_snapshot),
+				Success:           success,
+				NextNodeIDs:       append([]string(nil), nextNodeIDs...),
+				Error:             error_message(err),
+			})
+			if err == nil && success && returned_state == StateRunning {
 				ctx.Mu.Lock()
 				ctx.NodeStates[node_id] = StateCompleted
 				ctx.Mu.Unlock()
@@ -433,7 +515,7 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 				break
 			}
 
-			if ctx.NodeStates[node_id] != StateRunning && ctx.NodeStates[node_id] != StateRetrying {
+			if returned_state != StateRunning && returned_state != StateRetrying {
 				ctx.Mu.Lock()
 				ctx.NodeStates[node_id] = StateWaitingForUser
 				ctx.Mu.Unlock()
@@ -637,6 +719,7 @@ func (e *FlowEngine) RunNodeStandalone(def NodeDefinition, input map[string]inte
 		NodeStates:   map[string]NodeState{},
 		NodeAttempts: map[string]int{},
 		EngineRef:    e,
+		InputKeys:    ContextSchemaKeys(def.InputSchema),
 	}
 	for k, v := range input {
 		ctx.Data[k] = v
@@ -879,6 +962,198 @@ func snapshotNodeAttempts(values map[string]int) map[string]int {
 		copied[key] = value
 	}
 	return copied
+}
+
+// ContextSchemaKeys extracts the declared input key list from a flow's context
+// schema. Only keys (never values) are carried into ProcessContext.
+func ContextSchemaKeys(schema []FieldSchema) []string {
+	if len(schema) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(schema))
+	for _, field := range schema {
+		key := strings.TrimSpace(field.Key)
+		if key != "" {
+			keys = append(keys, key)
+		}
+	}
+	return keys
+}
+
+func current_node_state(ctx *ProcessContext, node_id string) NodeState {
+	if ctx == nil {
+		return ""
+	}
+	ctx.Mu.Lock()
+	defer ctx.Mu.Unlock()
+	return ctx.NodeStates[node_id]
+}
+
+func node_execution_outcome(def NodeDefinition, attempt int, state NodeState, success bool, err error) string {
+	if err == nil && success && state == StateRunning {
+		return "completed"
+	}
+	if state != StateRunning && state != StateRetrying {
+		return "waiting"
+	}
+	if def.RetryPolicy != nil && attempt < def.RetryPolicy.MaxAttempts {
+		return "retrying"
+	}
+	return "failed"
+}
+
+func node_execution_status_state(outcome string, returned_state NodeState) NodeState {
+	switch outcome {
+	case "completed":
+		return StateCompleted
+	case "retrying":
+		return StateRetrying
+	case "waiting":
+		if returned_state != "" && returned_state != StateRunning && returned_state != StateRetrying {
+			return returned_state
+		}
+		return StateWaitingForUser
+	default:
+		return StateFailed
+	}
+}
+
+// node_execution_behavior describes the node configuration/routing for one
+// attempt. details carries the extras the node reported through
+// ProcessContext.SetExecutionDetail (e.g. resolved service arguments) and is
+// merged in last so a node can expose what it actually ran with.
+func node_execution_behavior(def NodeDefinition, details map[string]interface{}) map[string]interface{} {
+	behavior := map[string]interface{}{
+		"config":             redact_log_map(snapshot_map(def.Config)),
+		"next_node_ids":      append([]string(nil), def.NextNodeIDs...),
+		"error_next_node_id": def.ErrorNextNodeID,
+		"input_schema":       def.InputSchema,
+		"output_schema":      def.OutputSchema,
+	}
+	if len(def.NextNodes) > 0 {
+		behavior["next_nodes"] = append([]TargetNode(nil), def.NextNodes...)
+	}
+	if def.RetryPolicy != nil {
+		policy := *def.RetryPolicy
+		behavior["retry"] = policy
+	}
+	for key, value := range details {
+		behavior[key] = redact_log_value(key, value)
+	}
+	return behavior
+}
+
+func changed_context_values(before map[string]interface{}, after map[string]interface{}) map[string]interface{} {
+	changed := make(map[string]interface{})
+	for key, value := range after {
+		previous, exists := before[key]
+		if !exists || !reflect.DeepEqual(previous, value) {
+			changed[key] = value
+		}
+	}
+	return changed
+}
+
+func removed_context_keys(before map[string]interface{}, after map[string]interface{}) []string {
+	removed := make([]string, 0)
+	for key := range before {
+		if _, exists := after[key]; !exists {
+			removed = append(removed, key)
+		}
+	}
+	sort.Strings(removed)
+	return removed
+}
+
+func error_message(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+func (e *FlowEngine) emit_node_execution_log(entry NodeExecutionLog) {
+	e.RLock()
+	handler := e.node_execution_log_handler
+	e.RUnlock()
+	if handler == nil {
+		return
+	}
+	// Audit logging must never turn an otherwise successful flow into a failed
+	// flow if a custom sink panics.
+	defer func() {
+		_ = recover()
+	}()
+	handler(entry)
+}
+
+func (e *FlowEngine) emit_node_execution_status(status NodeExecutionStatus) {
+	e.RLock()
+	handler := e.node_execution_status_handler
+	e.RUnlock()
+	if handler == nil {
+		return
+	}
+	defer func() {
+		_ = recover()
+	}()
+	handler(status)
+}
+
+func redact_log_map(values map[string]interface{}) map[string]interface{} {
+	redacted := make(map[string]interface{}, len(values))
+	for key, value := range values {
+		redacted[key] = redact_log_value(key, value)
+	}
+	return redacted
+}
+
+func redact_log_value(key string, value interface{}) interface{} {
+	if is_sensitive_log_key(key) {
+		return "[REDACTED]"
+	}
+	switch typed_value := value.(type) {
+	case nil, string, bool,
+		int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64, uintptr,
+		float32, float64, json.Number:
+		return typed_value
+	case map[string]interface{}:
+		return redact_log_map(typed_value)
+	case []interface{}:
+		redacted := make([]interface{}, len(typed_value))
+		for index, item := range typed_value {
+			redacted[index] = redact_log_value("", item)
+		}
+		return redacted
+	default:
+		raw, err := json.Marshal(typed_value)
+		if err != nil {
+			return fmt.Sprintf("[UNSERIALIZABLE:%T]", typed_value)
+		}
+		var normalized interface{}
+		if err := json.Unmarshal(raw, &normalized); err != nil {
+			return fmt.Sprintf("[UNSERIALIZABLE:%T]", typed_value)
+		}
+		return redact_log_value(key, normalized)
+	}
+}
+
+func is_sensitive_log_key(key string) bool {
+	normalized := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(key), "-", "_"), " ", "_"))
+	if normalized == "" {
+		return false
+	}
+	sensitive_fragments := []string{
+		"password", "passwd", "secret", "token", "authorization", "cookie",
+		"credential", "api_key", "apikey", "access_key", "private_key", "client_secret",
+	}
+	for _, fragment := range sensitive_fragments {
+		if strings.Contains(normalized, fragment) {
+			return true
+		}
+	}
+	return false
 }
 
 type clone_data_visit struct {

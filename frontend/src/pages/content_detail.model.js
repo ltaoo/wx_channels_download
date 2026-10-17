@@ -1,4 +1,7 @@
+import { request } from "@/biz/request.js";
+
 import { PreviewViewModel, normalize_file } from "./preview.model.js";
+import { format_time } from "@/utils.js";
 
 function first_non_empty(...values) {
   for (const value of values) {
@@ -30,6 +33,30 @@ function normalize_content_account(raw) {
   };
 }
 
+function normalize_content_tags(raw) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const list = Array.isArray(source.tags)
+    ? source.tags
+    : Array.isArray(source.Tags)
+      ? source.Tags
+      : [];
+  return list
+    .map((tag) => {
+      const item = tag && typeof tag === "object" ? tag : {};
+      return {
+        id: number_or_default(first_non_empty(item.id, item.ID), 0),
+        name: first_non_empty(
+          item.name,
+          item.Name,
+          item.tag,
+          item.Tag,
+          "",
+        ).trim(),
+      };
+    })
+    .filter((tag) => tag.id && tag.name);
+}
+
 function normalize_embedded_content(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
   const raw_content = first_non_empty(source.content, source.Content);
@@ -37,10 +64,7 @@ function normalize_embedded_content(raw) {
     raw_content && typeof raw_content === "object" ? raw_content : {};
   return {
     ...source,
-    relation_type: first_non_empty(
-      source.relation_type,
-      source.RelationType,
-    ),
+    relation_type: first_non_empty(source.relation_type, source.RelationType),
     sort_order: number_or_default(
       first_non_empty(source.sort_order, source.SortOrder),
       0,
@@ -116,10 +140,7 @@ function normalize_content_detail(raw) {
     ...source,
     id: first_non_empty(source.id, source.ID),
     platform_id: first_non_empty(source.platform_id, source.PlatformID),
-    platform_name: first_non_empty(
-      source.platform_name,
-      source.PlatformName,
-    ),
+    platform_name: first_non_empty(source.platform_name, source.PlatformName),
     content_type: first_non_empty(
       source.content_type,
       source.ContentType,
@@ -163,6 +184,7 @@ function normalize_content_detail(raw) {
     detail_type: first_non_empty(source.detail_type, source.DetailType),
     detail: first_non_empty(source.detail, source.Detail) || null,
     accounts: accounts_source.map(normalize_content_account).filter(Boolean),
+    tags: normalize_content_tags(source),
     download_tasks: tasks,
     embedded_contents,
     resources: resources.map((resource) => {
@@ -297,22 +319,20 @@ function platform_name(content) {
 }
 
 function content_type_label(value) {
-  const type = String(value || "").trim().toLowerCase();
+  const type = String(value || "")
+    .trim()
+    .toLowerCase();
   return window.CONTENT_TYPE_NAMES[type] || type || "内容";
 }
 
 function normalize_task_status(status) {
-  const value = String(status ?? "").trim().toLowerCase();
+  const value = String(status ?? "")
+    .trim()
+    .toLowerCase();
   if (
-    [
-      "1",
-      "2",
-      "4",
-      "preparing",
-      "downloading",
-      "merging",
-      "running",
-    ].includes(value)
+    ["1", "2", "4", "preparing", "downloading", "merging", "running"].includes(
+      value,
+    )
   ) {
     return "running";
   }
@@ -323,9 +343,16 @@ function normalize_task_status(status) {
     return "finished";
   }
   if (
-    ["6", "7", "failed", "fail", "failure", "error", "cancelled", "canceled"].includes(
-      value,
-    )
+    [
+      "6",
+      "7",
+      "failed",
+      "fail",
+      "failure",
+      "error",
+      "cancelled",
+      "canceled",
+    ].includes(value)
   ) {
     return "failed";
   }
@@ -475,11 +502,14 @@ function sort_content_media_entries(entries, content) {
   if (!["album", "image_set"].includes(content.content_type)) return entries;
   // Follow the API's ordered resource list after gathering linked and legacy assets.
   const resource_order = new Map(
-    content.resources.map((resource, index) => [String(resource.id ?? resource.ID), index]),
+    content.resources.map((resource, index) => [
+      String(resource.id ?? resource.ID),
+      index,
+    ]),
   );
-  const order = (entry) => resource_order.get(
-    String(entry.resource.id ?? entry.resource.ID),
-  ) ?? Infinity;
+  const order = (entry) =>
+    resource_order.get(String(entry.resource.id ?? entry.resource.ID)) ??
+    Infinity;
   return [...entries].sort((left, right) => order(left) - order(right));
 }
 
@@ -513,6 +543,84 @@ function ContentDetailDescriptionModel() {
   };
 }
 
+function ContentDetailExtensionModel(media) {
+  const items = Array.isArray(media) ? media : [];
+  const initial_index = Math.max(
+    0,
+    items.findIndex((item) => item && item.available),
+  );
+  const selected_index_ = ref(initial_index);
+  const selected_ = computed(
+    selected_index_,
+    (index) => items[index] || items[0] || null,
+  );
+  const can_previous_ = computed(selected_index_, (index) => index > 0);
+  const can_next_ = computed(
+    selected_index_,
+    (index) => items.length > 1 && index < items.length - 1,
+  );
+  const ui = {
+    btn_previous$: new Timeless.vm.ButtonCore({
+      disabled: !can_previous_.value,
+      variant: "outline",
+      size: "icon",
+    }),
+    btn_next$: new Timeless.vm.ButtonCore({
+      disabled: !can_next_.value,
+      variant: "outline",
+      size: "icon",
+    }),
+  };
+
+  can_previous_.subscribe({
+    onChange(can) {
+      if (can) ui.btn_previous$.enable();
+      else ui.btn_previous$.disable();
+    },
+  });
+  can_next_.subscribe({
+    onChange(can) {
+      if (can) ui.btn_next$.enable();
+      else ui.btn_next$.disable();
+    },
+  });
+
+  function move(delta) {
+    const next_index = selected_index_.value + delta;
+    if (next_index < 0 || next_index >= items.length) return null;
+    selected_index_.as(next_index);
+    return items[next_index];
+  }
+
+  function select(item) {
+    const index = items.findIndex(
+      (candidate) => candidate && candidate.key === item?.key,
+    );
+    if (index >= 0) selected_index_.as(index);
+    return items[index] || null;
+  }
+
+  return {
+    state: {
+      selected: selected_,
+      selected_index: selected_index_,
+      count: items.length,
+      can_previous: can_previous_,
+      can_next: can_next_,
+    },
+    ui,
+    methods: {
+      select,
+      previous() {
+        return move(-1);
+      },
+      next() {
+        return move(1);
+      },
+    },
+  };
+}
+
 function ContentDetailViewModel(props) {
   const preview$ = PreviewViewModel(props);
   const detail_id_ = ref(
@@ -522,12 +630,13 @@ function ContentDetailViewModel(props) {
     ).trim(),
   );
   const detail_ = ref(null);
+  const tags_ = ref([]);
   const loading_ = ref(false);
   const error_ = ref("");
   let request_sequence = 0;
 
   const request_ = new Timeless.kit.RequestCore(
-    (params) => window.request.get("/api/content/detail", params),
+    (params) => request.get("/api/content/detail", params),
     {
       client: props.client,
       process(response) {
@@ -541,7 +650,7 @@ function ContentDetailViewModel(props) {
 
   const check_files_request_ = new Timeless.kit.RequestCore(
     (files) =>
-      window.request.post("/api/v1/download_task/check_files", {
+      request.post("/api/v1/download_task/check_files", {
         files,
       }),
     { client: props.client },
@@ -612,6 +721,7 @@ function ContentDetailViewModel(props) {
     detail_id_.as(id);
     if (detail_changed) {
       detail_.as(null);
+      tags_.as([]);
     }
     const sequence = ++request_sequence;
     loading_.as(true);
@@ -623,6 +733,7 @@ function ContentDetailViewModel(props) {
     if (result.error) {
       loading_.as(false);
       detail_.as(null);
+      tags_.as([]);
       error_.as(result.error.message || String(result.error));
       return result;
     }
@@ -632,7 +743,17 @@ function ContentDetailViewModel(props) {
     }
     loading_.as(false);
     detail_.as(verified_detail);
+    tags_.as(verified_detail.tags);
     return result;
+  }
+
+  function set_tags(next) {
+    const list = Array.isArray(next) ? next : [];
+    tags_.as(list);
+    const detail = detail_.value;
+    if (detail && detail.id === detail_id_.value) {
+      detail_.as({ ...detail, tags: list });
+    }
   }
 
   let unsubscribe_content_id;
@@ -669,6 +790,7 @@ function ContentDetailViewModel(props) {
     refresh() {
       return load(detail_id_.value);
     },
+    setTags: set_tags,
     backToList() {
       if (typeof props.onBack === "function") {
         props.onBack();
@@ -711,7 +833,7 @@ function ContentDetailViewModel(props) {
     typeLabel: content_type_label,
     taskStatus: task_status,
     fileTypeIcon: file_type_icon,
-    formatTime: window.format_time,
+    formatTime: format_time,
     formatBytes: format_bytes,
     contentMediaAssets: content_media_assets,
     sortMediaEntries: sort_content_media_entries,
@@ -720,6 +842,7 @@ function ContentDetailViewModel(props) {
   const state = {
     detail_id: detail_id_,
     detail: detail_,
+    tags: tags_,
     loading: loading_,
     error: error_,
   };
@@ -728,4 +851,11 @@ function ContentDetailViewModel(props) {
   return { state, ui, methods };
 }
 
-export { ContentDetailViewModel, ContentDetailDescriptionModel, task_status, sort_content_media_entries };
+export {
+  ContentDetailViewModel,
+  ContentDetailDescriptionModel,
+  ContentDetailExtensionModel,
+  normalize_content_detail,
+  task_status,
+  sort_content_media_entries,
+};

@@ -10,12 +10,16 @@ if (!Timeless) {
   throw new Error("应用无法启动：Timeless 运行时未加载");
 }
 
+function sidebar_menu_id(menu) {
+  return `app-menu-${menu.name.split(".").pop()}`;
+}
+
 export default function SiderLayoutView(props) {
   var model = ShellViewModel(props);
 
   return View(
     {
-      class: "app-shell page",
+      class: "grid grid-cols-[88px_minmax(0,_1fr)] w-full h-full bg-content-bg max-640:grid-cols-[minmax(0,_1fr)] max-640:grid-rows-[minmax(0,_1fr)_58px] min-w-0 min-h-full text-color-text-primary font-sans",
       onMounted: function () {
         model.methods.ready();
       },
@@ -24,57 +28,102 @@ export default function SiderLayoutView(props) {
       },
     },
     [
-      View({ as: "aside", class: "app-sider dm-flex dm-flex-col" }, [
-        View({ class: "app-brand" }, [
-          Img({
-            class: "app-brand__logo",
-            src: "public/logo.png?v=logo-only-v4",
-            alt: "D&M",
-            attributes: {
-              draggable: "false",
-            },
-          }),
-          View({ class: "app-brand__version" }, [
-            Show({
-              when: model.models.update.state.notice_visible,
-              ok() {
-                var current_version =
-                  model.models.update.state.current_version.value;
-                var latest_version =
-                  model.models.update.state.latest_version.value;
-                return [
-                  Button(
-                    {
-                      store: model.models.update.ui.notice_button$,
-                      class: "dm-button--version",
-                      attributes: {
-                        n: "app-version-update-action",
-                        type: "button",
-                        title: `当前版本 ${current_version}，发现新版本 ${latest_version}`,
-                        "aria-label": `当前版本 ${current_version}，发现新版本 ${latest_version}，点击查看`,
-                      },
+      View(
+        {
+          as: "aside",
+          class: "relative z-raised flex flex-col text-brand-sidebar-text bg-brand-sidebar border-right-[var(--dm-border-width)_solid_var(--dm-color-sidebar-border)] gap-4-5 p-[var(--dm-space-4)_var(--dm-space-3)] shadow-[1px_0_0_var(--dm-color-border-translucent)] max-640:grid-row-2 max-640:grid-column-1 max-640:p-[var(--dm-space-1-5)_var(--dm-space-2)] max-640:border-top-[var(--dm-border-width)_solid_var(--dm-color-sidebar-border)] max-640:border-right-0 dm-flex dm-flex-col",
+          attributes: { n: "app-sider" },
+        },
+        [
+          View(
+            { class: "flex items-center flex-col border-bottom-[var(--dm-border-width)_solid_var(--dm-color-sidebar-border)] gap-2 p-[0_var(--dm-space-2)_var(--dm-space-4)_var(--dm-space-2)] max-640:!hidden", attributes: { n: "app-brand" } },
+            [
+              View(
+                {
+                  as: "button",
+                  class: "block p-0 bg-transparent border-0 rounded-content cursor-pointer focus-visible:outline-0 focus-visible:shadow-focus-ring",
+                  attributes: {
+                    n: "app-brand-logo-action",
+                    type: "button",
+                    title: "返回首页",
+                    "aria-label": "返回首页",
+                  },
+                  onClick() {
+                    return model.methods.goHome();
+                  },
+                },
+                [
+                  Img({
+                    class: "block w-auto max-w-full h-52px object-contain object-position-center user-select-none",
+                    src: "public/logo.png?v=logo-only-v4",
+                    alt: "D&M",
+                    attributes: {
+                      n: "app-brand-logo",
+                      draggable: "false",
                     },
-                    [current_version],
-                  ),
-                  View({
-                    class: "app-brand__version-dot",
-                    attributes: { "aria-hidden": "true" },
                   }),
-                ];
-              },
-              else() {
-                return View({ class: "app-brand__version-text" }, [
-                  model.models.update.state.current_version.value,
-                ]);
-              },
-            }),
-          ]),
-        ]),
+                ],
+              ),
+              View(
+                {
+                  class: "relative w-fit-content min-w-0 flex-[0_0_auto] m-[0_auto] text-brand-sidebar-muted font-mono text-caption font-semibold leading-snug",
+                  attributes: { n: "app-brand-version" },
+                },
+                [
+                  Show({
+                    when: model.models.update.state.notice_visible,
+                    ok() {
+                      var current_version =
+                        model.models.update.state.current_version.value;
+                      var latest_version =
+                        model.models.update.state.latest_version.value;
+                      return [
+                        Button(
+                          {
+                            store: model.models.update.ui.notice_button$,
+                            class: "dm-button--version",
+                            attributes: {
+                              n: "app-version-update-action",
+                              type: "button",
+                              title:
+                                `当前版本 ${current_version}，发现新版本 ${latest_version}`,
+                              "aria-label":
+                                `当前版本 ${current_version}，发现新版本 ${latest_version}，点击查看`,
+                            },
+                          },
+                          [current_version],
+                        ),
+                        View({
+                          class: "absolute top--4px right--6px w-7px h-7px pointer-events-none bg-color-danger rounded-round shadow-[0_0_0_2px_var(--dm-brand-sidebar)]",
+                          attributes: {
+                            n: "app-brand-version-dot",
+                            "aria-hidden": "true",
+                          },
+                        }),
+                      ];
+                    },
+                    else() {
+                      return View(
+                        {
+                          class: "max-w-full overflow-hidden text-ellipsis whitespace-nowrap",
+                          attributes: { n: "app-brand-version-text" },
+                        },
+                        [
+                          model.models.update.state.current_version.value,
+                        ],
+                      );
+                    },
+                  }),
+                ],
+              ),
+            ],
+          ),
         View(
           {
             as: "nav",
-            class: "app-menu dm-flex dm-flex-col dm-gap-1",
+            class: "flex flex-col gap-1 [&_.dm-button--sidebar-nav]:flex-col [&_.dm-button--sidebar-nav]:items-center [&_.dm-button--sidebar-nav]:justify-center [&_.dm-button--sidebar-nav]:gap-0-5 [&_.dm-button--sidebar-nav]:p-[var(--dm-space-1-5)_var(--dm-space-1)] [&_.dm-button--sidebar-nav]:text-sm [&_.dm-button--sidebar-nav]:text-center min-h-0 flex-[1_1_auto] max-640:w-full max-640:min-h-auto max-640:flex-[1_1_auto] max-640:!flex-row max-640:gap-0-5 max-640:overflow-x-auto dm-flex dm-flex-col dm-gap-1",
             ariaLabel: "页面导航",
+            attributes: { n: "app-menu" },
           },
           [
             For({
@@ -95,21 +144,31 @@ export default function SiderLayoutView(props) {
                         },
                       ),
                     ]),
+                    attributes: { n: sidebar_menu_id(menu) },
                   },
                   [
-                    View({ class: "app-menu__icon" }, [
-                      Timeless.Icon({ name: menu.icon, size: 17 }),
-                    ]),
-                    View({ as: "span", class: "app-menu__label" }, [
-                      menu.title,
-                    ]),
+                    View(
+                      {
+                        class: "grid place-items-center font-display text-sm font-bold w-5 h-5 text-currentColor border-0 rounded-0 max-640:w-4 max-640:h-4",
+                        attributes: { n: `${sidebar_menu_id(menu)}-icon` },
+                      },
+                      [Timeless.Icon({ name: menu.icon, size: 17 })],
+                    ),
+                    View(
+                      {
+                        as: "span",
+                        class: "overflow-hidden text-ellipsis whitespace-nowrap",
+                        attributes: { n: `${sidebar_menu_id(menu)}-label` },
+                      },
+                      [menu.title],
+                    ),
                   ],
                 );
               },
             }),
             View(
               {
-                class: "app-menu__settings",
+                class: "flex mt-auto [&_>_.dm-button--sidebar-nav]:w-full max-640:min-w-52px max-640:flex-[1_1_0] max-640:mt-0 max-640:[&_>_.dm-button--sidebar-nav]:w-auto",
                 attributes: { n: "app-settings-action-container" },
               },
               [
@@ -124,10 +183,13 @@ export default function SiderLayoutView(props) {
                     },
                   },
                   [
-                    View({ class: "app-menu__icon" }, [
-                      Timeless.Icon({ name: "settings", size: 17 }),
-                    ]),
-                    View({ as: "span", class: "app-menu__label" }, ["设置"]),
+                    View(
+                      {
+                        class: "grid place-items-center font-display text-sm font-bold w-5 h-5 text-currentColor border-0 rounded-0 max-640:w-4 max-640:h-4",
+                        attributes: { n: "app-settings-action-icon" },
+                      },
+                      [Timeless.Icon({ name: "settings", size: 17 })],
+                    ),
                   ],
                 ),
               ],
@@ -149,7 +211,7 @@ export default function SiderLayoutView(props) {
       View(
         {
           as: "main",
-          class: "app-content dm-min-w-0",
+          class: "relative z-1 min-w-0 h-full overflow-auto overflow-x-hidden bg-content-bg [background-color:var(--dm-content-bg)] bg-image-[radial-gradient(_circle,_var(--dm-color-border-translucent)_var(--dm-border-width),_transparent_var(--dm-border-width)_)] background-position-[var(--dm-space-3)_var(--dm-space-3)] background-size-[var(--dm-space-6)_var(--dm-space-6)] max-640:grid-row-1 max-640:grid-column-1 dm-min-w-0",
           attributes: { n: "app-content" },
         },
         [

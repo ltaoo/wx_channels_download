@@ -29,19 +29,33 @@ const (
 
 // FetchResult is one post and the main-post video data embedded in X's SSR payload.
 type FetchResult struct {
-	SourceURL      string  `json:"source_url"`
-	ExternalID     string  `json:"external_id"`
-	AuthorID       string  `json:"author_id"`
-	AuthorName     string  `json:"author_name"`
-	AuthorUsername string  `json:"author_username"`
-	AuthorAvatar   string  `json:"author_avatar"`
-	BodyText       string  `json:"body_text"`
-	PublishTime    int64   `json:"publish_time"`
-	ViewCount      int64   `json:"view_count"`
-	LikeCount      int64   `json:"like_count"`
-	CommentCount   int64   `json:"comment_count"`
-	ShareCount     int64   `json:"share_count"`
-	Videos         []Video `json:"videos"`
+	SourceURL      string   `json:"source_url"`
+	ExternalID     string   `json:"external_id"`
+	AuthorID       string   `json:"author_id"`
+	AuthorName     string   `json:"author_name"`
+	AuthorUsername string   `json:"author_username"`
+	AuthorAvatar   string   `json:"author_avatar"`
+	BodyText       string   `json:"body_text"`
+	CoverURL       string   `json:"cover_url"`
+	PublishTime    int64    `json:"publish_time"`
+	ViewCount      int64    `json:"view_count"`
+	LikeCount      int64    `json:"like_count"`
+	CommentCount   int64    `json:"comment_count"`
+	ShareCount     int64    `json:"share_count"`
+	Videos         []Video  `json:"videos"`
+	Images         []Image  `json:"images"`
+	Article        *Article `json:"article,omitempty"`
+}
+
+// Article is the long-form article X renders as the whole post when the
+// requested status points at one. Article text lives in its own entity graph,
+// not in the tweet's full_text.
+type Article struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Text     string `json:"text"`
+	Markdown string `json:"markdown,omitempty"`
+	CoverURL string `json:"cover_url,omitempty"`
 }
 
 // Video is one video attached directly to the requested post.
@@ -62,6 +76,16 @@ type VideoVariant struct {
 	Bitrate     int    `json:"bitrate"`
 	ContentType string `json:"content_type"`
 	URL         string `json:"url"`
+}
+
+// Image is one photo attached to the requested post. X advertises at most four
+// photos per post and does not mix them with a video.
+type Image struct {
+	ID      string `json:"id"`
+	URL     string `json:"url"`
+	Width   int    `json:"width"`
+	Height  int    `json:"height"`
+	AltText string `json:"alt_text,omitempty"`
 }
 
 // Client owns the minib session used for one or more X requests.
@@ -158,12 +182,20 @@ func ExtractStatusID(raw_url string) (string, error) {
 }
 
 func extract_post(source string, document *html.Node, status_id string, fallback_url string) (*FetchResult, error) {
-	tweet_key := base64.StdEncoding.EncodeToString([]byte("Tweet:" + status_id))
-	tweet_record := extract_record(source, tweet_key)
-	if extract_js_string_field(tweet_record, "rest_id") != status_id {
-		return nil, fmt.Errorf("x: requested post %s is missing from initialization data", status_id)
-	}
 	metadata := document_metadata(document)
+	tweet_key := base64.StdEncoding.EncodeToString([]byte("Tweet:" + status_id))
+	if extract_js_string_field(extract_record(source, tweet_key), "rest_id") == status_id {
+		return extract_post_records(source, metadata, tweet_key, status_id, fallback_url), nil
+	}
+	if result, ok := tsr_extract_post(source, metadata, status_id, fallback_url); ok {
+		return result, nil
+	}
+	return nil, fmt.Errorf("x: requested post %s is missing from initialization data", status_id)
+}
+
+// extract_post_records reads the older payload, where every record carries an
+// `__id:` and fields reference each other by `__ref`.
+func extract_post_records(source string, metadata map[string]string, tweet_key string, status_id string, fallback_url string) *FetchResult {
 	details_record := extract_record(source, "client:"+tweet_key+":details")
 	counts_record := extract_record(source, "client:"+tweet_key+":counts")
 	views_record := extract_record(source, "client:"+tweet_key+":views")
@@ -171,6 +203,7 @@ func extract_post(source string, document *html.Node, status_id string, fallback
 		SourceURL:    first_non_empty(metadata["og:url"], metadata["canonical"], fallback_url),
 		ExternalID:   status_id,
 		BodyText:     first_non_empty(metadata["og:description"], extract_js_string_field(details_record, "full_text")),
+		CoverURL:     metadata["og:image"],
 		PublishTime:  extract_js_int64_field(details_record, "created_at_ms"),
 		ViewCount:    extract_js_int64_field(views_record, "count"),
 		LikeCount:    extract_js_int64_field(counts_record, "favorite_count"),
@@ -178,22 +211,25 @@ func extract_post(source string, document *html.Node, status_id string, fallback
 		ShareCount:   extract_js_int64_field(counts_record, "retweet_count"),
 	}
 	result.AuthorUsername = strings.TrimPrefix(metadata["twitter:creator"], "@")
+	result.Article = extract_article(source, tweet_key)
 	populate_author(source, extract_record(source, "client:"+tweet_key+":core"), result)
-	if result.AuthorUsername == "" {
-		result.AuthorUsername = status_url_username(result.SourceURL)
-	}
-	if result.AuthorName == "" {
-		result.AuthorName = title_author(metadata["og:title"], result.AuthorUsername)
-	}
-	if result.PublishTime == 0 {
-		if publish_time, err := time.Parse(time.RFC3339Nano, metadata["article:published_time"]); err == nil {
-			result.PublishTime = publish_time.UnixMilli()
-		}
-	}
+	fill_result_from_metadata(result, metadata)
 	for media_index := 0; media_index < 4; media_index++ {
 		media_key := fmt.Sprintf("client:%s:media_entities2:%d", tweet_key, media_index)
 		media_record := extract_record(source, media_key)
 		media_type := extract_js_string_field(media_record, "type")
+		if media_type == "photo" {
+			image := Image{
+				ID:      extract_js_string_field(media_record, "id_str"),
+				URL:     extract_js_string_field(media_record, "media_url_https"),
+				AltText: extract_js_string_field(media_record, "ext_alt_text"),
+			}
+			original_record := extract_record(source, media_key+":original_info")
+			image.Width = int(extract_js_int64_field(original_record, "width"))
+			image.Height = int(extract_js_int64_field(original_record, "height"))
+			result.Images = append(result.Images, image)
+			continue
+		}
 		if media_type != "video" && media_type != "animated_gif" {
 			continue
 		}
@@ -221,7 +257,52 @@ func extract_post(source string, document *html.Node, status_id string, fallback
 		}
 		result.Videos = append(result.Videos, video)
 	}
-	return result, nil
+	return result
+}
+
+// fill_result_from_metadata applies the page-level fallbacks both payload shapes
+// share: the author and publish time can come from the document meta tags when
+// the payload omits them.
+func fill_result_from_metadata(result *FetchResult, metadata map[string]string) {
+	result.AuthorUsername = first_non_empty(
+		result.AuthorUsername,
+		strings.TrimPrefix(metadata["twitter:creator"], "@"),
+		status_url_username(result.SourceURL),
+	)
+	result.AuthorName = first_non_empty(result.AuthorName, title_author(metadata["og:title"], result.AuthorUsername))
+	if result.PublishTime == 0 {
+		if publish_time, err := time.Parse(time.RFC3339Nano, metadata["article:published_time"]); err == nil {
+			result.PublishTime = publish_time.UnixMilli()
+		}
+	}
+}
+
+// extract_article follows the tweet -> article entity reference chain that X
+// only emits for long-form posts. It returns nil for ordinary tweets.
+func extract_article(source string, tweet_key string) *Article {
+	article_record := extract_record(source, "client:"+tweet_key+":article")
+	if article_record == "" {
+		return nil
+	}
+	results_record := extract_record(source, extract_js_ref_field(article_record, "article_results"))
+	entity_record := extract_record(source, extract_js_ref_field(results_record, "result"))
+	title := strings.TrimSpace(extract_js_string_field(entity_record, "title"))
+	text := first_non_empty(
+		extract_js_string_field(entity_record, "plain_text"),
+		extract_js_string_field(entity_record, "preview_text"),
+	)
+	markdown := article_markdown(source, entity_record)
+	cover_url := article_cover_url(source, entity_record)
+	if title == "" && text == "" && markdown == "" {
+		return nil
+	}
+	return &Article{
+		ID:       extract_js_string_field(entity_record, "rest_id"),
+		Title:    title,
+		Text:     text,
+		Markdown: markdown,
+		CoverURL: cover_url,
+	}
 }
 
 func populate_author(source string, tweet_core_record string, result *FetchResult) {
@@ -417,6 +498,8 @@ func normalize_result(result *FetchResult, status_id string, fallback_url string
 	result.AuthorUsername = strings.TrimPrefix(strings.TrimSpace(result.AuthorUsername), "@")
 	result.AuthorAvatar = normalize_media_url(result.AuthorAvatar, "pbs.twimg.com")
 	result.BodyText = strings.TrimSpace(result.BodyText)
+	result.CoverURL = normalize_media_url(result.CoverURL, "pbs.twimg.com")
+	result.Article = normalize_article(result.Article)
 	valid_videos := make([]Video, 0, len(result.Videos))
 	for video_index := range result.Videos {
 		video := result.Videos[video_index]
@@ -442,8 +525,22 @@ func normalize_result(result *FetchResult, status_id string, fallback_url string
 		}
 	}
 	result.Videos = valid_videos
-	if result.BodyText == "" && len(result.Videos) == 0 {
-		return nil, fmt.Errorf("x: post %s has no text or video", status_id)
+	valid_images := make([]Image, 0, len(result.Images))
+	seen_image_urls := make(map[string]bool)
+	for image_index := range result.Images {
+		image := result.Images[image_index]
+		image.ID = strings.TrimSpace(image.ID)
+		image.AltText = strings.TrimSpace(image.AltText)
+		image.URL = normalize_media_url(image.URL, "pbs.twimg.com")
+		if image.URL == "" || seen_image_urls[image.URL] {
+			continue
+		}
+		seen_image_urls[image.URL] = true
+		valid_images = append(valid_images, image)
+	}
+	result.Images = valid_images
+	if result.BodyText == "" && result.Article == nil && len(result.Videos) == 0 && len(result.Images) == 0 {
+		return nil, fmt.Errorf("x: post %s has no text, image, or video", status_id)
 	}
 	if result.AuthorID == "" {
 		result.AuthorID = result.AuthorUsername
@@ -452,6 +549,21 @@ func normalize_result(result *FetchResult, status_id string, fallback_url string
 		result.AuthorName = first_non_empty(result.AuthorUsername, "X user")
 	}
 	return result, nil
+}
+
+func normalize_article(article *Article) *Article {
+	if article == nil {
+		return nil
+	}
+	article.ID = strings.TrimSpace(article.ID)
+	article.Title = strings.TrimSpace(article.Title)
+	article.Text = strings.TrimSpace(article.Text)
+	article.Markdown = strings.TrimSpace(article.Markdown)
+	article.CoverURL = normalize_media_url(article.CoverURL, "pbs.twimg.com")
+	if article.Title == "" && article.Text == "" && article.Markdown == "" {
+		return nil
+	}
+	return article
 }
 
 func normalize_variants(variants []VideoVariant) []VideoVariant {

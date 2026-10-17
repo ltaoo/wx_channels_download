@@ -4,6 +4,9 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"net"
+	"strconv"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -65,10 +68,10 @@ func init() {
 	root_cmd.PersistentFlags().StringVar(&workdir, "workdir", "", "运行时工作目录")
 	root_cmd.PersistentFlags().StringVar(&hostname, "hostname", "127.0.0.1", "代理服务器主机名")
 	root_cmd.PersistentFlags().IntVar(&port, "port", 2023, "代理服务器端口")
-	root_cmd.PersistentFlags().BoolVar(&debug, "debug", false, "是否开启调试")
+	root_cmd.PersistentFlags().BoolVar(&debug, "debug", false, "开启调试并记录日志（默认关闭）")
 
 	viper.BindPFlag("workdir", root_cmd.PersistentFlags().Lookup("workdir"))
-	viper.BindPFlag("debug.error", root_cmd.PersistentFlags().Lookup("debug"))
+	viper.BindPFlag("debug.enabled", root_cmd.PersistentFlags().Lookup("debug"))
 	viper.BindPFlag("proxy.networkService", root_cmd.PersistentFlags().Lookup("dev"))
 	viper.BindPFlag("proxy.hostname", root_cmd.PersistentFlags().Lookup("hostname"))
 	viper.BindPFlag("proxy.port", root_cmd.PersistentFlags().Lookup("port"))
@@ -96,6 +99,19 @@ func Execute(cfg *config.Config) error {
 		return nil
 	}
 	return err
+}
+
+// configured_api_base_url resolves the downloader address shared by the
+// commands that talk to a running downloader (mcp, download) from api.protocol,
+// api.hostname, and api.port.
+func configured_api_base_url() string {
+	protocol := strings.TrimSpace(Cfg.GetString("api.protocol"))
+	if protocol == "" {
+		protocol = "http"
+	}
+	hostname := config.APIClientHostname(Cfg.GetString("api.hostname"))
+	port := Cfg.GetInt("api.port")
+	return fmt.Sprintf("%s://%s", protocol, net.JoinHostPort(hostname, strconv.Itoa(port)))
 }
 
 func wait_for_start_failure(in io.Reader, out io.Writer) {
