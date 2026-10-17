@@ -1,10 +1,12 @@
 import { AutomationPageViewModel } from "./automation.model.js";
 import {
   AutomationEmptyState,
+  AutomationFeedback,
   AutomationFlowGraph,
   AutomationNodeExecutionWindows,
   AutomationRunPipelineDialog,
   AutomationWorkspaceToolbar,
+  AutomationStartTriggers,
 } from "./flow.components.js";
 
 function AutomationNodeInspector(props) {
@@ -24,18 +26,15 @@ function AutomationNodeInspector(props) {
         ]),
       ]),
       (() => {
-        // const node = (vm$.state.edit_nodes.value || []).find(
-        //   (item) => item.id === selected_id,
-        // );
-        const node = computed(
-          vm$.state.selected_edit_node_id,
-          (selected_id) => {
-            return (vm$.state.edit_nodes.value || []).find(
+        const node = combine(
+          { selected_id: vm$.state.selected_edit_node_id, nodes: vm$.state.edit_nodes },
+          ({ selected_id, nodes }) => {
+            return (nodes || []).find(
               (item) => item.id === selected_id,
             );
           },
         );
-        return Show({
+        return View({}, [Show({
           when: computed(node, (t) => !t),
           ok() {
             return AutomationEmptyState({
@@ -45,21 +44,25 @@ function AutomationNodeInspector(props) {
               description: "在画布中选择节点后编辑配置。",
             });
           },
-          else() {
-            const is_start = node.id === vm$.state.edit_start_node_id.value;
+        }), For({
+          each: computed(node, (value) => value ? [value] : []),
+          key: "id",
+          render(value) {
+            const current_node = value && value.value !== undefined ? value.value : value;
+            const is_start = current_node.id === vm$.state.edit_start_node_id.value;
             return View(
               { class: "automation-inspector-form" },
               [
                 View({ class: "automation-inspector-meta" }, [
                   Tag({ variant: is_start ? "success" : "info" }, [
-                    vm$.methods.flowLabel(node.type),
+                    vm$.methods.flowLabel(current_node.type),
                   ]),
                   View(
                     {
                       class: "automation-code",
-                      attributes: { title: node.id },
+                      attributes: { title: current_node.id },
                     },
-                    [node.id],
+                    [current_node.id],
                   ),
                 ]),
                 View({ class: "automation-form__field" }, [
@@ -72,7 +75,7 @@ function AutomationNodeInspector(props) {
                     },
                   }),
                 ]),
-                View({ class: "automation-form__field" }, [
+                current_node.type !== "StartNode" ? View({ class: "automation-form__field" }, [
                   Label({ class: "automation-form__label" }, ["节点配置 JSON"]),
                   Textarea({
                     store: vm$.ui.input_edit_node_config$,
@@ -84,8 +87,8 @@ function AutomationNodeInspector(props) {
                       "aria-label": "节点配置 JSON",
                     },
                   }),
-                ]),
-                Button(
+                ]) : null,
+                current_node.type !== "StartNode" ? Button(
                   {
                     store: vm$.ui.btn_apply_node_config$,
                     attributes: {
@@ -94,11 +97,12 @@ function AutomationNodeInspector(props) {
                     },
                   },
                   ["应用节点配置"],
-                ),
+                ) : null,
+                is_start ? AutomationStartTriggers({ store: vm$ }) : null,
                 View({ class: "automation-inspector-connections" }, [
                   View({ class: "automation-property__label" }, ["后续节点"]),
                   View({ class: "automation-code automation-code--wrap" }, [
-                    (node.next_ids || []).join("、") || "无",
+                    computed(node, (value) => (value && value.next_ids || []).join("、") || "无"),
                   ]),
                 ]),
                 !is_start
@@ -117,7 +121,7 @@ function AutomationNodeInspector(props) {
               ].filter(Boolean),
             );
           },
-        });
+        })]);
       })(),
     ],
   );
@@ -581,6 +585,7 @@ function FlowEditPageView(props) {
       View({ class: "content-toolbar-wrap automation-editor-toolbar-wrap" }, [
         AutomationWorkspaceToolbar({ store: vm$, mode: "edit" }),
       ]),
+      AutomationFeedback({ store: vm$ }),
       Show({
         when: vm$.state.selected_pipeline,
         ok() {

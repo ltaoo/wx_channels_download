@@ -1,4 +1,5 @@
 import { request } from "@/biz/request.js";
+import { PipelineEditorBridge } from "./pipeline_editor.model.js";
 
 const AutomationChannelCore = Timeless.kit.ChannelCore;
 const automation_socket_client = window.__store.socket_client$;
@@ -38,18 +39,6 @@ function trigger_label(type) {
   if (type === "Event") return "事件触发";
   if (type === "Manual") return "手动触发";
   return "定时触发";
-}
-
-function effective_start_node(flow, schedule) {
-  const metadata = schedule_metadata(schedule);
-  const nodes = flow && flow.nodes;
-  if (
-    metadata.start_node &&
-    (!nodes || nodes.some((node) => node.id === metadata.start_node))
-  ) {
-    return metadata.start_node;
-  }
-  return flow ? flow.start_node_id : "";
 }
 
 function schema_text(schema) {
@@ -394,6 +383,36 @@ function normalize_pipeline(value) {
   };
 }
 
+function pipeline_triggers(pipeline, schedules) {
+  if (!pipeline) return [];
+  const triggers = (schedules || [])
+    .filter((schedule) => schedule.flow_id === pipeline.id)
+    .map((schedule) => {
+      const metadata = schedule_metadata(schedule);
+      let initial_data = {};
+      try {
+        initial_data = typeof schedule.initial_data === "string"
+          ? JSON.parse(schedule.initial_data || "{}")
+          : { ...schedule.initial_data };
+      } catch { /* Keep malformed legacy input editable. */ }
+      if (!initial_data || typeof initial_data !== "object" || Array.isArray(initial_data)) initial_data = {};
+      delete initial_data.__automation;
+      return {
+        id: schedule.id, type: metadata.type, name: schedule.name,
+        cron_expr: schedule.cron_expr, event_key: metadata.event_key,
+        enabled: schedule.enabled, next_run_at: schedule.next_run_at,
+        initial_data, timeout_sec: schedule.timeout_sec,
+      };
+    });
+  // Older event pipelines stored only a single event key on UserFlow.
+  // Surface it as an unsaved rule; the next save moves it into schedules.
+  if (pipeline.trigger_type === "Event" && pipeline.event_key &&
+      !triggers.some((trigger) => trigger.type === "Event" && trigger.event_key === pipeline.event_key)) {
+    triggers.push({ id: "", type: "Event", name: "事件触发", event_key: pipeline.event_key, initial_data: {} });
+  }
+  return triggers;
+}
+
 function automation_view_query(props, fallback_mode) {
   const query = (props && props.view && props.view.query) || {};
   const requested_mode = String(
@@ -410,14 +429,11 @@ function automation_view_query(props, fallback_mode) {
 function AutomationPageViewModel(props, options) {
   const view_query = automation_view_query(props, options && options.mode);
   const view_mode_ = ref(view_query.mode);
-  const tab_ = ref("pipelines");
   const pipelines_ = refarr([]);
   const catalog_ = refarr([]);
   const schedules_ = refarr([]);
-  const runs_ = refarr([]);
   const selected_flow_id_ = ref(view_query.flow_id);
   const selected_pipeline_ = refobj(null);
-  const selected_schedule_id_ = ref("");
   const loading_ = ref(false);
   const error_ = ref("");
   const notice_ = ref("");
@@ -437,6 +453,7 @@ function AutomationPageViewModel(props, options) {
 
   // editor working copy: [{id,type,name,config,next_ids,input_schema}]
   const edit_nodes_ = refarr([]);
+  const edit_triggers_ = refarr([]);
   const edit_start_node_id_ = ref("");
   const selected_edit_node_id_ = ref("");
   const edit_node_config_ = ref("{}");
@@ -444,12 +461,8 @@ function AutomationPageViewModel(props, options) {
 
   // create-pipeline dialog state
   const create_open_ = ref(false);
-  const create_trigger_type_ = ref("Cron");
   const create_name_ = ref("");
   const create_description_ = ref("");
-  const create_event_key_ = ref("");
-  const create_cron_ = ref("@daily");
-  const create_enabled_ = ref(true);
   const create_params_ = refarr([]);
   const create_submitting_ = ref(false);
 
@@ -467,16 +480,6 @@ function AutomationPageViewModel(props, options) {
   const add_insert_to_ = ref("");
   const add_submitting_ = ref(false);
 
-  // create-schedule dialog state
-  const schedule_open_ = ref(false);
-  const schedule_trigger_type_ = ref("Cron");
-  const schedule_event_key_ = ref("");
-  const schedule_name_ = ref("");
-  const schedule_cron_ = ref("@daily");
-  const schedule_start_node_ = ref("");
-  const schedule_flow_id_ = ref("");
-  const schedule_submitting_ = ref(false);
-
   // run-pipeline dialog state
   const run_open_ = ref(false);
   const run_submitting_ = ref(false);
@@ -491,12 +494,12 @@ function AutomationPageViewModel(props, options) {
 
   // list-row delete state
   const pending_delete_flow_id_ = ref("");
-  const pending_delete_schedule_id_ = ref("");
 
   let request_sequence = 0;
   let node_sequence = 0;
   let param_sequence = 0;
   let run_param_sequence = 0;
+  let trigger_sequence = 0;
   let disposed = false;
 
   const execution_channel = new AutomationChannelCore(
@@ -514,11 +517,6 @@ function AutomationPageViewModel(props, options) {
   execution_channel.onStateChange((channel_state) => {
     execution_channel_connected_.as(Boolean(channel_state.connected));
   });
-
-  const selected_schedule_ = combine(
-    { schedules: schedules_, id: selected_schedule_id_ },
-    (state) => state.schedules.find((item) => item.id === state.id) || null,
-  );
 
   const reqs = {
     pipeline: {
@@ -574,45 +572,13 @@ function AutomationPageViewModel(props, options) {
     schedule: {
       list: new Timeless.kit.RequestCore(
         function fetchScheduleList(params) {
-          return request.post(`/api/v1/automation/list_schedules`, params);
-        },
-        { client: props.client },
-      ),
-      create: new Timeless.kit.RequestCore(
-        function createSchedule(body) {
-          return request.post(`/api/v1/automation/create_schedule`, body);
-        },
-        { client: props.client },
-      ),
-      detail: new Timeless.kit.RequestCore(
-        function fetchScheduleDetail(body) {
-          return request.post(`/api/v1/automation/get_schedule`, body);
-        },
-        { client: props.client },
-      ),
-      delete: new Timeless.kit.RequestCore(
-        function deleteSchedule(body) {
-          return request.post(`/api/v1/automation/delete_schedule`, body);
+          return request.post("/api/v1/automation/list_schedules", params);
         },
         { client: props.client },
       ),
       trigger: new Timeless.kit.RequestCore(
         function triggerSchedule(body) {
-          return request.post(`/api/v1/automation/trigger_schedule`, body);
-        },
-        { client: props.client },
-      ),
-      toggle: new Timeless.kit.RequestCore(
-        function toggleSchedule(body) {
-          return request.post(`/api/v1/automation/toggle_schedule`, body);
-        },
-        { client: props.client },
-      ),
-    },
-    running: {
-      list: new Timeless.kit.RequestCore(
-        function fetchRunList(params) {
-          return request.post(`/api/v1/automation/list_runs`, params);
+          return request.post("/api/v1/automation/trigger_schedule", body);
         },
         { client: props.client },
       ),
@@ -628,10 +594,6 @@ function AutomationPageViewModel(props, options) {
       closeable: true,
       footer: false,
     }),
-    schedule_dialog$: new Timeless.vm.DialogCore({
-      closeable: true,
-      footer: false,
-    }),
     run_dialog$: new Timeless.vm.DialogCore({
       closeable: true,
       footer: false,
@@ -643,11 +605,6 @@ function AutomationPageViewModel(props, options) {
     delete_dialog$: new Timeless.vm.DialogCore({
       onOk() {
         return delete_flow();
-      },
-    }),
-    schedule_delete_dialog$: new Timeless.vm.DialogCore({
-      onOk() {
-        return delete_schedule();
       },
     }),
     select_add_type$: new Timeless.vm.SelectCore({
@@ -688,20 +645,6 @@ function AutomationPageViewModel(props, options) {
       position: "popper",
       options: [],
     }),
-    select_schedule_flow$: new Timeless.vm.SelectCore({
-      placeholder: "选择 Pipeline",
-      position: "popper",
-      options: [],
-      onChange(value) {
-        schedule_flow_id_.as(String(value || ""));
-        reset_schedule_start_node(String(value || ""));
-      },
-    }),
-    select_schedule_start$: new Timeless.vm.SelectCore({
-      placeholder: "开始节点（默认）",
-      position: "popper",
-      options: [],
-    }),
     input_create_name$: new Timeless.vm.InputCore({
       placeholder: "Pipeline 名称",
       onChange(value) {
@@ -712,18 +655,6 @@ function AutomationPageViewModel(props, options) {
       placeholder: "可选",
       onChange(value) {
         create_description_.as(value);
-      },
-    }),
-    input_create_event_key$: new Timeless.vm.InputCore({
-      placeholder: "例如：channels.feed.received",
-      onChange(value) {
-        create_event_key_.as(value);
-      },
-    }),
-    input_create_cron$: new Timeless.vm.InputCore({
-      placeholder: "@daily 或 0 8 * * *",
-      onChange(value) {
-        create_cron_.as(value);
       },
     }),
     input_add_name$: new Timeless.vm.InputCore({
@@ -749,24 +680,6 @@ function AutomationPageViewModel(props, options) {
       placeholder: "{}",
       onChange(value) {
         edit_node_config_.as(String(value || ""));
-      },
-    }),
-    input_schedule_name$: new Timeless.vm.InputCore({
-      placeholder: "流程名称",
-      onChange(value) {
-        schedule_name_.as(value);
-      },
-    }),
-    input_schedule_cron$: new Timeless.vm.InputCore({
-      placeholder: "@daily 或 0 8 * * *",
-      onChange(value) {
-        schedule_cron_.as(value);
-      },
-    }),
-    input_schedule_event_key$: new Timeless.vm.InputCore({
-      placeholder: "例如：channels.feed.received",
-      onChange(value) {
-        schedule_event_key_.as(value);
       },
     }),
     input_import_json$: new Timeless.vm.InputCore({
@@ -890,44 +803,26 @@ function AutomationPageViewModel(props, options) {
         return null;
       },
     }),
-    btn_schedule_create$: new Timeless.vm.ButtonCore({
-      variant: "outline",
-      size: "sm",
-      onClick() {
-        return open_schedule_dialog();
-      },
+    btn_add_cron_trigger$: new Timeless.vm.ButtonCore({
+      variant: "outline", size: "sm",
+      onClick() { add_trigger("Cron"); },
     }),
-    btn_schedule_submit$: new Timeless.vm.ButtonCore({
-      variant: "primary",
-      disabled: schedule_submitting_.value,
-      onClick() {
-        return submit_schedule();
-      },
+    btn_add_event_trigger$: new Timeless.vm.ButtonCore({
+      variant: "outline", size: "sm",
+      onClick() { add_trigger("Event"); },
     }),
-    btn_schedule_cancel$: new Timeless.vm.ButtonCore({
-      variant: "ghost",
-      onClick() {
-        ui.schedule_dialog$.hide();
-      },
-    }),
-    checkbox_create_enabled$: new Timeless.vm.CheckboxCore({
-      checked: true,
-      onChange(value) {
-        create_enabled_.as(value);
-      },
-    }),
-    btn_schedule_toggle$: new Timeless.vm.ButtonInListCore({
-      variant: "outline",
-      size: "xs",
-      onClick(schedule) {
-        return schedule_action(schedule && schedule.id, "toggle");
+    btn_remove_trigger$: new Timeless.vm.ButtonInListCore({
+      variant: "danger", size: "xs",
+      onClick(trigger) {
+        edit_triggers_.as(edit_triggers_.value.filter((item) => item.uid !== trigger.uid), { reset: true });
+        dirty_.as(true);
       },
     }),
     btn_schedule_trigger$: new Timeless.vm.ButtonInListCore({
       variant: "outline",
       size: "xs",
       onClick(schedule) {
-        return schedule_action(schedule && schedule.id, "trigger");
+        return trigger_schedule(schedule && schedule.id);
       },
     }),
     btn_pipeline_delete$: new Timeless.vm.ButtonInListCore({
@@ -935,13 +830,6 @@ function AutomationPageViewModel(props, options) {
       size: "xs",
       onClick(pipeline) {
         return ask_delete_pipeline(pipeline);
-      },
-    }),
-    btn_schedule_delete$: new Timeless.vm.ButtonInListCore({
-      variant: "danger",
-      size: "xs",
-      onClick(schedule) {
-        return ask_delete_schedule(schedule);
       },
     }),
     btn_param_remove$: new Timeless.vm.ButtonInListCore({
@@ -963,10 +851,6 @@ function AutomationPageViewModel(props, options) {
   if (ui.delete_dialog$.okBtn) {
     ui.delete_dialog$.okBtn.setVariant("destructive");
   }
-  if (ui.schedule_delete_dialog$.okBtn) {
-    ui.schedule_delete_dialog$.okBtn.setVariant("destructive");
-  }
-
   loading_.subscribe({
     onChange(loading) {
       if (loading) ui.btn_refresh$.disable();
@@ -983,12 +867,6 @@ function AutomationPageViewModel(props, options) {
     onChange(submitting) {
       if (submitting) ui.btn_add_submit$.disable();
       else ui.btn_add_submit$.enable();
-    },
-  });
-  schedule_submitting_.subscribe({
-    onChange(submitting) {
-      if (submitting) ui.btn_schedule_submit$.disable();
-      else ui.btn_schedule_submit$.enable();
     },
   });
   dirty_.subscribe({
@@ -1032,7 +910,6 @@ function AutomationPageViewModel(props, options) {
           }),
       );
       ui.select_add_from$.setOptions(options);
-      ui.select_schedule_start$.setOptions(options);
     },
   });
 
@@ -1611,6 +1488,7 @@ function AutomationPageViewModel(props, options) {
 
   function dispose() {
     disposed = true;
+    editor_bridge.destroy();
     request_sequence += 1;
     execution_channel_connected_.as(false);
     execution_channel.destroy();
@@ -1637,28 +1515,18 @@ function AutomationPageViewModel(props, options) {
   }
 
   async function load_schedules() {
-    const r = await reqs.schedule.list.run({
-      page: 1,
-      page_size: 100,
-    });
-    if (r.error) {
-      throw request_result_error(r, "自动化列表加载失败");
+    const schedules = [];
+    for (let page = 1; ; page += 1) {
+      const r = await reqs.schedule.list.run({
+        page, page_size: 200, flow_id: view_query.flow_id || "",
+      });
+      if (r.error) throw request_result_error(r, "触发器列表加载失败");
+      const payload = r.data || {};
+      const list = payload.list || [];
+      schedules.push(...list);
+      if (!list.length || schedules.length >= payload.total || list.length < 200) break;
     }
-    const payload = r.data;
-    return (payload && payload.list) || [];
-  }
-
-  async function load_runs(schedule_id) {
-    const r = await reqs.running.list.run({
-      schedule_id,
-      page: 1,
-      page_size: 20,
-    });
-    if (r.error) {
-      throw request_result_error(r, "执行记录加载失败");
-    }
-    const payload = r.data;
-    runs_.as((payload && payload.list) || [], { reset: true });
+    return schedules;
   }
 
   async function load_data(options) {
@@ -1688,19 +1556,9 @@ function AutomationPageViewModel(props, options) {
           if (view_mode_.value === "list") selected_flow_id_.as("");
         }
       }
-      if (selected_schedule_id_.value) {
-        const selected = schedules.find(
-          (item) => item.id === selected_schedule_id_.value,
-        );
-        if (!selected) {
-          selected_schedule_id_.as("");
-          runs_.as([], { reset: true });
-        } else {
-          await load_runs(selected.id);
-        }
-      }
       if (sequence !== request_sequence) return;
       loading_.as(false);
+      if (execution_channel_connected_.value) editor_bridge.register();
     } catch (err) {
       if (sequence !== request_sequence) return;
       set_error(err);
@@ -1710,6 +1568,7 @@ function AutomationPageViewModel(props, options) {
   function enter_edit(flow) {
     staged_node_positions.clear();
     selected_pipeline_.as(flow);
+    edit_triggers_.as(pipeline_triggers(flow, schedules_.value).map(new_trigger_row), { reset: true });
     const edit_nodes = (flow.nodes || []).map((node) => ({
       id: node.id,
       type: node.type,
@@ -1735,6 +1594,56 @@ function AutomationPageViewModel(props, options) {
       : flow.start_node_id || ((flow.nodes || [])[0] || {}).id || "";
     select_edit_node(preferred_node_id);
     dirty_.as(false);
+    if (execution_channel_connected_.value) editor_bridge.register();
+  }
+
+  function new_trigger_row(value) {
+    const trigger = { ...value, uid: ++trigger_sequence };
+    const change = (key, value) => {
+      trigger[key] = value;
+      dirty_.as(true);
+    };
+    trigger.input_name$ = new Timeless.vm.InputCore({
+      defaultValue: trigger.name || "", onChange(value) { change("name", value); },
+    });
+    trigger.input_cron$ = new Timeless.vm.InputCore({
+      defaultValue: trigger.cron_expr || "@daily", onChange(value) { change("cron_expr", value); },
+    });
+    trigger.input_event_key$ = new Timeless.vm.InputCore({
+      defaultValue: trigger.event_key || "", onChange(value) { change("event_key", value); },
+    });
+    trigger.checkbox_enabled$ = new Timeless.vm.CheckboxCore({
+      checked: Boolean(trigger.enabled), onChange(value) { change("enabled", value); },
+    });
+    trigger.input_data$ = new Timeless.vm.InputCore({
+      defaultValue: JSON.stringify(trigger.initial_data || {}, null, 2),
+      onChange(value) { change("data_text", value); },
+    });
+    trigger.data_text = JSON.stringify(trigger.initial_data || {}, null, 2);
+    return trigger;
+  }
+
+  function add_trigger(type) {
+    edit_triggers_.as([...edit_triggers_.value, new_trigger_row({
+      id: "", type, name: type === "Cron" ? "定时触发" : "事件触发",
+      cron_expr: "@daily", event_key: "", enabled: type === "Cron", initial_data: {},
+    })], { reset: true });
+    dirty_.as(true);
+  }
+
+  function serialize_triggers() {
+    return edit_triggers_.value.map((trigger, index) => {
+      const initial_data = JSON.parse(trigger.data_text || "{}");
+      if (!initial_data || typeof initial_data !== "object" || Array.isArray(initial_data)) {
+        throw new Error(`触发器 ${index + 1} 的输入参数必须是 JSON 对象`);
+      }
+      return {
+        id: trigger.id, type: trigger.type, name: trigger.name,
+        cron_expr: trigger.cron_expr, event_key: trigger.event_key,
+        enabled: Boolean(trigger.enabled), initial_data,
+        timeout_sec: trigger.timeout_sec || undefined,
+      };
+    });
   }
 
   function find_edit_node(node_id) {
@@ -1825,9 +1734,6 @@ function AutomationPageViewModel(props, options) {
     options = options || {};
     if (selected_flow_id_.value !== flow_id) reset_execution_tracking();
     selected_flow_id_.as(flow_id);
-    tab_.as("pipelines");
-    selected_schedule_id_.as("");
-    runs_.as([], { reset: true });
     const pipeline = find_pipeline(flow_id);
     if (pipeline) enter_edit(pipeline);
     else selected_pipeline_.as(null);
@@ -1851,55 +1757,15 @@ function AutomationPageViewModel(props, options) {
     }
   }
 
-  async function select_schedule(id) {
-    selected_schedule_id_.as(id);
-    tab_.as("schedules");
-    const sequence = ++request_sequence;
-    loading_.as(true);
-    try {
-      const r = await reqs.schedule.detail.run({
-        id,
-      });
-      if (r.error) {
-        return;
-      }
-      const schedule = r.data;
-      if (sequence !== request_sequence) return;
-      schedules_.as(
-        (schedules_.value || []).map((item) =>
-          item.id === id ? schedule : item,
-        ),
-        { reset: true },
-      );
-      const pipeline = find_pipeline(schedule.flow_id);
-      selected_flow_id_.as(schedule.flow_id);
-      if (pipeline) enter_edit(pipeline);
-      await load_runs(id);
-      loading_.as(false);
-    } catch (err) {
-      if (sequence !== request_sequence) return;
-      set_error(err);
-    }
-  }
-
   // --- create pipeline ---
   function open_create_dialog() {
-    create_trigger_type_.as("Cron");
     create_name_.as("");
     create_description_.as("");
-    create_event_key_.as("");
-    create_cron_.as("@daily");
-    create_enabled_.as(true);
     create_params_.as([new_create_param_row()], {
       reset: true,
     });
     ui.input_create_name$.setValue("", { silence: true });
     ui.input_create_description$.setValue("", { silence: true });
-    ui.input_create_event_key$.setValue("", { silence: true });
-    ui.input_create_cron$.setValue("@daily", { silence: true });
-    if (ui.checkbox_create_enabled$.value !== true) {
-      ui.checkbox_create_enabled$.check();
-    }
     create_open_.as(true);
     ui.create_dialog$.show();
   }
@@ -1925,10 +1791,6 @@ function AutomationPageViewModel(props, options) {
       },
     });
     return param;
-  }
-
-  function set_create_trigger_type(type) {
-    create_trigger_type_.as(type);
   }
 
   function add_create_param() {
@@ -1960,13 +1822,8 @@ function AutomationPageViewModel(props, options) {
     create_submitting_.as(true);
     error_.as("");
     try {
-      const trigger_type = create_trigger_type_.value;
-      const event_key = String(create_event_key_.value || "").trim();
       const name = String(create_name_.value || "").trim();
       if (!name) throw new Error("请输入 Pipeline 名称");
-      if (trigger_type === "Event" && !event_key) {
-        throw new Error("请输入事件 Key");
-      }
       const context_schema = [];
       (create_params_.value || []).forEach((param) => {
         const key = String(param.key || "").trim();
@@ -1980,37 +1837,18 @@ function AutomationPageViewModel(props, options) {
       const r = await reqs.pipeline.create.run({
         name,
         description: String(create_description_.value || "").trim(),
-        trigger_type,
-        event_key: trigger_type === "Event" ? event_key : "",
+        trigger_type: "Manual",
         context_schema,
       });
       if (r.error) throw request_result_error(r, "Pipeline 创建失败");
       const flow = r.data;
       ui.create_dialog$.hide();
       create_open_.as(false);
-      let create_notice = "Pipeline 创建成功，可继续添加后续节点";
-      // Cron-triggered pipelines also need a schedule to fire.
-      if (trigger_type === "Cron" && create_enabled_.value) {
-        const schedule_result = await reqs.schedule.create.run({
-          name: `${name} 定时`,
-          cron_expr: String(create_cron_.value || "").trim() || "@daily",
-          flow_id: flow.id,
-          initial_data: {
-            __automation: { type: "Cron", start_node: "start" },
-          },
-          enabled: true,
-        });
-        if (schedule_result.error) {
-          const schedule_error = request_result_error(
-            schedule_result,
-            "定时计划创建失败",
-          );
-          create_notice = `Pipeline 已创建，但定时计划创建失败：${schedule_error.message}`;
-        }
-      }
       await load_data({ silent: true });
-      await select_pipeline(flow.id, { silent: true });
-      notice_.as(create_notice);
+      notice_.as("Pipeline 已创建，请在开始节点配置触发器");
+      if (props.history && typeof props.history.push === "function") {
+        props.history.push("root.shell.flow_edit", { id: flow.id });
+      }
     } catch (err) {
       set_error(err);
     } finally {
@@ -2195,6 +2033,7 @@ function AutomationPageViewModel(props, options) {
       );
       const r = await reqs.pipeline.update.run({
         id: selected_flow_id_.value,
+        triggers: serialize_triggers(),
         start_node_id: edit_start_node_id_.value,
         nodes: (edit_nodes_.value || []).map((node) => ({
           id: node.id,
@@ -2226,12 +2065,6 @@ function AutomationPageViewModel(props, options) {
     return null;
   }
 
-  function ask_delete_schedule(schedule) {
-    pending_delete_schedule_id_.as((schedule && schedule.id) || "");
-    ui.schedule_delete_dialog$.show();
-    return null;
-  }
-
   async function delete_flow() {
     const flow_id = pending_delete_flow_id_.value || selected_flow_id_.value;
     if (!flow_id) return null;
@@ -2247,27 +2080,6 @@ function AutomationPageViewModel(props, options) {
         edit_nodes_.as([], { reset: true });
       }
       notice_.as("Pipeline 已删除");
-      await load_data({ silent: true });
-    } catch (err) {
-      set_error(err);
-    }
-    return null;
-  }
-
-  async function delete_schedule() {
-    const schedule_id = pending_delete_schedule_id_.value;
-    if (!schedule_id) return null;
-    error_.as("");
-    try {
-      const r = await reqs.schedule.delete.run({ id: schedule_id });
-      if (r.error) throw request_result_error(r, "自动化删除失败");
-      ui.schedule_delete_dialog$.hide();
-      pending_delete_schedule_id_.as("");
-      if (schedule_id === selected_schedule_id_.value) {
-        selected_schedule_id_.as("");
-        runs_.as([], { reset: true });
-      }
-      notice_.as("自动化已删除");
       await load_data({ silent: true });
     } catch (err) {
       set_error(err);
@@ -2446,120 +2258,85 @@ function AutomationPageViewModel(props, options) {
     return null;
   }
 
-  // --- schedules ---
-  function open_schedule_dialog(flow_id) {
-    const target_flow_id = flow_id || selected_flow_id_.value;
-    if (!target_flow_id) {
-      error_.as("请先创建或选择一个 Pipeline");
-      return null;
-    }
-    schedule_flow_id_.as(target_flow_id);
-    schedule_trigger_type_.as("Cron");
-    schedule_event_key_.as("");
-    schedule_name_.as(`${pipeline_name(target_flow_id)} 自动化`);
-    schedule_cron_.as("@daily");
-    schedule_start_node_.as("");
-    ui.select_schedule_flow$.setOptions(
-      (pipelines_.value || []).map(
-        (item) =>
-          new Timeless.vm.SelectItemCore({
-            label: `${item.name || item.id}（${item.id}）`,
-            value: item.id,
-          }),
-      ),
-    );
-    ui.select_schedule_flow$.setValue(target_flow_id, { silence: true });
-    reset_schedule_start_node(target_flow_id);
-    ui.input_schedule_name$.setValue(schedule_name_.value, { silence: true });
-    ui.input_schedule_cron$.setValue("@daily", { silence: true });
-    ui.input_schedule_event_key$.setValue("", { silence: true });
-    schedule_open_.as(true);
-    ui.schedule_dialog$.show();
-    return null;
-  }
-
-  function reset_schedule_start_node(flow_id) {
-    const pipeline = find_pipeline(flow_id);
-    const start_node_id = pipeline ? pipeline.start_node_id : "";
-    schedule_start_node_.as(start_node_id);
-    ui.select_schedule_start$.setValue(start_node_id, { silence: true });
-  }
-
-  function set_schedule_trigger_type(type) {
-    schedule_trigger_type_.as(type);
-  }
-
-  async function submit_schedule() {
-    if (schedule_submitting_.value) return null;
-    schedule_submitting_.as(true);
-    error_.as("");
-    try {
-      const trigger_type = schedule_trigger_type_.value;
-      const event_key = String(schedule_event_key_.value || "").trim();
-      const name = String(schedule_name_.value || "").trim();
-      if (!name) throw new Error("请输入流程名称");
-      if (trigger_type === "Event" && !event_key) {
-        throw new Error("请输入事件 Key");
-      }
-      const initial_data = {};
-      initial_data.__automation = {
-        type: trigger_type,
-        start_node: String(ui.select_schedule_start$.value || ""),
-        event_key: trigger_type === "Event" ? event_key : "",
-      };
-      const r = await reqs.schedule.create.run({
-        name,
-        cron_expr:
-          trigger_type === "Cron"
-            ? String(schedule_cron_.value || "").trim() || "@daily"
-            : "@daily",
-        flow_id: String(
-          ui.select_schedule_flow$.value || schedule_flow_id_.value || "",
-        ),
-        initial_data,
-        enabled: trigger_type === "Cron",
-      });
-      if (r.error) {
-        return;
-      }
-      const schedule = r.data;
-      ui.schedule_dialog$.hide();
-      schedule_open_.as(false);
-      notice_.as("自动化流程创建成功");
-      selected_schedule_id_.as(schedule.id);
-      tab_.as("schedules");
-      await load_data({ silent: true });
-      await select_schedule(schedule.id);
-    } catch (err) {
-      set_error(err);
-    }
-    schedule_submitting_.as(false);
-    return null;
-  }
-
-  async function schedule_action(id, action) {
+  async function trigger_schedule(id) {
     const schedule = (schedules_.value || []).find((item) => item.id === id);
+    if (!schedule) return null;
     const metadata = schedule_metadata(schedule);
     error_.as("");
     try {
-      if (action === "toggle" && metadata.type === "Cron") {
-        await reqs.schedule.toggle.run({ id });
-        notice_.as("自动化状态已更新");
-      } else if (action === "trigger") {
-        await reqs.schedule.trigger.run({
-          id,
-          trigger_type: metadata.type === "Event" ? "Event" : "Manual",
-          event_key: metadata.type === "Event" ? metadata.event_key : "",
-        });
-        notice_.as(
-          metadata.type === "Event" ? "事件已触发" : "自动化流程已手动触发",
-        );
-      }
+      const r = await reqs.schedule.trigger.run({
+        id,
+        trigger_type: metadata.type === "Event" ? "Event" : "Manual",
+        event_key: metadata.type === "Event" ? metadata.event_key : "",
+      });
+      if (r.error) throw request_result_error(r, "触发器执行失败");
+      notice_.as(metadata.type === "Event" ? "事件已触发" : "Pipeline 已手动触发");
       await load_data({ silent: true });
     } catch (err) {
       set_error(err);
     }
+    return null;
   }
+
+  const editor_bridge = PipelineEditorBridge({
+    channel: execution_channel,
+    read() {
+      if (view_mode_.value !== "edit" || !selected_pipeline_.value || loading_.value) return null;
+      const selected = find_edit_node(selected_edit_node_id_.value);
+      let pending_node_config = false;
+      try {
+        pending_node_config = JSON.stringify(JSON.parse(edit_node_config_.value || "{}")) !== JSON.stringify((selected && selected.config) || {});
+      } catch { pending_node_config = true; }
+      let triggers = null;
+      let trigger_error = "";
+      try { triggers = serialize_triggers(); } catch (error) { trigger_error = error.message; }
+      return {
+        flow_id: selected_flow_id_.value,
+        name: selected_pipeline_.value.name,
+        dirty: dirty_.value,
+        saving: saving_.value,
+        selected_node_id: selected_edit_node_id_.value,
+        node_config_text: edit_node_config_.value,
+        pending_node_config,
+        trigger_error,
+        trigger_forms: edit_triggers_.value.map((trigger) => ({
+          id: trigger.id, type: trigger.type, name: trigger.name,
+          cron_expr: trigger.cron_expr, event_key: trigger.event_key,
+          enabled: trigger.enabled, data_text: trigger.data_text,
+        })),
+        draft: {
+          start_node_id: edit_start_node_id_.value,
+          context_schema: selected_pipeline_.value.context_schema || [],
+          nodes: edit_nodes_.value.map((node) => ({
+            ...node, position: staged_node_positions.get(node.id) || node.position || null,
+          })),
+          triggers,
+        },
+      };
+    },
+    apply(draft) {
+      if (!draft || !Array.isArray(draft.nodes) || !draft.nodes.length) throw new Error("流程草稿缺少节点");
+      if (draft.context_schema && JSON.stringify(draft.context_schema) !== JSON.stringify(selected_pipeline_.value.context_schema || [])) {
+        throw new Error("当前接口仅编辑节点和触发器，请保留读取到的 context_schema");
+      }
+      const positions = calculate_pipeline_node_positions(draft.nodes);
+      staged_node_positions.clear();
+      edit_nodes_.as(draft.nodes.map((node) => ({
+        ...node, name: node.name || node.id, config: node.config || {},
+        input_schema: node.input_schema || [],
+        next_ids: gateway_next_ids_from_rules(node, node.config) || node.next_ids || [],
+        position: positions[node.id] || null,
+      })), { reset: true });
+      edit_start_node_id_.as(draft.start_node_id);
+      if (Array.isArray(draft.triggers)) edit_triggers_.as(draft.triggers.map(new_trigger_row), { reset: true });
+      select_edit_node(find_edit_node(selected_edit_node_id_.value) ? selected_edit_node_id_.value : draft.start_node_id);
+      dirty_.as(true);
+      notice_.as("MCP 已更新流程画布，保存 Pipeline 后生效");
+    },
+    on_error(error) {
+      if (!disposed) error_.as(error && error.message ? error.message : "编辑器通信失败");
+    },
+  });
 
   const methods = {
     async ready() {
@@ -2574,19 +2351,11 @@ function AutomationPageViewModel(props, options) {
     refresh() {
       return load_data({ silent: true });
     },
-    switchTab(tab) {
-      tab_.as(tab);
-    },
     selectPipeline: select_pipeline,
-    selectSchedule: select_schedule,
-    toggleSchedule(id) {
-      return schedule_action(id, "toggle");
-    },
     triggerSchedule(id) {
-      return schedule_action(id, "trigger");
+      return trigger_schedule(id);
     },
     openCreateDialog: open_create_dialog,
-    setCreateTriggerType: set_create_trigger_type,
     addCreateParam: add_create_param,
     removeCreateParam: remove_create_param,
     updateCreateParam: update_create_param,
@@ -2600,21 +2369,20 @@ function AutomationPageViewModel(props, options) {
     saveFlow: save_flow,
     deleteFlow: delete_flow,
     askDeletePipeline: ask_delete_pipeline,
-    askDeleteSchedule: ask_delete_schedule,
-    deleteSchedule: delete_schedule,
     triggerFlow: trigger_flow,
     submitRun: submit_run,
     runSchemaFields: run_schema_fields,
     openImportDialog: open_import_dialog,
     submitImport: submit_import,
-    openScheduleDialog: open_schedule_dialog,
-    setScheduleTriggerType: set_schedule_trigger_type,
     scheduleMetadata: schedule_metadata,
     triggerLabel: trigger_label,
-    effectiveStartNode: effective_start_node,
     schemaText: schema_text,
     formatTime: format_time,
     pipelineName: pipeline_name,
+    pipelineTriggers(flow) { return pipeline_triggers(flow, schedules_.value); },
+    pipelineTriggerTypes(flow) {
+      return [...new Set(["Manual", ...pipeline_triggers(flow, schedules_.value).map((trigger) => trigger.type)])];
+    },
     flowLabel: flow_label,
     flowIcon: flow_icon,
     nodeExecutionStatusLabel(status) {
@@ -2664,16 +2432,13 @@ function AutomationPageViewModel(props, options) {
 
   const state = {
     view_mode: view_mode_,
-    tab: tab_,
     pipelines: pipelines_,
     catalog: catalog_,
     schedules: schedules_,
-    runs: runs_,
     selected_flow_id: selected_flow_id_,
     selected_pipeline: selected_pipeline_,
-    selected_schedule_id: selected_schedule_id_,
-    selected_schedule: selected_schedule_,
     edit_nodes: edit_nodes_,
+    edit_triggers: edit_triggers_,
     edit_start_node_id: edit_start_node_id_,
     selected_edit_node_id: selected_edit_node_id_,
     edit_node_config: edit_node_config_,
@@ -2691,12 +2456,8 @@ function AutomationPageViewModel(props, options) {
     execution_window_z: execution_window_z_,
     execution_window_active_id: execution_window_active_id_,
     create_open: create_open_,
-    create_trigger_type: create_trigger_type_,
     create_name: create_name_,
     create_description: create_description_,
-    create_event_key: create_event_key_,
-    create_cron: create_cron_,
-    create_enabled: create_enabled_,
     create_params: create_params_,
     add_open: add_open_,
     add_type: add_type_,
@@ -2708,11 +2469,6 @@ function AutomationPageViewModel(props, options) {
     add_service_form_error: add_service_form_error_,
     add_from: add_from_,
     add_insert_to: add_insert_to_,
-    schedule_open: schedule_open_,
-    schedule_trigger_type: schedule_trigger_type_,
-    schedule_event_key: schedule_event_key_,
-    schedule_name: schedule_name_,
-    schedule_cron: schedule_cron_,
     run_open: run_open_,
     run_submitting: run_submitting_,
     run_params: run_params_,
@@ -2722,7 +2478,6 @@ function AutomationPageViewModel(props, options) {
     import_json: import_json_,
     import_error: import_error_,
     delete_flow_id: pending_delete_flow_id_,
-    delete_schedule_id: pending_delete_schedule_id_,
   };
 
   return { state, ui, methods };
@@ -2733,4 +2488,5 @@ export {
   calculate_flow_minimap_geometry,
   calculate_pipeline_node_positions,
   normalize_pipeline,
+  pipeline_triggers,
 };

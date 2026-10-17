@@ -142,10 +142,13 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/proxy/certificate/uninstall", c.handle_proxy_certificate_uninstall)
 	c.engine.POST("/api/proxy/certificate/uninstall_by_name", c.handle_proxy_certificate_uninstall_by_name)
 	c.engine.POST("/api/cookies/update", c.handle_cookie_update)
+	c.engine.POST("/api/cookie/update", c.handle_cookie_update)
 	c.setup_automation_routes()
 }
 
 func (c *APIClient) setup_automation_routes() {
+	c.engine.POST("/api/v1/automation/get_editor", c.handle_get_pipeline_editor)
+	c.engine.POST("/api/v1/automation/update_editor", c.handle_update_pipeline_editor)
 	c.engine.GET("/ws/v1/automation", c.handle_automation_ws)
 	// Scheduled workflow automation
 	c.engine.POST("/api/v1/automation/list_schedules", c.handle_list_automation_schedules)

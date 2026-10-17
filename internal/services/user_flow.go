@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"gorm.io/gorm"
+
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/mcpserver"
 	"wx_channel/pkg/flowengine"
@@ -129,6 +131,8 @@ type UpdateUserFlowInput struct {
 	ContextSchema []engine.FieldSchema
 	StartNodeID   string
 	Nodes         []UserFlowNodeInput
+	// Nil preserves existing rules; an empty slice removes all extra triggers.
+	Triggers []UserFlowTriggerInput
 }
 
 type UserFlowNodeInput struct {
@@ -420,14 +424,27 @@ func (s *AutomationService) UpdateUserFlow(id string, input UpdateUserFlowInput)
 	}
 	flow.Definition = string(encoded)
 	flow.UpdatedAt = time.Now().UnixMilli()
-	if err := s.db.Model(&model.UserFlow{}).
-		Where("id = ? AND deleted_at IS NULL", id).
-		Updates(map[string]interface{}{
-			"name":        flow.Name,
-			"description": flow.Description,
-			"definition":  flow.Definition,
-			"updated_at":  flow.UpdatedAt,
-		}).Error; err != nil {
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		if input.Triggers != nil {
+			if err := s.replace_user_flow_triggers(tx, flow.ID, definition.StartNodeID, input.Triggers); err != nil {
+				return err
+			}
+			// These legacy fields no longer select an exclusive trigger mode.
+			flow.TriggerType = model.FlowRunTriggerManual
+			flow.EventKey = ""
+		}
+		return tx.Model(&model.UserFlow{}).
+			Where("id = ? AND deleted_at IS NULL", id).
+			Updates(map[string]interface{}{
+				"name":         flow.Name,
+				"description":  flow.Description,
+				"definition":   flow.Definition,
+				"updated_at":   flow.UpdatedAt,
+				"trigger_type": flow.TriggerType,
+				"event_key":    flow.EventKey,
+			}).Error
+	})
+	if err != nil {
 		return nil, fmt.Errorf("更新流程失败: %w", err)
 	}
 	s.register_user_flow(*definition)
@@ -497,12 +514,19 @@ func (s *AutomationService) DeleteUserFlow(id string) error {
 		return err
 	}
 	now := time.Now().UnixMilli()
-	if err := s.db.Model(&model.UserFlow{}).
-		Where("id = ? AND deleted_at IS NULL", id).
-		Updates(map[string]interface{}{
-			"deleted_at": now,
-			"updated_at": now,
-		}).Error; err != nil {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.FlowSchedule{}).
+			Where("flow_id = ? AND deleted_at IS NULL", id).
+			Updates(map[string]interface{}{"deleted_at": now, "updated_at": now, "enabled": false, "next_run_at": nil}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&model.UserFlow{}).
+			Where("id = ? AND deleted_at IS NULL", id).
+			Updates(map[string]interface{}{
+				"deleted_at": now,
+				"updated_at": now,
+			}).Error
+	}); err != nil {
 		return fmt.Errorf("删除流程失败: %w", err)
 	}
 	if s.flow_engine != nil {
