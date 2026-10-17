@@ -1,11 +1,19 @@
 import { LogsPageViewModel } from "./logs.model.js";
 
+const logs_level_classes = {
+  __proto__: null,
+  "debug": "text-content-muted bg-content-panel-soft",
+  "info": "text-color-info bg-color-info-soft",
+  "warn": "text-color-warning bg-color-warning-soft",
+  "error": "text-content-danger bg-color-danger-soft",
+};
+
 function LogsPageView(props) {
   const vm$ = LogsPageViewModel(props);
 
   return View(
     {
-      class: "content-page logs-page page",
+      class: "group-content-page flex flex-col bg-content-bg text-content-text h-full min-h-0 overflow-hidden [&_>_.group-content-main]:min-h-0 [&_>_.group-content-main]:flex [&_>_.group-content-main]:flex-[1_1_auto] [&_>_.group-content-main]:flex-col min-w-0 font-sans",
       attributes: { n: "logs-page" },
       onMounted() {
         vm$.methods.ready();
@@ -17,7 +25,7 @@ function LogsPageView(props) {
     [
       View(
         {
-          class: "content-toolbar-wrap container",
+          class: "group-content-toolbar-wrap p-[var(--dm-space-4)_var(--dm-space-4)_0] ",
           attributes: { n: "logs-toolbar-container" },
         },
         [LogsPageToolbar({ store: vm$ })],
@@ -82,14 +90,8 @@ function LogsPageFormatTime(value) {
 
 function LogsPageLevelClass(level) {
   const normalized = String(level || "info").toLowerCase();
-  if (
-    normalized === "debug" ||
-    normalized === "warn" ||
-    normalized === "error"
-  ) {
-    return `logs-level logs-level-${normalized}`;
-  }
-  return "logs-level logs-level-info";
+  const tone = logs_level_classes[normalized] || logs_level_classes.info;
+  return `w-fit-content min-w-46px text-center font-sans text-transform-uppercase ${tone}`;
 }
 
 function LogsPageToolbar(props) {
@@ -97,7 +99,7 @@ function LogsPageToolbar(props) {
   return View(
     {
       type: "form",
-      class: "content-toolbar logs-toolbar",
+      class: "group-content-toolbar flex items-center justify-between gap-3 max-760:flex-wrap min-w-0",
       attributes: { n: "logs-toolbar", role: "search" },
       onSubmit(event) {
         event.preventDefault();
@@ -107,7 +109,7 @@ function LogsPageToolbar(props) {
     [
       View(
         {
-          class: "logs-toolbar-row",
+          class: "flex items-center gap-2 min-w-0 flex-[1_1_auto] max-760:flex-wrap",
           attributes: { n: "logs-toolbar-primary-row" },
         },
         [
@@ -118,7 +120,7 @@ function LogsPageToolbar(props) {
           // }),
           View(
             {
-              class: "logs-level-select",
+              class: "w-120px flex-[0_0_120px]",
               attributes: { n: "logs-level-filter" },
             },
             [
@@ -133,7 +135,7 @@ function LogsPageToolbar(props) {
           ),
           View(
             {
-              class: "logs-search",
+              class: "min-w-220px flex-[1_1_320px] min-h-control-height-md",
               attributes: { n: "logs-search-field" },
             },
             [
@@ -157,7 +159,7 @@ function LogsPageToolbar(props) {
           ),
           View(
             {
-              class: "content-filter-actions dm-flex dm-items-center dm-gap-2",
+              class: "group-content-filter-actions flex-[0_0_auto] max-760:ml-auto max-520:w-full max-520:ml-0 max-520:[&_>_.dm-button]:flex-[1_1_0] dm-flex dm-items-center dm-gap-2",
               attributes: { n: "logs-primary-actions" },
             },
             [
@@ -180,7 +182,7 @@ function LogsPageToolbar(props) {
               }),
               View(
                 {
-                  class: "logs-optional-action-container",
+                  class: "max-1280:!hidden contents",
                   attributes: { n: "logs-import-action-container" },
                 },
                 [
@@ -197,7 +199,7 @@ function LogsPageToolbar(props) {
               ),
               View(
                 {
-                  class: "logs-optional-action-container",
+                  class: "max-1280:!hidden contents",
                   attributes: { n: "logs-export-action-container" },
                 },
                 [
@@ -214,7 +216,7 @@ function LogsPageToolbar(props) {
               ),
               View(
                 {
-                  class: "logs-optional-action-container",
+                  class: "max-1280:!hidden contents",
                   attributes: { n: "logs-clear-action-container" },
                 },
                 [
@@ -237,7 +239,7 @@ function LogsPageToolbar(props) {
       ),
       View(
         {
-          class: "logs-toolbar-extra",
+          class: "flex items-center gap-2 flex-[0_0_auto] max-760:flex-wrap max-760:w-full max-760:justify-between",
           attributes: { n: "logs-toolbar-secondary-row" },
         },
         [
@@ -246,7 +248,7 @@ function LogsPageToolbar(props) {
             ok() {
               return View(
                 {
-                  class: "logs-import-status",
+                  class: "min-w-0 flex items-center gap-2 text-content-muted text-sm [&_>_svg]:flex-[0_0_auto] [&_>_svg]:text-color-primary",
                   attributes: {
                     n: "logs-import-status",
                     role: "status",
@@ -262,7 +264,7 @@ function LogsPageToolbar(props) {
                   View(
                     {
                       as: "span",
-                      class: "logs-import-status-text",
+                      class: "max-w-220px overflow-hidden text-ellipsis whitespace-nowrap",
                       attributes: { n: "logs-import-status-text" },
                     },
                     [vm$.state.imported_label],
@@ -282,7 +284,7 @@ function LogsPageToolbar(props) {
           }),
           View(
             {
-              class: "logs-toggle logs-optional-action",
+              class: "flex items-center min-h-control-height-md gap-2 p-[0_var(--dm-space-2-5)] text-content-muted text-sm whitespace-nowrap max-1280:!hidden",
               attributes: { n: "logs-auto-refresh-control" },
             },
             [
@@ -297,7 +299,7 @@ function LogsPageToolbar(props) {
           ),
           View(
             {
-              class: "logs-optional-action-container",
+              class: "max-1280:!hidden contents",
               attributes: { n: "logs-refresh-action-container" },
             },
             [
@@ -314,7 +316,7 @@ function LogsPageToolbar(props) {
           ),
           View(
             {
-              class: "logs-optional-action-container",
+              class: "max-1280:!hidden contents",
               attributes: { n: "logs-copy-file-path-action-container" },
             },
             [
@@ -350,13 +352,13 @@ function LogsPageImportDialog(props) {
     () => [
       DialogTitle(
         {
-          class: "logs-import-dialog-header",
+          class: "flex items-center gap-3 flex-[0_0_auto] p-[var(--dm-space-4)_var(--dm-space-12)_var(--dm-space-4)_var(--dm-space-5)] border-bottom-[var(--dm-border-width)_solid_var(--dm-content-border)]",
           attributes: { n: "logs-import-dialog-header" },
         },
         [
           View(
             {
-              class: "logs-import-dialog-heading-icon",
+              class: "grid w-control-height-base h-control-height-base flex-[0_0_auto] place-items-center text-color-primary bg-color-primary-soft border-[var(--dm-border-width)_solid_var(--dm-color-primary-border)] rounded-content",
               attributes: { n: "logs-import-dialog-heading-icon" },
             },
             [
@@ -369,14 +371,14 @@ function LogsPageImportDialog(props) {
           ),
           View(
             {
-              class: "logs-import-dialog-heading",
+              class: "min-w-0 flex flex-col gap-0-5",
               attributes: { n: "logs-import-dialog-heading" },
             },
             [
               View(
                 {
                   as: "span",
-                  class: "logs-import-dialog-title",
+                  class: "text-content-text text-lg font-bold",
                   attributes: { n: "logs-import-dialog-title" },
                 },
                 ["导入外部日志"],
@@ -384,7 +386,7 @@ function LogsPageImportDialog(props) {
               View(
                 {
                   as: "span",
-                  class: "logs-import-dialog-subtitle",
+                  class: "text-content-muted text-sm font-regular",
                   attributes: { n: "logs-import-dialog-subtitle" },
                 },
                 ["导入成功后将替换当前显示的日志记录"],
@@ -395,7 +397,7 @@ function LogsPageImportDialog(props) {
       ),
       DialogBody(
         {
-          class: "logs-import-dialog-body",
+          class: "p-5",
           attributes: { n: "logs-import-dialog-body" },
         },
         [
@@ -434,7 +436,7 @@ function LogsPageTableColumns(props) {
       name: "level",
       title: "level",
       width: 76,
-      cellClass: "logs-level-cell",
+      cellClass: "min-w-0",
       render(entry) {
         return Tag(
           {
@@ -449,7 +451,7 @@ function LogsPageTableColumns(props) {
       name: "time",
       title: "time",
       width: 166,
-      cellClass: "logs-time-cell",
+      cellClass: "text-content-muted",
       render(entry) {
         return LogsPageFormatTime(entry.time);
       },
@@ -458,7 +460,7 @@ function LogsPageTableColumns(props) {
       name: "file",
       title: "file",
       width: 120,
-      cellClass: "logs-file-cell",
+      cellClass: "text-content-muted",
       cellAttributes(entry) {
         return { title: entry.file || entry.File || "" };
       },
@@ -470,7 +472,7 @@ function LogsPageTableColumns(props) {
       name: "component",
       title: "component",
       width: 132,
-      cellClass: "logs-component-cell",
+      cellClass: "text-content-muted",
       cellAttributes(entry) {
         return { title: entry.component || entry.Component || "" };
       },
@@ -482,7 +484,7 @@ function LogsPageTableColumns(props) {
       name: "message",
       title: "msg",
       width: "minmax(260px, 1.2fr)",
-      cellClass: "logs-msg-cell",
+      cellClass: "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap",
       render(entry) {
         return entry.message || entry.raw || "";
       },
@@ -491,7 +493,7 @@ function LogsPageTableColumns(props) {
       name: "fields",
       title: "fields",
       width: "minmax(280px, 1fr)",
-      cellClass: "logs-fields-cell",
+      cellClass: "min-w-0",
       render(entry) {
         return LogsPageFieldsCell({ entry, store: vm$ });
       },
@@ -505,7 +507,7 @@ function LogsPageFieldsCell(props) {
   if (fields.length === 0) {
     return View(
       {
-        class: "logs-fields-empty",
+        class: "text-content-muted",
         attributes: { n: "logs-fields-empty" },
       },
       ["-"],
@@ -513,7 +515,7 @@ function LogsPageFieldsCell(props) {
   }
   return View(
     {
-      class: "logs-fields",
+      class: "flex flex-wrap gap-1",
       attributes: { n: "logs-fields" },
     },
     [
@@ -524,13 +526,13 @@ function LogsPageFieldsCell(props) {
           const is_json = vm$.methods.isJsonFieldValue(row[1]);
           return View(
             {
-              class: "logs-field",
+              class: "min-w-0 inline-flex flex-[0_1_auto] items-center overflow-hidden text-content-muted bg-content-panel-soft border-[var(--dm-border-width)_solid_var(--dm-content-border)] rounded-content",
               attributes: { n: "logs-field", title: text },
             },
             [
               View(
                 {
-                  class: "logs-field-key",
+                  class: "p-[var(--dm-space-1)_var(--dm-space-1-5)] text-color-primary bg-color-primary-soft",
                   attributes: { n: "logs-field-key" },
                 },
                 [row[0]],
@@ -538,14 +540,14 @@ function LogsPageFieldsCell(props) {
               is_json
                 ? View(
                     {
-                      class: "logs-field-json-actions",
+                      class: "min-w-0 flex",
                       attributes: { n: "logs-json-field-actions" },
                     },
                     [
                       View(
                         {
                           type: "button",
-                          class: "logs-field-value logs-field-value-preview",
+                          class: "min-w-0 max-w-180px p-[var(--dm-space-1)_var(--dm-space-1-5)] overflow-hidden text-content-muted text-ellipsis whitespace-nowrap bg-transparent border-0 min-w-0 max-w-180px p-[var(--dm-space-1)_var(--dm-space-1-5)] overflow-hidden text-content-muted text-ellipsis whitespace-nowrap bg-transparent border-0 hover:text-color-primary hover:bg-color-primary-soft",
                           attributes: {
                             n: "logs-json-field-preview-action",
                             type: "button",
@@ -559,7 +561,7 @@ function LogsPageFieldsCell(props) {
                         [
                           View(
                             {
-                              class: "logs-field-value-text",
+                              class: "overflow-hidden text-ellipsis whitespace-nowrap",
                               attributes: { n: "logs-json-field-value" },
                             },
                             [row[1]],
@@ -569,7 +571,7 @@ function LogsPageFieldsCell(props) {
                       View(
                         {
                           type: "button",
-                          class: "logs-field-copy-button",
+                          class: "grid place-items-center p-1 text-content-muted bg-transparent border-0 border-left-[var(--dm-border-width)_solid_var(--dm-content-border)] cursor-pointer hover:text-color-primary hover:bg-color-primary-soft",
                           attributes: {
                             n: "logs-json-field-copy-action",
                             type: "button",
@@ -583,7 +585,7 @@ function LogsPageFieldsCell(props) {
                         [
                           View(
                             {
-                              class: "logs-field-copy-icon",
+                              class: "grid place-items-center",
                               attributes: { n: "logs-json-field-copy-icon" },
                             },
                             [
@@ -600,7 +602,7 @@ function LogsPageFieldsCell(props) {
                   )
                 : View(
                     {
-                      class: "logs-field-value",
+                      class: "min-w-0 max-w-180px p-[var(--dm-space-1)_var(--dm-space-1-5)] overflow-hidden text-content-muted text-ellipsis whitespace-nowrap bg-transparent border-0",
                       attributes: { n: "logs-field-value" },
                     },
                     [row[1]],
@@ -624,13 +626,13 @@ function LogsPageJsonPreviewDialog(props) {
     () => [
       DialogTitle(
         {
-          class: "logs-json-dialog-header",
+          class: "flex items-center gap-3 flex-[0_0_auto] p-[var(--dm-space-4)_var(--dm-space-12)_var(--dm-space-4)_var(--dm-space-5)] border-bottom-[var(--dm-border-width)_solid_var(--dm-content-border)]",
           attributes: { n: "logs-json-preview-header" },
         },
         [
           View(
             {
-              class: "logs-json-dialog-heading-icon",
+              class: "grid w-control-height-base h-control-height-base flex-[0_0_auto] place-items-center text-color-primary bg-color-primary-soft border-[var(--dm-border-width)_solid_var(--dm-color-primary-border)] rounded-content",
               attributes: { n: "logs-json-preview-heading-icon" },
             },
             [
@@ -643,14 +645,14 @@ function LogsPageJsonPreviewDialog(props) {
           ),
           View(
             {
-              class: "logs-json-dialog-heading",
+              class: "min-w-0 flex flex-col gap-0-5",
               attributes: { n: "logs-json-preview-heading" },
             },
             [
               View(
                 {
                   as: "span",
-                  class: "logs-json-dialog-title",
+                  class: "text-lg font-bold",
                   attributes: { n: "logs-json-preview-title" },
                 },
                 [vm$.state.json_preview_title],
@@ -658,7 +660,7 @@ function LogsPageJsonPreviewDialog(props) {
               View(
                 {
                   as: "span",
-                  class: "logs-json-dialog-subtitle",
+                  class: "text-content-muted text-sm font-regular",
                   attributes: { n: "logs-json-preview-subtitle" },
                 },
                 ["格式化 JSON 内容"],
@@ -669,14 +671,14 @@ function LogsPageJsonPreviewDialog(props) {
       ),
       DialogBody(
         {
-          class: "logs-json-dialog-body",
+          class: "max-h-[min(66vh,_640px)] p-4 overflow-auto bg-color-media-canvas",
           attributes: { n: "logs-json-preview-body" },
         },
         [
           View(
             {
               type: "pre",
-              class: "logs-json-dialog-content",
+              class: "m-0 text-color-media-text font-mono text-sm leading-relaxed whitespace-pre-wrap overflow-wrap-anywhere",
               attributes: { n: "logs-json-preview-content" },
             },
             [vm$.state.json_preview_text],
@@ -691,19 +693,19 @@ function LogsPageSkeletonRow() {
   return View(
     {
       class:
-        "dm-table-row dm-grid dm-items-center logs-table-row content-skeleton-row",
+        "dm-table-row dm-grid dm-items-center grid items-center min-h-48px bg-content-panel border-bottom-[var(--dm-border-width)_solid_var(--dm-content-border)] hover:bg-content-panel-soft [&_>_[role=\"cell\"]]:min-w-0 [&_>_[role=\"cell\"]]:overflow-hidden [&_>_[role=\"cell\"]]:text-ellipsis [&_>_[role=\"cell\"]]:whitespace-nowrap pointer-events-none",
       attributes: { n: "logs-skeleton-row", role: "row" },
     },
     [
       View(
         {
-          class: "dm-table-cell logs-level-cell",
+          class: "dm-table-cell min-w-0",
           attributes: { n: "logs-skeleton-level-cell", role: "cell" },
         },
         [
           View(
             {
-              class: "logs-level logs-level-info",
+              class: "w-fit-content min-w-46px text-color-info text-center bg-color-info-soft font-sans text-transform-uppercase text-color-info bg-color-info-soft",
               attributes: { n: "logs-skeleton-level-badge" },
             },
             ["info"],
@@ -712,60 +714,60 @@ function LogsPageSkeletonRow() {
       ),
       View(
         {
-          class: "dm-table-cell logs-time-cell",
+          class: "dm-table-cell text-content-muted",
           attributes: { n: "logs-skeleton-time-cell", role: "cell" },
         },
         [
           View({
-            class: "logs-skeleton-cell logs-skeleton-cell-time",
+            class: "relative overflow-hidden bg-skeleton-bg rounded-content [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] w-150px",
             attributes: { n: "logs-skeleton-time-value" },
           }),
         ],
       ),
       View(
         {
-          class: "dm-table-cell logs-file-cell",
+          class: "dm-table-cell text-content-muted",
           attributes: { n: "logs-skeleton-file-cell", role: "cell" },
         },
         [
           View({
-            class: "logs-skeleton-cell logs-skeleton-cell-file",
+            class: "relative overflow-hidden bg-skeleton-bg rounded-content [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] w-80px",
             attributes: { n: "logs-skeleton-file-value" },
           }),
         ],
       ),
       View(
         {
-          class: "dm-table-cell logs-component-cell",
+          class: "dm-table-cell text-content-muted",
           attributes: { n: "logs-skeleton-component-cell", role: "cell" },
         },
         [
           View({
-            class: "logs-skeleton-cell logs-skeleton-cell-component",
+            class: "relative overflow-hidden bg-skeleton-bg rounded-content [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] w-100px",
             attributes: { n: "logs-skeleton-component-value" },
           }),
         ],
       ),
       View(
         {
-          class: "dm-table-cell logs-msg-cell",
+          class: "dm-table-cell min-w-0 overflow-hidden text-ellipsis whitespace-nowrap",
           attributes: { n: "logs-skeleton-message-cell", role: "cell" },
         },
         [
           View({
-            class: "logs-skeleton-cell logs-skeleton-cell-message",
+            class: "relative overflow-hidden bg-skeleton-bg rounded-content [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] w-full",
             attributes: { n: "logs-skeleton-message-value" },
           }),
         ],
       ),
       View(
         {
-          class: "dm-table-cell logs-fields-cell",
+          class: "dm-table-cell min-w-0",
           attributes: { n: "logs-skeleton-fields-cell", role: "cell" },
         },
         [
           View({
-            class: "logs-skeleton-cell logs-skeleton-cell-fields",
+            class: "relative overflow-hidden bg-skeleton-bg rounded-content [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] w-[80%]",
             attributes: { n: "logs-skeleton-fields-value" },
           }),
         ],
@@ -778,13 +780,13 @@ function LogsPageList(props) {
   const vm$ = props.store;
   return TableWithVirtualList({
     name: "logs-table",
-    containerClass: "content-main container logs-scroll",
+    containerClass: "group-content-main flex-[1_1_auto] min-w-0 p-4  min-w-0 min-h-0 flex-[1_1_auto] overflow-x-auto overflow-y-hidden",
     containerAttributes: { n: "logs-table-container" },
-    panelClass: "logs-list logs-table",
+    panelClass: "min-h-0 flex flex-[1_1_auto] flex-col overflow-hidden max-h-full flex flex-col text-content-text font-mono text-xs",
     panelAttributes: { n: "logs-list-panel" },
-    headerClass: "logs-table-head",
-    headerCellClass: "logs-table-head-cell",
-    listClass: "logs-virtual-list",
+    headerClass: "grid items-center sticky top-0 z-raised min-h-control-height-base flex-[0_0_auto] text-content-muted bg-content-panel-soft border-bottom-[var(--dm-border-width)_solid_var(--dm-content-border)] font-sans text-caption font-semibold tracking-[0.06em] text-transform-uppercase",
+    headerCellClass: "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap",
+    listClass: "min-h-0 h-auto flex-[1_1_auto] overflow-y-auto",
     listStyle: { "overflow-x": "hidden" },
     columns: LogsPageTableColumns({ store: vm$ }),
     rows: vm$.state.entries,
@@ -794,7 +796,7 @@ function LogsPageList(props) {
     status: vm$.state.status,
     loading: vm$.state.loading,
     error: vm$.state.error,
-    rowClass: "logs-table-row",
+    rowClass: "grid items-center min-h-48px bg-content-panel border-bottom-[var(--dm-border-width)_solid_var(--dm-content-border)] hover:bg-content-panel-soft [&_>_[role=\"cell\"]]:min-w-0 [&_>_[role=\"cell\"]]:overflow-hidden [&_>_[role=\"cell\"]]:text-ellipsis [&_>_[role=\"cell\"]]:whitespace-nowrap",
     skeletonCount: 6,
     renderSkeletonRow: LogsPageSkeletonRow,
     size: 18,

@@ -48,7 +48,6 @@ function load_storage_values(client) {
   return values;
 }
 
-const css_records = Object.create(null);
 const load_records = Object.create(null);
 
 function versioned_url(resource_url) {
@@ -64,66 +63,13 @@ function versioned_url(resource_url) {
 
 /**
  * @param {string} module_url
- * @param {string | undefined} css_url
- * @returns {Promise<HTMLLinkElement | null>}
- */
-function load_style(module_url, css_url) {
-  if (!css_url) {
-    return Promise.resolve(null);
-  }
-
-  const style_href = versioned_url(css_url);
-  const current_record = css_records[style_href];
-  if (current_record && current_record.status === "loaded") {
-    return Promise.resolve(current_record.link);
-  }
-  if (current_record && current_record.status === "loading") {
-    return current_record.promise;
-  }
-
-  let resolve_load;
-  let reject_load;
-  const promise = new Promise(function (resolve, reject) {
-    resolve_load = resolve;
-    reject_load = reject;
-  });
-  const link = document.createElement("link");
-  const record = {
-    link,
-    promise,
-    status: "loading",
-    url: css_url,
-  };
-
-  css_records[style_href] = record;
-  link.rel = "stylesheet";
-  link.href = style_href;
-  link.dataset.module = module_url;
-  link.onload = function () {
-    record.status = "loaded";
-    resolve_load(link);
-  };
-  link.onerror = function () {
-    record.status = "failed";
-    reject_load(new Error("页面样式加载失败：" + css_url));
-  };
-  document.head.appendChild(link);
-
-  return promise;
-}
-
-/**
- * @param {string} module_url
- * @param {string | undefined} css_url
  * @returns {Promise<Function>}
  */
-function load(module_url, css_url) {
+function load(module_url) {
   const module_href = versioned_url(module_url);
   const current_record = load_records[module_href];
   if (current_record && current_record.status === "loaded") {
-    return load_style(module_url, css_url).then(function () {
-      return current_record.component;
-    });
+    return Promise.resolve(current_record.component);
   }
   if (current_record && current_record.status === "loading") {
     return current_record.promise;
@@ -133,17 +79,12 @@ function load(module_url, css_url) {
     component: null,
     promise: null,
     status: "loading",
-    css_url,
     url: module_href,
   };
 
   load_records[module_href] = record;
-  record.promise = Promise.all([
-    load_style(module_url, css_url),
-    import(module_href),
-  ])
-    .then(function (results) {
-      const page_module = results[1];
+  record.promise = import(module_href)
+    .then(function (page_module) {
       const component = page_module && page_module.default;
       if (typeof component !== "function") {
         throw new TypeError(
@@ -162,15 +103,15 @@ function load(module_url, css_url) {
   return record.promise;
 }
 
-function lazy(module_url, css_url) {
+function lazy(module_url) {
   return function () {
-    return load(module_url, css_url);
+    return load(module_url);
   };
 }
 
 const route_animation = Object.freeze({
-  in: "route-view--enter",
-  out: "route-view--exit",
+  in: "animation-[dm-route-view-in_var(--dm-duration-fast)_var(--dm-ease-standard)_both] motion-reduce:animation-none",
+  out: "pointer-events-none animation-[dm-route-view-out_var(--dm-duration-fast)_var(--dm-ease-standard)_both] motion-reduce:animation-none",
 });
 const animated_route_options = Object.freeze({ animation: route_animation });
 
@@ -178,13 +119,13 @@ const routes_configure = {
   filehelper: {
     title: "微信文件传输助手",
     pathname: "/filehelper",
-    component: lazy("src/pages/filehelper.js", "src/pages/filehelper.css"),
+    component: lazy("src/pages/filehelper.js"),
     options: animated_route_options,
   },
   preview: {
     title: "预览",
     pathname: "/preview",
-    component: lazy("src/pages/preview.js", "src/pages/preview.css"),
+    component: lazy("src/pages/preview.js"),
     options: animated_route_options,
   },
   shell: {
@@ -196,61 +137,55 @@ const routes_configure = {
         is_default: true,
         title: "下载",
         pathname: "/download",
-        component: lazy("src/pages/downloadv2.js", "src/pages/downloadv2.css"),
+        component: lazy("src/pages/downloadv2.js"),
         // options: animated_route_options,
       },
       scraper: {
         title: "内容抓取",
         pathname: "/scraper",
-        component: lazy("src/pages/scraper.js", "src/pages/scraper.css"),
+        component: lazy("src/pages/scraper.js"),
         // options: animated_route_options,
       },
       content: {
         title: "内容管理",
         pathname: "/content",
-        component: lazy("src/pages/content.js", "src/pages/content.css"),
+        component: lazy("src/pages/content.js"),
         // options: animated_route_options,
       },
       content_detail: {
         title: "内容详情",
         pathname: "/content/detail",
-        component: lazy(
-          "src/pages/content_detail.js",
-          "src/pages/content_detail.css",
-        ),
+        component: lazy("src/pages/content_detail.js"),
         // options: animated_route_options,
       },
       browsehistory: {
         title: "浏览记录",
         pathname: "/browsehistory",
-        component: lazy(
-          "src/pages/browsehistory.js",
-          "src/pages/browsehistory.css",
-        ),
+        component: lazy("src/pages/browsehistory.js"),
         // options: animated_route_options,
       },
       account: {
         title: "帐号管理",
         pathname: "/account",
-        component: lazy("src/pages/account.js", "src/pages/account.css"),
+        component: lazy("src/pages/account.js"),
         // options: animated_route_options,
       },
       automation: {
         title: "自动化",
         pathname: "/automation",
-        component: lazy("src/pages/automation.js", "src/pages/automation.css"),
+        component: lazy("src/pages/automation.js"),
         // options: animated_route_options,
       },
       sync: {
         title: "下载服务同步",
         pathname: "/sync",
-        component: lazy("src/pages/sync.js", "src/pages/sync.css"),
+        component: lazy("src/pages/sync.js"),
         // options: animated_route_options,
       },
       logs: {
         title: "日志",
         pathname: "/logs",
-        component: lazy("src/pages/logs.js", "src/pages/logs.css"),
+        component: lazy("src/pages/logs.js"),
         // options: animated_route_options,
       },
     },
@@ -258,13 +193,13 @@ const routes_configure = {
   flow_detail: {
     title: "Pipeline 详情",
     pathname: "/automation/detail",
-    component: lazy("src/pages/flow_detail.js", "src/pages/automation.css"),
+    component: lazy("src/pages/flow_detail.js"),
     // options: animated_route_options,
   },
   flow_edit: {
     title: "编辑 Pipeline",
     pathname: "/automation/edit",
-    component: lazy("src/pages/flow_edit.js", "src/pages/automation.css"),
+    component: lazy("src/pages/flow_edit.js"),
     // options: animated_route_options,
   },
 };

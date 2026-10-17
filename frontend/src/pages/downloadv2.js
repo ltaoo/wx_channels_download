@@ -23,17 +23,17 @@ function DownloadV2TaskTable(props) {
 
   return Table({
     name: "download-task-table",
-    containerClass: "content-main container",
+    containerClass: "group-content-main flex-[1_1_auto] min-w-0 p-4 ",
     containerAttributes: { n: "download-page-main" },
-    panelClass: "dl-page-task-table",
+    panelClass: "w-full",
     panelAttributes: { n: "download-task-list-panel" },
-    headerClass: "dl-page-table-head",
-    headerCellClass: "dl-page-table-head-cell",
-    listClass: "dl-page-list",
+    headerClass: "max-760:grid-cols-[32px_minmax(0,_1fr)_136px_92px] max-520:grid-cols-[32px_minmax(0,_1fr)_124px_78px]",
+    headerCellClass: "overflow-hidden text-ellipsis whitespace-nowrap",
+    listClass: "flex flex-1 flex-col min-h-0 relative [&_[data-list-view-root]]:h-full [&_[data-list-view-root]]:max-h-full [&_[data-list-view-root]]:flex-1 [&_[data-list-view-root]]:min-h-0 [&_[data-list-view-root]]:overflow-auto [&_[data-list-view-content]]:w-full [&_[data-list-view-content]]:box-sizing-border-box [&_[data-list-view-viewport]]:w-full [&_[data-list-view-viewport]]:box-sizing-border-box [&_[data-list-view-item]]:w-full [&_[data-list-view-item]]:box-sizing-border-box [&_[data-list-view-viewport]]:flex [&_[data-list-view-viewport]]:flex-col [&_[data-list-view-viewport]]:gap-0 [&_[data-list-view-item]]:flex [&_[data-list-view-item]]:justify-stretch [&_[data-list-view-item]]:bg-color-bg-surface",
     columns: props.columns,
     rows: vm$.state.tasks,
     pagination: {
-      class: "container dm-px-4",
+      class: " dm-px-4",
       summary: vm$.state.range_text,
       page: vm$.state.page,
       pageCount: vm$.state.page_count,
@@ -49,7 +49,7 @@ function DownloadV2TaskTable(props) {
     status: vm$.state.status,
     loading: vm$.state.loading,
     error: vm$.state.error,
-    rowClass: "dl-page-task-row",
+    rowClass: "w-full max-w-none hover:bg-color-bg-subtle max-760:grid-cols-[32px_minmax(0,_1fr)_136px_92px] max-520:grid-cols-[32px_minmax(0,_1fr)_124px_78px]",
     skeletonCount: 8,
     renderSkeletonRow: DownloadV2TaskSkeletonRow,
     rowSelection: {
@@ -108,7 +108,7 @@ function DownloadV2Page(props) {
     {
       name: "task",
       title: "下载任务",
-      cellClass: "dl-page-task-main-cell",
+      cellClass: "min-w-0 flex items-center",
       render(task$) {
         return DownloadV2TaskMain({
           store: vm$,
@@ -120,7 +120,7 @@ function DownloadV2Page(props) {
       name: "created-at",
       title: "下载时间",
       width: 160,
-      cellClass: "dl-page-task-time-cell",
+      cellClass: "overflow-hidden text-color-text-secondary text-sm font-variant-numeric-tabular-nums text-ellipsis whitespace-nowrap",
       cellAttributes(task$) {
         return {
           title: computed(task$.state.raw, (raw) =>
@@ -138,7 +138,7 @@ function DownloadV2Page(props) {
       name: "actions",
       title: "操作",
       width: 132,
-      cellClass: "dl-page-task-actions-cell",
+      cellClass: "flex items-center justify-end gap-1-5 max-760:gap-1",
       render(task$) {
         return DownloadV2TaskActions({
           store: vm$,
@@ -150,7 +150,7 @@ function DownloadV2Page(props) {
 
   return View(
     {
-      class: "content-page content-library-page dl-page-root page",
+      class: "group-content-page flex flex-col [.group-content-page&]:h-full [.group-content-page&]:min-h-0 [.group-content-page&]:overflow-hidden [&_>_.group-content-main]:min-h-0 [&_>_.group-content-main]:flex [&_>_.group-content-main]:flex-col [&_>_.dm-pagination]:flex-[0_0_auto] relative h-100vh min-h-0 flex flex-col overflow-hidden bg-color-bg-canvas text-color-text-primary min-w-0 text-color-text-primary font-sans bg-color-bg-canvas",
       attributes: { n: "download-page" },
       onMounted() {
         vm$.methods.ready();

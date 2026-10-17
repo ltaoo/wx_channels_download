@@ -415,6 +415,14 @@ func (c *Config) LoadConfig() error {
 		HotReload:   true,
 	})
 	Register(ConfigField{
+		Key:         "debug.enabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否开启调试并记录日志，默认不记录日志",
+		Title:       "调试日志",
+		Group:       "Debug",
+	})
+	Register(ConfigField{
 		Key:         "debug.error",
 		Type:        ConfigTypeBool,
 		Default:     true,
@@ -848,6 +856,11 @@ func (c *Config) LoadConfig() error {
 		}
 	}
 
+	if err := c.configure_logging(); err != nil {
+		c.Error = err
+		return err
+	}
+
 	// Load plugin configs: each plugin declares its schema and reads its own config
 	LoadPluginConfigs()
 
@@ -872,6 +885,25 @@ func (c *Config) LoadConfig() error {
 	c.resolve_script_path("download.hooksScript", &c.HookScriptPath)
 	c.resolve_script("inject.contentScript", &c.ContentScriptContent)
 
+	return nil
+}
+
+func (c *Config) configure_logging() error {
+	zerolog.SetGlobalLevel(zerolog.Disabled)
+	c.Debug = c.GetBool("debug.enabled")
+	if !c.Debug {
+		return nil
+	}
+	if c.log_writer != nil {
+		if err := os.MkdirAll(filepath.Dir(c.log_writer.Filename), 0755); err != nil {
+			return fmt.Errorf("创建日志目录失败: %w", err)
+		}
+		// Preserve truncate-on-start only when logging is explicitly enabled.
+		if err := c.log_writer.Truncate(); err != nil {
+			return fmt.Errorf("初始化日志文件失败: %w", err)
+		}
+	}
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	return nil
 }
 

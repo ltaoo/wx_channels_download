@@ -261,10 +261,10 @@ function ScraperPageViewModel(props) {
           has_status_text: is_checking,
           status_class:
             status.status === "checking"
-              ? "home-platform-status-item is-checking"
+              ? "[&.is-available_.group-home-platform-status-dot]:bg-brand-success [&.is-available_.group-home-platform-status-dot]:shadow-[0_0_0_3px_color-mix(in_srgb,_var(--dm-brand-success)_14%,_transparent)] [&.is-unavailable_.group-home-platform-status-dot]:bg-content-danger [&.is-unavailable_.group-home-platform-status-dot]:shadow-[0_0_0_3px_color-mix(in_srgb,_var(--dm-content-danger)_13%,_transparent)] [&.is-checking_.group-home-platform-status-dot]:bg-content-primary [&.is-checking_.group-home-platform-status-dot]:shadow-[0_0_0_3px_color-mix(in_srgb,_var(--dm-content-primary)_13%,_transparent)] box-sizing-border-box w-full min-w-0 min-h-52px flex flex-col items-center justify-start gap-1 p-1 bg-transparent border-[var(--dm-border-width)_solid_transparent] rounded-control [&.is-unavailable]:border-color-[color-mix(_in_srgb,_var(--dm-content-danger)_28%,_transparent_)] [&.is-checking]:border-color-[color-mix(_in_srgb,_var(--dm-content-primary)_24%,_transparent_)] [&.is-available_.group-home-platform-status-value]:text-brand-success [&.is-unavailable_.group-home-platform-status-value]:text-content-danger [&.is-checking_.group-home-platform-status-value]:text-content-primary is-checking"
               : status.available
-                ? "home-platform-status-item is-available"
-                : "home-platform-status-item is-unavailable",
+                ? "[&.is-available_.group-home-platform-status-dot]:bg-brand-success [&.is-available_.group-home-platform-status-dot]:shadow-[0_0_0_3px_color-mix(in_srgb,_var(--dm-brand-success)_14%,_transparent)] [&.is-unavailable_.group-home-platform-status-dot]:bg-content-danger [&.is-unavailable_.group-home-platform-status-dot]:shadow-[0_0_0_3px_color-mix(in_srgb,_var(--dm-content-danger)_13%,_transparent)] [&.is-checking_.group-home-platform-status-dot]:bg-content-primary [&.is-checking_.group-home-platform-status-dot]:shadow-[0_0_0_3px_color-mix(in_srgb,_var(--dm-content-primary)_13%,_transparent)] box-sizing-border-box w-full min-w-0 min-h-52px flex flex-col items-center justify-start gap-1 p-1 bg-transparent border-[var(--dm-border-width)_solid_transparent] rounded-control [&.is-unavailable]:border-color-[color-mix(_in_srgb,_var(--dm-content-danger)_28%,_transparent_)] [&.is-checking]:border-color-[color-mix(_in_srgb,_var(--dm-content-primary)_24%,_transparent_)] [&.is-available_.group-home-platform-status-value]:text-brand-success [&.is-unavailable_.group-home-platform-status-value]:text-content-danger [&.is-checking_.group-home-platform-status-value]:text-content-primary is-available"
+                : "[&.is-available_.group-home-platform-status-dot]:bg-brand-success [&.is-available_.group-home-platform-status-dot]:shadow-[0_0_0_3px_color-mix(in_srgb,_var(--dm-brand-success)_14%,_transparent)] [&.is-unavailable_.group-home-platform-status-dot]:bg-content-danger [&.is-unavailable_.group-home-platform-status-dot]:shadow-[0_0_0_3px_color-mix(in_srgb,_var(--dm-content-danger)_13%,_transparent)] [&.is-checking_.group-home-platform-status-dot]:bg-content-primary [&.is-checking_.group-home-platform-status-dot]:shadow-[0_0_0_3px_color-mix(in_srgb,_var(--dm-content-primary)_13%,_transparent)] box-sizing-border-box w-full min-w-0 min-h-52px flex flex-col items-center justify-start gap-1 p-1 bg-transparent border-[var(--dm-border-width)_solid_transparent] rounded-control [&.is-unavailable]:border-color-[color-mix(_in_srgb,_var(--dm-content-danger)_28%,_transparent_)] [&.is-checking]:border-color-[color-mix(_in_srgb,_var(--dm-content-primary)_24%,_transparent_)] [&.is-available_.group-home-platform-status-value]:text-brand-success [&.is-unavailable_.group-home-platform-status-value]:text-content-danger [&.is-checking_.group-home-platform-status-value]:text-content-primary is-unavailable",
         };
       }),
   );
@@ -430,8 +430,8 @@ function ScraperPageViewModel(props) {
     { has_percent: progress_has_percent_, loading: loading_ },
     (state) =>
       state.loading && !state.has_percent
-        ? "home-fetch-progress-bar is-indeterminate"
-        : "home-fetch-progress-bar",
+        ? "h-full min-w-2px rounded-inherit bg-content-primary transition-[width_var(--dm-duration-base)_var(--dm-ease-standard)] [&.is-indeterminate]:!w-[34%] [&.is-indeterminate]:min-w-[34%] [&.is-indeterminate]:animation-[dm-home-fetch-progress-slide_1.15s_ease-in-out_infinite] is-indeterminate"
+        : "h-full min-w-2px rounded-inherit bg-content-primary transition-[width_var(--dm-duration-base)_var(--dm-ease-standard)] [&.is-indeterminate]:!w-[34%] [&.is-indeterminate]:min-w-[34%] [&.is-indeterminate]:animation-[dm-home-fetch-progress-slide_1.15s_ease-in-out_infinite]",
   );
   const submit_button_text_ = computed(fetch_progress_, (progress) => {
     if (
@@ -596,10 +596,10 @@ function ScraperPageViewModel(props) {
       },
       (state) =>
         state.error
-          ? "home-download-preview-badge is-error"
+          ? "bg-color-success-soft text-color-success [&.is-loading]:bg-content-primary-soft [&.is-loading]:text-content-primary [&.is-error]:bg-color-danger-soft [&.is-error]:text-content-danger is-error"
           : state.loading
-            ? "home-download-preview-badge is-loading"
-            : "home-download-preview-badge",
+            ? "bg-color-success-soft text-color-success [&.is-loading]:bg-content-primary-soft [&.is-loading]:text-content-primary [&.is-error]:bg-color-danger-soft [&.is-error]:text-content-danger is-loading"
+            : "bg-color-success-soft text-color-success [&.is-loading]:bg-content-primary-soft [&.is-loading]:text-content-primary [&.is-error]:bg-color-danger-soft [&.is-error]:text-content-danger",
     ),
     task: {
       id_text: computed(
