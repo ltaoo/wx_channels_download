@@ -21,12 +21,13 @@ type user_flow_create_body struct {
 }
 
 type user_flow_update_body struct {
-	ID            string                       `json:"id"`
-	Name          *string                      `json:"name"`
-	Description   *string                      `json:"description"`
-	ContextSchema []engine.FieldSchema         `json:"context_schema"`
-	StartNodeID   string                       `json:"start_node_id"`
-	Nodes         []services.UserFlowNodeInput `json:"nodes"`
+	ID            string                          `json:"id"`
+	Name          *string                         `json:"name"`
+	Description   *string                         `json:"description"`
+	ContextSchema []engine.FieldSchema            `json:"context_schema"`
+	StartNodeID   string                          `json:"start_node_id"`
+	Nodes         []services.UserFlowNodeInput    `json:"nodes"`
+	Triggers      []services.UserFlowTriggerInput `json:"triggers"`
 }
 
 type user_flow_id_body struct {
@@ -117,6 +118,7 @@ func (c *APIClient) handle_update_user_flow(ctx *gin.Context) {
 		ContextSchema: body.ContextSchema,
 		StartNodeID:   body.StartNodeID,
 		Nodes:         body.Nodes,
+		Triggers:      body.Triggers,
 	})
 	if err != nil {
 		result.Err(ctx, api_code_invalid_params, err.Error())

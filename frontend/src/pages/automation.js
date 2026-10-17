@@ -2,9 +2,7 @@ import { AutomationPageViewModel } from "./automation.model.js";
 import {
   AutomationFeedback,
   AutomationPipelineLink,
-  AutomationTriggerOption,
-  automation_status_badge,
-  automation_trigger_badge,
+  AutomationPipelineTriggerBadges,
 } from "./flow.components.js";
 
 function AutomationPageView(props) {
@@ -41,7 +39,6 @@ function AutomationPageView(props) {
       AutomationCreatePipelineDialog({ store: vm$ }),
       AutomationImportPipelineDialog({ store: vm$ }),
       AutomationDeletePipelineDialog({ store: vm$ }),
-      AutomationDeleteScheduleDialog({ store: vm$ }),
     ],
   );
 }
@@ -53,18 +50,7 @@ function AutomationListPage(props) {
       AutomationPageToolbar({ store: vm$ }),
     ]),
     AutomationFeedback({ store: vm$ }),
-    Show({
-      when: computed(vm$.state.tab, (tab) => tab === "pipelines"),
-      ok() {
-        return AutomationPipelineList({ store: vm$ });
-      },
-    }),
-    Show({
-      when: computed(vm$.state.tab, (tab) => tab === "schedules"),
-      ok() {
-        return AutomationScheduleList({ store: vm$ });
-      },
-    }),
+    AutomationPipelineList({ store: vm$ }),
   ]);
 }
 
@@ -73,26 +59,6 @@ function AutomationPageToolbar(props) {
   return View({ class: "content-toolbar automation-toolbar" }, [
     View({ class: "dm-flex dm-items-center dm-gap-2" }, [
       View({ class: "automation-toolbar-title" }, ["自动化"]),
-      Tab(
-        {
-          selected: computed(vm$.state.tab, (tab) => tab === "pipelines"),
-          onClick() {
-            vm$.methods.switchTab("pipelines");
-          },
-          attributes: { n: "automation-tab-pipelines" },
-        },
-        ["Pipeline"],
-      ),
-      Tab(
-        {
-          selected: computed(vm$.state.tab, (tab) => tab === "schedules"),
-          onClick() {
-            vm$.methods.switchTab("schedules");
-          },
-          attributes: { n: "automation-tab-schedules" },
-        },
-        ["自动化"],
-      ),
     ]),
     View({ class: "dm-flex dm-items-center dm-gap-2" }, [
       Button(
@@ -165,13 +131,10 @@ function AutomationPipelineList(props) {
       {
         name: "trigger",
         title: "触发方式",
-        width: 110,
+        width: 210,
         cellClass: "automation-table-badge-cell",
         render(pipeline) {
-          return automation_trigger_badge({
-            type: pipeline.trigger_type,
-            label: vm$.methods.triggerLabel(pipeline.trigger_type),
-          });
+          return AutomationPipelineTriggerBadges({ store: vm$, pipeline });
         },
       },
       {
@@ -244,152 +207,6 @@ function AutomationPipelineList(props) {
   });
 }
 
-function AutomationScheduleList(props) {
-  const vm$ = props.store;
-  return Table({
-    name: "automation-schedule-table",
-    containerClass: "content-main container automation-index",
-    containerAttributes: { n: "automation-schedule-table-container" },
-    panelAttributes: { n: "automation-schedule-table-panel" },
-    rowKey: "id",
-    columns: [
-      {
-        name: "name",
-        title: "名称",
-        width: "minmax(220px, 2fr)",
-        cellClass: "automation-table-name-cell",
-        render(schedule) {
-          return [
-            View(
-              {
-                class: "automation-table-name",
-                attributes: { title: schedule.name },
-              },
-              [schedule.name],
-            ),
-            View(
-              {
-                class: "automation-table-subtitle",
-                attributes: { title: schedule.flow_id },
-              },
-              [vm$.methods.pipelineName(schedule.flow_id)],
-            ),
-          ];
-        },
-      },
-      {
-        name: "trigger",
-        title: "触发方式",
-        width: 110,
-        cellClass: "automation-table-badge-cell",
-        render(schedule) {
-          const metadata = vm$.methods.scheduleMetadata(schedule);
-          return automation_trigger_badge({
-            type: metadata.type,
-            label: vm$.methods.triggerLabel(metadata.type),
-          });
-        },
-      },
-      {
-        name: "status",
-        title: "状态",
-        width: 100,
-        cellClass: "automation-table-badge-cell",
-        render(schedule) {
-          const metadata = vm$.methods.scheduleMetadata(schedule);
-          return metadata.type === "Cron"
-            ? automation_status_badge(schedule.enabled ? "ENABLED" : "DISABLED")
-            : ["-"];
-        },
-      },
-      {
-        name: "config",
-        title: "触发配置",
-        width: "minmax(200px, 1.2fr)",
-        cellClass: "automation-table-config-cell",
-        render(schedule) {
-          const metadata = vm$.methods.scheduleMetadata(schedule);
-          const code =
-            metadata.type === "Cron"
-              ? schedule.cron_expr
-              : metadata.event_key || metadata.start_node;
-          const hint =
-            metadata.type === "Cron"
-              ? `下次 ${vm$.methods.formatTime(schedule.next_run_at)}`
-              : `开始 ${metadata.start_node || "-"}`;
-          return [
-            View(
-              {
-                class: "automation-table-code",
-                attributes: { title: code },
-              },
-              [code],
-            ),
-            View({ class: "automation-table-subtitle" }, [hint]),
-          ];
-        },
-      },
-      {
-        name: "actions",
-        title: "操作",
-        width: 260,
-        cellClass: "automation-table-actions",
-        render(schedule) {
-          const metadata = vm$.methods.scheduleMetadata(schedule);
-          return [
-            metadata.type === "Cron"
-              ? Button(
-                  {
-                    store: vm$.ui.btn_schedule_toggle$.bind(schedule),
-                    attributes: {
-                      n: `automation-schedule-toggle-${schedule.id}`,
-                      type: "button",
-                    },
-                  },
-                  [schedule.enabled ? "暂停" : "启用"],
-                )
-              : null,
-            Button(
-              {
-                store: vm$.ui.btn_schedule_trigger$.bind(schedule),
-                attributes: {
-                  n: `automation-schedule-trigger-${schedule.id}`,
-                  type: "button",
-                },
-              },
-              [metadata.type === "Event" ? "触发事件" : "手动执行"],
-            ),
-            Button(
-              {
-                store: vm$.ui.btn_schedule_delete$.bind(schedule),
-                attributes: {
-                  n: `automation-schedule-delete-${schedule.id}`,
-                  type: "button",
-                  title: "删除自动化",
-                },
-              },
-              ["删除"],
-            ),
-          ].filter(Boolean);
-        },
-      },
-    ],
-    rows: vm$.state.schedules,
-    status: computed(vm$.state.schedules, (schedules) =>
-      schedules.length === 0 ? "empty" : "normal",
-    ),
-    loading: vm$.state.loading,
-    emptyTitle: computed(vm$.state.loading, (loading) =>
-      loading ? "正在加载自动化…" : "暂无自动化流程",
-    ),
-    emptyDescription: computed(vm$.state.loading, (loading) =>
-      loading
-        ? "正在获取最新的触发计划。"
-        : "选择一个 Pipeline 后即可创建定时、事件或手动触发。",
-    ),
-  });
-}
-
 function AutomationCreatePipelineDialog(props) {
   const vm$ = props.store;
   return Dialog(
@@ -402,86 +219,14 @@ function AutomationCreatePipelineDialog(props) {
       DialogHeader({}, [
         DialogTitle({}, ["创建 Pipeline"]),
         DialogDescription({}, [
-          "选择触发方式并为开始节点声明接收参数；创建后 Pipeline 只包含开始节点，可继续添加后续节点。",
+          "为开始节点声明接收参数；创建后在编辑器中添加节点，并配置定时或事件触发器。",
         ]),
       ]),
       DialogBody({}, [
         View({ class: "automation-form" }, [
-          View({ class: "automation-form__legend" }, ["1. 触发方式"]),
-          View(
-            {
-              class: "automation-trigger-options",
-              attributes: {
-                role: "radiogroup",
-                "aria-label": "Pipeline 触发方式",
-              },
-            },
-            [
-              AutomationTriggerOption({
-                store: vm$,
-                current: vm$.state.create_trigger_type,
-                namePrefix: "create",
-                value: "Cron",
-                label: "定时触发",
-                hint: "按 Cron 计划执行",
-                onSelect: vm$.methods.setCreateTriggerType,
-              }),
-              AutomationTriggerOption({
-                store: vm$,
-                current: vm$.state.create_trigger_type,
-                namePrefix: "create",
-                value: "Event",
-                label: "事件触发",
-                hint: "通过事件 Key 触发",
-                onSelect: vm$.methods.setCreateTriggerType,
-              }),
-              AutomationTriggerOption({
-                store: vm$,
-                current: vm$.state.create_trigger_type,
-                namePrefix: "create",
-                value: "Manual",
-                label: "手动触发",
-                hint: "在页面中手动执行",
-                onSelect: vm$.methods.setCreateTriggerType,
-              }),
-            ],
-          ),
-          Show({
-            when: computed(
-              vm$.state.create_trigger_type,
-              (type) => type === "Event",
-            ),
-            ok() {
-              return View({ class: "automation-form__field" }, [
-                View({ class: "automation-form__label" }, ["事件 Key"]),
-                Input({
-                  store: vm$.ui.input_create_event_key$,
-                  attributes: {
-                    n: "automation-create-event-key",
-                    autocomplete: "off",
-                  },
-                }),
-              ]);
-            },
-          }),
-          Show({
-            when: computed(
-              vm$.state.create_trigger_type,
-              (type) => type === "Cron",
-            ),
-            ok() {
-              return View({ class: "automation-form__field" }, [
-                View({ class: "automation-form__label" }, ["Cron 表达式"]),
-                Input({
-                  store: vm$.ui.input_create_cron$,
-                  attributes: { n: "automation-create-cron" },
-                }),
-              ]);
-            },
-          }),
           View({ class: "automation-form__row" }, [
             View({ class: "automation-form__field" }, [
-              View({ class: "automation-form__label" }, ["2. Pipeline 名称"]),
+              View({ class: "automation-form__label" }, ["Pipeline 名称"]),
               Input({
                 store: vm$.ui.input_create_name$,
                 attributes: { n: "automation-create-name" },
@@ -495,7 +240,7 @@ function AutomationCreatePipelineDialog(props) {
               }),
             ]),
           ]),
-          View({ class: "automation-form__legend" }, ["3. 开始节点接收的参数"]),
+          View({ class: "automation-form__legend" }, ["开始节点接收的参数"]),
           For({
             key: "uid",
             each: vm$.state.create_params,
@@ -546,23 +291,7 @@ function AutomationCreatePipelineDialog(props) {
             },
             ["+ 添加参数"],
           ),
-          Show({
-            when: computed(
-              vm$.state.create_trigger_type,
-              (type) => type === "Cron",
-            ),
-            ok() {
-              return View({ class: "automation-form__field dm-flex" }, [
-                Checkbox({
-                  store: vm$.ui.checkbox_create_enabled$,
-                  attributes: { n: "automation-create-enabled" },
-                }),
-                View({ class: "automation-form__label" }, [
-                  "创建后同时生成定时计划并启用",
-                ]),
-              ]);
-            },
-          }),
+
         ]),
       ]),
       DialogFooter({}, [
@@ -669,32 +398,6 @@ function AutomationDeletePipelineDialog(props) {
     ),
     cancelText: "取消",
     okText: "删除 Pipeline",
-  });
-}
-
-function AutomationDeleteScheduleDialog(props) {
-  const vm$ = props.store;
-  return Confirm({
-    store: vm$.ui.schedule_delete_dialog$,
-    class: "dm-dialog--sm",
-    name: "automation-delete-schedule",
-    title: "删除自动化",
-    description: combine(
-      {
-        schedule_id: vm$.state.delete_schedule_id,
-        schedules: vm$.state.schedules,
-      },
-      ({ schedule_id, schedules }) => {
-        const schedule = (schedules || []).find(
-          (item) => item.id === schedule_id,
-        );
-        return schedule
-          ? `确定删除「${schedule.name}」？删除后不可恢复。`
-          : "确定删除该自动化？删除后不可恢复。";
-      },
-    ),
-    cancelText: "取消",
-    okText: "删除",
   });
 }
 

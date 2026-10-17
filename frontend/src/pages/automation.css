@@ -105,6 +105,40 @@
   text-decoration: none;
 }
 
+.automation-start-triggers,
+.automation-trigger-rule {
+  display: grid;
+  gap: var(--dm-space-3);
+  min-width: 0;
+}
+
+.automation-start-triggers {
+  padding-block: var(--dm-space-4);
+  border-top: 1px solid var(--dm-color-border);
+}
+
+.automation-trigger-rule {
+  border-top: 1px solid var(--dm-color-border);
+  padding-top: var(--dm-space-3);
+}
+
+.automation-trigger-actions,
+.automation-trigger-rule__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dm-space-2);
+  min-width: 0;
+}
+
+.automation-trigger-rule__header {
+  justify-content: space-between;
+}
+
+.automation-table-badge-cell {
+  flex-wrap: wrap;
+}
+
 .automation-workspace-toolbar {
   min-width: 0;
 }

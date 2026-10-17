@@ -82,7 +82,7 @@ func handle_cookie_cloud_service_error(c *APIClient, ctx *gin.Context, err error
 		c.logger.Warn().Err(err).Msg("failed to parse CookieCloud update request")
 		write_cookie_update_error(ctx, http.StatusBadRequest, "Cookie 更新请求不是有效的 JSON")
 	case errors.Is(err, services.ErrCookieCloudIncompleteRequest):
-		write_cookie_update_error(ctx, http.StatusBadRequest, "Cookie 更新请求缺少 uuid 或 encrypted")
+		write_cookie_update_error(ctx, http.StatusBadRequest, "Cookie 加密更新请求缺少 uuid 或 encrypted")
 	case errors.Is(err, services.ErrCookieCloudUUIDMismatch):
 		c.logger.Warn().Msg("rejected CookieCloud update with an unexpected UUID")
 		write_cookie_update_error(ctx, http.StatusForbidden, "CookieCloud UUID 与配置不匹配")
@@ -97,7 +97,7 @@ func handle_cookie_cloud_service_error(c *APIClient, ctx *gin.Context, err error
 		write_cookie_update_error(ctx, http.StatusBadRequest, "CookieCloud 数据解密失败，请检查 UUID、密钥和 crypto_type")
 	case errors.Is(err, services.ErrCookieCloudInvalidData):
 		c.logger.Warn().Err(err).Msg("invalid CookieCloud data")
-		write_cookie_update_error(ctx, http.StatusBadRequest, "CookieCloud 数据格式错误")
+		write_cookie_update_error(ctx, http.StatusBadRequest, "Cookie 数据格式错误，请通过 cookies 数组提交")
 	default:
 		c.logger.Error().Err(err).Msg("unexpected CookieCloud service error")
 		write_cookie_update_error(ctx, http.StatusInternalServerError, "处理 CookieCloud 数据失败")

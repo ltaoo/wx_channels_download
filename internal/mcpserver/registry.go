@@ -118,6 +118,7 @@ var tool_declarations = concat_tools(
 	tools_sph,
 	tools_zhihu,
 	tools_automation,
+	tools_pipeline_editor,
 	tools_data,
 )
 
