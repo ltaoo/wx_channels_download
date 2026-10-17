@@ -9,7 +9,7 @@ function AutomationPageView(props) {
   const vm$ = AutomationPageViewModel(props);
   return View(
     {
-      class: "content-page automation-page page",
+      class: "group-content-page min-h-full flex flex-col bg-content-bg text-content-text [&_.group-automation-toolbar]:flex [&_.group-automation-toolbar]:items-center [&_.group-automation-toolbar]:justify-between [&_.group-automation-toolbar]:gap-4 max-900:[&_.group-automation-toolbar]:items-stretch max-900:[&_.group-automation-toolbar]:flex-col min-w-0 min-h-full font-sans",
       attributes: { n: "automation-page" },
       onMounted() {
         // 兼容旧链接 /automation?mode=edit|detail&id=xxx，重定向到独立页面
@@ -46,7 +46,7 @@ function AutomationPageView(props) {
 function AutomationListPage(props) {
   const vm$ = props.store;
   return View({ class: "automation-list-page" }, [
-    View({ class: "content-toolbar-wrap container" }, [
+    View({ class: "group-content-toolbar-wrap p-[var(--dm-space-4)_var(--dm-space-4)_0] " }, [
       AutomationPageToolbar({ store: vm$ }),
     ]),
     AutomationFeedback({ store: vm$ }),
@@ -56,9 +56,9 @@ function AutomationListPage(props) {
 
 function AutomationPageToolbar(props) {
   const vm$ = props.store;
-  return View({ class: "content-toolbar automation-toolbar" }, [
+  return View({ class: "group-content-toolbar flex items-center justify-between gap-3 max-760:flex-wrap group-automation-toolbar" }, [
     View({ class: "dm-flex dm-items-center dm-gap-2" }, [
-      View({ class: "automation-toolbar-title" }, ["自动化"]),
+      View({ class: "text-color-text-primary text-lg font-semibold tracking-[-0.01em]" }, ["自动化"]),
     ]),
     View({ class: "dm-flex dm-items-center dm-gap-2" }, [
       Button(
@@ -90,7 +90,7 @@ function AutomationPipelineList(props) {
   const vm$ = props.store;
   return Table({
     name: "automation-pipeline-table",
-    containerClass: "content-main container automation-index",
+    containerClass: "group-content-main flex-[1_1_auto] min-w-0 p-4  automation-index",
     containerAttributes: { n: "automation-pipeline-table-container" },
     panelAttributes: { n: "automation-pipeline-table-panel" },
     rowKey: "id",
@@ -99,19 +99,19 @@ function AutomationPipelineList(props) {
         name: "name",
         title: "名称",
         width: "minmax(240px, 2fr)",
-        cellClass: "automation-table-name-cell",
+        cellClass: "min-w-0 grid gap-0-5 justify-items-start",
         render(pipeline) {
           return [
             View(
               {
-                class: "automation-table-name",
+                class: "min-w-0 max-w-full overflow-hidden text-color-text-primary text-base font-semibold text-ellipsis whitespace-nowrap",
                 attributes: { title: pipeline.name || pipeline.id },
               },
               [pipeline.name || pipeline.id],
             ),
             View(
               {
-                class: "automation-table-subtitle",
+                class: "min-w-0 max-w-full overflow-hidden text-color-text-secondary font-mono text-xs text-ellipsis whitespace-nowrap",
                 attributes: { title: pipeline.id },
               },
               [pipeline.id],
@@ -119,7 +119,7 @@ function AutomationPipelineList(props) {
             pipeline.description
               ? View(
                   {
-                    class: "automation-table-description",
+                    class: "min-w-0 max-w-full overflow-hidden text-color-text-secondary text-sm text-ellipsis whitespace-nowrap",
                     attributes: { title: pipeline.description },
                   },
                   [pipeline.description],
@@ -132,7 +132,7 @@ function AutomationPipelineList(props) {
         name: "trigger",
         title: "触发方式",
         width: 210,
-        cellClass: "automation-table-badge-cell",
+        cellClass: "flex items-center gap-1 flex-wrap",
         render(pipeline) {
           return AutomationPipelineTriggerBadges({ store: vm$, pipeline });
         },
@@ -141,7 +141,7 @@ function AutomationPipelineList(props) {
         name: "scale",
         title: "节点 / 连线",
         width: 130,
-        cellClass: "automation-table-metric",
+        cellClass: "overflow-hidden text-color-text-primary font-mono text-sm font-variant-numeric-tabular-nums text-ellipsis whitespace-nowrap",
         render(pipeline) {
           return [
             `${(pipeline.nodes || []).length} / ${(pipeline.edges || []).length}`,
@@ -152,7 +152,7 @@ function AutomationPipelineList(props) {
         name: "updated",
         title: "最后更新",
         width: 170,
-        cellClass: "automation-table-metric",
+        cellClass: "overflow-hidden text-color-text-primary font-mono text-sm font-variant-numeric-tabular-nums text-ellipsis whitespace-nowrap",
         render(pipeline) {
           return [
             vm$.methods.formatTime(pipeline.updated_at || pipeline.created_at),
@@ -163,7 +163,7 @@ function AutomationPipelineList(props) {
         name: "actions",
         title: "操作",
         width: 230,
-        cellClass: "automation-table-actions",
+        cellClass: "flex flex-wrap items-center justify-end gap-1-5 max-900:justify-start",
         render(pipeline) {
           return [
             AutomationPipelineLink({
@@ -223,33 +223,33 @@ function AutomationCreatePipelineDialog(props) {
         ]),
       ]),
       DialogBody({}, [
-        View({ class: "automation-form" }, [
-          View({ class: "automation-form__row" }, [
-            View({ class: "automation-form__field" }, [
-              View({ class: "automation-form__label" }, ["Pipeline 名称"]),
+        View({ class: "flex flex-col gap-3" }, [
+          View({ class: "grid grid-cols-[repeat(2,_minmax(0,_1fr))] gap-3 [&_.dm-button]:align-self-flex-end max-900:grid-cols-1fr" }, [
+            View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
+              View({ class: "text-color-text-secondary text-xs font-semibold" }, ["Pipeline 名称"]),
               Input({
                 store: vm$.ui.input_create_name$,
                 attributes: { n: "automation-create-name" },
               }),
             ]),
-            View({ class: "automation-form__field" }, [
-              View({ class: "automation-form__label" }, ["描述"]),
+            View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
+              View({ class: "text-color-text-secondary text-xs font-semibold" }, ["描述"]),
               Input({
                 store: vm$.ui.input_create_description$,
                 attributes: { n: "automation-create-description" },
               }),
             ]),
           ]),
-          View({ class: "automation-form__legend" }, ["开始节点接收的参数"]),
+          View({ class: "text-color-primary text-xs font-bold" }, ["开始节点接收的参数"]),
           For({
             key: "uid",
             each: vm$.state.create_params,
             render(param_) {
               const param =
                 param_ && param_.value !== undefined ? param_.value : param_;
-              return View({ class: "automation-form__row" }, [
-                View({ class: "automation-form__field" }, [
-                  View({ class: "automation-form__label" }, ["参数名"]),
+              return View({ class: "grid grid-cols-[repeat(2,_minmax(0,_1fr))] gap-3 [&_.dm-button]:align-self-flex-end max-900:grid-cols-1fr" }, [
+                View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
+                  View({ class: "text-color-text-secondary text-xs font-semibold" }, ["参数名"]),
                   Input({
                     store: param.input_key$,
                     attributes: {
@@ -258,8 +258,8 @@ function AutomationCreatePipelineDialog(props) {
                     },
                   }),
                 ]),
-                View({ class: "automation-form__field" }, [
-                  View({ class: "automation-form__label" }, ["类型"]),
+                View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
+                  View({ class: "text-color-text-secondary text-xs font-semibold" }, ["类型"]),
                   Select({
                     store: param.select_type$,
                     attributes: {
@@ -330,12 +330,12 @@ function AutomationImportPipelineDialog(props) {
         ]),
       ]),
       DialogBody({}, [
-        View({ class: "automation-form" }, [
-          View({ class: "automation-form__field" }, [
-            Label({ class: "automation-form__label" }, ["流程定义 JSON"]),
+        View({ class: "flex flex-col gap-3" }, [
+          View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
+            Label({ class: "text-color-text-secondary text-xs font-semibold" }, ["流程定义 JSON"]),
             Textarea({
               store: vm$.ui.input_import_json$,
-              class: "automation-node-config-input",
+              class: "min-h-220px font-mono text-xs",
               attributes: {
                 n: "automation-import-json",
                 rows: "16",

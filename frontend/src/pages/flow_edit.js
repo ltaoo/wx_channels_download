@@ -13,14 +13,14 @@ function AutomationNodeInspector(props) {
   const vm$ = props.store;
   return View(
     {
-      class: "dm-panel automation-node-inspector",
+      class: "dm-panel min-w-0 min-h-0 flex flex-col overflow-hidden max-900:min-h-520px",
       attributes: { n: "automation-node-inspector" },
     },
     [
-      View({ class: "automation-editor-panel__header" }, [
+      View({ class: "flex items-center justify-between gap-2 p-3 bg-color-bg-surface border-bottom-[var(--dm-border-width)_solid_var(--dm-color-border)]" }, [
         View({}, [
-          View({ class: "automation-editor-panel__title" }, ["节点配置"]),
-          View({ class: "automation-editor-panel__hint" }, [
+          View({ class: "text-color-text-primary font-display text-base font-semibold" }, ["节点配置"]),
+          View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base" }, [
             "修改当前选中节点",
           ]),
         ]),
@@ -51,22 +51,22 @@ function AutomationNodeInspector(props) {
             const current_node = value && value.value !== undefined ? value.value : value;
             const is_start = current_node.id === vm$.state.edit_start_node_id.value;
             return View(
-              { class: "automation-inspector-form" },
+              { class: "flex flex-col gap-3 p-3 overflow-auto" },
               [
-                View({ class: "automation-inspector-meta" }, [
+                View({ class: "min-w-0 flex items-center gap-2 [&_.group-automation-code]:min-w-0" }, [
                   Tag({ variant: is_start ? "success" : "info" }, [
                     vm$.methods.flowLabel(current_node.type),
                   ]),
                   View(
                     {
-                      class: "automation-code",
+                      class: "group-automation-code overflow-hidden font-mono text-sm text-ellipsis whitespace-nowrap",
                       attributes: { title: current_node.id },
                     },
                     [current_node.id],
                   ),
                 ]),
-                View({ class: "automation-form__field" }, [
-                  Label({ class: "automation-form__label" }, ["节点名称"]),
+                View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
+                  Label({ class: "text-color-text-secondary text-xs font-semibold" }, ["节点名称"]),
                   Input({
                     store: vm$.ui.input_edit_node_name$,
                     attributes: {
@@ -75,11 +75,11 @@ function AutomationNodeInspector(props) {
                     },
                   }),
                 ]),
-                current_node.type !== "StartNode" ? View({ class: "automation-form__field" }, [
-                  Label({ class: "automation-form__label" }, ["节点配置 JSON"]),
+                current_node.type !== "StartNode" ? View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
+                  Label({ class: "text-color-text-secondary text-xs font-semibold" }, ["节点配置 JSON"]),
                   Textarea({
                     store: vm$.ui.input_edit_node_config$,
-                    class: "automation-node-config-input",
+                    class: "min-h-220px font-mono text-xs",
                     attributes: {
                       n: "automation-edit-node-config",
                       rows: "12",
@@ -99,9 +99,9 @@ function AutomationNodeInspector(props) {
                   ["应用节点配置"],
                 ) : null,
                 is_start ? AutomationStartTriggers({ store: vm$ }) : null,
-                View({ class: "automation-inspector-connections" }, [
-                  View({ class: "automation-property__label" }, ["后续节点"]),
-                  View({ class: "automation-code automation-code--wrap" }, [
+                View({ class: "pt-3 border-top-[var(--dm-border-width)_solid_var(--dm-color-border)]" }, [
+                  View({ class: "block mb-1 text-color-text-secondary text-xs font-medium" }, ["后续节点"]),
+                  View({ class: "group-automation-code font-mono text-sm overflow-visible text-overflow-initial whitespace-pre-wrap word-break-break-all" }, [
                     computed(node, (value) => (value && value.next_ids || []).join("、") || "无"),
                   ]),
                 ]),
@@ -109,7 +109,7 @@ function AutomationNodeInspector(props) {
                   ? Button(
                       {
                         store: vm$.ui.btn_remove_selected_node$,
-                        class: "automation-remove-selected-node",
+                        class: "mt-auto",
                         attributes: {
                           n: "automation-remove-selected-node",
                           type: "button",
@@ -185,7 +185,7 @@ function automation_service_text_field(props) {
       });
   return View(
     {
-      class: "automation-service-template-field",
+      class: "relative",
       attributes: { n: `automation-service-template-field-${name}` },
     },
     [
@@ -195,7 +195,7 @@ function automation_service_text_field(props) {
         ok() {
           return View(
             {
-              class: "automation-context-suggest",
+              class: "absolute z-sticky top-[calc(100%_+_var(--dm-space-1))] left-0 right-0 max-h-200px p-1 overflow-auto bg-color-bg-surface border-[var(--dm-border-width)_solid_var(--dm-color-border-strong)] rounded-content shadow-md",
               attributes: {
                 n: `automation-context-suggest-${name}`,
                 role: "listbox",
@@ -218,7 +218,7 @@ function automation_service_text_field(props) {
                   return View(
                     {
                       as: "button",
-                      class: "automation-context-suggest__item",
+                      class: "w-full block p-[var(--dm-space-1-5)_var(--dm-space-2)] text-color-text-primary bg-transparent border-0 rounded-xs text-sm text-left cursor-pointer hover:bg-color-bg-interactive",
                       attributes: {
                         n: `automation-context-suggest-item-${name}-${token}`,
                         type: "button",
@@ -251,7 +251,7 @@ function AutomationToolFormRender(props) {
   });
   return View(
     {
-      class: "automation-service-form",
+      class: "grid grid-cols-[repeat(2,_minmax(0,_1fr))] gap-3 max-900:grid-cols-1fr",
       attributes: { n: "automation-service-form" },
     },
     [
@@ -267,7 +267,7 @@ function AutomationToolFormRender(props) {
           return View(
             {
               class: [
-                "automation-form__field automation-service-form__field",
+                "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5 [&.is-wide]:grid-column-[1_/_-1] [&_.dm-textarea-root]:w-full [&_.dm-textarea]:w-full [&.dm-flex_.group-automation-service-form__help]:ml-auto",
                 field_schema.control === "textarea" ? "is-wide" : "",
               ]
                 .filter(Boolean)
@@ -278,7 +278,7 @@ function AutomationToolFormRender(props) {
               View(
                 {
                   as: "label",
-                  class: "automation-form__label",
+                  class: "text-color-text-secondary text-xs font-semibold",
                   attributes: { for: field_id },
                 },
                 [field_schema.label || name, field_schema.required ? " *" : ""],
@@ -331,7 +331,7 @@ function AutomationToolFormRender(props) {
               field_schema.description
                 ? View(
                     {
-                      class: "automation-service-form__help",
+                      class: "group-automation-service-form__help -webkit-box overflow-hidden text-color-text-secondary text-xs leading-base -webkit-box-orient-vertical -webkit-line-clamp-2",
                       attributes: { title: field_schema.description },
                     },
                     [field_schema.description],
@@ -393,10 +393,10 @@ function AutomationAddNodeDialog(props) {
         }),
       ]),
       DialogBody({}, [
-        View({ class: "automation-form" }, [
-          View({ class: "automation-form__row" }, [
-            View({ class: "automation-form__field" }, [
-              View({ class: "automation-form__label" }, ["节点类型"]),
+        View({ class: "flex flex-col gap-3" }, [
+          View({ class: "grid grid-cols-[repeat(2,_minmax(0,_1fr))] gap-3 [&_.dm-button]:align-self-flex-end max-900:grid-cols-1fr" }, [
+            View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
+              View({ class: "text-color-text-secondary text-xs font-semibold" }, ["节点类型"]),
               Select({
                 store: vm$.ui.select_add_type$,
                 attributes: {
@@ -408,8 +408,8 @@ function AutomationAddNodeDialog(props) {
             Show({
               when: computed(insert_to$, (to) => !to),
               ok() {
-                return View({ class: "automation-form__field" }, [
-                  View({ class: "automation-form__label" }, ["连接自"]),
+                return View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
+                  View({ class: "text-color-text-secondary text-xs font-semibold" }, ["连接自"]),
                   Select({
                     store: vm$.ui.select_add_from$,
                     attributes: {
@@ -420,11 +420,11 @@ function AutomationAddNodeDialog(props) {
                 ]);
               },
               else() {
-                return View({ class: "automation-form__field" }, [
-                  View({ class: "automation-form__label" }, ["插入位置"]),
+                return View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
+                  View({ class: "text-color-text-secondary text-xs font-semibold" }, ["插入位置"]),
                   View(
                     {
-                      class: "dm-alert automation-form__hint",
+                      class: "dm-alert p-[var(--dm-space-2)_var(--dm-space-2-5)] text-color-warning bg-color-warning-soft border-[var(--dm-border-width)_solid_color-mix(in_srgb,_var(--dm-color-warning)_30%,_transparent)] rounded-content text-xs",
                       attributes: { n: "automation-insert-route" },
                     },
                     [insert_route$],
@@ -439,8 +439,8 @@ function AutomationAddNodeDialog(props) {
               (node_type) => node_type === "ServiceNode",
             ),
             ok() {
-              return View({ class: "automation-form__field" }, [
-                View({ class: "automation-form__label" }, ["Service tool"]),
+              return View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
+                View({ class: "text-color-text-secondary text-xs font-semibold" }, ["Service tool"]),
                 Select({
                   store: vm$.ui.select_add_service_tool$,
                   attributes: {
@@ -460,7 +460,7 @@ function AutomationAddNodeDialog(props) {
               if (!tool) return View({});
               const input_schema = tool.input_schema || tool.inputSchema || {};
               const argument_names = Object.keys(input_schema.properties || {});
-              return View({ class: "dm-alert automation-form__hint" }, [
+              return View({ class: "dm-alert p-[var(--dm-space-2)_var(--dm-space-2-5)] text-color-warning bg-color-warning-soft border-[var(--dm-border-width)_solid_color-mix(in_srgb,_var(--dm-color-warning)_30%,_transparent)] rounded-content text-xs" }, [
                 tool.description || tool.title || tool.name,
                 "（参数：",
                 argument_names.join("、") || "无",
@@ -478,15 +478,15 @@ function AutomationAddNodeDialog(props) {
                     Array.isArray(form_schema) && form_schema.length > 0,
                 ),
                 ok() {
-                  return View({ class: "automation-service-form-section" }, [
-                    View({ class: "automation-form__label" }, ["Tool 参数"]),
+                  return View({ class: "flex flex-col gap-2 p-3 bg-color-bg-subtle border-[var(--dm-border-width)_solid_var(--dm-color-border)] rounded-content" }, [
+                    View({ class: "text-color-text-secondary text-xs font-semibold" }, ["Tool 参数"]),
                     AutomationToolFormRender({
                       store: vm$.state.add_service_form,
                     }),
                   ]);
                 },
                 else() {
-                  return View({ class: "dm-alert automation-form__hint" }, [
+                  return View({ class: "dm-alert p-[var(--dm-space-2)_var(--dm-space-2-5)] text-color-warning bg-color-warning-soft border-[var(--dm-border-width)_solid_color-mix(in_srgb,_var(--dm-color-warning)_30%,_transparent)] rounded-content text-xs" }, [
                     "该 tool 无需填写参数。",
                   ]);
                 },
@@ -508,7 +508,7 @@ function AutomationAddNodeDialog(props) {
           Show({
             when: vm$.state.add_type,
             ok() {
-              return View({ class: "dm-alert automation-form__hint" }, [
+              return View({ class: "dm-alert p-[var(--dm-space-2)_var(--dm-space-2-5)] text-color-warning bg-color-warning-soft border-[var(--dm-border-width)_solid_color-mix(in_srgb,_var(--dm-color-warning)_30%,_transparent)] rounded-content text-xs" }, [
                 vm$.methods.catalogDescription(vm$.state.add_type.value),
                 "（配置键：",
                 vm$.methods
@@ -519,15 +519,15 @@ function AutomationAddNodeDialog(props) {
               ]);
             },
           }),
-          View({ class: "automation-form__field" }, [
-            View({ class: "automation-form__label" }, ["节点名称"]),
+          View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
+            View({ class: "text-color-text-secondary text-xs font-semibold" }, ["节点名称"]),
             Input({
               store: vm$.ui.input_add_name$,
               attributes: { n: "automation-add-name" },
             }),
           ]),
-          View({ class: "automation-form__field" }, [
-            View({ class: "automation-form__label" }, ["节点配置 JSON"]),
+          View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
+            View({ class: "text-color-text-secondary text-xs font-semibold" }, ["节点配置 JSON"]),
             Input({
               store: vm$.ui.input_add_config$,
               attributes: {
@@ -572,7 +572,7 @@ function FlowEditPageView(props) {
   const vm$ = AutomationPageViewModel(props, { mode: "edit" });
   return View(
     {
-      class: "content-page automation-page page",
+      class: "group-content-page min-h-full flex flex-col bg-content-bg text-content-text [&_.group-automation-toolbar]:flex [&_.group-automation-toolbar]:items-center [&_.group-automation-toolbar]:justify-between [&_.group-automation-toolbar]:gap-4 max-900:[&_.group-automation-toolbar]:items-stretch max-900:[&_.group-automation-toolbar]:flex-col min-w-0 min-h-full font-sans",
       attributes: { n: "automation-page" },
       onMounted() {
         vm$.methods.ready();
@@ -582,7 +582,7 @@ function FlowEditPageView(props) {
       },
     },
     [
-      View({ class: "content-toolbar-wrap automation-editor-toolbar-wrap" }, [
+      View({ class: "group-content-toolbar-wrap p-[var(--dm-space-4)_var(--dm-space-4)_0] automation-editor-toolbar-wrap" }, [
         AutomationWorkspaceToolbar({ store: vm$, mode: "edit" }),
       ]),
       AutomationFeedback({ store: vm$ }),
@@ -591,17 +591,17 @@ function FlowEditPageView(props) {
         ok() {
           return View(
             {
-              class: "automation-editor-workspace",
+              class: "flex flex-1 gap-4 p-4 max-900:h-auto max-900:flex-col",
               attributes: { n: "automation-editor-workspace" },
             },
             [
-              View({ class: "automation-editor-canvas" }, [
-                View({ class: "automation-editor-canvas__header" }, [
+              View({ class: "min-w-0 min-h-0 flex flex-col flex-1 overflow-hidden bg-color-bg-subtle border-[var(--dm-border-width)_solid_var(--dm-color-border)] rounded-content [&_.group-automation-flow-scroll]:min-h-0 [&_.group-automation-flow-scroll]:flex-1 [&_.group-automation-flow-scroll]:bg-color-bg-canvas [&_.group-automation-flow-scroll]:border-0 [&_.group-automation-flow-scroll]:rounded-0 [&_.group-automation-flow-scroll]:shadow-none max-900:min-h-560px" }, [
+                View({ class: "flex items-center justify-between gap-2 p-3 bg-color-bg-surface border-bottom-[var(--dm-border-width)_solid_var(--dm-color-border)]" }, [
                   View({}, [
-                    View({ class: "automation-editor-panel__title" }, [
+                    View({ class: "text-color-text-primary font-display text-base font-semibold" }, [
                       "工作流画布",
                     ]),
-                    View({ class: "automation-editor-panel__hint" }, [
+                    View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base" }, [
                       computed(
                         vm$.state.edit_nodes,
                         (nodes) => `${nodes.length} 个节点 · 点击节点编辑配置`,
@@ -619,7 +619,7 @@ function FlowEditPageView(props) {
       Show({
         when: computed(vm$.state.selected_pipeline, (flow) => !flow),
         ok() {
-          return View({ class: "container" }, [
+          return View({ class: "" }, [
             AutomationEmptyState({
               detail: true,
               name: "automation-pipeline-editor-empty",

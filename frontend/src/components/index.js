@@ -337,7 +337,7 @@ function EntitySelect(props, render_label, render_value) {
           {
             store,
             class: select_class_names([
-              "dm-select-content dm-entity-select-content",
+              "dm-select-content flex min-w-180px flex-col [&_>_.dm-select-viewport]:min-h-0 [&_>_.dm-select-viewport]:flex-[1_1_auto] [&_>_.dm-select-viewport]:max-h-none",
               props.contentClass,
             ]),
             attributes: {
@@ -352,7 +352,7 @@ function EntitySelect(props, render_label, render_value) {
               ok() {
                 return View(
                   {
-                    class: "dm-entity-select-search-wrap",
+                    class: "[.dm-select-content_>_&]:min-w-0 [.dm-select-content_>_&]:flex-[0_0_auto] [.dm-select-content_>_&]:m-[var(--dm-space-1)_var(--dm-space-1)_0]",
                     attributes: { n: `${semantic_name}-search-wrap` },
                   },
                   [
@@ -488,13 +488,13 @@ function platform_selected_value(state_, semantic_name) {
       state.placeholder ??
       "请选择",
   );
-  return View({ class: "dm-entity-select-value" }, [
+  return View({ class: "flex min-w-0 items-center gap-2" }, [
     Show({
       when: has_favicon_,
       ok() {
         return Runtime.SVG.SVG(
           {
-            class: "dm-entity-select-value__icon",
+            class: "w-5 h-5 flex-[0_0_auto]",
             attributes: {
               n: `${semantic_name}-value-icon`,
               viewBox: "0 0 32 32",
@@ -510,7 +510,7 @@ function platform_selected_value(state_, semantic_name) {
         );
       },
     }),
-    View({ class: "dm-entity-select-value__label" }, [label_]),
+    View({ class: "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap" }, [label_]),
   ]);
 }
 
@@ -526,7 +526,7 @@ function PlatformPopoverItem(props) {
     {
       type: "button",
       class: select_class_names([
-        "dm-platform-select-grid-item dm-focus-ring",
+        "flex min-w-0 min-h-52px flex-col items-center justify-center gap-1 p-1 text-color-text-secondary bg-transparent border-[var(--dm-border-width)_solid_transparent] rounded-control cursor-pointer hover:text-color-primary hover:bg-color-primary-soft hover:border-color-[color-mix(in_srgb,_var(--dm-color-primary)_35%,_transparent)] [&.is-selected]:text-color-primary [&.is-selected]:bg-color-primary-soft [&.is-selected]:border-color-[color-mix(in_srgb,_var(--dm-color-primary)_35%,_transparent)] dm-focus-ring",
         Runtime.computed(selected_, (selected) =>
           selected ? "is-selected" : "",
         ),
@@ -551,20 +551,20 @@ function PlatformPopoverItem(props) {
     [
       View(
         {
-          class: "dm-platform-select-grid-item__icon",
+          class: "w-5 h-5 grid flex-[0_0_auto] place-items-center",
           attributes: { "aria-hidden": "true" },
         },
         [
           favicon
             ? PlatformIcon({
-                class: "dm-platform-select-grid-item__image",
+                class: "w-5 h-5",
                 favicon,
                 name: `${props.name}-option-icon`,
               })
             : Runtime.Icon({ name: "globe", size: 20 }),
         ],
       ),
-      View({ class: "dm-platform-select-grid-item__label" }, [entry.label]),
+      View({ class: "w-full overflow-hidden text-caption leading-tight text-center text-ellipsis whitespace-nowrap" }, [entry.label]),
     ],
   );
 }
@@ -610,18 +610,18 @@ function PlatformPopoverSelect(props) {
       side: "bottom",
       align: "start",
       triggerClass: select_class_names([
-        "dm-platform-select-popover-trigger",
+        "inline-flex",
         props.class,
         props.rootClass,
       ]),
       class: select_class_names([
-        "dm-platform-select-popover",
+        "box-sizing-border-box w-[min(420px,_calc(100vw_-_var(--dm-space-6)))] max-w-[calc(100vw_-_var(--dm-space-6))] p-2",
         props.contentClass,
       ]),
       content: [
         View(
           {
-            class: "dm-platform-select-search-wrap",
+            class: "min-w-0 mb-1-5",
             attributes: { n: `${semantic_name}-search-wrap` },
           },
           [
@@ -646,7 +646,7 @@ function PlatformPopoverSelect(props) {
           ok() {
             return View(
               {
-                class: "dm-platform-select-grid",
+                class: "grid grid-cols-[repeat(5,_minmax(0,_1fr))] gap-1",
                 attributes: {
                   n: `${semantic_name}-options`,
                   role: "listbox",
@@ -698,7 +698,7 @@ function PlatformPopoverSelect(props) {
         {
           type: "button",
           class: select_class_names([
-            "dm-field dm-select dm-platform-select-trigger",
+            "dm-field dm-select group-dm-platform-select-trigger w-180px [&.is-active]:bg-color-bg-surface [&.is-active]:border-color-color-primary [&.is-active]:outline-0 [&.is-active]:shadow-focus-ring [&.is-open]:bg-color-bg-surface [&.is-open]:border-color-color-primary [&.is-open]:outline-0 [&.is-open]:shadow-focus-ring",
             Runtime.computed(popover_state_, (state) =>
               state.visible ? "is-open" : "",
             ),
@@ -769,10 +769,10 @@ function account_option_label(entry) {
   const platform_name =
     (window.PLATFORM_NAMES || {})[platform_id] || platform_id;
   const description = platform_name || (!entry.value ? "所有平台" : "");
-  return View({ class: "dm-entity-select-option" }, [
+  return View({ class: "flex w-full min-w-0 items-center gap-2-5 text-left" }, [
     View(
       {
-        class: "dm-entity-select-option__avatar",
+        class: "grid overflow-hidden w-7 h-7 flex-[0_0_auto] place-items-center text-color-text-secondary bg-color-bg-interactive border-[var(--dm-border-width)_solid_var(--dm-color-border)] rounded-full",
         attributes: { "aria-hidden": "true" },
       },
       [
@@ -780,7 +780,7 @@ function account_option_label(entry) {
           when: account.avatar_url,
           ok() {
             return Runtime.Img({
-              class: "dm-entity-select-option__image",
+              class: "w-full h-full object-cover",
               src: account.avatar_url,
               attributes: {
                 alt: "",
@@ -793,18 +793,18 @@ function account_option_label(entry) {
             return Runtime.Icon({
               name: "user",
               size: 15,
-              class: "dm-entity-select-option__avatar-fallback",
+              class: "opacity-[0.8]",
             });
           },
         }),
       ],
     ),
-    View({ class: "dm-entity-select-option__body" }, [
-      View({ class: "dm-entity-select-option__label" }, [entry.label]),
+    View({ class: "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap flex flex-1 flex-col items-start justify-center gap-1px text-left" }, [
+      View({ class: "group-dm-entity-select-option__label min-w-0 overflow-hidden text-ellipsis whitespace-nowrap w-full text-base leading-tight text-left" }, [entry.label]),
       Show({
         when: description,
         ok() {
-          return View({ class: "dm-entity-select-option__description" }, [
+          return View({ class: "w-full overflow-hidden text-color-text-secondary text-caption leading-tight text-left text-ellipsis whitespace-nowrap" }, [
             description,
           ]);
         },
@@ -827,12 +827,12 @@ function account_selected_value(state_, semantic_name) {
       "请选择",
   );
 
-  return View({ class: "dm-entity-select-value" }, [
+  return View({ class: "flex min-w-0 items-center gap-2" }, [
     Show({
       when: Runtime.computed(avatar_, Boolean),
       ok() {
         return Runtime.Img({
-          class: "dm-entity-select-value__avatar",
+          class: "w-5 h-5 flex-[0_0_auto] object-cover rounded-full",
           src: avatar_,
           attributes: {
             n: `${semantic_name}-value-avatar`,
@@ -847,7 +847,7 @@ function account_selected_value(state_, semantic_name) {
           name: "user",
           size: 20,
           class:
-            "dm-entity-select-value__avatar dm-entity-select-value__avatar--fallback",
+            "w-5 h-5 flex-[0_0_auto] object-cover rounded-full p-2px text-color-text-secondary bg-color-bg-interactive",
           attributes: {
             n: `${semantic_name}-value-avatar-fallback`,
             "aria-hidden": "true",
@@ -855,7 +855,7 @@ function account_selected_value(state_, semantic_name) {
         });
       },
     }),
-    View({ class: "dm-entity-select-value__label" }, [label_]),
+    View({ class: "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap" }, [label_]),
   ]);
 }
 
@@ -911,7 +911,7 @@ export function AccountSelect(props = {}) {
       searchPlaceholder: "搜索账号",
       ...props,
       contentClass: select_class_names([
-        "dm-account-select-content",
+        "min-w-240px [&_.dm-select-item]:min-h-48px [&_.dm-select-item]:py-1-5 [&_.dm-select-item-text]:min-w-0 [&_.dm-select-item-text]:flex-1 [&_.dm-select-item.is-selected_.group-dm-entity-select-option__label]:text-color-primary [&_.dm-select-item.is-selected_.group-dm-entity-select-option__label]:font-semibold",
         props.contentClass,
       ]),
       filterOptions: filter_accounts,
@@ -929,7 +929,7 @@ export function AccountSelect(props = {}) {
 export function LoadingView() {
   return View(
     {
-      class: "route-loading page dm-grid dm-place-center dm-text-muted dm-p-8",
+      class: "flex min-h-full items-center justify-center p-8 text-color-text-secondary min-w-0 min-h-full font-sans bg-color-bg-canvas dm-grid dm-place-center dm-text-muted dm-p-8",
       attributes: {
         n: "route-loading-placeholder",
         role: "status",
@@ -955,27 +955,27 @@ export function LoadingView() {
 export function ErrorFallbackView(error, view_name) {
   return View(
     {
-      class: "route-error page dm-grid dm-place-center dm-p-8",
+      class: "flex min-h-full items-center justify-center p-8 bg-[radial-gradient(_circle_at_50%_38%,_var(--dm-color-danger-soft),_transparent_min(360px,_46vw)_),_var(--dm-color-bg-canvas)] min-w-0 min-h-full text-color-text-primary font-sans dm-grid dm-place-center dm-p-8",
       attributes: { role: "alert" },
     },
     [
-      View({ class: "route-error-card" }, [
+      View({ class: "relative w-[min(100%,_520px)] grid grid-cols-[auto_minmax(0,_1fr)] gap-4 p-6 overflow-hidden text-color-text-primary bg-color-bg-surface border-[var(--dm-border-width)_solid_var(--dm-color-danger-border)] rounded-xl shadow-lg [&::before]:content-[\"\"] [&::before]:absolute [&::before]:inset-[0_auto_0_0] [&::before]:w-1 [&::before]:bg-color-danger" }, [
         View(
           {
-            class: "route-error-card__icon",
+            class: "w-76px h-57px grid place-items-center",
             attributes: { "aria-hidden": "true" },
           },
           [BrandError({ size: 76, name: "route-error-symbol" })],
         ),
-        View({ class: "route-error-card__content" }, [
-          View({ as: "strong", class: "route-error-card__title" }, [
+        View({ class: "min-w-0 flex flex-col justify-center gap-1" }, [
+          View({ as: "strong", class: "font-display text-xl leading-tight" }, [
             "页面加载失败",
           ]),
-          View({ as: "span", class: "route-error-card__context" }, [
+          View({ as: "span", class: "overflow-hidden text-color-text-secondary text-sm leading-base text-ellipsis whitespace-nowrap" }, [
             view_name || "未知页面",
           ]),
         ]),
-        View({ as: "pre", class: "route-error-card__detail" }, [error.message]),
+        View({ as: "pre", class: "grid-column-[1_/_-1] max-w-full m-[var(--dm-space-1)_0_0] p-[var(--dm-space-3)_var(--dm-space-4)] overflow-auto text-color-danger font-mono text-sm leading-relaxed whitespace-pre-wrap overflow-wrap-anywhere bg-color-danger-soft border-[var(--dm-border-width)_solid_var(--dm-color-danger-border)] rounded-md" }, [error.message]),
       ]),
     ],
   );
@@ -988,7 +988,7 @@ function ContentTagBadge(props) {
   const tag = props.tag || {};
   return Tag(
     {
-      class: "dm-content-tag",
+      class: "flex-[0_0_auto]",
       attributes: {
         n: `content-tag-${tag.id}`,
         title: String(tag.name || ""),
@@ -1002,7 +1002,7 @@ function ContentTagBadge(props) {
           return View(
             {
               type: "button",
-              class: "dm-content-tag__remove",
+              class: "inline-grid place-items-center p-0 w-14px h-14px text-inherit bg-transparent border-0 rounded-[50%] cursor-pointer opacity-[0.7] transition-[opacity_0.15s_ease,_background_0.15s_ease,_color_0.15s_ease] hover:opacity-1 hover:bg-color-danger-soft hover:text-color-danger",
               attributes: {
                 n: `content-tag-remove-${tag.id}`,
                 type: "button",
@@ -1168,7 +1168,7 @@ export function TagSelect(props = {}) {
   const trigger = View(
     {
       type: "button",
-      class: "dm-tag dm-tag-select-trigger",
+      class: "dm-tag flex-[0_0_auto] w-5 min-h-5 p-0 cursor-pointer transition-[color_0.15s_ease,_background_0.15s_ease,_border-color_0.15s_ease] hover:text-color-primary hover:bg-color-primary-soft hover:border-color-color-primary-border",
       attributes: {
         n: "tag-select-trigger",
         type: "button",
@@ -1196,9 +1196,9 @@ export function TagSelect(props = {}) {
       triggerClass: "dm-tag-select-popover-trigger",
       onTriggerMouseEnter() {},
       onTriggerMouseLeave() {},
-      class: "dm-tag-select-popover",
+      class: "w-260px p-2",
       content: [
-        View({ class: "dm-tag-select-search-wrap" }, [
+        View({ class: "mb-2" }, [
           Input({
             store: search_input,
             rootAttributes: { n: "tag-select-search" },
@@ -1224,7 +1224,7 @@ export function TagSelect(props = {}) {
           ok() {
             return View(
               {
-                class: "dm-tag-select-list",
+                class: "flex flex-row flex-wrap items-center content-flex-start gap-[var(--dm-space-1,_4px)] max-h-220px overflow-y-auto",
                 attributes: { n: "tag-select-list", role: "listbox" },
               },
               [
@@ -1236,7 +1236,7 @@ export function TagSelect(props = {}) {
                       {
                         type: "button",
                         class: select_class_names([
-                          "dm-tag-select-option",
+                          "inline-flex items-center justify-center flex-[0_0_auto] w-auto max-w-full min-h-5 p-[0_var(--dm-space-2)] text-caption font-semibold leading-[1.2] text-color-text-secondary whitespace-nowrap text-center bg-color-bg-interactive border-[var(--dm-border-width)_solid_var(--dm-color-border)] rounded-badge cursor-pointer transition-[color_0.15s_ease,_background_0.15s_ease,_border-color_0.15s_ease] hover:text-color-primary hover:bg-color-primary-soft hover:border-color-color-primary-border [&.is-selected]:text-color-primary [&.is-selected]:bg-color-primary-soft [&.is-selected]:border-color-color-primary-border",
                           Runtime.computed(selected_ids_, (ids) =>
                             (ids || []).indexOf(entry.value) >= 0
                               ? "is-selected"
@@ -1261,7 +1261,7 @@ export function TagSelect(props = {}) {
             );
           },
           else() {
-            return View({ class: "dm-tag-select-empty" }, [
+            return View({ class: "p-[var(--dm-space-3)_var(--dm-space-2)] text-content-muted text-sm text-center" }, [
               "没有匹配的标签，回车可创建",
             ]);
           },

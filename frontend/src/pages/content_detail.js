@@ -7,6 +7,22 @@ import {
 } from "./content_detail.model.js";
 import { PreviewGalleryMediaView } from "./preview.js";
 
+const content_detail_media_stage_classes = {
+  __proto__: null,
+  "list": "min-w-0",
+  "video": "[&_.group-content-detail-media-viewport]:bg-color-media-canvas",
+};
+
+const content_detail_status_classes = {
+  __proto__: null,
+  "running": "text-color-warning",
+  "paused": "text-color-warning",
+  "finished": "text-color-success",
+  "failed": "text-content-danger",
+  "deleted": "text-content-danger",
+  "waiting": "text-content-muted",
+};
+
 function ContentDetailAction(props) {
   const semantic_name = props.name || "content-detail-action";
   return View(
@@ -43,9 +59,9 @@ function ContentDetailCover(props) {
   const content = props.content;
   const cover_url = props.coverURL || props.store.methods.coverURL(content);
   if (!cover_url) return null;
-  return View({ class: "content-cover-wrap" }, [
+  return View({ class: "min-w-0 overflow-hidden rounded-content relative w-full aspect-ratio-[4_/_3] bg-content-panel-soft" }, [
     LazyImg({
-      class: "content-cover",
+      class: "absolute inset-0 w-full h-full block object-cover [&.dm-lazy-img-error]:grid [&.dm-lazy-img-error]:place-items-center [&.dm-lazy-img-error]:rounded-inherit",
       src: cover_url,
       alt: content.title,
       loading: "eager",
@@ -66,8 +82,8 @@ function ContentDetailAccount(props) {
     {
       type: clickable ? "button" : "div",
       class: [
-        "content-account-item dm-focus-ring",
-        clickable ? "content-account-item-clickable" : "",
+        "flex items-center max-w-240px min-h-control-height-sm gap-2 p-0 text-content-text font-inherit text-decoration-none appearance-none bg-transparent border-0 rounded-control dm-focus-ring",
+        clickable ? "cursor-pointer hover:text-content-primary" : "",
       ]
         .filter(Boolean)
         .join(" "),
@@ -85,19 +101,19 @@ function ContentDetailAccount(props) {
         when: account.avatar_url,
         ok() {
           return LazyImg({
-            class: "content-avatar",
+            class: "w-26px h-26px flex-[0_0_auto] grid place-items-center object-cover text-content-primary bg-content-primary-soft rounded-avatar",
             src: account.avatar_url,
             alt: name,
             attributes: { loading: "lazy", referrerpolicy: "no-referrer" },
           });
         },
         else() {
-          return View({ class: "content-avatar content-avatar-fallback" }, [
+          return View({ class: "w-26px h-26px flex-[0_0_auto] grid place-items-center object-cover text-content-primary bg-content-primary-soft rounded-avatar content-avatar-fallback" }, [
             String(name).slice(0, 1),
           ]);
         },
       }),
-      View({ class: "content-account-name", attributes: { title: name } }, [
+      View({ class: "min-w-0 overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap", attributes: { title: name } }, [
         name,
       ]),
     ].filter(Boolean),
@@ -109,7 +125,7 @@ function ContentDetailAccounts(props) {
   if (accounts.length === 0) {
     return null;
   }
-  return View({ class: "content-account-list" }, [
+  return View({ class: "flex flex-wrap gap-3" }, [
     For({
       each: accounts,
       render(account) {
@@ -126,7 +142,7 @@ function ContentDetailTags(props) {
   const vm$ = props.store;
   return View(
     {
-      class: "content-detail-tags",
+      class: "min-w-0 flex flex-wrap items-center gap-1-5",
       attributes: { n: "content-detail-tags", "aria-label": "内容标签" },
     },
     [
@@ -161,23 +177,23 @@ function ContentDetailPlatform(props) {
 }
 
 function ContentDetailSection(props) {
-  return View({ class: "content-detail-section" }, [
+  return View({ class: "overflow-hidden bg-content-panel border-[var(--dm-border-width)_solid_var(--dm-content-border)] rounded-card shadow-sm" }, [
     View(
-      { class: "content-detail-section-head" },
+      { class: "min-h-control-height-lg flex items-center justify-between gap-3 p-[var(--dm-space-3)_var(--dm-space-4)] bg-content-panel-soft border-bottom-[var(--dm-border-width)_solid_var(--dm-content-border)]" },
       [
-        View({ class: "content-detail-section-title" }, [props.title]),
+        View({ class: "text-content-text text-base font-semibold" }, [props.title]),
         props.count !== undefined
           ? Tag(
               {
                 name: "content-detail-section-count",
-                class: "content-detail-section-count",
+                class: "text-content-primary bg-content-primary-soft",
               },
               [String(props.count)],
             )
           : null,
       ].filter(Boolean),
     ),
-    View({ class: "content-detail-section-body" }, props.children || []),
+    View({ class: "p-4" }, props.children || []),
   ]);
 }
 
@@ -511,35 +527,35 @@ function ContentDetailMediaStage(props) {
     .join(" · ");
   return View(
     {
-      class: `preview-page content-detail-media-stage content-detail-media-stage-${media.type}`,
+      class: `[--dm-preview-bg:var(--dm-color-bg-canvas)] [--dm-preview-panel:var(--dm-color-bg-surface)] [--dm-preview-panel-soft:var(--dm-color-bg-subtle)] [--dm-preview-border:var(--dm-color-border)] [--dm-preview-text:var(--dm-color-text-primary)] [--dm-preview-muted:var(--dm-color-text-secondary)] [--dm-preview-subtle:var(--dm-color-text-disabled)] [--dm-preview-accent:var(--dm-color-primary)] relative flex w-full min-w-0 h-full min-h-0 flex-col overflow-hidden text-preview-text font-sans bg-preview-bg bg-image-[radial-gradient(_circle,_var(--dm-color-border-translucent)_var(--dm-border-width),_transparent_var(--dm-border-width)_)] background-size-[var(--dm-space-6)_var(--dm-space-6)] [&.is-embedded]:h-auto [&.is-embedded]:flex-1 [&.is-embedded_.group-preview-overlay]:absolute overflow-hidden bg-content-panel border-[var(--dm-border-width)_solid_var(--dm-content-border)] rounded-content shadow-sm ${content_detail_media_stage_classes[media.type] || ""}`,
       attributes: { n: "content-detail-media-stage" },
     },
     [
       View(
         {
-          class: "content-detail-media-viewport preview-gallery-viewport",
+          class: "group-content-detail-media-viewport relative min-h-360px grid place-items-center bg-content-panel-soft max-900:min-h-320px max-680:min-h-240px group-preview-gallery-viewport h-full min-w-0 flex-1 items-center justify-center overflow-hidden [&_>_.group-preview-gallery-text-reader]:align-self-stretch [&_>_.group-preview-gallery-text-reader]:w-full [&_>_.group-preview-gallery-text-reader]:h-full [&_>_.group-preview-gallery-text-reader]:min-w-0 [&_>_.group-preview-gallery-text-reader]:min-h-0 [&_>_.group-preview-gallery-html-reader]:align-self-stretch [&_>_.group-preview-gallery-html-reader]:w-full [&_>_.group-preview-gallery-html-reader]:h-full [&_>_.group-preview-gallery-html-reader]:min-w-0 [&_>_.group-preview-gallery-html-reader]:min-h-0 [&_>_.group-preview-video-player]:h-full [.group-content-detail-media-viewport&]:flex [.group-content-detail-media-viewport&]:h-[min(72vh,_760px)] [.group-content-detail-media-viewport&]:min-h-0 [.group-content-detail-media-viewport&]:flex-none",
           attributes: { n: "content-detail-media-viewport" },
         },
         [player],
       ),
       View(
-        { class: "content-detail-media-caption" },
+        { class: "grid grid-cols-[auto_minmax(0,_1fr)_auto] items-center gap-3 p-[var(--dm-space-3)_var(--dm-space-4)] text-content-text bg-content-panel-soft border-top-[var(--dm-border-width)_solid_var(--dm-content-border)] max-680:grid-cols-[auto_minmax(0,_1fr)] max-680:[&_>_.dm-button]:grid-column-2 max-680:[&_>_.dm-button]:justify-self-start max-480:grid-cols-[minmax(0,_1fr)] max-480:[&_>_.dm-button]:grid-column-1" },
         [
-          View({ class: "content-detail-media-caption-icon" }, [
+          View({ class: "w-control-height-sm h-control-height-sm grid place-items-center text-content-primary bg-[color-mix(in_srgb,_var(--dm-content-primary)_18%,_transparent)] rounded-content max-480:hidden" }, [
             Timeless.Icon({
               name: content_media_type_icon(media.type),
               size: 16,
             }),
           ]),
-          View({ class: "content-detail-media-caption-main" }, [
+          View({ class: "min-w-0" }, [
             View(
               {
-                class: "content-detail-media-name",
+                class: "overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap",
                 attributes: { title: media.name },
               },
               [media.name],
             ),
-            View({ class: "content-detail-media-meta" }, [meta]),
+            View({ class: "mt-0-5 overflow-hidden text-content-muted text-xs text-ellipsis whitespace-nowrap" }, [meta]),
           ]),
           media.available
             ? ContentDetailAction({
@@ -565,8 +581,8 @@ function ContentDetailMediaPicker(props) {
       type: "button",
       class: computed(props.selected, (selected) =>
         selected && selected.key === media.key
-          ? "content-detail-media-choice dm-focus-ring is-selected"
-          : "content-detail-media-choice dm-focus-ring",
+          ? "min-w-0 grid grid-cols-[auto_minmax(0,_1fr)_auto] items-center gap-3 p-3 text-content-text text-left cursor-pointer appearance-none bg-content-panel-soft border-[var(--dm-border-width)_solid_var(--dm-content-border)] rounded-card hover:bg-content-primary-soft hover:border-color-[color-mix(_in_srgb,_var(--dm-content-primary)_48%,_var(--dm-content-border)_)] [&.is-selected]:bg-content-primary-soft [&.is-selected]:border-color-[color-mix(_in_srgb,_var(--dm-content-primary)_48%,_var(--dm-content-border)_)] [&.is-selected]:shadow-[inset_3px_0_0_var(--dm-content-primary)] dm-focus-ring is-selected"
+          : "min-w-0 grid grid-cols-[auto_minmax(0,_1fr)_auto] items-center gap-3 p-3 text-content-text text-left cursor-pointer appearance-none bg-content-panel-soft border-[var(--dm-border-width)_solid_var(--dm-content-border)] rounded-card hover:bg-content-primary-soft hover:border-color-[color-mix(_in_srgb,_var(--dm-content-primary)_48%,_var(--dm-content-border)_)] [&.is-selected]:bg-content-primary-soft [&.is-selected]:border-color-[color-mix(_in_srgb,_var(--dm-content-primary)_48%,_var(--dm-content-border)_)] [&.is-selected]:shadow-[inset_3px_0_0_var(--dm-content-primary)] dm-focus-ring",
       ),
       attributes: {
         type: "button",
@@ -580,12 +596,12 @@ function ContentDetailMediaPicker(props) {
       },
     },
     [
-      View({ class: "content-detail-media-choice-icon" }, [
+      View({ class: "w-control-height-sm h-control-height-sm grid place-items-center text-content-primary bg-content-panel rounded-content" }, [
         Timeless.Icon({ name: content_media_type_icon(media.type), size: 16 }),
       ]),
-      View({ class: "content-detail-media-choice-main" }, [
-        View({ class: "content-detail-media-choice-name" }, [media.name]),
-        View({ class: "content-detail-media-choice-meta" }, [
+      View({ class: "min-w-0" }, [
+        View({ class: "overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap" }, [media.name]),
+        View({ class: "mt-0-5 overflow-hidden text-content-muted text-xs text-ellipsis whitespace-nowrap" }, [
           [
             content_media_type_label(media.type),
             media.asset_label,
@@ -612,12 +628,12 @@ function ContentDetailExtension(props) {
   const content = props.content;
   const media = content_asset_previews(content, vm$);
   if (!media.length) {
-    return View({ class: "content-detail-media-empty" }, [
-      View({ class: "content-detail-media-empty-icon" }, [
+    return View({ class: "min-h-260px grid place-items-center content-center gap-3 p-6 text-content-muted text-center bg-content-panel-soft border-[var(--dm-border-width)_dashed_var(--dm-content-border)] rounded-content" }, [
+      View({ class: "w-12 h-12 grid place-items-center text-content-primary bg-content-primary-soft rounded-round" }, [
         Timeless.Icon({ name: "play", size: 24 }),
       ]),
-      View({ class: "content-detail-media-empty-title" }, ["还没有内容资产"]),
-      View({ class: "content-detail-media-empty-text" }, [
+      View({ class: "text-content-text text-base font-semibold" }, ["还没有内容资产"]),
+      View({ class: "max-w-42ch text-sm leading-relaxed" }, [
         "视频、音频、图片、HTML、PDF 及其他下载文件会显示在这里。",
       ]),
     ]);
@@ -625,19 +641,19 @@ function ContentDetailExtension(props) {
   const extension_vm$ = ContentDetailExtensionModel(media);
   return View(
     {
-      class: "content-detail-content-block",
+      class: "relative min-w-0",
       attributes: { n: "content-detail-content-block" },
     },
     [
       View(
         {
-          class: "content-detail-extension",
+          class: "grid gap-4",
           attributes: { n: "content-detail-extension" },
         },
         [
           View(
             {
-              class: "content-detail-media-stage-list",
+              class: "min-w-0",
               attributes: { n: "content-detail-media-stage-list" },
             },
             [
@@ -663,7 +679,7 @@ function ContentDetailExtension(props) {
           media.length > 1
             ? View(
                 {
-                  class: "content-detail-media-choices",
+                  class: "grid grid-cols-[repeat(auto-fit,_minmax(240px,_1fr))] gap-2 max-480:grid-cols-[minmax(0,_1fr)]",
                   attributes: { n: "content-detail-media-choices" },
                 },
                 [
@@ -719,28 +735,28 @@ function ContentDetailResource(props) {
     .filter(Boolean)
     .join(" · ");
   return View(
-    { class: "content-detail-resource" },
+    { class: "group-content-detail-resource min-w-0 grid items-center gap-3 p-[var(--dm-space-3)_0] grid-cols-[auto_minmax(0,_1fr)_auto] [&_+_.group-content-detail-resource]:border-top-[var(--dm-border-width)_solid_var(--dm-content-border)] max-680:grid-cols-[auto_minmax(0,_1fr)_auto] max-680:[&_>_.dm-button]:grid-column-[2_/_-1] max-680:[&_>_.dm-button]:justify-self-start" },
     [
-      View({ class: "content-detail-resource-icon" }, [
+      View({ class: "w-control-height-sm h-control-height-sm grid place-items-center text-content-primary bg-content-primary-soft rounded-content" }, [
         Timeless.Icon({ name: vm$.methods.fileTypeIcon(resource), size: 18 }),
       ]),
       View(
-        { class: "content-detail-resource-main" },
+        { class: "min-w-0" },
         [
           View(
             {
               class: deleted
-                ? "content-detail-resource-name is-deleted"
-                : "content-detail-resource-name",
+                ? "overflow-hidden text-content-text text-sm font-semibold text-ellipsis whitespace-nowrap [&.is-deleted]:text-content-muted [&.is-deleted]:text-decoration-line-through [&.is-deleted]:text-decoration-thickness-border-width is-deleted"
+                : "overflow-hidden text-content-text text-sm font-semibold text-ellipsis whitespace-nowrap [&.is-deleted]:text-content-muted [&.is-deleted]:text-decoration-line-through [&.is-deleted]:text-decoration-thickness-border-width",
               attributes: { title: name },
             },
             [name],
           ),
-          meta ? View({ class: "content-detail-resource-meta" }, [meta]) : null,
+          meta ? View({ class: "mt-1 overflow-hidden text-content-muted text-xs text-ellipsis whitespace-nowrap" }, [meta]) : null,
           resource.local_path
             ? View(
                 {
-                  class: "content-detail-resource-path",
+                  class: "mt-1 overflow-hidden text-content-muted text-xs text-ellipsis whitespace-nowrap",
                   attributes: { title: resource.local_path },
                 },
                 [resource.local_path],
@@ -752,7 +768,7 @@ function ContentDetailResource(props) {
         ? Tag(
             {
               name: "content-detail-status",
-              class: "content-detail-status content-detail-status-deleted",
+              class: "bg-content-panel-soft border-[var(--dm-border-width)_solid_currentColor] text-content-danger",
             },
             ["已删除"],
           )
@@ -775,9 +791,9 @@ function ContentDetailResource(props) {
 
 function ContentDetailResources(props) {
   if (!props.resources.length) {
-    return View({ class: "content-detail-empty" }, ["暂无资源文件"]);
+    return View({ class: "p-6 text-content-muted text-sm text-center" }, ["暂无资源文件"]);
   }
-  return View({ class: "content-detail-resource-list" }, [
+  return View({ class: "grid" }, [
     For({
       each: props.resources,
       render(resource) {
@@ -792,24 +808,24 @@ function ContentDetailTask(props) {
   const task = props.task || {};
   const status = vm$.methods.taskStatus(task.status);
   const name = task.name || task.source_url || `任务 ${task.id || ""}`;
-  return View({ class: "content-detail-task" }, [
-    View({ class: "content-detail-task-id" }, [task.id ? `#${task.id}` : "-"]),
-    View({ class: "content-detail-task-main" }, [
+  return View({ class: "group-content-detail-task min-w-0 grid items-center gap-3 p-[var(--dm-space-3)_0] grid-cols-[32px_minmax(0,_1fr)_auto] [&_+_.group-content-detail-task]:border-top-[var(--dm-border-width)_solid_var(--dm-content-border)] max-480:grid-cols-[minmax(0,_1fr)_auto]" }, [
+    View({ class: "text-content-muted font-mono text-xs max-480:hidden" }, [task.id ? `#${task.id}` : "-"]),
+    View({ class: "min-w-0" }, [
       View(
         {
-          class: "content-detail-task-name",
+          class: "overflow-hidden text-content-text text-sm font-semibold text-ellipsis whitespace-nowrap",
           attributes: { title: name },
         },
         [name],
       ),
-      View({ class: "content-detail-task-meta" }, [
+      View({ class: "mt-1 overflow-hidden text-content-muted text-xs text-ellipsis whitespace-nowrap" }, [
         vm$.methods.formatTime(task.updated_at || task.created_at),
       ]),
     ]),
     Tag(
       {
         name: "content-detail-status",
-        class: `content-detail-status content-detail-status-${status.tone}`,
+        class: `bg-content-panel-soft border-[var(--dm-border-width)_solid_currentColor] ${content_detail_status_classes[status.tone] || ""}`,
       },
       [status.label],
     ),
@@ -818,9 +834,9 @@ function ContentDetailTask(props) {
 
 function ContentDetailTasks(props) {
   if (!props.tasks.length) {
-    return View({ class: "content-detail-empty" }, ["暂无下载任务"]);
+    return View({ class: "p-6 text-content-muted text-sm text-center" }, ["暂无下载任务"]);
   }
-  return View({ class: "content-detail-task-list" }, [
+  return View({ class: "grid" }, [
     For({
       each: props.tasks,
       render(task) {
@@ -881,7 +897,7 @@ function ContentDetailRelation(props) {
     {
       type: clickable ? "button" : "div",
       class: [
-        "content-detail-relation dm-focus-ring",
+        "group-content-detail-relation w-full min-w-0 grid grid-cols-[auto_minmax(0,_1fr)_auto] gap-3 items-center p-[var(--dm-space-3)_0] text-inherit text-left bg-transparent border-0 [&.is-clickable]:cursor-pointer [&_+_.group-content-detail-relation]:border-top-[var(--dm-border-width)_solid_var(--dm-content-border)] dm-focus-ring",
         clickable ? "is-clickable" : "",
       ]
         .filter(Boolean)
@@ -897,18 +913,18 @@ function ContentDetailRelation(props) {
       },
     },
     [
-      View({ class: "content-detail-relation-icon" }, [
+      View({ class: "w-control-height-sm h-control-height-sm grid place-items-center text-content-primary bg-content-primary-soft rounded-content" }, [
         Timeless.Icon({ name: "git-branch", size: 17 }),
       ]),
-      View({ class: "content-detail-relation-main" }, [
+      View({ class: "min-w-0" }, [
         View(
           {
-            class: "content-detail-relation-name",
+            class: "overflow-hidden text-content-text text-sm font-medium text-ellipsis whitespace-nowrap",
             attributes: { title },
           },
           [title],
         ),
-        View({ class: "content-detail-relation-meta" }, [
+        View({ class: "mt-1 text-content-muted text-xs" }, [
           [...props.item.labels, subtype].filter(Boolean).join(" · "),
         ]),
       ]),
@@ -920,9 +936,9 @@ function ContentDetailRelation(props) {
 function ContentDetailRelations(props) {
   const items = content_related_items(props.content);
   if (!items.length) {
-    return View({ class: "content-detail-empty" }, ["暂无关联内容"]);
+    return View({ class: "p-6 text-content-muted text-sm text-center" }, ["暂无关联内容"]);
   }
-  return View({ class: "content-detail-relation-list" }, [
+  return View({ class: "grid" }, [
     For({
       each: items,
       render(item) {
@@ -944,7 +960,7 @@ function ContentDetailDescription(props) {
         class: computed(
           vm$.state.expanded,
           (expanded) =>
-            `content-detail-description${expanded ? "" : " is-collapsed"}`,
+            `text-content-muted text-base leading-relaxed whitespace-pre-wrap overflow-wrap-anywhere [&.is-collapsed]:-webkit-box [&.is-collapsed]:-webkit-box-orient-vertical [&.is-collapsed]:-webkit-line-clamp-6 [&.is-collapsed]:overflow-hidden${expanded ? "" : " is-collapsed"}`,
         ),
         attributes: { n: "content-detail-description" },
         onMounted(event) {
@@ -982,7 +998,7 @@ function ContentDetailFileNavigationButton(props) {
   return Button(
     {
       store: vm$.ui[`btn_${direction}$`],
-      class: `content-detail-content-nav-button is-${props.direction}`,
+      class: `absolute top-0 z-2 w-72px h-full p-0 border-0 bg-transparent cursor-pointer [&.is-left]:left-0 [&.is-left]:bg-[linear-gradient(_to_right,_rgb(0_0_0_/_22%),_transparent_)] [&.is-left:hover:not(:disabled)]:bg-[linear-gradient(_to_right,_rgb(0_0_0_/_28%),_transparent_)] [&.is-left:focus-visible:not(:disabled)]:bg-[linear-gradient(_to_right,_rgb(0_0_0_/_28%),_transparent_)] [&.is-right]:right-0 [&.is-right]:bg-[linear-gradient(_to_left,_rgb(0_0_0_/_22%),_transparent_)] [&.is-right:hover:not(:disabled)]:bg-[linear-gradient(_to_left,_rgb(0_0_0_/_28%),_transparent_)] [&.is-right:focus-visible:not(:disabled)]:bg-[linear-gradient(_to_left,_rgb(0_0_0_/_28%),_transparent_)] [&_>_svg]:box-sizing-content-box [&_>_svg]:w-18px [&_>_svg]:h-18px [&_>_svg]:p-13px [&_>_svg]:grid [&_>_svg]:place-items-center [&_>_svg]:text-color-text-primary [&_>_svg]:bg-transparent [&_>_svg]:border-[var(--dm-border-width)_solid_var(--dm-color-border)] [&_>_svg]:rounded-[50%] [&_>_svg]:shadow-sm [&_>_svg]:transition-[color_0.15s_ease,_background-color_0.15s_ease,_border-color_0.15s_ease] [&:hover:not(:disabled)_>_svg]:text-color-primary [&:hover:not(:disabled)_>_svg]:bg-color-bg-surface [&:hover:not(:disabled)_>_svg]:border-color-color-primary-border [&:focus-visible:not(:disabled)_>_svg]:text-color-primary [&:focus-visible:not(:disabled)_>_svg]:bg-color-bg-surface [&:focus-visible:not(:disabled)_>_svg]:border-color-color-primary-border is-${props.direction}`,
       attributes: {
         n: semantic_name,
         type: "button",
@@ -1008,41 +1024,41 @@ function ContentDetailMain(props) {
   const content = props.content;
   const description = String(content.description || "").trim();
   const cover_url = vm$.methods.coverURL(content);
-  return View({ class: "content-detail-layout" }, [
+  return View({ class: "grid gap-5" }, [
     View(
       {
         class: [
-          "content-detail-summary dm-panel",
-          cover_url ? "" : "content-detail-summary-no-cover",
+          "group-content-detail-summary grid grid-cols-[minmax(220px,_320px)_minmax(0,_1fr)] gap-6 p-5 max-900:grid-cols-[minmax(180px,_240px)_minmax(0,_1fr)] max-680:grid-cols-[minmax(0,_1fr)] max-680:p-4 dm-panel",
+          cover_url ? "" : "[.group-content-detail-summary&]:grid-cols-[minmax(0,_1fr)]",
         ]
           .filter(Boolean)
           .join(" "),
       },
       [
         cover_url
-          ? View({ class: "content-detail-cover" }, [
+          ? View({ class: "min-w-0 overflow-hidden rounded-content max-680:w-full max-680:max-w-360px max-680:m-[0_auto]" }, [
               ContentDetailCover({ store: vm$, content, coverURL: cover_url }),
             ])
           : null,
         View(
-          { class: "content-detail-info" },
+          { class: "min-w-0 flex items-start flex-col gap-4" },
           [
-            View({ class: "content-card-tags" }, [
+            View({ class: "flex items-center gap-2" }, [
               ContentDetailPlatform({ store: vm$, content }),
-              Tag({ name: "content-type-badge", class: "content-type-badge" }, [
+              Tag({ name: "content-type-badge", class: "text-content-muted bg-content-panel-soft border-[var(--dm-border-width)_solid_var(--dm-content-border)]" }, [
                 vm$.methods.typeLabel(content.content_type),
               ]),
             ]),
             View(
               {
-                class: "content-detail-title",
+                class: "text-content-text font-display text-[clamp(var(--dm-font-size-2xl),_3vw,_var(--dm-font-size-6xl))] font-semibold leading-tight overflow-wrap-anywhere max-480:text-2xl",
                 attributes: { n: "content-detail-title", title: content.title },
               },
               [content.title],
             ),
             View(
               {
-                class: "content-detail-publish-time",
+                class: "inline-flex items-center gap-1-5 text-content-muted text-sm",
                 attributes: { n: "content-detail-publish-time" },
               },
               [
@@ -1102,14 +1118,14 @@ function ContentDetailMain(props) {
 }
 
 function ContentDetailSkeleton() {
-  return View({ class: "content-detail-layout" }, [
-    View({ class: "content-detail-summary dm-panel" }, [
-      View({ class: "content-detail-cover content-skeleton" }),
-      View({ class: "content-detail-info" }, [
-        View({ class: "content-skeleton content-skeleton-tag" }),
-        View({ class: "content-skeleton content-skeleton-title" }),
-        View({ class: "content-skeleton content-skeleton-line" }),
-        View({ class: "content-skeleton content-skeleton-line-short" }),
+  return View({ class: "grid gap-5" }, [
+    View({ class: "group-content-detail-summary grid grid-cols-[minmax(220px,_320px)_minmax(0,_1fr)] gap-6 p-5 max-900:grid-cols-[minmax(180px,_240px)_minmax(0,_1fr)] max-680:grid-cols-[minmax(0,_1fr)] max-680:p-4 dm-panel" }, [
+      View({ class: "min-w-0 overflow-hidden rounded-content max-680:w-full max-680:max-w-360px max-680:m-[0_auto] relative overflow-hidden bg-skeleton-bg [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite]" }),
+      View({ class: "min-w-0 flex items-start flex-col gap-4" }, [
+        View({ class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-16" }),
+        View({ class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] w-[min(360px,_80%)] h-4" }),
+        View({ class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-[min(180px,_80%)]" }),
+        View({ class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-[min(100px,_72%)]" }),
       ]),
     ]),
   ]);
@@ -1117,7 +1133,7 @@ function ContentDetailSkeleton() {
 
 function ContentDetailBody(props) {
   const vm$ = props.store;
-  return View({ class: "content-main content-detail-main container" }, [
+  return View({ class: "group-content-main flex-[1_1_auto] min-w-0 p-4 content-detail-main " }, [
     Show({
       when: vm$.state.loading,
       ok() {
@@ -1127,13 +1143,13 @@ function ContentDetailBody(props) {
         return Show({
           when: computed(vm$.state.error, (error) => Boolean(error)),
           ok() {
-            return View({ class: "content-state content-state--error" }, [
+            return View({ class: "border-style-solid shadow-sm min-h-320px grid content-center justify-items-center gap-3 p-8 text-content-muted text-center border-0 [&_>_svg]:text-color-primary bg-[radial-gradient(_circle_at_50%_0,_var(--dm-color-danger-soft),_transparent_42%_),_var(--dm-color-bg-surface)]" }, [
               BrandError({
                 size: 132,
                 name: "content-detail-error-symbol",
               }),
-              View({ class: "content-state-title" }, ["内容加载失败"]),
-              View({ class: "content-state-text" }, [vm$.state.error]),
+              View({ class: "group-content-state-title text-content-text text-lg font-semibold" }, ["内容加载失败"]),
+              View({ class: "group-content-state-text max-w-480px text-md leading-relaxed" }, [vm$.state.error]),
               ContentDetailAction({
                 name: "content-detail-retry-action",
                 icon: "refresh-cw",
@@ -1157,9 +1173,9 @@ function ContentDetailBody(props) {
                 });
               },
               else() {
-                return View({ class: "content-state" }, [
+                return View({ class: "bg-[radial-gradient(_circle_at_50%_0,_var(--dm-color-primary-soft),_transparent_42%_),_var(--dm-color-bg-surface)] border-style-solid shadow-sm min-h-320px grid content-center justify-items-center gap-3 p-8 text-content-muted text-center border-0 [&_>_svg]:text-color-primary" }, [
                   Timeless.Icon({ name: "inbox", size: 36 }),
-                  View({ class: "content-state-title" }, ["暂无内容详情"]),
+                  View({ class: "group-content-state-title text-content-text text-lg font-semibold" }, ["暂无内容详情"]),
                 ]);
               },
             });
@@ -1175,7 +1191,7 @@ function ContentDetailPageView(props) {
   return View(
     {
       class: [
-        "content-page content-detail-page page",
+        "group-content-page min-h-full flex flex-col bg-content-bg text-content-text min-h-full [&.is-embedded]:min-h-0 [&.is-embedded]:flex-1 [&.is-embedded]:overflow-auto min-w-0 min-h-full font-sans",
         props.embedded ? "is-embedded" : "",
       ]
         .filter(Boolean)

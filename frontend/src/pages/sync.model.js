@@ -110,7 +110,7 @@ export function SyncPageModel(props) {
 
   function device_status_class_names(status) {
     const modifier = status === "unknown" ? "is-hidden" : `is-${status}`;
-    return `sync-server-card__chip sync-server-card__status ${modifier}`;
+    return `inline-flex flex-[0_0_auto] items-center gap-1 p-[var(--dm-space-0-5)_var(--dm-space-1-5)] text-content-muted rounded-sm bg-content-panel-soft text-xs leading-snug [&.is-hidden]:hidden [&::before]:w-6px [&::before]:h-6px [&::before]:flex-[0_0_auto] [&::before]:rounded-[50%] [&::before]:bg-currentColor [&::before]:content-[""] [&::before]:opacity-[0.5] [&.is-checking]:text-content-muted [&.is-online]:text-color-success [&.is-online]:bg-color-success-soft [&.is-online::before]:opacity-1 [&.is-offline]:text-color-danger [&.is-offline]:bg-color-danger-soft [&.is-offline::before]:opacity-1 ${modifier}`;
   }
 
   function make_server(raw) {
@@ -133,9 +133,7 @@ export function SyncPageModel(props) {
       version_class: computed(
         version_,
         (version) =>
-          `sync-server-card__chip sync-server-card__version${
-            version ? "" : " is-hidden"
-          }`,
+          `inline-flex flex-[0_0_auto] items-center gap-1 p-[var(--dm-space-0-5)_var(--dm-space-1-5)] text-content-muted rounded-sm bg-content-panel-soft text-xs leading-snug [&.is-hidden]:hidden font-[var(--dm-font-family-mono,_monospace)]${version ? "" : " is-hidden"}`,
       ),
       device_status: device_status_,
       device_message: device_message_,

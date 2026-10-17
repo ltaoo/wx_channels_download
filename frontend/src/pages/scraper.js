@@ -8,6 +8,14 @@ import {
 
 import { ScraperPageViewModel } from "./scraper.model.js";
 
+const home_typed_detail_classes = {
+  __proto__: null,
+  "video": "[&_.group-home-detail-card-icon]:bg-color-accent-violet-soft [&_.group-home-detail-card-icon]:text-color-accent-violet",
+  "live": "[&_.group-home-detail-card-icon]:bg-color-accent-violet-soft [&_.group-home-detail-card-icon]:text-color-accent-violet",
+  "article": "[&_.group-home-detail-card-icon]:bg-color-accent-sky-soft [&_.group-home-detail-card-icon]:text-color-accent-sky",
+  "album": "[&_.group-home-detail-card-icon]:bg-color-accent-amber-soft [&_.group-home-detail-card-icon]:text-color-accent-amber",
+};
+
 const {
   Alert,
   AlertTitle,
@@ -54,7 +62,7 @@ function ScraperPageView(props) {
 
   return View(
     {
-      class: "content-page home-page page",
+      class: "group-content-page min-h-full flex flex-col bg-content-bg text-content-text min-h-full bg-content-bg min-w-0 min-h-full font-sans",
       onMounted() {
         vm$.methods.connectProgress();
         unlisten_route_change = props.history.onRouteChange(({ view }) => {
@@ -77,28 +85,28 @@ function ScraperPageView(props) {
       },
     },
     [
-      View({ class: "content-main home-main container" }, [
-        View({ class: "home-content" }, [
+      View({ class: "group-content-main flex-[1_1_auto] min-w-0 p-4 home-main " }, [
+        View({ class: "flex flex-col gap-6" }, [
           View(
             {
-              class: "home-workbench dm-panel",
+              class: "relative min-w-0 p-6 flex flex-col gap-5 border-[1px_solid_var(--dm-content-border)] rounded-card bg-content-panel shadow-md [&::before]:content-[\"\"] [&::before]:absolute [&::before]:top-[calc(var(--dm-space-2)_*_-1)] [&::before]:left-7 [&::before]:w-16 [&::before]:h-2 [&::before]:bg-color-primary-fill [&::before]:rounded-[var(--dm-radius-content)_var(--dm-radius-content)_0_0] max-520:p-2-5 dm-panel",
               attributes: { "aria-busy": vm$.state.busy },
             },
             [
-              View({ class: "home-workbench-heading" }, [
-                View({ class: "home-workbench-heading-icon" }, [
+              View({ class: "flex items-start justify-between gap-3 max-520:flex-wrap" }, [
+                View({ class: "w-control-height-lg h-control-height-lg grid flex-[0_0_auto] place-items-center text-color-on-primary bg-color-primary-fill rounded-content shadow-[0_var(--dm-space-2)_var(--dm-space-5)_var(--dm-color-signal-glow)]" }, [
                   Timeless.Icon({ name: "inbox", size: 20 }),
                 ]),
-                View({ class: "home-workbench-heading-copy" }, [
-                  View({ class: "home-workbench-kicker" }, ["新建归档任务"]),
-                  View({ class: "home-workbench-title" }, [
+                View({ class: "min-w-0 flex-[1_1_auto]" }, [
+                  View({ class: "mb-1 text-color-primary text-caption font-semibold tracking-wide text-transform-uppercase" }, ["新建归档任务"]),
+                  View({ class: "text-content-text font-display text-xl font-semibold leading-tight tracking-tight" }, [
                     "粘贴内容链接，开始解析",
                   ]),
-                  View({ class: "home-workbench-description" }, [
+                  View({ class: "mt-1-5 text-content-muted text-sm leading-base" }, [
                     "识别内容、作者与媒体资源，并生成可追踪的下载任务。",
                   ]),
                 ]),
-                View({ class: "home-header-actions" }, [
+                View({ class: "ml-auto flex items-center max-520:w-full" }, [
                   ScraperPlatformStatus({ store: vm$ }),
                 ]),
               ]),
@@ -354,7 +362,7 @@ function ScraperPageForm(props) {
   return View(
     {
       type: "form",
-      class: "home-form",
+      class: "grid grid-cols-[minmax(0,_1fr)_auto] gap-3 pt-1 max-520:grid-cols-[minmax(0,_1fr)]",
       onSubmit(event) {
         event.preventDefault();
         vm$.methods.submit();
@@ -363,7 +371,7 @@ function ScraperPageForm(props) {
     [
       View(
         {
-          class: "home-search-field",
+          class: "w-full max-w-none",
           attributes: { n: "scraper-url-field" },
         },
         [
@@ -389,7 +397,7 @@ function ScraperPageForm(props) {
           }),
         ],
       ),
-      View({ class: "home-actions" }, [
+      View({ class: "[&_>_.dm-button]:min-w-120px flex items-center justify-end gap-2 max-520:w-full max-520:[&_>_.dm-button]:flex-[1_1_auto] max-520:[&_>_.dm-button]:w-full" }, [
         Show({
           when: vm$.state.loading,
           ok() {
@@ -415,7 +423,7 @@ function ScraperPageForm(props) {
             });
           },
           else() {
-            return View({ class: "home-idle-actions" }, [
+            return View({ class: "[&_>_.dm-button]:min-w-120px flex items-center justify-end gap-2 max-520:w-full max-520:flex-wrap max-520:[&_>_.dm-button]:flex-[1_1_auto] max-520:[&_>_.dm-button]:w-full" }, [
               Button(
                 {
                   store: vm$.ui.btn_submit$,
@@ -442,13 +450,13 @@ function ScraperContentCover(props) {
   return Show({
     when: content.cover_url,
     ok() {
-      return View({ class: "home-content-cover" }, [
+      return View({ class: "relative min-h-260px overflow-hidden border-right-[1px_solid_var(--dm-content-border)] bg-content-panel-soft max-620:min-h-0 max-620:aspect-ratio-[16_/_9] max-620:border-right-0 max-620:border-bottom-[1px_solid_var(--dm-content-border)]" }, [
         // View({ class: "home-content-cover-fallback" }, [
         //   Timeless.Icon({ name: "file", size: 34 }),
         //   content.content_type_name,
         // ]),
         LazyImg({
-          class: "home-content-cover-image",
+          class: "absolute inset-0 w-full h-full block object-cover",
           src: content.cover_url,
           alt: content.title,
           attributes: {
@@ -502,15 +510,15 @@ function ScraperContentCard(props) {
   const content = vm$.state.content;
   const account = vm$.state.account;
   const description = computed(content.description, ScraperDecodeHTMLText);
-  return View({ class: "home-card home-content-card dm-panel" }, [
-    View({ class: "home-card-heading" }, [
-      View({ class: "home-card-title-group" }, [
-        View({ class: "home-card-icon" }, [
+  return View({ class: "min-w-0 overflow-hidden border-[1px_solid_var(--dm-content-border)] rounded-card bg-content-panel shadow-content-shadow home-content-card dm-panel" }, [
+    View({ class: "group-home-card-heading min-h-58px p-[var(--dm-space-2-5)_var(--dm-space-3-5)] flex items-center justify-between gap-3 border-bottom-[1px_solid_var(--dm-content-border)] bg-content-panel max-520:pr-3 max-520:pl-3 max-520:flex-wrap" }, [
+      View({ class: "min-w-0 flex items-center gap-2-5" }, [
+        View({ class: "flex items-center justify-center bg-content-primary-soft text-content-primary w-34px h-34px flex-[0_0_auto] rounded-content" }, [
           Timeless.Icon({ name: "file", size: 17 }),
         ]),
         View({}, [
-          View({ class: "home-card-kicker" }, ["CONTENT"]),
-          View({ class: "home-card-title" }, ["内容"]),
+          View({ class: "text-content-muted text-caption font-750 tracking-0 leading-[1.2]" }, ["CONTENT"]),
+          View({ class: "mt-0-5 text-ui font-680 leading-[1.2]" }, ["内容"]),
         ]),
       ]),
     ]),
@@ -518,15 +526,15 @@ function ScraperContentCard(props) {
       {
         class: computed(content.cover_url, (cover_url) =>
           cover_url
-            ? "home-content-card-body"
-            : "home-content-card-body is-coverless",
+            ? "min-h-0 grid grid-cols-[minmax(220px,_31%)_minmax(0,_1fr)] [&.is-coverless]:grid-cols-[minmax(0,_1fr)] max-620:grid-cols-[minmax(0,_1fr)]"
+            : "min-h-0 grid grid-cols-[minmax(220px,_31%)_minmax(0,_1fr)] [&.is-coverless]:grid-cols-[minmax(0,_1fr)] max-620:grid-cols-[minmax(0,_1fr)] is-coverless",
         ),
       },
       [
         ScraperContentCover({ content }),
-        View({ class: "home-content-info" }, [
+        View({ class: "min-w-0 flex flex-col items-start p-4-5 max-520:p-4" }, [
           View(
-            { class: "home-badges", attributes: { n: "scraper-content-tags" } },
+            { class: "flex items-center flex-wrap gap-1-5", attributes: { n: "scraper-content-tags" } },
             [
               PlatformTag({
                 name: "scraper-content-platform",
@@ -540,19 +548,19 @@ function ScraperContentCard(props) {
           ),
           View(
             {
-              class: "home-content-title",
+              class: "w-full mt-3-5 -webkit-box overflow-hidden text-content-text text-xl font-720 leading-[1.42] overflow-wrap-anywhere -webkit-box-orient-vertical -webkit-line-clamp-2",
               attributes: { title: content.title },
             },
             [content.title],
           ),
-          View({ class: "home-content-meta" }, [
+          View({ class: "mt-3 flex items-center gap-1-5 text-content-muted text-sm" }, [
             Timeless.Icon({ name: "clock3", size: 14 }),
             content.publish_time_text,
           ]),
           Show({
             when: content.show_description,
             ok() {
-              return View({ class: "home-content-description" }, [description]);
+              return View({ class: "w-full mt-2 -webkit-box overflow-hidden text-content-muted text-sm leading-[1.6] overflow-wrap-anywhere -webkit-box-orient-vertical -webkit-line-clamp-2" }, [description]);
             },
           }),
           ScraperContentAccount({ account }),
@@ -566,15 +574,15 @@ function ScraperContentRelationNode(props) {
   const node = props.node || {};
   return View(
     {
-      class: "home-content-relation-node",
+      class: "flex-[1_1_0] min-w-0 p-[var(--dm-space-2-5)_var(--dm-space-3)] block border-[1px_solid_var(--dm-content-border)] rounded-content bg-content-panel-soft text-inherit text-left",
       attributes: {
         title: node.has_url ? node.url : node.id || node.title,
       },
     },
     [
-      View({ class: "home-content-relation-node-type" }, [node.type_name]),
-      View({ class: "home-content-relation-node-title" }, [node.title]),
-      View({ class: "home-content-relation-node-meta" }, [node.meta_text]),
+      View({ class: "text-content-muted text-caption font-700" }, [node.type_name]),
+      View({ class: "mt-1 overflow-hidden text-content-text text-md font-650 text-ellipsis whitespace-nowrap" }, [node.title]),
+      View({ class: "text-content-muted text-caption mt-1 overflow-hidden font-mono text-ellipsis whitespace-nowrap" }, [node.meta_text]),
     ],
   );
 }
@@ -584,13 +592,13 @@ function HomeContentInfluencerEntity(props) {
   return View(
     {
       class: [
-        "home-content-influencer-entity",
+        "min-w-0 flex items-baseline gap-1 text-content-text leading-[1.2] [&.is-content]:max-w-180px [&.is-content]:text-content-muted",
         props.content ? "is-content" : "is-influencer",
       ].join(" "),
     },
     [
-      View({ class: "home-content-influencer-entity-type" }, [node.type_name]),
-      View({ class: "home-content-influencer-entity-title" }, [node.title]),
+      View({ class: "flex-[0_0_auto] text-content-muted font-mono text-caption" }, [node.type_name]),
+      View({ class: "min-w-0 overflow-hidden text-xs font-620 text-ellipsis whitespace-nowrap" }, [node.title]),
     ],
   );
 }
@@ -601,19 +609,19 @@ function ScraperContentInfluencers(props) {
   return Show({
     when: influencers.present,
     ok() {
-      return View({ class: "home-content-influencers" }, [
-        View({ class: "home-content-influencer-heading" }, [
-          View({ class: "home-content-influencer-title" }, [
+      return View({ class: "p-[var(--dm-space-1-5)_var(--dm-space-2-5)_var(--dm-space-2)]" }, [
+        View({ class: "p-0 flex items-center justify-between gap-1-5" }, [
+          View({ class: "inline-flex items-center gap-1 text-content-text text-xs font-650 [&_svg]:text-content-primary" }, [
             Timeless.Icon({ name: "user", size: 12 }),
             "相关人物",
           ]),
-          View({ class: "home-content-influencer-count" }, [
+          View({ class: "text-content-muted text-caption font-600" }, [
             influencers.count_text,
           ]),
         ]),
         View(
           {
-            class: "home-content-relation-list home-content-influencer-list",
+            class: " p-[var(--dm-space-1)_0_0] [&_.group-home-content-relation_+_.group-home-content-relation]:mt-1 [&_.group-home-content-relation_+_.group-home-content-relation]:pt-0 [&_.group-home-content-relation_+_.group-home-content-relation]:border-top-0",
           },
           [
             For({
@@ -624,19 +632,19 @@ function ScraperContentInfluencers(props) {
                 return View(
                   {
                     class:
-                      "home-content-relation home-content-influencer-relation",
+                      "group-home-content-relation [&_+_.group-home-content-relation]:mt-2-5 [&_+_.group-home-content-relation]:pt-2-5 [&_+_.group-home-content-relation]:border-top-[1px_solid_var(--dm-content-border)] min-w-0 block [&_.group-home-content-relation-flow]:w-auto [&_.group-home-content-relation-flow]:max-w-full [&_.group-home-content-relation-flow]:inline-flex [&_.group-home-content-relation-flow]:flex-row [&_.group-home-content-relation-flow]:items-baseline [&_.group-home-content-relation-flow]:gap-1-5 [&_.group-home-content-relation-edge]:min-w-0 [&_.group-home-content-relation-edge]:inline-flex [&_.group-home-content-relation-edge]:flex-none [&_.group-home-content-relation-edge]:flex-row [&_.group-home-content-relation-edge]:items-center [&_.group-home-content-relation-edge]:gap-1 [&_.group-home-content-relation-edge]:text-content-muted [&_.group-home-content-relation-edge]:opacity-[0.72] [&_.group-home-content-relation-edge]:whitespace-nowrap [&_.group-home-content-relation-edge_svg]:transform-none [&_.group-home-content-relation-edge-name]:text-content-muted [&_.group-home-content-relation-edge-name]:text-caption [&_.group-home-content-relation-edge-name]:font-600 [&_.group-home-content-relation-edge-type]:text-caption",
                   },
                   [
-                    View({ class: "home-content-relation-flow" }, [
+                    View({ class: "group-home-content-relation-flow min-w-0 flex items-center gap-2-5 max-620:flex-col max-620:items-stretch" }, [
                       HomeContentInfluencerEntity({
                         node: relation.source,
                       }),
-                      View({ class: "home-content-relation-edge" }, [
+                      View({ class: "group-home-content-relation-edge flex-[0_0_96px] min-w-0 flex flex-col items-center gap-1 text-content-primary text-center max-620:[&_svg]:transform-[rotate(90deg)] max-620:basis-auto" }, [
                         Timeless.Icon({ name: "arrow-right", size: 11 }),
-                        View({ class: "home-content-relation-edge-name" }, [
+                        View({ class: "group-home-content-relation-edge-name text-content-text text-xs font-680" }, [
                           relation.role_text,
                         ]),
-                        View({ class: "home-content-relation-edge-type" }, [
+                        View({ class: "group-home-content-relation-edge-type text-content-muted text-caption font-mono" }, [
                           relation.type,
                         ]),
                       ]),
@@ -662,18 +670,18 @@ function ScraperContentRelations(props) {
   return Show({
     when: relations.present,
     ok() {
-      return View({ class: "home-card home-content-relations dm-panel" }, [
-        View({ class: "home-card-heading" }, [
-          View({ class: "home-card-title-group" }, [
-            View({ class: "home-card-icon" }, [
+      return View({ class: "min-w-0 overflow-hidden border-[1px_solid_var(--dm-content-border)] rounded-card bg-content-panel shadow-content-shadow home-content-relations dm-panel" }, [
+        View({ class: "group-home-card-heading min-h-58px p-[var(--dm-space-2-5)_var(--dm-space-3-5)] flex items-center justify-between gap-3 border-bottom-[1px_solid_var(--dm-content-border)] bg-content-panel max-520:pr-3 max-520:pl-3 max-520:flex-wrap" }, [
+          View({ class: "min-w-0 flex items-center gap-2-5" }, [
+            View({ class: "flex items-center justify-center bg-content-primary-soft text-content-primary w-34px h-34px flex-[0_0_auto] rounded-content" }, [
               Timeless.Icon({ name: "git-branch", size: 17 }),
             ]),
             View({}, [
-              View({ class: "home-card-kicker" }, ["RELATIONS"]),
-              View({ class: "home-card-title" }, ["内容关联"]),
+              View({ class: "text-content-muted text-caption font-750 tracking-0 leading-[1.2]" }, ["RELATIONS"]),
+              View({ class: "mt-0-5 text-ui font-680 leading-[1.2]" }, ["内容关联"]),
             ]),
           ]),
-          Tag({ name: "home-detail-badge", class: "home-detail-badge" }, [
+          Tag({ name: "home-detail-badge", class: "flex-[0_0_auto] border-[1px_solid_color-mix(in_srgb,_var(--dm-content-primary)_28%,_var(--dm-content-border))] bg-content-primary-soft text-content-primary font-variant-numeric-tabular-nums max-520:max-w-[44%] max-520:overflow-hidden max-520:text-ellipsis max-520:whitespace-nowrap" }, [
             relations.count_text,
           ]),
         ]),
@@ -682,7 +690,7 @@ function ScraperContentRelations(props) {
           ok() {
             return View(
               {
-                class: "home-content-relation-list",
+                class: "p-[var(--dm-space-3)_var(--dm-space-3-5)]",
               },
               [
                 For({
@@ -690,11 +698,11 @@ function ScraperContentRelations(props) {
                   each: relations.items,
                   render(chain_) {
                     const chain = ScraperDetailValue(chain_);
-                    return View({ class: "home-content-relation" }, [
-                      View({ class: "home-content-relation-path" }, [
+                    return View({ class: "group-home-content-relation [&_+_.group-home-content-relation]:mt-2-5 [&_+_.group-home-content-relation]:pt-2-5 [&_+_.group-home-content-relation]:border-top-[1px_solid_var(--dm-content-border)] min-w-0 block" }, [
+                      View({ class: "mb-2 text-content-muted font-mono text-xs font-700 tracking-[0.02em]" }, [
                         chain.type_path_text,
                       ]),
-                      View({ class: "home-content-relation-flow" }, [
+                      View({ class: "group-home-content-relation-flow min-w-0 flex items-center gap-2-5 max-620:flex-col max-620:items-stretch" }, [
                         For({
                           key: "key",
                           each: chain.segments,
@@ -707,7 +715,7 @@ function ScraperContentRelations(props) {
                             }
                             const edge = segment.edge || {};
                             return View(
-                              { class: "home-content-relation-edge" },
+                              { class: "group-home-content-relation-edge flex-[0_0_96px] min-w-0 flex flex-col items-center gap-1 text-content-primary text-center max-620:[&_svg]:transform-[rotate(90deg)] max-620:basis-auto" },
                               [
                                 Timeless.Icon({
                                   name: "arrow-right",
@@ -715,13 +723,13 @@ function ScraperContentRelations(props) {
                                 }),
                                 View(
                                   {
-                                    class: "home-content-relation-edge-name",
+                                    class: "group-home-content-relation-edge-name text-content-text text-xs font-680",
                                   },
                                   [edge.type_name],
                                 ),
                                 View(
                                   {
-                                    class: "home-content-relation-edge-type",
+                                    class: "group-home-content-relation-edge-type text-content-muted text-caption font-mono",
                                   },
                                   [edge.type],
                                 ),
@@ -748,10 +756,10 @@ function ScraperContentAccount(props) {
   return Show({
     when: account.present,
     ok() {
-      return View({ class: "home-content-account" }, [
+      return View({ class: "w-full mt-3 flex items-center gap-2-5" }, [
         HomeAccountAvatar({ account }),
-        View({ class: "home-content-account-main" }, [
-          View({ class: "home-account-name" }, [account.nickname]),
+        View({ class: "min-w-0 flex-[1_1_auto]" }, [
+          View({ class: "min-w-0 overflow-hidden text-content-text text-md font-720 leading-[1.35] text-ellipsis whitespace-nowrap" }, [account.nickname]),
         ]),
       ]);
     },
@@ -760,13 +768,13 @@ function ScraperContentAccount(props) {
 
 function HomeAccountAvatar(props) {
   const account = props.account;
-  return View({ class: "home-account-avatar" }, [
-    View({ class: "home-account-avatar-fallback" }, [account.avatar_fallback]),
+  return View({ class: "relative w-38px h-38px flex-[0_0_auto] overflow-hidden border-[2px_solid_var(--dm-content-panel)] rounded-avatar bg-content-primary-soft shadow-[0_0_0_1px_var(--dm-content-border)]" }, [
+    View({ class: "absolute inset-0 w-full h-full flex items-center justify-center text-content-primary text-ui font-720" }, [account.avatar_fallback]),
     Show({
       when: account.avatar_url,
       ok() {
         return LazyImg({
-          class: "home-account-avatar-image",
+          class: "absolute inset-0 w-full h-full block object-cover",
           src: account.avatar_url,
           alt: account.nickname,
           attributes: {
@@ -793,7 +801,7 @@ function ScraperVideoDetailMedia(props) {
       return View(
         {
           class: [
-            "home-detail-video-frame",
+            "group-home-detail-video-frame relative w-full mb-2-5 overflow-hidden border-[1px_solid_var(--dm-content-border)] rounded-content bg-color-media-canvas aspect-ratio-[16_/_9] [&.is-playing_.group-home-detail-video-play-position]:opacity-0 [&.is-playing_.group-home-detail-video-play-position]:pointer-events-none [&.is-playing_.group-home-detail-video-play-position]:transform-[translate(-50%,_-50%)_scale(0.96)]",
             media.has_video ? "has-video" : "",
             media.has_cover ? "has-cover" : "",
           ]
@@ -806,7 +814,7 @@ function ScraperVideoDetailMedia(props) {
             ok() {
               return Timeless.Video(
                 {
-                  class: "home-detail-video",
+                  class: "absolute inset-0 w-full h-full block bg-color-media-canvas object-contain",
                   attributes: {
                     src: media.video_url,
                     poster: media.cover_url,
@@ -818,7 +826,7 @@ function ScraperVideoDetailMedia(props) {
                   },
                   onPlay(event) {
                     const root = event.currentTarget.closest(
-                      ".home-detail-video-frame",
+                      ".group-home-detail-video-frame",
                     );
                     if (root) {
                       root.classList.add("is-playing");
@@ -826,7 +834,7 @@ function ScraperVideoDetailMedia(props) {
                   },
                   onPause(event) {
                     const root = event.currentTarget.closest(
-                      ".home-detail-video-frame",
+                      ".group-home-detail-video-frame",
                     );
                     if (root) {
                       root.classList.remove("is-playing");
@@ -834,7 +842,7 @@ function ScraperVideoDetailMedia(props) {
                   },
                   onEnded(event) {
                     const root = event.currentTarget.closest(
-                      ".home-detail-video-frame",
+                      ".group-home-detail-video-frame",
                     );
                     if (root) {
                       root.classList.remove("is-playing");
@@ -846,7 +854,7 @@ function ScraperVideoDetailMedia(props) {
             },
             else() {
               return LazyImg({
-                class: "home-detail-video-cover",
+                class: "absolute inset-0 w-full h-full block object-cover",
                 src: media.cover_url,
                 alt: detail.title,
                 attributes: {
@@ -861,7 +869,7 @@ function ScraperVideoDetailMedia(props) {
             ok() {
               return View(
                 {
-                  class: "home-detail-video-play-position",
+                  class: "group-home-detail-video-play-position absolute top-[50%] left-[50%] transform-[translate(-50%,_-50%)]",
                   attributes: { n: "scraper-video-play-position" },
                 },
                 [
@@ -882,7 +890,7 @@ function ScraperVideoDetailMedia(props) {
                         const trigger = event.currentTarget || event.target;
                         const root =
                           trigger && typeof trigger.closest === "function"
-                            ? trigger.closest(".home-detail-video-frame")
+                            ? trigger.closest(".group-home-detail-video-frame")
                             : null;
                         const video = root ? root.querySelector("video") : null;
                         if (video && typeof video.play === "function") {
@@ -917,11 +925,11 @@ function ScraperNovelChapterItem(props) {
   const vm$ = props.store;
   const chapter = props.chapter || {};
   const children = [
-    View({ class: "home-novel-chapter-index" }, [chapter.index_text]),
-    View({ class: "home-novel-chapter-main" }, [
+    View({ class: "min-w-54px flex-[0_0_auto] text-content-muted text-caption font-variant-numeric-tabular-nums" }, [chapter.index_text]),
+    View({ class: "min-w-0 flex-[1_1_auto]" }, [
       View(
         {
-          class: "home-novel-chapter-title",
+          class: "overflow-hidden text-content-text text-sm font-620 text-ellipsis whitespace-nowrap",
           attributes: { title: chapter.title },
         },
         [chapter.title],
@@ -929,7 +937,7 @@ function ScraperNovelChapterItem(props) {
       Show({
         when: Boolean(chapter.meta_text),
         ok() {
-          return View({ class: "home-novel-chapter-meta" }, [
+          return View({ class: "mt-0-5 text-content-muted text-caption" }, [
             chapter.meta_text,
           ]);
         },
@@ -938,7 +946,7 @@ function ScraperNovelChapterItem(props) {
     Show({
       when: Boolean(chapter.url),
       ok() {
-        return View({ class: "home-novel-chapter-link" }, [
+        return View({ class: "flex-[0_0_auto] flex text-content-primary" }, [
           Timeless.Icon({ name: "external-link", size: 13 }),
         ]);
       },
@@ -963,30 +971,30 @@ function ScraperNovelDetails(props) {
   return Show({
     when: novel.present,
     ok() {
-      return View({ class: "home-detail-card home-novel-detail dm-panel" }, [
-        View({ class: "home-detail-card-heading" }, [
-          View({ class: "home-detail-card-title-group" }, [
-            View({ class: "home-detail-card-icon" }, [
+      return View({ class: "min-w-0 overflow-hidden border-[1px_solid_var(--dm-content-border)] rounded-card bg-content-panel home-novel-detail dm-panel" }, [
+        View({ class: "min-h-56px p-[var(--dm-space-2-5)_var(--dm-space-3)] flex items-center justify-between gap-2-5 border-bottom-[1px_solid_var(--dm-content-border)] bg-content-panel-soft max-520:items-start" }, [
+          View({ class: "min-w-0 flex items-center gap-2-5" }, [
+            View({ class: "group-home-detail-card-icon w-34px h-34px flex-[0_0_auto] flex items-center justify-center rounded-content bg-content-primary-soft text-content-primary" }, [
               Timeless.Icon({ name: "file-stack", size: 18 }),
             ]),
             View({}, [
-              View({ class: "home-detail-card-title" }, [novel.title]),
-              View({ class: "home-detail-card-subtitle" }, [novel.subtitle]),
+              View({ class: "max-w-full overflow-hidden text-content-text text-base font-680 leading-[1.25] text-ellipsis whitespace-nowrap" }, [novel.title]),
+              View({ class: "max-w-full mt-1 overflow-hidden text-content-muted text-xs text-ellipsis whitespace-nowrap" }, [novel.subtitle]),
             ]),
           ]),
-          Tag({ name: "home-detail-badge", class: "home-detail-badge" }, [
+          Tag({ name: "home-detail-badge", class: "flex-[0_0_auto] border-[1px_solid_color-mix(in_srgb,_var(--dm-content-primary)_28%,_var(--dm-content-border))] bg-content-primary-soft text-content-primary font-variant-numeric-tabular-nums max-520:max-w-[44%] max-520:overflow-hidden max-520:text-ellipsis max-520:whitespace-nowrap" }, [
             novel.progress_text,
           ]),
         ]),
-        View({ class: "home-novel-body" }, [
-          View({ class: "home-detail-metrics" }, [
+        View({ class: "p-3-5 max-520:p-2-5" }, [
+          View({ class: "grid grid-cols-[repeat(4,_minmax(0,_1fr))] gap-2 max-820:grid-cols-[repeat(2,_minmax(0,_1fr))]" }, [
             For({
               each: novel.metrics,
               render(metric_) {
                 const metric = ScraperDetailValue(metric_);
-                return View({ class: "home-detail-metric" }, [
-                  View({ class: "home-detail-metric-label" }, [metric.label]),
-                  View({ class: "home-detail-metric-value" }, [metric.value]),
+                return View({ class: "min-w-0 p-[var(--dm-space-2-5)_var(--dm-space-2-5)] rounded-content bg-content-panel-soft" }, [
+                  View({ class: "text-content-muted text-caption" }, [metric.label]),
+                  View({ class: "mt-1 overflow-hidden text-content-text text-md font-680 leading-[1.35] text-ellipsis whitespace-nowrap" }, [metric.value]),
                 ]);
               },
             }),
@@ -994,23 +1002,23 @@ function ScraperNovelDetails(props) {
           Show({
             when: novel.has_volumes,
             ok() {
-              return View({ class: "home-novel-section" }, [
-                View({ class: "home-novel-section-heading" }, [
-                  View({ class: "home-novel-section-title" }, ["分卷"]),
+              return View({ class: "mt-4" }, [
+                View({ class: "mb-2 flex items-center justify-between gap-2-5" }, [
+                  View({ class: "text-content-text text-md font-680" }, ["分卷"]),
                 ]),
-                View({ class: "home-novel-volume-list" }, [
+                View({ class: "grid grid-cols-[repeat(3,_minmax(0,_1fr))] gap-2 max-820:grid-cols-[minmax(0,_1fr)]" }, [
                   For({
                     key: "key",
                     each: novel.volumes,
                     render(volume_) {
                       const volume = ScraperDetailValue(volume_);
-                      return View({ class: "home-novel-volume" }, [
-                        View({ class: "home-novel-volume-index" }, [
+                      return View({ class: "min-w-0 p-[var(--dm-space-2-5)_var(--dm-space-2-5)] flex items-center gap-2 border-[1px_solid_var(--dm-content-border)] rounded-content bg-content-panel-soft" }, [
+                        View({ class: "flex-[0_0_auto] text-content-primary text-caption font-680" }, [
                           volume.index_text,
                         ]),
                         View(
                           {
-                            class: "home-novel-volume-title",
+                            class: "min-w-0 overflow-hidden text-content-text text-sm text-ellipsis whitespace-nowrap",
                             attributes: { title: volume.title },
                           },
                           [volume.title],
@@ -1022,15 +1030,15 @@ function ScraperNovelDetails(props) {
               ]);
             },
           }),
-          View({ class: "home-novel-section home-novel-chapters" }, [
-            View({ class: "home-novel-section-heading" }, [
-              View({ class: "home-novel-section-title" }, ["章节列表"]),
-              View({ class: "home-novel-section-meta" }, [novel.progress_text]),
+          View({ class: "mt-4 home-novel-chapters" }, [
+            View({ class: "mb-2 flex items-center justify-between gap-2-5" }, [
+              View({ class: "text-content-text text-md font-680" }, ["章节列表"]),
+              View({ class: "text-content-muted text-xs font-variant-numeric-tabular-nums" }, [novel.progress_text]),
             ]),
             Show({
               when: novel.has_chapters,
               ok() {
-                return View({ class: "home-novel-chapter-list" }, [
+                return View({ class: "grid grid-cols-[repeat(2,_minmax(0,_1fr))] gap-1-5 min-821:grid-cols-[repeat(4,_minmax(0,_1fr))] min-1280:grid-cols-[repeat(auto-fit,_minmax(240px,_1fr))] max-620:grid-cols-[minmax(0,_1fr)]" }, [
                   For({
                     key: "key",
                     each: novel.chapters,
@@ -1044,7 +1052,7 @@ function ScraperNovelDetails(props) {
                 ]);
               },
               else() {
-                return View({ class: "home-detail-empty" }, [
+                return View({ class: "p-4-5 border-[1px_dashed_var(--dm-content-border)] rounded-content text-content-muted text-sm text-center" }, [
                   novel.empty_chapter_text,
                 ]);
               },
@@ -1054,7 +1062,7 @@ function ScraperNovelDetails(props) {
               ok() {
                 return View(
                   {
-                    class: "home-novel-more-control",
+                    class: "w-full mt-2 [&_>_.dm-button]:w-full",
                     attributes: { n: "scraper-novel-more-control" },
                   },
                   [
@@ -1113,8 +1121,8 @@ function ScraperVideoVariantItem(props) {
       }),
       class: computed(selected_, (selected) =>
         selected
-          ? "dm-button--choice-card is-selected"
-          : "dm-button--choice-card",
+          ? "dm-button--choice-card motion-reduce:transition-none is-selected"
+          : "dm-button--choice-card motion-reduce:transition-none",
       ),
       attributes: {
         type: "button",
@@ -1127,7 +1135,7 @@ function ScraperVideoVariantItem(props) {
       },
     },
     [
-      View({ class: "home-video-variant-indicator" }, [
+      View({ class: "w-18px h-18px flex-[0_0_18px] flex items-center justify-center border-[1px_solid_var(--dm-content-border)] rounded-control bg-content-panel text-transparent transition-[color_var(--dm-duration-fast)_var(--dm-ease-standard),_border-color_var(--dm-duration-fast)_var(--dm-ease-standard),_background-color_var(--dm-duration-fast)_var(--dm-ease-standard),_box-shadow_var(--dm-duration-fast)_var(--dm-ease-standard)] [.dm-button--choice-card.is-selected_&]:border-color-color-selection-indicator [.dm-button--choice-card.is-selected_&]:bg-color-selection-indicator [.dm-button--choice-card.is-selected_&]:text-color-selection-indicator-text [.dm-button--choice-card.is-selected_&]:shadow-[0_0_0_3px_var(--dm-color-selection-halo)] motion-reduce:transition-none" }, [
         Show({
           when: selected_,
           ok() {
@@ -1135,15 +1143,15 @@ function ScraperVideoVariantItem(props) {
           },
         }),
       ]),
-      View({ class: "home-video-supplement-main" }, [
+      View({ class: "min-w-0 flex-[1_1_auto]" }, [
         View(
           {
-            class: "home-video-supplement-title",
+            class: "overflow-hidden text-content-text text-xs font-680 text-ellipsis whitespace-nowrap [.dm-button--choice-card.is-selected_&]:text-color-selection-text",
             attributes: { title: variant.variant_key },
           },
           [variant.title],
         ),
-        View({ class: "home-video-supplement-meta" }, [
+        View({ class: "mt-1 overflow-hidden text-content-muted text-caption text-ellipsis whitespace-nowrap" }, [
           variant.meta_text || variant.variant_key,
         ]),
         Show({
@@ -1151,7 +1159,7 @@ function ScraperVideoVariantItem(props) {
           ok() {
             return View(
               {
-                class: "home-video-supplement-url",
+                class: "mt-1 overflow-hidden text-content-muted text-caption text-ellipsis whitespace-nowrap font-mono",
                 attributes: { title: variant.url },
               },
               [variant.url],
@@ -1165,7 +1173,7 @@ function ScraperVideoVariantItem(props) {
           return Tag(
             {
               name: "home-video-supplement-badge",
-              class: "home-video-supplement-badge",
+              class: "bg-content-primary-soft text-content-primary",
             },
             ["默认"],
           );
@@ -1180,41 +1188,41 @@ function ScraperContentTextTrackItem(props) {
   const track = props.track || {};
   const checkbox = vm$.methods.createTextTrackCheckbox(track);
   const selected_ = checkbox.selected;
-  return View({ class: "home-video-subtitle-track" }, [
+  return View({ class: "min-w-0" }, [
     View(
       {
         class: computed(selected_, (selected) =>
           selected
-            ? "home-video-supplement-item is-selected"
-            : "home-video-supplement-item",
+            ? "min-w-0 p-[var(--dm-space-2-5)_var(--dm-space-2-5)] flex items-start gap-2-5 border-[1px_solid_var(--dm-content-border)] rounded-content bg-content-panel-soft [&.is-selected]:border-color-color-selection-indicator [&.is-selected]:bg-color-selection-halo is-selected"
+            : "min-w-0 p-[var(--dm-space-2-5)_var(--dm-space-2-5)] flex items-start gap-2-5 border-[1px_solid_var(--dm-content-border)] rounded-content bg-content-panel-soft [&.is-selected]:border-color-color-selection-indicator [&.is-selected]:bg-color-selection-halo",
         ),
       },
       [
         Checkbox({
           store: checkbox.store,
-          class: "home-video-subtitle-checkbox",
+          class: "flex-[0_0_auto]",
           attributes: {
             n: "scraper-text-track-checkbox",
             "aria-label": `下载字幕 ${track.title || track.track_key}`,
           },
           onUnmounted: checkbox.dispose,
         }),
-        View({ class: "home-video-supplement-main" }, [
+        View({ class: "min-w-0 flex-[1_1_auto]" }, [
           View(
             {
-              class: "home-video-supplement-title",
+              class: "overflow-hidden text-content-text text-xs font-680 text-ellipsis whitespace-nowrap [.dm-button--choice-card.is-selected_&]:text-color-selection-text",
               attributes: { title: track.track_key },
             },
             [track.title],
           ),
-          View({ class: "home-video-supplement-meta" }, [
+          View({ class: "mt-1 overflow-hidden text-content-muted text-caption text-ellipsis whitespace-nowrap" }, [
             track.meta_text || track.track_key,
           ]),
         ]),
         Tag(
           {
             name: "home-video-supplement-badge",
-            class: "home-video-supplement-badge",
+            class: "bg-content-primary-soft text-content-primary",
           },
           [`${track.sources.length} 个源`],
         ),
@@ -1223,19 +1231,19 @@ function ScraperContentTextTrackItem(props) {
     Show({
       when: track.has_sources,
       ok() {
-        return View({ class: "home-video-subtitle-sources" }, [
+        return View({ class: "min-w-0 flex flex-col gap-2 m-[var(--dm-space-1-5)_var(--dm-space-2)_0_var(--dm-space-5)]" }, [
           For({
             key: "key",
             each: track.sources,
             render(source_) {
               const source = ScraperDetailValue(source_);
-              return View({ class: "home-video-subtitle-source" }, [
-                View({ class: "home-video-subtitle-source-type" }, [
+              return View({ class: "min-w-0 p-[var(--dm-space-2)_var(--dm-space-2-5)] grid grid-cols-[54px_minmax(0,_1fr)] items-center gap-2 border-left-[2px_solid_var(--dm-content-primary)] bg-content-panel-soft max-520:grid-cols-[minmax(0,_1fr)]" }, [
+                View({ class: "text-content-primary text-caption font-720" }, [
                   source.title,
                 ]),
                 View(
                   {
-                    class: "home-video-subtitle-source-url",
+                    class: "overflow-hidden text-content-muted text-caption text-ellipsis whitespace-nowrap font-mono mt-0",
                     attributes: { title: source.url },
                   },
                   [source.url || source.meta_text || "未提供地址"],
@@ -1255,22 +1263,22 @@ function ScraperVideoSupplements(props) {
     Show({
       when: detail.has_variants,
       ok() {
-        return View({ class: "home-video-supplement" }, [
-          View({ class: "home-video-supplement-heading" }, [
-            View({ class: "home-video-supplement-label" }, [
+        return View({ class: "min-w-0 mt-3 pt-3 border-top-[1px_solid_var(--dm-content-border)]" }, [
+          View({ class: "mb-2 flex items-center justify-between gap-2-5" }, [
+            View({ class: "text-content-text text-xs font-700" }, [
               "ContentVideoVariant",
             ]),
             Tag(
               {
                 name: "home-video-supplement-count",
-                class: "home-video-supplement-count",
+                class: "min-w-22px bg-content-panel-soft text-content-muted font-variant-numeric-tabular-nums",
               },
               [String(detail.variants.length)],
             ),
           ]),
           View(
             {
-              class: "home-video-supplement-list home-video-variant-list",
+              class: "min-w-0 flex-col gap-2 grid grid-cols-[repeat(3,_minmax(0,_1fr))] items-stretch min-1280:grid-cols-[repeat(4,_minmax(0,_1fr))] min-1580:grid-cols-[repeat(5,_minmax(0,_1fr))] max-820:grid-cols-[repeat(2,_minmax(0,_1fr))] max-620:grid-cols-[minmax(0,_1fr)]",
               attributes: {
                 role: "radiogroup",
                 "aria-label": "选择下载视频规格",
@@ -1296,20 +1304,20 @@ function ScraperVideoSupplements(props) {
     Show({
       when: detail.has_text_tracks,
       ok() {
-        return View({ class: "home-video-supplement" }, [
-          View({ class: "home-video-supplement-heading" }, [
-            View({ class: "home-video-supplement-label" }, [
+        return View({ class: "min-w-0 mt-3 pt-3 border-top-[1px_solid_var(--dm-content-border)]" }, [
+          View({ class: "mb-2 flex items-center justify-between gap-2-5" }, [
+            View({ class: "text-content-text text-xs font-700" }, [
               "ContentTextTrack",
             ]),
             Tag(
               {
                 name: "home-video-supplement-count",
-                class: "home-video-supplement-count",
+                class: "min-w-22px bg-content-panel-soft text-content-muted font-variant-numeric-tabular-nums",
               },
               [String(detail.text_tracks.length)],
             ),
           ]),
-          View({ class: "home-video-supplement-list" }, [
+          View({ class: "min-w-0 flex flex-col gap-2" }, [
             For({
               key: "key",
               each: detail.text_tracks,
@@ -1334,7 +1342,7 @@ function ScraperArticleBody(props) {
     ok() {
       if (article_body.is_html) {
         return Timeless.RichText({
-          class: "home-article-content is-html",
+          class: "min-w-0 max-h-[min(70vh,_720px)] mt-2-5 p-3-5 overflow-auto !border-[1px_solid_var(--dm-content-border)] rounded-content bg-content-panel-soft text-content-text text-base leading-[1.75] overflow-wrap-anywhere [&.is-text]:whitespace-pre-wrap [&.is-markdown]:whitespace-pre-wrap [&.is-html_>_:first-child]:mt-0 [&.is-html_>_:last-child]:mb-0 [&.is-html_p]:m-[0_0_1em] [&.is-html_blockquote]:m-[0_0_1em] [&.is-html_figure]:m-[0_0_1em] [&.is-html_pre]:m-[0_0_1em] [&.is-html_table]:m-[0_0_1em] [&.is-html_ul]:m-[0_0_1em] [&.is-html_ol]:m-[0_0_1em] [&.is-html_h1]:m-[1.35em_0_0.65em] [&.is-html_h1]:text-content-text [&.is-html_h1]:leading-[1.35] [&.is-html_h2]:m-[1.35em_0_0.65em] [&.is-html_h2]:text-content-text [&.is-html_h2]:leading-[1.35] [&.is-html_h3]:m-[1.35em_0_0.65em] [&.is-html_h3]:text-content-text [&.is-html_h3]:leading-[1.35] [&.is-html_h4]:m-[1.35em_0_0.65em] [&.is-html_h4]:text-content-text [&.is-html_h4]:leading-[1.35] [&.is-html_h5]:m-[1.35em_0_0.65em] [&.is-html_h5]:text-content-text [&.is-html_h5]:leading-[1.35] [&.is-html_h6]:m-[1.35em_0_0.65em] [&.is-html_h6]:text-content-text [&.is-html_h6]:leading-[1.35] [&.is-html_img]:max-w-full [&.is-html_video]:max-w-full [&.is-html_audio]:max-w-full [&.is-html_iframe]:max-w-full [&.is-html_img]:h-auto [&.is-html_video]:h-auto [&.is-html_a]:text-content-primary [&.is-html_a]:text-decoration-underline [&.is-html_a]:text-underline-offset-2px [&.is-html_blockquote]:p-[var(--dm-space-2)_var(--dm-space-3)] [&.is-html_blockquote]:border-left-[3px_solid_var(--dm-content-primary)] [&.is-html_blockquote]:bg-content-panel [&.is-html_blockquote]:text-content-muted [&.is-html_pre]:p-[var(--dm-space-2-5)_var(--dm-space-3)] [&.is-html_pre]:overflow-x-auto [&.is-html_pre]:rounded-content [&.is-html_pre]:bg-content-panel [&.is-html_pre]:whitespace-pre [&.is-html_code]:font-mono [&.is-html_table]:w-full [&.is-html_table]:overflow-x-auto [&.is-html_table]:border-collapse-collapse [&.is-html_th]:p-[var(--dm-space-1-5)_var(--dm-space-2)] [&.is-html_th]:!border-[1px_solid_var(--dm-content-border)] [&.is-html_th]:text-left [&.is-html_td]:p-[var(--dm-space-1-5)_var(--dm-space-2)] [&.is-html_td]:!border-[1px_solid_var(--dm-content-border)] [&.is-html_td]:text-left is-html",
           content: article_body.content,
           attributes: {
             "data-content-format": "html",
@@ -1343,7 +1351,7 @@ function ScraperArticleBody(props) {
       }
       return View(
         {
-          class: `home-article-content is-${article_body.format || "text"}`,
+          class: `min-w-0 max-h-[min(70vh,_720px)] mt-2-5 p-3-5 overflow-auto !border-[1px_solid_var(--dm-content-border)] rounded-content bg-content-panel-soft text-content-text text-base leading-[1.75] overflow-wrap-anywhere [&.is-text]:whitespace-pre-wrap [&.is-markdown]:whitespace-pre-wrap [&.is-html_>_:first-child]:mt-0 [&.is-html_>_:last-child]:mb-0 [&.is-html_p]:m-[0_0_1em] [&.is-html_blockquote]:m-[0_0_1em] [&.is-html_figure]:m-[0_0_1em] [&.is-html_pre]:m-[0_0_1em] [&.is-html_table]:m-[0_0_1em] [&.is-html_ul]:m-[0_0_1em] [&.is-html_ol]:m-[0_0_1em] [&.is-html_h1]:m-[1.35em_0_0.65em] [&.is-html_h1]:text-content-text [&.is-html_h1]:leading-[1.35] [&.is-html_h2]:m-[1.35em_0_0.65em] [&.is-html_h2]:text-content-text [&.is-html_h2]:leading-[1.35] [&.is-html_h3]:m-[1.35em_0_0.65em] [&.is-html_h3]:text-content-text [&.is-html_h3]:leading-[1.35] [&.is-html_h4]:m-[1.35em_0_0.65em] [&.is-html_h4]:text-content-text [&.is-html_h4]:leading-[1.35] [&.is-html_h5]:m-[1.35em_0_0.65em] [&.is-html_h5]:text-content-text [&.is-html_h5]:leading-[1.35] [&.is-html_h6]:m-[1.35em_0_0.65em] [&.is-html_h6]:text-content-text [&.is-html_h6]:leading-[1.35] [&.is-html_img]:max-w-full [&.is-html_video]:max-w-full [&.is-html_audio]:max-w-full [&.is-html_iframe]:max-w-full [&.is-html_img]:h-auto [&.is-html_video]:h-auto [&.is-html_a]:text-content-primary [&.is-html_a]:text-decoration-underline [&.is-html_a]:text-underline-offset-2px [&.is-html_blockquote]:p-[var(--dm-space-2)_var(--dm-space-3)] [&.is-html_blockquote]:border-left-[3px_solid_var(--dm-content-primary)] [&.is-html_blockquote]:bg-content-panel [&.is-html_blockquote]:text-content-muted [&.is-html_pre]:p-[var(--dm-space-2-5)_var(--dm-space-3)] [&.is-html_pre]:overflow-x-auto [&.is-html_pre]:rounded-content [&.is-html_pre]:bg-content-panel [&.is-html_pre]:whitespace-pre [&.is-html_code]:font-mono [&.is-html_table]:w-full [&.is-html_table]:overflow-x-auto [&.is-html_table]:border-collapse-collapse [&.is-html_th]:p-[var(--dm-space-1-5)_var(--dm-space-2)] [&.is-html_th]:!border-[1px_solid_var(--dm-content-border)] [&.is-html_th]:text-left [&.is-html_td]:p-[var(--dm-space-1-5)_var(--dm-space-2)] [&.is-html_td]:!border-[1px_solid_var(--dm-content-border)] [&.is-html_td]:text-left is-${article_body.format || "text"}`,
         },
         [article_body.content],
       );
@@ -1356,33 +1364,33 @@ function ScraperTypedContentDetail(props) {
   const detail = props.detail || {};
   return View(
     {
-      class: `home-detail-card home-typed-detail home-typed-detail-${detail.kind} dm-panel`,
+      class: `min-w-0 overflow-hidden border-[1px_solid_var(--dm-content-border)] rounded-card bg-content-panel home-typed-detail ${home_typed_detail_classes[detail.kind] || ""} dm-panel`,
     },
     [
-      View({ class: "home-detail-card-heading" }, [
-        View({ class: "home-detail-card-title-group" }, [
-          View({ class: "home-detail-card-icon" }, [
+      View({ class: "min-h-56px p-[var(--dm-space-2-5)_var(--dm-space-3)] flex items-center justify-between gap-2-5 border-bottom-[1px_solid_var(--dm-content-border)] bg-content-panel-soft max-520:items-start" }, [
+        View({ class: "min-w-0 flex items-center gap-2-5" }, [
+          View({ class: "group-home-detail-card-icon w-34px h-34px flex-[0_0_auto] flex items-center justify-center rounded-content bg-content-primary-soft text-content-primary" }, [
             Timeless.Icon({ name: detail.icon, size: 18 }),
           ]),
           View({}, [
-            View({ class: "home-detail-card-title" }, [detail.title]),
-            View({ class: "home-detail-card-subtitle" }, [detail.model_name]),
+            View({ class: "max-w-full overflow-hidden text-content-text text-base font-680 leading-[1.25] text-ellipsis whitespace-nowrap" }, [detail.title]),
+            View({ class: "max-w-full mt-1 overflow-hidden text-content-muted text-xs text-ellipsis whitespace-nowrap" }, [detail.model_name]),
           ]),
         ]),
-        Tag({ name: "home-detail-badge", class: "home-detail-badge" }, [
+        Tag({ name: "home-detail-badge", class: "flex-[0_0_auto] border-[1px_solid_color-mix(in_srgb,_var(--dm-content-primary)_28%,_var(--dm-content-border))] bg-content-primary-soft text-content-primary font-variant-numeric-tabular-nums max-520:max-w-[44%] max-520:overflow-hidden max-520:text-ellipsis max-520:whitespace-nowrap" }, [
           detail.type_name,
         ]),
       ]),
-      View({ class: "home-typed-detail-body" }, [
+      View({ class: "p-3-5 max-520:p-2-5" }, [
         Show({
           when: detail.subject.present,
           ok() {
-            return View({ class: "home-detail-subject" }, [
-              View({ class: "home-detail-subject-main" }, [
-                View({ class: "home-detail-subject-title" }, [
+            return View({ class: "mb-3 p-[var(--dm-space-2-5)_var(--dm-space-2-5)] flex items-center justify-between gap-2-5 border-[1px_solid_var(--dm-content-border)] rounded-content bg-content-panel-soft" }, [
+              View({ class: "min-w-0" }, [
+                View({ class: "overflow-hidden text-ellipsis whitespace-nowrap text-content-text text-sm font-650" }, [
                   detail.subject.title,
                 ]),
-                View({ class: "home-detail-subject-meta" }, [
+                View({ class: "overflow-hidden text-ellipsis whitespace-nowrap mt-1 text-content-muted font-mono text-caption" }, [
                   detail.subject.meta_text,
                 ]),
               ]),
@@ -1406,15 +1414,15 @@ function ScraperTypedContentDetail(props) {
         Show({
           when: detail.images.length > 0,
           ok() {
-            return View({ class: "home-detail-image-grid" }, [
+            return View({ class: "mt-2-5 grid grid-cols-[repeat(4,_minmax(0,_1fr))] gap-2" }, [
               For({
                 key: "key",
                 each: detail.images,
                 render(image_) {
                   const image = ScraperDetailValue(image_);
-                  return View({ class: "home-detail-image-item" }, [
+                  return View({ class: "relative min-w-0 overflow-hidden border-[1px_solid_var(--dm-content-border)] rounded-content bg-content-panel-soft" }, [
                     LazyImg({
-                      class: "home-detail-image",
+                      class: "w-full aspect-ratio-1 block object-cover",
                       src: image.url,
                       alt: "",
                       attributes: {
@@ -1428,7 +1436,7 @@ function ScraperTypedContentDetail(props) {
                         return Tag(
                           {
                             name: "home-detail-image-live-badge",
-                            class: "home-detail-image-live-badge",
+                            class: "absolute top-6px right-6px border-[1px_solid_var(--dm-color-media-border)] bg-color-media-surface text-color-media-text",
                             attributes: { title: "实况图" },
                           },
                           [
@@ -1438,7 +1446,7 @@ function ScraperTypedContentDetail(props) {
                         );
                       },
                     }),
-                    View({ class: "home-detail-image-meta" }, [image.meta]),
+                    View({ class: "p-1-5 overflow-hidden text-content-muted text-caption text-center text-ellipsis whitespace-nowrap" }, [image.meta]),
                   ]);
                 },
               }),
@@ -1475,7 +1483,7 @@ function ScraperContentDetails(props) {
 
 function ScraperRawJSON(props) {
   const vm$ = props.store;
-  return View({ class: "home-json" }, [
+  return View({ class: "min-w-0 overflow-hidden border-[1px_solid_var(--dm-content-border)] rounded-card bg-content-panel shadow-content-shadow" }, [
     Button(
       {
         store: vm$.ui.btn_toggle_json$,
@@ -1491,13 +1499,13 @@ function ScraperRawJSON(props) {
         },
       },
       [
-        View({ class: "home-json-toggle-main" }, [
-          View({ class: "home-json-icon" }, [
+        View({ class: "min-w-0 flex items-center gap-3" }, [
+          View({ class: "flex items-center justify-center bg-content-primary-soft text-content-primary w-36px h-36px flex-[0_0_auto] rounded-content" }, [
             Timeless.Icon({ name: "braces", size: 17 }),
           ]),
           View({}, [
-            View({ class: "home-json-title" }, [vm$.state.json_toggle_text]),
-            View({ class: "home-json-subtitle" }, [
+            View({ class: "text-content-text text-md font-650" }, [vm$.state.json_toggle_text]),
+            View({ class: "mt-1 text-content-muted text-xs" }, [
               "完整接口响应，仅供调试与核对",
             ]),
           ]),
@@ -1519,7 +1527,7 @@ function ScraperRawJSON(props) {
         return View(
           {
             type: "pre",
-            class: "home-json-body",
+            class: "max-h-[min(520px,_calc(100vh_-_180px))] m-0 p-4 overflow-auto border-top-[1px_solid_var(--dm-content-border)] bg-content-panel-soft text-content-text font-mono text-sm leading-[1.6] whitespace-pre-wrap word-break-break-word",
             attributes: { id: "home-json-body" },
           },
           [vm$.state.result_text],
@@ -1535,7 +1543,7 @@ function ScraperFetchedRawContent(props) {
   return Show({
     when: raw_result.visible,
     ok() {
-      return View({ class: "home-json home-raw-fetch" }, [
+      return View({ class: "min-w-0 overflow-hidden border-[1px_solid_var(--dm-content-border)] rounded-card bg-content-panel shadow-content-shadow home-raw-fetch" }, [
         Button(
           {
             store: vm$.ui.btn_toggle_raw_result$,
@@ -1551,13 +1559,13 @@ function ScraperFetchedRawContent(props) {
             },
           },
           [
-            View({ class: "home-json-toggle-main" }, [
-              View({ class: "home-json-icon" }, [
+            View({ class: "min-w-0 flex items-center gap-3" }, [
+              View({ class: "flex items-center justify-center bg-content-primary-soft text-content-primary w-36px h-36px flex-[0_0_auto] rounded-content" }, [
                 Timeless.Icon({ name: "braces", size: 17 }),
               ]),
               View({}, [
-                View({ class: "home-json-title" }, ["抓取原始内容"]),
-                View({ class: "home-json-subtitle" }, [raw_result.meta_text]),
+                View({ class: "text-content-text text-md font-650" }, ["抓取原始内容"]),
+                View({ class: "mt-1 text-content-muted text-xs" }, [raw_result.meta_text]),
               ]),
             ]),
             Show({
@@ -1577,7 +1585,7 @@ function ScraperFetchedRawContent(props) {
             return View(
               {
                 type: "pre",
-                class: "home-json-body",
+                class: "max-h-[min(520px,_calc(100vh_-_180px))] m-0 p-4 overflow-auto border-top-[1px_solid_var(--dm-content-border)] bg-content-panel-soft text-content-text font-mono text-sm leading-[1.6] whitespace-pre-wrap word-break-break-word",
                 attributes: { id: "home-raw-fetch-body" },
               },
               [raw_result.text],
@@ -1599,7 +1607,7 @@ function ScraperTreeRow(props) {
   if (is_directory) {
     return View(
       {
-        class: "file-tree-row is-directory",
+        class: "grid grid-cols-[18px_20px_minmax(0,_1fr)_auto] items-center gap-1 p-[4px_var(--dm-space-1-5)] text-color-text-primary text-sm rounded-content [&.is-directory]:text-color-text-secondary [&.is-directory]:font-semibold [&.is-directory]:cursor-pointer [&.is-directory:hover]:bg-color-bg-hover is-directory",
         style: { "padding-left": indent_px },
         attributes: { n: "scraper-tree-dir", title: node._path || node.name },
         onClick() {
@@ -1607,12 +1615,12 @@ function ScraperTreeRow(props) {
         },
       },
       [
-        View({ class: "file-tree-caret" }, [is_collapsed ? "›" : "⌄"]),
-        View({ class: "file-tree-icon" }, [
+        View({ class: "w-18px shrink-0 text-center text-13px text-color-text-muted leading-1" }, [is_collapsed ? "›" : "⌄"]),
+        View({ class: "w-18px shrink-0" }, [
           Timeless.Icon({ name: "folder", size: 16 }),
         ]),
-        View({ class: "file-tree-name dm-truncate" }, [node.name || "根目录"]),
-        View({ class: "file-tree-meta" }, [`${count_tree_children(node)} 项`]),
+        View({ class: "min-w-0 dm-truncate" }, [node.name || "根目录"]),
+        View({ class: "text-color-text-muted text-11px font-normal whitespace-nowrap pl-2" }, [`${count_tree_children(node)} 项`]),
       ],
     );
   }
@@ -1620,32 +1628,32 @@ function ScraperTreeRow(props) {
   const resource = node && node.resource;
   return View(
     {
-      class: "file-tree-row scraper-tree-file",
+      class: "grid items-center gap-1 p-[4px_var(--dm-space-1-5)] text-color-text-primary text-sm rounded-content [&.is-directory]:text-color-text-secondary [&.is-directory]:font-semibold [&.is-directory]:cursor-pointer [&.is-directory:hover]:bg-color-bg-hover grid-cols-[18px_20px_minmax(0,_1fr)_auto_auto] [&_button]:flex-[0_0_auto] [&_button]:ml-1",
       style: { "padding-left": indent_px },
       attributes: { n: "scraper-tree-file", title: node._path || node.name },
     },
     [
-      View({ class: "file-tree-caret" }),
-      View({ class: "file-tree-icon" }, [
+      View({ class: "w-18px shrink-0 text-center text-13px text-color-text-muted leading-1" }),
+      View({ class: "w-18px shrink-0" }, [
         Timeless.Icon({
           name: resource_file_icon(node && node.name),
           size: 16,
         }),
       ]),
-      View({ class: "file-tree-name dm-truncate" }, [
+      View({ class: "min-w-0 dm-truncate" }, [
         (node && node.name) || "文件",
       ]),
       resource && resource.is_cover
         ? Tag(
             {
               name: "scraper-tree-file-cover",
-              class: "home-download-cover-badge",
+              class: "shrink-0 bg-content-primary-soft text-content-primary",
               attributes: { title: "额外下载的封面图片" },
             },
             ["封面"],
           )
         : null,
-      View({ class: "file-tree-meta" }, [
+      View({ class: "text-color-text-muted text-11px font-normal whitespace-nowrap pl-2" }, [
         resource
           ? [resource.kind, format_file_size(resource.size)]
               .filter(Boolean)
@@ -1670,18 +1678,18 @@ function ScraperTreeRow(props) {
 }
 
 function HomeDownloadSection(props, children = []) {
-  return View({ class: "home-download-section" }, [
-    View({ class: "home-download-section-head" }, [
-      View({ class: "home-download-section-title" }, [props.title]),
+  return View({ class: "min-w-0 overflow-hidden border-[1px_solid_var(--dm-content-border)] rounded-card bg-content-panel" }, [
+    View({ class: "min-h-42px p-[var(--dm-space-2)_var(--dm-space-3)] flex items-center justify-between gap-2-5 border-bottom-[1px_solid_var(--dm-content-border)] bg-content-panel-soft" }, [
+      View({ class: "text-content-text text-sm font-700" }, [props.title]),
       Tag(
         {
           name: "home-download-section-count",
-          class: "home-download-section-count",
+          class: "min-w-22px bg-content-panel-soft text-content-muted font-variant-numeric-tabular-nums",
         },
         [props.count],
       ),
     ]),
-    View({ class: "home-download-section-body" }, children),
+    View({ class: "p-2-5" }, children),
   ]);
 }
 
@@ -1692,18 +1700,18 @@ function ScraperDownloadInfo(props) {
   return Show({
     when: download_info.present,
     ok() {
-      return View({ class: "home-card home-download-info dm-panel" }, [
-        View({ class: "home-card-heading" }, [
-          View({ class: "home-card-title-group" }, [
-            View({ class: "home-card-icon" }, [
+      return View({ class: "min-w-0 overflow-hidden border-[1px_solid_var(--dm-content-border)] rounded-card bg-content-panel shadow-content-shadow home-download-info dm-panel" }, [
+        View({ class: "group-home-card-heading min-h-58px p-[var(--dm-space-2-5)_var(--dm-space-3-5)] flex items-center justify-between gap-3 border-bottom-[1px_solid_var(--dm-content-border)] bg-content-panel max-520:pr-3 max-520:pl-3 max-520:flex-wrap" }, [
+          View({ class: "min-w-0 flex items-center gap-2-5" }, [
+            View({ class: "flex items-center justify-center bg-content-primary-soft text-content-primary w-34px h-34px flex-[0_0_auto] rounded-content" }, [
               Timeless.Icon({ name: "download", size: 17 }),
             ]),
             View({}, [
-              View({ class: "home-card-kicker" }, ["DOWNLOAD INFO"]),
-              View({ class: "home-card-title" }, ["下载任务预览"]),
+              View({ class: "text-content-muted text-caption font-750 tracking-0 leading-[1.2]" }, ["DOWNLOAD INFO"]),
+              View({ class: "mt-0-5 text-ui font-680 leading-[1.2]" }, ["下载任务预览"]),
             ]),
           ]),
-          View({ class: "home-card-actions" }, [
+          View({ class: "ml-auto flex items-center justify-end flex-wrap gap-2 max-520:w-full" }, [
             Show({
               when: computed(download_info.badge_text, (text) => Boolean(text)),
               ok() {
@@ -1718,13 +1726,13 @@ function ScraperDownloadInfo(props) {
             }),
           ]),
         ]),
-        View({ class: "home-download-body" }, [
+        View({ class: "p-3-5 flex flex-col gap-3 max-520:p-2-5" }, [
           Show({
             when: computed(download_info.error, (error) => Boolean(error)),
             ok() {
               return View(
                 {
-                  class: "home-download-preview-error",
+                  class: "min-h-36px p-[var(--dm-space-2)_var(--dm-space-2-5)] flex items-center gap-2 border-[1px_solid_color-mix(_in_srgb,_var(--dm-content-danger)_34%,_var(--dm-content-border)_)] rounded-content bg-color-danger-soft text-content-danger text-xs",
                   attributes: { role: "alert" },
                 },
                 [
@@ -1748,7 +1756,7 @@ function ScraperDownloadInfo(props) {
                     ok() {
                       return View(
                         {
-                          class: "dm-notice-row home-download-cover-notice",
+                          class: "dm-notice-row mb-2-5 text-color-text-secondary text-xs leading-base",
                           attributes: { n: "scraper-download-cover-notice" },
                         },
                         [
@@ -1771,18 +1779,18 @@ function ScraperDownloadInfo(props) {
             },
           }),
           HomeDownloadSection({ title: "下载任务", count: 1 }, [
-            View({ class: "home-download-task-list" }, [
-              View({ class: "home-download-task" }, [
-                View({ class: "home-download-task-id" }, [task.id_text]),
-                View({ class: "home-download-task-main" }, [
+            View({ class: "min-w-0 flex flex-col gap-2" }, [
+              View({ class: "min-w-0 p-2-5 grid grid-cols-[34px_minmax(0,_1fr)_auto] items-center gap-2-5 border-[1px_solid_var(--dm-content-border)] rounded-content bg-content-panel-soft max-520:grid-cols-[28px_minmax(0,_1fr)] max-520:[&_>_.group-home-download-status]:grid-column-2 max-520:[&_>_.group-home-download-status]:justify-self-start" }, [
+                View({ class: "text-content-muted font-mono text-caption font-variant-numeric-tabular-nums text-center" }, [task.id_text]),
+                View({ class: "min-w-0" }, [
                   View(
                     {
-                      class: "home-download-task-name",
+                      class: "overflow-hidden text-content-text text-sm font-680 text-ellipsis whitespace-nowrap",
                       attributes: { title: task.name },
                     },
                     [task.name],
                   ),
-                  View({ class: "home-download-task-meta" }, [
+                  View({ class: "mt-1 overflow-hidden text-content-muted text-caption text-ellipsis whitespace-nowrap" }, [
                     task.meta_text || "任务将在确认后创建",
                   ]),
                 ]),
@@ -1792,7 +1800,7 @@ function ScraperDownloadInfo(props) {
                     return Tag(
                       {
                         name: "home-download-status",
-                        class: "home-download-status",
+                        class: "group-home-download-status bg-color-success-soft text-color-success",
                       },
                       [task.status_text],
                     );
@@ -1811,7 +1819,7 @@ function ScraperResultActionBar(props) {
   const vm$ = props.store;
   return View(
     {
-      class: "home-result-actions",
+      class: "sticky bottom-0 z-sticky w-full min-w-0 min-h-72px box-sizing-border-box p-[var(--dm-space-3)_var(--dm-space-4)] flex items-center justify-between gap-4 border-0 border-top-[var(--dm-border-width)_solid_var(--dm-content-border)] rounded-0 bg-[color-mix(_in_srgb,_var(--dm-content-panel)_72%,_transparent_)] shadow-none -webkit-backdrop-filter-[blur(18px)_saturate(140%)] backdrop-filter-[blur(18px)_saturate(140%)] max-520:flex-wrap max-520:p-2-5 max-520:items-stretch",
       attributes: {
         n: "result-actions",
         role: "toolbar",
@@ -1821,33 +1829,33 @@ function ScraperResultActionBar(props) {
     [
       View(
         {
-          class: "home-result-actions-summary",
+          class: "flex items-center min-w-0 flex-[1_1_auto] gap-2-5",
           attributes: { n: "result-actions-summary" },
         },
         [
           View(
             {
-              class: "home-result-actions-icon",
+              class: "w-36px h-36px flex-[0_0_auto] grid place-items-center rounded-content bg-color-success-soft text-color-success",
               attributes: { n: "result-actions-status-icon" },
             },
             [Timeless.Icon({ name: "check", size: 17 })],
           ),
           View(
             {
-              class: "home-result-actions-copy",
+              class: "min-w-0",
               attributes: { n: "result-actions-copy" },
             },
             [
               View(
                 {
-                  class: "home-result-actions-title",
+                  class: "text-content-text text-sm font-700",
                   attributes: { n: "result-actions-title" },
                 },
                 ["抓取完成"],
               ),
               View(
                 {
-                  class: "home-result-actions-description",
+                  class: "mt-0-5 text-content-muted text-caption",
                   attributes: { n: "result-actions-description" },
                 },
                 ["请选择下载方式"],
@@ -1858,7 +1866,7 @@ function ScraperResultActionBar(props) {
       ),
       View(
         {
-          class: "home-result-actions-controls",
+          class: "flex items-center flex-[0_0_auto] justify-end gap-2 max-520:w-full max-520:[&_>_.dm-button]:flex-[1_1_0] max-520:[&_>_.dm-button]:justify-center",
           attributes: { n: "result-actions-controls" },
         },
         [
@@ -1899,19 +1907,19 @@ function ScraperCacheCard(props) {
   return Show({
     when: cache.present,
     ok() {
-      return View({ class: "home-card home-cache-card dm-panel" }, [
-        View({ class: "home-card-heading" }, [
-          View({ class: "home-card-title-group" }, [
-            View({ class: "home-card-icon" }, [
+      return View({ class: "min-w-0 overflow-hidden border-[1px_solid_var(--dm-content-border)] rounded-card bg-content-panel shadow-content-shadow max-520:[&_.group-home-card-heading]:items-stretch max-520:[&_.group-home-card-heading]:flex-col dm-panel" }, [
+        View({ class: "group-home-card-heading min-h-58px p-[var(--dm-space-2-5)_var(--dm-space-3-5)] flex items-center justify-between gap-3 border-bottom-[1px_solid_var(--dm-content-border)] bg-content-panel max-520:pr-3 max-520:pl-3 max-520:flex-wrap" }, [
+          View({ class: "min-w-0 flex items-center gap-2-5" }, [
+            View({ class: "flex items-center justify-center bg-content-primary-soft text-content-primary w-34px h-34px flex-[0_0_auto] rounded-content" }, [
               Timeless.Icon({ name: "file-stack", size: 17 }),
             ]),
             View({}, [
-              View({ class: "home-card-kicker" }, ["CACHE"]),
-              View({ class: "home-card-title" }, ["抓取缓存"]),
+              View({ class: "text-content-muted text-caption font-750 tracking-0 leading-[1.2]" }, ["CACHE"]),
+              View({ class: "mt-0-5 text-ui font-680 leading-[1.2]" }, ["抓取缓存"]),
             ]),
           ]),
-          View({ class: "home-cache-heading-actions" }, [
-            View({ class: "home-cache-summary" }, [cache.summary_text]),
+          View({ class: "[&_>_.dm-button]:min-w-120px flex items-center justify-end gap-2-5 max-520:items-stretch max-520:flex-col max-520:w-full max-520:[&_>_.dm-button]:flex-[1_1_auto]" }, [
+            View({ class: "text-content-muted text-sm whitespace-nowrap max-520:whitespace-normal" }, [cache.summary_text]),
             Button(
               {
                 store: vm$.ui.btn_clear_fetch_cache$,
@@ -1927,7 +1935,7 @@ function ScraperCacheCard(props) {
             ),
           ]),
         ]),
-        View({ class: "home-cache-list" }, [
+        View({ class: "max-h-360px p-[var(--dm-space-1-5)_var(--dm-space-3-5)] overflow-auto" }, [
           For({
             key: "key",
             each: cache.entries,
@@ -1936,7 +1944,7 @@ function ScraperCacheCard(props) {
               return Button(
                 {
                   store: vm$.ui.btn_cache_entry$.bind(entry),
-                  class: "dm-button--list-row",
+                  class: "dm-button--list-row max-520:grid-cols-[30px_minmax(0,_1fr)]",
                   attributes: {
                     type: "button",
                     title: `查看缓存内容：${entry.name}`,
@@ -1944,27 +1952,27 @@ function ScraperCacheCard(props) {
                   },
                 },
                 [
-                  View({ class: "home-cache-entry-icon" }, [
+                  View({ class: "w-30px h-30px flex items-center justify-center rounded-content bg-content-primary-soft text-content-primary" }, [
                     Timeless.Icon({ name: "file", size: 16 }),
                   ]),
-                  View({ class: "home-cache-entry-main" }, [
+                  View({ class: "min-w-0" }, [
                     View(
                       {
-                        class: "home-cache-entry-name",
+                        class: "overflow-hidden text-content-text text-sm font-620 text-ellipsis whitespace-nowrap",
                         attributes: { title: entry.name },
                       },
                       [entry.name],
                     ),
                     View(
                       {
-                        class: "home-cache-entry-path",
+                        class: "mt-1 overflow-hidden text-content-muted font-mono text-caption text-ellipsis whitespace-nowrap",
                         attributes: { title: entry.path },
                       },
                       [entry.path],
                     ),
                   ]),
-                  View({ class: "home-cache-entry-trailing" }, [
-                    View({ class: "home-cache-entry-size" }, [entry.size_text]),
+                  View({ class: "inline-flex items-center gap-1-5 text-content-muted max-520:grid-column-2 max-520:justify-self-start" }, [
+                    View({ class: "text-content-muted text-xs font-variant-numeric-tabular-nums whitespace-nowrap max-520:grid-column-2" }, [entry.size_text]),
                     Timeless.Icon({ name: "chevron-right", size: 15 }),
                   ]),
                 ],
@@ -1988,10 +1996,10 @@ function ScraperCacheContentDialog(props) {
       showClose: false,
     },
     [
-      View({ class: "home-cache-dialog-header" }, [
-        View({ class: "home-cache-dialog-heading" }, [
-          View({ class: "home-cache-dialog-title" }, [cache_content.title]),
-          View({ class: "home-cache-dialog-meta" }, [cache_content.meta_text]),
+      View({ class: "p-[var(--dm-space-4)_var(--dm-space-4-5)_var(--dm-space-3)] flex items-start gap-3-5" }, [
+        View({ class: "min-w-0 flex-1" }, [
+          View({ class: "overflow-hidden text-lg font-680 text-ellipsis whitespace-nowrap" }, [cache_content.title]),
+          View({ class: "mt-1 text-content-muted text-xs" }, [cache_content.meta_text]),
         ]),
         Button(
           {
@@ -2003,16 +2011,16 @@ function ScraperCacheContentDialog(props) {
       ]),
       View(
         {
-          class: "home-cache-dialog-path",
+          class: "p-[0_var(--dm-space-4-5)_var(--dm-space-3)] overflow-hidden text-content-muted font-mono text-caption text-ellipsis whitespace-nowrap",
           attributes: { title: cache_content.path },
         },
         [cache_content.path],
       ),
-      View({ class: "home-cache-dialog-body" }, [
+      View({ class: "min-h-260px flex overflow-hidden border-top-[1px_solid_var(--dm-content-border)] bg-content-panel-soft" }, [
         Show({
           when: cache_content.loading,
           ok() {
-            return View({ class: "home-cache-dialog-state" }, [
+            return View({ class: "min-h-260px w-full flex items-center justify-center gap-2-5 text-content-muted text-md" }, [
               View({
                 class: "dm-spinner",
                 attributes: { n: "scraper-cache-loading" },
@@ -2026,7 +2034,7 @@ function ScraperCacheContentDialog(props) {
               ok() {
                 return View(
                   {
-                    class: "home-cache-dialog-state home-cache-dialog-error",
+                    class: "min-h-260px w-full flex items-center justify-center gap-2-5 text-md p-6 box-sizing-border-box text-content-danger text-center",
                   },
                   [cache_content.error],
                 );
@@ -2035,7 +2043,7 @@ function ScraperCacheContentDialog(props) {
                 return View(
                   {
                     type: "pre",
-                    class: "home-cache-dialog-content",
+                    class: "w-full min-h-260px max-h-[min(68vh,_650px)] box-sizing-border-box m-0 p-[var(--dm-space-4)_var(--dm-space-4-5)] overflow-auto text-content-text font-mono text-sm leading-[1.6] tab-size-2 whitespace-pre-wrap word-break-break-word",
                   },
                   [cache_content.text],
                 );
@@ -2055,7 +2063,7 @@ function BuildDownloadTaskResultView(props) {
     ok() {
       return View(
         {
-          class: "home-result",
+          class: "flex flex-col gap-3-5",
           attributes: { n: "scraper-result" },
         },
         [
@@ -2079,25 +2087,25 @@ function PlatformHomeScraperResultView(props) {
     ok() {
       return View(
         {
-          class: "home-result",
+          class: "flex flex-col gap-3-5",
           attributes: { n: "platform-home-scraper-result" },
         },
         [
           View(
             {
-              class: "home-card home-platform-preview-card dm-panel",
+              class: "min-w-0 overflow-hidden border-[1px_solid_var(--dm-content-border)] rounded-card bg-content-panel shadow-content-shadow home-platform-preview-card dm-panel",
               attributes: { n: "platform-home-preview-card" },
             },
             [
               View(
                 {
-                  class: "home-card-heading",
+                  class: "group-home-card-heading min-h-58px p-[var(--dm-space-2-5)_var(--dm-space-3-5)] flex items-center justify-between gap-3 border-bottom-[1px_solid_var(--dm-content-border)] bg-content-panel max-520:pr-3 max-520:pl-3 max-520:flex-wrap",
                   attributes: { n: "platform-home-preview-heading" },
                 },
                 [
                   View(
                     {
-                      class: "home-card-title",
+                      class: "mt-0-5 text-ui font-680 leading-[1.2]",
                       attributes: { n: "platform-home-preview-title" },
                     },
                     [home.title],
@@ -2106,13 +2114,13 @@ function PlatformHomeScraperResultView(props) {
               ),
               View(
                 {
-                  class: "home-platform-preview",
+                  class: "h-[min(72vh,_820px)] bg-[#fff]",
                   attributes: { n: "platform-home-preview" },
                 },
                 [
                   View({
                     type: "iframe",
-                    class: "home-platform-preview-frame",
+                    class: "w-full h-full border-0",
                     attributes: {
                       n: "platform-home-preview-frame",
                       srcdoc: home.html,
@@ -2165,7 +2173,7 @@ function ScraperPlatformStatus(props) {
           ok() {
             return View(
               {
-                class: "home-platform-status-list",
+                class: "box-sizing-border-box w-full min-w-0 grid grid-cols-[repeat(5,_minmax(0,_1fr))] gap-1",
                 attributes: {
                   n: "platform-status-list",
                   role: "list",
@@ -2189,7 +2197,7 @@ function ScraperPlatformStatus(props) {
                       [
                         View(
                           {
-                            class: "home-platform-status-logo-wrap",
+                            class: "relative w-5 h-5 min-w-5 min-h-5 max-w-5 max-h-5 grid flex-[0_0_var(--dm-space-5)] place-items-center [&_>_.group-home-platform-status-dot]:absolute [&_>_.group-home-platform-status-dot]:right-[calc(var(--dm-space-0-5)_*_-1)] [&_>_.group-home-platform-status-dot]:bottom-[calc(var(--dm-space-0-5)_*_-1)] [&_>_.group-home-platform-status-dot]:outline-[var(--dm-space-0-5)_solid_var(--dm-color-bg-surface)]",
                             attributes: {
                               n: "platform-status-logo-wrap",
                               "aria-hidden": "true",
@@ -2197,31 +2205,31 @@ function ScraperPlatformStatus(props) {
                           },
                           [
                             PlatformIcon({
-                              class: "home-platform-status-logo",
+                              class: "block w-5 h-5 min-w-5 min-h-5 max-w-5 max-h-5",
                               favicon: item.platform_favicon,
                               name: "platform-status-logo",
                             }),
                             View({
-                              class: "home-platform-status-dot",
+                              class: "group-home-platform-status-dot w-8px h-8px flex-[0_0_auto] rounded-round bg-content-muted [.dm-button--status.is-available_&]:bg-brand-success [.dm-button--status.is-available_&]:shadow-[0_0_0_3px_color-mix(in_srgb,_var(--dm-brand-success)_14%,_transparent)] [.dm-button--status.is-unavailable_&]:bg-content-danger [.dm-button--status.is-unavailable_&]:shadow-[0_0_0_3px_color-mix(in_srgb,_var(--dm-content-danger)_13%,_transparent)] [.dm-button--status.is-checking_&]:bg-content-primary [.dm-button--status.is-checking_&]:shadow-[0_0_0_3px_color-mix(in_srgb,_var(--dm-content-primary)_13%,_transparent)]",
                               attributes: { n: "platform-status-dot" },
                             }),
                           ],
                         ),
                         View(
                           {
-                            class: "home-platform-status-main",
+                            class: "w-full min-w-0 flex flex-col items-center gap-0",
                             attributes: { n: "platform-status-main" },
                           },
                           [
                             View(
                               {
-                                class: "home-platform-status-head",
+                                class: "w-full min-w-0 flex flex-col items-center gap-0",
                                 attributes: { n: "platform-status-head" },
                               },
                               [
                                 View(
                                   {
-                                    class: "home-platform-status-name",
+                                    class: "w-full min-w-0 min-h-[2.4em] -webkit-box overflow-hidden text-caption font-semibold leading-tight text-center overflow-wrap-anywhere -webkit-box-orient-vertical -webkit-line-clamp-2",
                                     attributes: { n: "platform-status-name" },
                                   },
                                   [item.platform_name],
@@ -2231,7 +2239,7 @@ function ScraperPlatformStatus(props) {
                                   ok() {
                                     return View(
                                       {
-                                        class: "home-platform-status-value",
+                                        class: "group-home-platform-status-value flex-[0_0_auto] text-content-muted text-caption whitespace-nowrap",
                                         attributes: {
                                           n: "platform-status-value",
                                         },
@@ -2265,7 +2273,7 @@ function ScraperPlatformStatus(props) {
             );
           },
           else() {
-            return View({ class: "home-platform-status-empty" }, [
+            return View({ class: "p-[var(--dm-space-5)_var(--dm-space-3-5)] text-content-muted text-sm text-center" }, [
               "正在连接 /ws/scraper",
             ]);
           },
@@ -2285,9 +2293,9 @@ function ScraperPlatformStatus(props) {
           },
         },
         [
-          View({ class: "home-platform-status-dot" }),
+          View({ class: "group-home-platform-status-dot w-8px h-8px flex-[0_0_auto] rounded-round bg-content-muted [.dm-button--status.is-available_&]:bg-brand-success [.dm-button--status.is-available_&]:shadow-[0_0_0_3px_color-mix(in_srgb,_var(--dm-brand-success)_14%,_transparent)] [.dm-button--status.is-unavailable_&]:bg-content-danger [.dm-button--status.is-unavailable_&]:shadow-[0_0_0_3px_color-mix(in_srgb,_var(--dm-content-danger)_13%,_transparent)] [.dm-button--status.is-checking_&]:bg-content-primary [.dm-button--status.is-checking_&]:shadow-[0_0_0_3px_color-mix(in_srgb,_var(--dm-content-primary)_13%,_transparent)]" }),
           View({ class: "home-platform-status-trigger-label" }, ["平台状态"]),
-          View({ class: "home-platform-status-trigger-summary" }, [
+          View({ class: "text-content-muted text-sm max-520:hidden" }, [
             status.summary,
           ]),
         ],
@@ -2303,7 +2311,7 @@ function ScraperFetchProgress(props) {
     ok() {
       return View(
         {
-          class: "home-fetch-progress",
+          class: "flex flex-col gap-2 p-[var(--dm-space-3)_var(--dm-space-3)] border-[1px_solid_transparent] rounded-content bg-content-panel-soft",
           attributes: {
             role: "progressbar",
             "aria-label": "抓取进度",
@@ -2313,15 +2321,15 @@ function ScraperFetchProgress(props) {
           },
         },
         [
-          View({ class: "home-fetch-progress-head" }, [
-            View({ class: "home-fetch-progress-stage" }, [
+          View({ class: "flex items-center justify-between gap-3 min-w-0" }, [
+            View({ class: "min-w-0 text-content-text text-md font-600 overflow-hidden text-ellipsis whitespace-nowrap" }, [
               vm$.state.progress_stage_text,
             ]),
-            View({ class: "home-fetch-progress-right" }, [
+            View({ class: "flex-[0_0_auto] flex items-center gap-2-5 text-content-muted text-sm" }, [
               Show({
                 when: vm$.state.progress_updated_text,
                 ok() {
-                  return View({ class: "home-fetch-progress-updated" }, [
+                  return View({ class: "text-content-muted text-sm" }, [
                     vm$.state.progress_updated_text,
                   ]);
                 },
@@ -2329,17 +2337,17 @@ function ScraperFetchProgress(props) {
               Show({
                 when: vm$.state.progress_has_percent,
                 ok() {
-                  return View({ class: "home-fetch-progress-percent" }, [
+                  return View({ class: "text-content-primary font-variant-numeric-tabular-nums" }, [
                     vm$.state.progress_percent_text,
                   ]);
                 },
               }),
             ]),
           ]),
-          View({ class: "home-fetch-progress-message" }, [
+          View({ class: "text-content-muted text-sm leading-[1.45] overflow-wrap-anywhere" }, [
             vm$.state.progress_message,
           ]),
-          View({ class: "home-fetch-progress-track" }, [
+          View({ class: "h-6px overflow-hidden rounded-round bg-[color-mix(in_srgb,_var(--dm-content-primary)_13%,_transparent)]" }, [
             View({
               class: vm$.state.progress_bar_class,
               style: computed(vm$.state.progress_percent, (percent) => ({
@@ -2350,7 +2358,7 @@ function ScraperFetchProgress(props) {
           Show({
             when: vm$.state.progress_has_total,
             ok() {
-              return View({ class: "home-fetch-progress-count" }, [
+              return View({ class: "text-content-muted text-sm" }, [
                 vm$.state.progress_count_text,
               ]);
             },

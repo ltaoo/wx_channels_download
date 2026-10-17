@@ -12,7 +12,7 @@ Object.assign(window, components);
 window.API_ORIGIN = window.config.apiOrigin || window.location.origin;
 
 function ApplicationRootView() {
-  return View({ class: "application-root page" }, [
+  return View({ class: "relative w-full h-full min-w-0 min-h-full text-color-text-primary font-sans bg-color-bg-canvas" }, [
     Timeless.ui.KeepAliveSubViews({
       app: app$,
       client: http_client$,

@@ -34,6 +34,8 @@
 
 先以 管理员身份 启动终端，然后 `go run main.go` 即可。
 
+默认不记录日志。排查问题时，可通过 `--debug` 启动参数（如 `go run main.go --debug`），或在配置文件中设置 `debug.enabled: true`，开启包含 Debug 级别的日志。`--debug=false` 可覆盖配置文件并关闭日志；`debug.error` 仅控制前端错误展示，`debug.echolog` 需同时开启调试才生效。
+
 ## 打包
 
 参考 `build/build.sh` 脚本。

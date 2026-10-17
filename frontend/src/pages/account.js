@@ -2,6 +2,22 @@ import { WxChannelsPlayerView } from "@/components/wxchannels.player.js";
 
 import { AccountViewModel } from "./account.model.js";
 
+const account_content_card_media_classes = {
+  __proto__: null,
+  default: "bg-[radial-gradient(circle_at_82%_18%,_rgb(255_190_65_/_32%),_transparent_42%),_linear-gradient(145deg,_#314251,_#18232e_72%)]",
+  answer: "bg-[radial-gradient(circle_at_78%_22%,_rgb(85_183_255_/_28%),_transparent_42%),_linear-gradient(145deg,_#314151,_#17212b_72%)]",
+};
+
+const account_content_card_gallery_classes = {
+  __proto__: null,
+  1: "block aspect-ratio-auto max-h-420px",
+  2: "grid grid-cols-[repeat(2,_minmax(0,_1fr))] aspect-ratio-[3_/_2]",
+  3: "grid grid-cols-[repeat(2,_minmax(0,_1fr))] aspect-ratio-[4_/_3] [&_.group-account-content-card-gallery-item:first-child]:grid-row-[span_2]",
+  4: "grid grid-cols-[repeat(2,_minmax(0,_1fr))] aspect-ratio-[4_/_3]",
+};
+
+
+
 const ACCOUNT_TEXT_CONTENT_TYPES = new Set(["answer", "webpage", "text"]);
 
 function AccountPageView(props) {
@@ -9,7 +25,7 @@ function AccountPageView(props) {
 
   return View(
     {
-      class: "content-page account-page page",
+      class: "group-content-page min-h-full flex flex-col bg-content-bg text-content-text [.group-content-page&]:h-full [.group-content-page&]:min-h-0 [.group-content-page&]:overflow-hidden [&_>_.dm-pagination]:flex-[0_0_auto] [&_>_.group-content-main]:min-h-0 [&_>_.group-content-main]:flex [&_>_.group-content-main]:flex-col min-w-0 min-h-full font-sans",
       attributes: { n: "account-page" },
       onMounted() {
         console.count("AccountPage onMounted");
@@ -19,7 +35,7 @@ function AccountPageView(props) {
     [
       View(
         {
-          class: "content-toolbar-wrap account-toolbar-wrap",
+          class: "group-content-toolbar-wrap p-[var(--dm-space-4)_var(--dm-space-4)_0] flex-[0_0_auto]",
           attributes: { n: "account-toolbar-wrap" },
         },
         [AccountPageToolbar({ store: vm$ })],
@@ -85,26 +101,26 @@ function account_content_card_height(content, _index, column_width) {
 function AccountContentCoverMeta(props) {
   return View(
     {
-      class: "account-content-card-cover-meta",
+      class: "absolute inset-0 z-2 flex flex-col justify-end gap-2 p-[52px_var(--dm-space-3)_var(--dm-space-3)] text-[#fff] bg-[linear-gradient(_to_bottom,_transparent_18%,_rgb(0_0_0_/_10%)_42%,_rgb(0_0_0_/_82%)_100%_)] pointer-events-none",
       attributes: { n: "account-content-card-cover-meta" },
     },
     [
       View(
         {
-          class: "account-content-card-cover-kicker",
+          class: "min-w-0 flex items-center justify-between gap-2",
           attributes: { n: "account-content-card-cover-kicker" },
         },
         [
           Tag(
             {
-              class: "account-content-card-type",
+              class: "flex-[0_0_auto] text-[#fff] border-[1px_solid_rgb(255_255_255_/_36%)] bg-[rgb(0_0_0_/_34%)] backdrop-filter-[blur(5px)]",
               attributes: { n: "account-content-card-type" },
             },
             [props.typeLabel],
           ),
           View(
             {
-              class: "account-content-card-time",
+              class: "min-w-0 overflow-hidden text-[rgb(255_255_255_/_78%)] text-xs text-ellipsis whitespace-nowrap",
               attributes: { n: "account-content-card-time" },
             },
             [props.publishTime],
@@ -114,7 +130,7 @@ function AccountContentCoverMeta(props) {
       View(
         {
           as: "h3",
-          class: "account-content-card-title",
+          class: "-webkit-box overflow-hidden m-0 text-[#fff] text-base font-semibold leading-[1.5] overflow-wrap-anywhere -webkit-box-orient-vertical text-shadow-[0_1px_3px_rgb(0_0_0_/_52%)] -webkit-line-clamp-4",
           attributes: { n: "account-content-card-title" },
         },
         [props.title],
@@ -132,13 +148,13 @@ function AccountContentMedia(props) {
   if (images.length === 0) {
     return View(
       {
-        class: `account-content-card-media account-content-card-media-empty account-content-card-media-${kind || "unknown"}`,
+        class: `relative w-full overflow-hidden min-h-190px text-[rgb(255_255_255_/_74%)] ${account_content_card_media_classes[kind] || account_content_card_media_classes.default}`,
         attributes: { n: "account-content-card-media-empty" },
       },
       [
         View(
           {
-            class: "account-content-card-media-symbol",
+            class: "absolute top-4 right-4 opacity-[0.32]",
             attributes: { "aria-hidden": "true" },
           },
           [
@@ -161,7 +177,7 @@ function AccountContentMedia(props) {
     );
     return View(
       {
-        class: `account-content-card-media account-content-card-gallery account-content-card-gallery-${Math.min(visible_images.length, 4)}`,
+        class: `relative w-full overflow-hidden bg-content-panel-soft gap-2px ${account_content_card_gallery_classes[Math.min(visible_images.length, 4)] || ""}`,
         style:
           visible_images.length === 1
             ? { "aspect-ratio": String(single_image_ratio) }
@@ -172,12 +188,12 @@ function AccountContentMedia(props) {
         ...visible_images.map((image_url, index) =>
           View(
             {
-              class: "account-content-card-gallery-item",
+              class: "group-account-content-card-gallery-item relative min-w-0 min-h-0 overflow-hidden",
               attributes: { n: "account-content-card-gallery-item" },
             },
             [
               LazyImg({
-                class: "account-content-card-image",
+                class: "w-full h-full block object-cover",
                 src: image_url,
                 alt: `${content.title || "图集"} ${index + 1}`,
                 attributes: {
@@ -188,7 +204,7 @@ function AccountContentMedia(props) {
               index === visible_images.length - 1 && images.length > 4
                 ? View(
                     {
-                      class: "account-content-card-gallery-more",
+                      class: "absolute inset-0 grid place-items-center text-[#fff] text-lg font-semibold bg-[rgb(0_0_0_/_48%)]",
                       attributes: { n: "account-content-card-gallery-more" },
                     },
                     [`+${images.length - 4}`],
@@ -204,7 +220,7 @@ function AccountContentMedia(props) {
 
   return View(
     {
-      class: "account-content-card-media account-content-card-poster",
+      class: "relative w-full overflow-hidden bg-content-panel-soft max-h-420px",
       style: {
         "aspect-ratio":
           Number(content.preview_aspect_ratio) > 0
@@ -215,7 +231,7 @@ function AccountContentMedia(props) {
     },
     [
       LazyImg({
-        class: "account-content-card-image",
+        class: "w-full h-full block object-cover",
         src: images[0],
         alt: content.title || "内容封面",
         attributes: {
@@ -226,7 +242,7 @@ function AccountContentMedia(props) {
       kind === "video"
         ? View(
             {
-              class: "account-content-card-play",
+              class: "absolute top-[50%] left-[50%] w-44px h-44px grid place-items-center text-[#fff] border-[1px_solid_rgb(255_255_255_/_46%)] rounded-[50%] bg-[rgb(0_0_0_/_44%)] backdrop-filter-[blur(6px)] transform-[translate(-50%,_-50%)]",
               attributes: {
                 n: "account-content-card-play",
                 "aria-hidden": "true",
@@ -238,7 +254,7 @@ function AccountContentMedia(props) {
       kind === "video" && Number(content.duration) > 0
         ? View(
             {
-              class: "account-content-card-duration",
+              class: "absolute top-2 right-2 bottom-auto p-[2px_6px] text-[#fff] text-xs font-variant-numeric-tabular-nums rounded-sm bg-[rgb(0_0_0_/_62%)]",
               attributes: { n: "account-content-card-duration" },
             },
             [account_content_duration(content.duration)],
@@ -271,10 +287,9 @@ function AccountContentCard(props) {
     {
       as: source_url ? "button" : "article",
       class: [
-        "account-content-card",
-        `account-content-card-${kind}`,
-        text_only ? "account-content-card-text-only" : "",
-        source_url ? "account-content-card-clickable" : "",
+        "w-full min-w-0 overflow-hidden p-0 text-inherit text-left border-[var(--dm-border-width)_solid_var(--dm-content-border)] bg-content-panel",
+        text_only ? "flex flex-col gap-2 p-4" : "",
+        source_url ? "cursor-pointer hover:border-color-color-primary-border hover:shadow-sm hover:outline-0 hover:transform-[translateY(-1px)] focus-visible:border-color-color-primary-border focus-visible:shadow-sm focus-visible:outline-0 focus-visible:transform-[translateY(-1px)]" : "",
       ]
         .filter(Boolean)
         .join(" "),
@@ -296,7 +311,7 @@ function AccountContentCard(props) {
           View(
             {
               as: "h3",
-              class: "account-content-card-text-title",
+              class: "-webkit-box overflow-hidden m-0 text-content-text text-base font-semibold leading-[1.5] overflow-wrap-anywhere -webkit-box-orient-vertical -webkit-line-clamp-4",
               attributes: { n: "account-content-card-text-title" },
             },
             [title],
@@ -305,7 +320,7 @@ function AccountContentCard(props) {
             ? View(
                 {
                   as: "p",
-                  class: "account-content-card-description",
+                  class: "-webkit-box overflow-hidden m-0 text-content-muted text-sm leading-[1.65] overflow-wrap-anywhere -webkit-box-orient-vertical -webkit-line-clamp-6",
                   attributes: { n: "account-content-card-description" },
                 },
                 [description],
@@ -321,7 +336,7 @@ function AccountContentPlayer(props) {
   const content = props.content;
   return View(
     {
-      class: "account-content-player",
+      class: "min-h-0 flex flex-[1_1_0] flex-col gap-3",
       attributes: {
         n: "account-content-player",
         role: "region",
@@ -331,21 +346,21 @@ function AccountContentPlayer(props) {
     [
       View(
         {
-          class: "account-content-player-header",
+          class: "flex items-center justify-between gap-3",
           attributes: { n: "account-content-player-header" },
         },
         [
           View(
             {
               as: "h3",
-              class: "account-content-player-title",
+              class: "min-w-0 overflow-hidden m-0 text-content-text text-base font-semibold text-ellipsis whitespace-nowrap",
               attributes: { n: "account-content-player-title" },
             },
             [content.title || content.external_id || "未命名视频"],
           ),
           View(
             {
-              class: "account-content-player-actions",
+              class: "flex flex-[0_0_auto] items-center gap-2",
               attributes: { n: "account-content-player-actions" },
             },
             [
@@ -359,7 +374,7 @@ function AccountContentPlayer(props) {
               View(
                 {
                   as: "button",
-                  class: "account-content-player-close",
+                  class: "inline-flex flex-[0_0_auto] items-center gap-1 text-content-muted text-sm border-0 bg-transparent cursor-pointer hover:text-color-primary hover:outline-none focus-visible:text-color-primary focus-visible:outline-none",
                   attributes: {
                     n: "account-content-player-close-action",
                     type: "button",
@@ -387,7 +402,7 @@ function AccountContentPlayer(props) {
         ok() {
           return View(
             {
-              class: "account-content-player-download-success",
+              class: "text-sm text-color-success",
               attributes: {
                 n: "account-content-player-download-success",
                 role: "status",
@@ -402,7 +417,7 @@ function AccountContentPlayer(props) {
         ok() {
           return View(
             {
-              class: "account-content-player-download-error",
+              class: "text-sm text-color-danger",
               attributes: {
                 n: "account-content-player-download-error",
                 role: "alert",
@@ -416,7 +431,7 @@ function AccountContentPlayer(props) {
         url: content.url,
         decodeKey: content.decode_key,
         autoplay: true,
-        class: "account-content-player-media",
+        class: "flex flex-[1_1_0] flex-col justify-center [&_.group-wxchannels-video]:max-h-[min(72vh,_calc(100vh_-_220px))]",
         nodeName: "account-content-player-media",
         ariaLabel: content.title || "账号视频",
       }),
@@ -428,7 +443,7 @@ function AccountContentState(props) {
   const role = props.error ? "alert" : "status";
   return View(
     {
-      class: `account-content-state${props.error ? " is-error" : ""}`,
+      class: `w-full min-h-360px flex flex-1 flex-col gap-3 items-center justify-center p-6 text-content-muted text-center${props.error ? " is-error" : ""}`,
       attributes: { n: "account-content-state", role },
     },
     [
@@ -442,9 +457,9 @@ function AccountContentState(props) {
         : props.error
           ? BrandError({ size: 116, name: "account-content-error-symbol" })
           : BrandEmpty({ size: 116, name: "account-content-empty-symbol" }),
-      View({ as: "h3", class: "account-content-state-title" }, [props.title]),
+      View({ as: "h3", class: "m-0 text-content-text text-base font-semibold" }, [props.title]),
       props.description
-        ? View({ as: "p", class: "account-content-state-description" }, [
+        ? View({ as: "p", class: "max-w-440px m-0 text-sm" }, [
             props.description,
           ])
         : null,
@@ -457,7 +472,7 @@ function AccountContentsCollection(props) {
   const vm$ = props.store;
   return View(
     {
-      class: "account-content-collection",
+      class: "min-h-0 flex flex-[1_1_0] flex-col overflow-hidden",
       attributes: { n: "account-content-collection" },
     },
     [
@@ -505,7 +520,7 @@ function AccountContentsCollection(props) {
         ),
         ok() {
           return Waterfall({
-            class: "account-content-waterfall",
+            class: "w-full min-h-0 flex-[1_1_0] p-[0_var(--dm-space-1)_var(--dm-space-2)_0] overflow-x-hidden overflow-y-auto overscroll-behavior-contain",
             attributes: {
               n: "account-content-waterfall",
               "aria-label": "账号内容列表",
@@ -528,7 +543,7 @@ function AccountContentsCollection(props) {
                 ok() {
                   return View(
                     {
-                      class: "account-content-waterfall-footer",
+                      class: "flex items-center justify-center gap-2 text-content-muted text-sm [&.is-error]:text-color-danger [&.is-end::before]:w-38px [&.is-end::before]:h-1px [&.is-end::before]:content-[\"\"] [&.is-end::before]:bg-content-border [&.is-end::after]:w-38px [&.is-end::after]:h-1px [&.is-end::after]:content-[\"\"] [&.is-end::after]:bg-content-border",
                       attributes: {
                         n: "account-content-load-more-status",
                         role: "status",
@@ -548,7 +563,7 @@ function AccountContentsCollection(props) {
                 ok() {
                   return View(
                     {
-                      class: "account-content-waterfall-footer is-error",
+                      class: "flex items-center justify-center gap-2 text-content-muted text-sm [&.is-error]:text-color-danger [&.is-end::before]:w-38px [&.is-end::before]:h-1px [&.is-end::before]:content-[\"\"] [&.is-end::before]:bg-content-border [&.is-end::after]:w-38px [&.is-end::after]:h-1px [&.is-end::after]:content-[\"\"] [&.is-end::after]:bg-content-border is-error",
                       attributes: {
                         n: "account-content-load-more-error",
                         role: "alert",
@@ -570,7 +585,7 @@ function AccountContentsCollection(props) {
                 ok() {
                   return View(
                     {
-                      class: "account-content-waterfall-footer is-end",
+                      class: "flex items-center justify-center gap-2 text-content-muted text-sm [&.is-error]:text-color-danger [&.is-end::before]:w-38px [&.is-end::before]:h-1px [&.is-end::before]:content-[\"\"] [&.is-end::before]:bg-content-border [&.is-end::after]:w-38px [&.is-end::after]:h-1px [&.is-end::after]:content-[\"\"] [&.is-end::after]:bg-content-border is-end",
                       attributes: {
                         n: "account-content-no-more",
                         role: "status",
@@ -602,12 +617,12 @@ function AccountContentsDrawer(props) {
     () => [
       View(
         {
-          class: "dm-drawer-body account-content-drawer-body",
+          class: "dm-drawer-body flex flex-col gap-4 min-h-0 overflow-hidden",
           attributes: { n: "account-content-drawer-body" },
         },
         [
           Tabs({
-            class: "account-content-tabs",
+            class: "flex-[0_0_auto] overflow-x-auto",
             attributes: { n: "account-content-tabs" },
             each: vm$.state.drawer_tabs,
             key: "scope",
@@ -704,7 +719,7 @@ function AccountPageToolbar(props) {
   return View(
     {
       type: "form",
-      class: "content-toolbar account-toolbar",
+      class: "group-content-toolbar flex items-center gap-3 max-760:flex-wrap justify-start",
       attributes: { n: "account-toolbar", role: "search" },
       onSubmit(event) {
         event.preventDefault();
@@ -715,7 +730,7 @@ function AccountPageToolbar(props) {
       View(
         {
           class:
-            "content-filter-fields account-filter-fields dm-flex dm-items-center dm-gap-2",
+            "min-w-0 flex-[1_1_0] max-760:flex-[1_1_100%] max-520:flex-wrap account-filter-fields dm-flex dm-items-center dm-gap-2",
         },
         [
           View({}, [
@@ -728,7 +743,7 @@ function AccountPageToolbar(props) {
           ]),
           View(
             {
-              class: "account-search",
+              class: "min-w-0 flex-[1_1_0] max-520:basis-full",
               attributes: { n: "account-search-field" },
             },
             [
@@ -754,7 +769,7 @@ function AccountPageToolbar(props) {
       ),
       View(
         {
-          class: "content-filter-actions dm-flex dm-items-center dm-gap-2",
+          class: "group-content-filter-actions flex-[0_0_auto] max-760:ml-auto max-520:w-full max-520:ml-0 max-520:[&_>_.dm-button]:flex-[1_1_0] dm-flex dm-items-center dm-gap-2",
           attributes: { n: "account-toolbar-actions" },
         },
         [
@@ -786,7 +801,7 @@ function AccountAvatar(props) {
   const account = props.account;
   return View(
     {
-      class: "account-avatar-wrap",
+      class: "relative w-46px h-46px flex-[0_0_auto] overflow-hidden rounded-avatar bg-content-panel-soft max-520:w-40px max-520:h-40px",
       attributes: { n: "account-avatar" },
     },
     [
@@ -794,7 +809,7 @@ function AccountAvatar(props) {
         when: account.avatar_url,
         ok() {
           return LazyImg({
-            class: "account-avatar",
+            class: "absolute inset-0 w-full h-full block object-cover",
             src: account.avatar_url,
             alt: account.nickname,
             attributes: {
@@ -830,25 +845,25 @@ function AccountIdentity(props) {
     AccountAvatar({ account }),
     View(
       {
-        class: "account-details",
+        class: "min-w-0 flex items-start flex-col gap-1 max-520:max-w-full",
         attributes: { n: "account-details" },
       },
       [
         View(
           {
-            class: "account-name",
+            class: "min-w-0 overflow-hidden text-content-text text-base font-620 text-ellipsis whitespace-nowrap max-520:max-w-full",
             attributes: { n: "account-name" },
           },
           [account.nickname],
         ),
-        View({ class: "account-meta", attributes: { n: "account-meta" } }, [
+        View({ class: "min-w-0 max-w-full flex items-center gap-2", attributes: { n: "account-meta" } }, [
           View(
             {
               type: "button",
               class: computed(copied_, (copied) =>
                 copied
-                  ? "account-copy-id-action dm-focus-ring is-copied"
-                  : "account-copy-id-action dm-focus-ring",
+                  ? "grid flex-[0_0_auto] place-items-center p-0 text-content-muted leading-1 bg-transparent border-0 cursor-pointer [&:hover:not(:disabled)]:text-color-primary [&.is-copied]:text-color-success [&.is-copied:hover]:text-color-success dm-focus-ring is-copied"
+                  : "grid flex-[0_0_auto] place-items-center p-0 text-content-muted leading-1 bg-transparent border-0 cursor-pointer [&:hover:not(:disabled)]:text-color-primary [&.is-copied]:text-color-success [&.is-copied:hover]:text-color-success dm-focus-ring",
               ),
               attributes: {
                 n: "account-copy-id-action",
@@ -888,7 +903,7 @@ function AccountIdentity(props) {
           ),
           View(
             {
-              class: "account-id",
+              class: "min-w-0 overflow-hidden text-content-muted font-[var(--dm-font-family-mono,_monospace)] text-caption text-ellipsis whitespace-nowrap",
               attributes: {
                 n: "account-id",
                 title: account.id || "",
@@ -907,32 +922,32 @@ function AccountSkeletonRow() {
   return View(
     {
       class:
-        "dm-table-row dm-grid dm-items-center account-row content-skeleton-row",
+        "dm-table-row dm-grid dm-items-center [&:not(.dm-table-header)]:min-h-72px max-520:grid-cols-[minmax(0,_1fr)_58px_96px] max-520:gap-2 pointer-events-none",
       attributes: { n: "account-table-skeleton-row", role: "row" },
     },
     [
       View(
         {
-          class: "dm-table-cell account-identity",
+          class: "dm-table-cell min-w-0 flex items-center gap-3 max-520:gap-2",
           attributes: { n: "account-table-skeleton-account", role: "cell" },
         },
         [
           View({
-            class: "account-avatar-wrap content-skeleton",
+            class: "relative w-46px h-46px flex-[0_0_auto] overflow-hidden rounded-avatar bg-content-panel-soft max-520:w-40px max-520:h-40px relative overflow-hidden [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite]",
             attributes: { n: "account-table-skeleton-avatar" },
           }),
           View(
             {
-              class: "account-skeleton-details",
+              class: "w-[min(320px,_60%)]",
               attributes: { n: "account-table-skeleton-details" },
             },
             [
               View({
-                class: "content-skeleton content-skeleton-line",
+                class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-[min(180px,_80%)]",
                 attributes: { n: "account-table-skeleton-name" },
               }),
               View({
-                class: "content-skeleton content-skeleton-line-short",
+                class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-[min(100px,_72%)]",
                 attributes: { n: "account-table-skeleton-id" },
               }),
             ],
@@ -946,7 +961,7 @@ function AccountSkeletonRow() {
         },
         [
           View({
-            class: "content-skeleton content-skeleton-line-short",
+            class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-[min(100px,_72%)]",
             attributes: { n: "account-table-skeleton-count-value" },
           }),
         ],
@@ -958,7 +973,7 @@ function AccountSkeletonRow() {
         },
         [
           View({
-            class: "content-skeleton content-skeleton-line-short",
+            class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-[min(100px,_72%)]",
             attributes: { n: "account-table-skeleton-time-value" },
           }),
         ],
@@ -971,15 +986,15 @@ function AccountPageBody(props) {
   const vm$ = props.store;
   return Table({
     name: "account-table",
-    containerClass: "content-main container",
+    containerClass: "group-content-main flex-[1_1_auto] min-w-0 p-4 ",
     containerAttributes: { n: "account-page-main" },
     panelAttributes: { n: "account-table-panel" },
-    headerClass: "account-row",
+    headerClass: "[&:not(.dm-table-header)]:min-h-72px max-520:grid-cols-[minmax(0,_1fr)_58px_96px] max-520:gap-2",
     columns: [
       {
         name: "account",
         title: "账号",
-        cellClass: "account-identity",
+        cellClass: "min-w-0 flex items-center gap-3 max-520:gap-2",
         cellAttributes(account) {
           return {
             title: account.nickname || account.external_id || "",
@@ -993,7 +1008,7 @@ function AccountPageBody(props) {
         name: "content-count",
         title: "关联内容",
         width: 110,
-        cellClass: "account-content-count",
+        cellClass: "flex items-center gap-1 text-content-muted text-sm font-variant-numeric-tabular-nums whitespace-nowrap max-520:text-xs max-520:whitespace-normal",
         render(account) {
           return [vm$.methods.formatContentCount(account.content_count)];
         },
@@ -1002,7 +1017,7 @@ function AccountPageBody(props) {
         name: "added",
         title: "添加时间",
         width: 180,
-        cellClass: "account-added",
+        cellClass: "flex items-center gap-1 text-content-muted text-sm font-variant-numeric-tabular-nums whitespace-nowrap max-520:text-xs max-520:whitespace-normal",
         render(account) {
           return [vm$.methods.formatTime(account.created_at)];
         },
@@ -1010,7 +1025,7 @@ function AccountPageBody(props) {
     ],
     rows: vm$.state.accounts,
     pagination: {
-      class: "container dm-px-4",
+      class: " dm-px-4",
       summary: vm$.state.range_text,
       page: vm$.state.page,
       pageCount: vm$.state.page_count,
@@ -1024,12 +1039,12 @@ function AccountPageBody(props) {
     status: vm$.state.status,
     loading: vm$.state.loading,
     error: vm$.state.error,
-    rowClass: "account-row",
+    rowClass: "[&:not(.dm-table-header)]:min-h-72px max-520:grid-cols-[minmax(0,_1fr)_58px_96px] max-520:gap-2",
     skeletonCount: 8,
     renderSkeletonRow: AccountSkeletonRow,
     onRow(account) {
       return {
-        class: "account-row-clickable",
+        class: "cursor-pointer hover:bg-content-panel-soft hover:shadow-[inset_var(--dm-border-width-strong)_0_var(--dm-color-primary-fill)] hover:outline-0 focus-visible:bg-content-panel-soft focus-visible:shadow-[inset_var(--dm-border-width-strong)_0_var(--dm-color-primary-fill)] focus-visible:outline-0",
         attributes: {
           n: "account-record",
           role: "button",

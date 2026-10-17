@@ -5,19 +5,19 @@ function SyncServerCard(props) {
   return View(
     {
       as: "article",
-      class: "sync-server-card",
+      class: "grid grid-cols-[minmax(0,_1fr)_auto] items-center gap-4 p-4 border-[1px_solid_var(--dm-content-border)] rounded-lg bg-content-panel max-640:items-stretch max-640:grid-cols-1fr",
       attributes: { n: "sync-server-card" },
     },
     [
       View(
         {
-          class: "sync-server-card__identity",
+          class: "flex min-w-0 items-center gap-3",
           attributes: { n: "sync-server-identity" },
         },
         [
           View(
             {
-              class: "sync-server-card__icon",
+              class: "grid w-42px h-42px flex-[0_0_auto] place-items-center text-color-primary rounded-md bg-content-panel-soft",
               attributes: { n: "sync-server-icon", "aria-hidden": "true" },
             },
             [
@@ -30,17 +30,17 @@ function SyncServerCard(props) {
           ),
           View(
             {
-              class: "sync-server-card__text",
+              class: "min-w-0",
               attributes: { n: "sync-server-text" },
             },
             [
               View(
-                { class: "sync-server-card__title-row" },
+                { class: "flex min-w-0 items-center gap-2" },
                 [
                   View(
                     {
                       as: "h2",
-                      class: "sync-server-card__name",
+                      class: "overflow-hidden min-w-0 m-0 text-content-text text-base text-ellipsis whitespace-nowrap",
                       attributes: { n: "sync-server-name" },
                     },
                     [server.name],
@@ -66,7 +66,7 @@ function SyncServerCard(props) {
               ),
               View(
                 {
-                  class: "sync-server-card__url",
+                  class: "text-content-muted overflow-hidden mt-1 font-[var(--dm-font-family-mono,_monospace)] text-sm text-ellipsis whitespace-nowrap",
                   attributes: { n: "sync-server-url", title: server.url },
                 },
                 [server.url],
@@ -97,7 +97,7 @@ function SyncServerCard(props) {
           return View(
             {
               class: Timeless.classNames([
-                "sync-server-card__message",
+                "grid-column-[1_/_-1] text-sm [&.is-success]:text-color-success [&.is-error]:text-color-danger",
                 server.message_class,
               ]),
               attributes: { n: "sync-server-status", role: "status" },
@@ -115,7 +115,7 @@ function SyncPageToolbar(props) {
   return View(
     {
       type: "form",
-      class: "content-toolbar content-filter-form",
+      class: "group-content-toolbar flex justify-between gap-3 max-760:flex-wrap items-stretch",
       attributes: { n: "sync-toolbar", role: "search" },
       onSubmit(event) {
         event.preventDefault();
@@ -124,13 +124,13 @@ function SyncPageToolbar(props) {
     [
       View(
         {
-          class: "content-filter-fields dm-flex dm-items-center dm-gap-2",
+          class: "min-w-0 flex-[1_1_0] max-760:flex-[1_1_100%] max-520:flex-wrap dm-flex dm-items-center dm-gap-2",
           attributes: { n: "sync-toolbar-fields" },
         },
         [
           View(
             {
-              class: "content-filter-search",
+              class: "min-w-0 flex-[1_1_0] max-520:basis-full",
               attributes: { n: "sync-search-field" },
             },
             [
@@ -156,7 +156,7 @@ function SyncPageToolbar(props) {
       ),
       View(
         {
-          class: "content-filter-actions dm-flex dm-items-center dm-gap-2",
+          class: "group-content-filter-actions flex-[0_0_auto] max-760:ml-auto max-520:w-full max-520:ml-0 max-520:[&_>_.dm-button]:flex-[1_1_0] dm-flex dm-items-center dm-gap-2",
           attributes: { n: "sync-toolbar-actions" },
         },
         [
@@ -182,7 +182,7 @@ export default function SyncPageView(props) {
   const model = SyncPageModel(props);
   return View(
     {
-      class: "content-page sync-page page",
+      class: "group-content-page min-h-full flex flex-col bg-content-bg text-content-text [&_>_.group-sync-toolbar-wrap]:flex-[0_0_auto] [&_>_.group-sync-main]:min-h-0 [&_>_.group-sync-main]:flex [&_>_.group-sync-main]:flex-[1_1_auto] [&_>_.group-sync-main]:flex-col [&_>_.group-sync-main]:gap-4 max-640:[&_.group-content-toolbar]:items-stretch max-640:[&_.group-content-toolbar]:flex-col max-640:[&_.group-content-filter-actions]:justify-end min-w-0 min-h-full font-sans",
       attributes: { n: "sync-page" },
       onMounted() {
         model.methods.ready();
@@ -194,14 +194,14 @@ export default function SyncPageView(props) {
     [
       View(
         {
-          class: "content-toolbar-wrap sync-toolbar-wrap",
+          class: "group-content-toolbar-wrap p-[var(--dm-space-4)_var(--dm-space-4)_0] group-sync-toolbar-wrap",
           attributes: { n: "sync-toolbar-wrap" },
         },
         [SyncPageToolbar({ store: model })],
       ),
       View(
         {
-          class: "content-main sync-main",
+          class: "group-content-main flex-[1_1_auto] min-w-0 p-4 group-sync-main",
           attributes: { n: "sync-main" },
         },
         [
@@ -210,7 +210,7 @@ export default function SyncPageView(props) {
             ok() {
               return View(
                 {
-                  class: "sync-page__error",
+                  class: "text-color-danger p-8 text-center",
                   attributes: { n: "sync-page-error", role: "alert" },
                 },
                 [model.state.error.value],
@@ -225,7 +225,7 @@ export default function SyncPageView(props) {
             ok() {
               return View(
                 {
-                  class: "sync-server-list",
+                  class: "grid gap-3",
                   attributes: { n: "sync-server-list" },
                 },
                 [
@@ -241,7 +241,7 @@ export default function SyncPageView(props) {
             else() {
               return View(
                 {
-                  class: "sync-page__empty",
+                  class: "text-content-muted p-8 text-center",
                   attributes: { n: "sync-page-empty" },
                 },
                 [model.state.empty_message],

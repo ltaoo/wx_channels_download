@@ -4,7 +4,7 @@ function PreviewStateView(props) {
   return View(
     {
       class: [
-        "preview-state dm-empty-state",
+        "group-preview-state flex w-[min(520px,_calc(100%_-_var(--dm-space-8)))] min-h-360px flex-[0_0_auto] flex-col items-center justify-center gap-2 m-auto p-[var(--dm-space-16)_var(--dm-space-5)] text-preview-muted text-center bg-preview-panel border-[var(--dm-border-width)_solid_var(--dm-preview-border)] rounded-card shadow-lg [&_.group-preview-retry]:min-h-control-height-md [&_.group-preview-retry]:mt-3 [&_.group-preview-retry]:p-[0_var(--dm-space-4)] [&_.group-preview-retry]:text-color-on-primary [&_.group-preview-retry]:bg-color-primary-fill [&_.group-preview-retry]:border-color-color-primary-fill [&_.group-preview-retry]:rounded-control [&_.group-preview-retry:hover]:text-color-on-primary [&_.group-preview-retry:hover]:bg-color-primary-fill-hover [&_.group-preview-retry:hover]:border-color-color-primary-fill-hover dm-empty-state",
         props.role === "alert" ? "is-error" : "",
       ]
         .filter(Boolean)
@@ -25,10 +25,10 @@ function PreviewStateView(props) {
           : BrandEmpty({ size: 124, name: "preview-empty-symbol" })
         : null,
       props.title
-        ? View({ as: "h3", class: "preview-state-title" }, [props.title])
+        ? View({ as: "h3", class: "m-0 text-preview-text text-lg font-semibold" }, [props.title])
         : null,
       props.message
-        ? View({ as: "p", class: "preview-state-message" }, [props.message])
+        ? View({ as: "p", class: "m-0 text-preview-muted text-md leading-relaxed overflow-wrap-anywhere" }, [props.message])
         : null,
       props.action || null,
     ].filter(Boolean),
@@ -39,28 +39,28 @@ function PreviewHeaderView(props) {
   const task = props.task;
   const account = task.account;
   return View(
-    { class: "preview-header page-header container" },
+    { class: "flex-[0_0_auto] p-[var(--dm-space-3)_var(--dm-space-4)] bg-preview-panel border-bottom-[1px_solid_var(--dm-preview-border)] text-color-text-primary shadow-divider -webkit-backdrop-filter-[blur(14px)] backdrop-filter-[blur(14px)] " },
     [
       account
-        ? View({ class: "preview-account" }, [
+        ? View({ class: "flex items-center gap-2 mb-1-5" }, [
             account.avatar_url
               ? LazyImg({
-                  class: "preview-account-avatar",
+                  class: "w-24px h-24px object-cover bg-preview-panel-soft rounded-avatar",
                   src: account.avatar_url,
                   alt: "",
                   attributes: { referrerpolicy: "no-referrer" },
                 })
               : null,
-            View({ class: "preview-account-name" }, [
+            View({ class: "overflow-hidden text-preview-text text-md font-500 text-ellipsis whitespace-nowrap" }, [
               account.nickname || account.external_id || "",
             ]),
           ])
         : null,
-      View({ class: "preview-title dm-font-display dm-font-bold" }, [
+      View({ class: "-webkit-box mb-1 overflow-hidden text-ui font-600 leading-[1.4] -webkit-box-orient-vertical -webkit-line-clamp-2 dm-font-display dm-font-bold" }, [
         task.title,
       ]),
       View(
-        { class: "preview-subtitle" },
+        { class: "flex items-center gap-2 text-preview-muted text-sm" },
         [
           task.platform_id
             ? PlatformTag({
@@ -96,23 +96,23 @@ function PreviewSingleFileView(props) {
     return PreviewTextFileView({ store: vm$, file });
   }
   if (file.file_type === "video") {
-    return View({ class: "preview-video-container" }, [
+    return View({ class: "flex min-h-0 flex-1 flex-col items-center justify-center bg-color-media-canvas" }, [
       PreviewVideoPlayerView({
         store: vm$,
         file,
-        videoClass: "preview-video",
+        videoClass: "w-auto max-w-full h-auto max-h-[calc(100%_-_28px)] outline-none",
         autoplay: true,
       }),
-      View({ class: "preview-filename" }, [file.name]),
+      View({ class: "max-w-full p-[var(--dm-space-1)_var(--dm-space-3)] overflow-hidden text-preview-subtle text-sm text-center text-ellipsis whitespace-nowrap" }, [file.name]),
     ]);
   }
-  return View({ class: "preview-image-container" }, [
+  return View({ class: "flex min-h-0 flex-1 flex-col items-center justify-center p-5 overflow-auto" }, [
     LazyImg({
-      class: "preview-image",
+      class: "max-w-full max-h-[calc(100%_-_28px)] object-contain rounded-content",
       src: url,
       alt: file.name,
     }),
-    View({ class: "preview-filename" }, [file.name]),
+    View({ class: "max-w-full p-[var(--dm-space-1)_var(--dm-space-3)] overflow-hidden text-preview-subtle text-sm text-center text-ellipsis whitespace-nowrap" }, [file.name]),
   ]);
 }
 
@@ -121,7 +121,7 @@ function PreviewHTMLFileView(props) {
   const file = props.file;
   return View(
     {
-      class: ["preview-html-reader", props.class].filter(Boolean).join(" "),
+      class: ["relative flex min-w-0 min-h-0 flex-1 overflow-hidden text-[#29251d] color-scheme-light bg-color-document-canvas [&_>_.group-preview-state]:absolute [&_>_.group-preview-state]:inset-0 [&_>_.group-preview-state]:z-1", props.class].filter(Boolean).join(" "),
       attributes: {
         n: props.nodeName || "preview-html-reader",
         role: "region",
@@ -136,7 +136,7 @@ function PreviewHTMLFileView(props) {
     },
     [
       Timeless.RichText({
-        class: "preview-html-content",
+        class: "block w-full min-w-0 min-h-0 p-5 overflow-auto text-[#29251d] leading-relaxed overflow-wrap-anywhere bg-color-document-canvas [&_>_:first-child]:mt-0 [&_>_:last-child]:mb-0 [&_img]:max-w-full [&_video]:max-w-full [&_audio]:max-w-full [&_iframe]:max-w-full [&_img]:h-auto [&_video]:h-auto [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:whitespace-pre [&_table]:max-w-full [&_table]:border-collapse-collapse",
         content: vm$.state.html_content,
         attributes: {
           n: "preview-html-content",
@@ -163,7 +163,7 @@ function PreviewHTMLFileView(props) {
               {
                 as: "button",
                 class:
-                  "preview-retry dm-button dm-button--primary dm-focus-ring",
+                  "group-preview-retry p-[var(--dm-space-1-5)_var(--dm-space-4)] text-color-media-text font-inherit text-md bg-none border-[1px_solid_var(--dm-color-media-border)] rounded-control cursor-pointer hover:bg-preview-border dm-button dm-button--primary dm-focus-ring",
                 attributes: { type: "button" },
                 onClick() {
                   vm$.methods.retryHTML();
@@ -185,7 +185,7 @@ function PreviewTextFileView(props) {
     const line = line_ && line_.value !== undefined ? line_.value : line_;
     return View(
       {
-        class: "preview-text-line",
+        class: "grid grid-cols-[max-content_minmax(0,_1fr)] gap-4 min-h-[1.6em]",
         attributes: {
           n: "preview-text-line",
           "data-line": String(line.number),
@@ -194,7 +194,7 @@ function PreviewTextFileView(props) {
       [
         View(
           {
-            class: "preview-text-line-number",
+            class: "min-w-4ch text-preview-subtle text-right user-select-none",
             attributes: {
               n: "preview-text-line-number",
               "aria-hidden": "true",
@@ -204,7 +204,7 @@ function PreviewTextFileView(props) {
         ),
         View(
           {
-            class: "preview-text-line-content",
+            class: "min-w-0 whitespace-pre-wrap overflow-wrap-anywhere",
             attributes: { n: "preview-text-line-content" },
           },
           [line.text],
@@ -214,7 +214,7 @@ function PreviewTextFileView(props) {
   };
   return View(
     {
-      class: ["preview-text-reader", props.class].filter(Boolean).join(" "),
+      class: ["flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden bg-preview-panel", props.class].filter(Boolean).join(" "),
       attributes: {
         n: props.nodeName || "preview-text-reader",
         role: "region",
@@ -224,20 +224,20 @@ function PreviewTextFileView(props) {
     [
       View(
         {
-          class: "preview-text-toolbar",
+          class: "flex flex-[0_0_auto] items-center justify-between gap-3 p-[var(--dm-space-2-5)_var(--dm-space-4)] border-bottom-[1px_solid_var(--dm-preview-border)]",
           attributes: { n: "preview-text-toolbar" },
         },
         [
           View(
             {
-              class: "preview-text-title",
+              class: "min-w-0 overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap",
               attributes: { n: "preview-text-title", title: file.name },
             },
             [file.name],
           ),
           View(
             {
-              class: "preview-text-count",
+              class: "flex-[0_0_auto] text-preview-muted text-xs",
               attributes: { n: "preview-text-count", "aria-live": "polite" },
             },
             [computed(vm$.state.text_lines, (lines) => `${lines.length} 行`)],
@@ -247,7 +247,7 @@ function PreviewTextFileView(props) {
       Timeless.ui.ScrollViewPrimitive.Root(
         {
           store: vm$.methods.textScrollView(),
-          class: "preview-text-lines",
+          class: "min-h-0 flex-1 overflow-auto p-[var(--dm-space-4)_var(--dm-space-5)] text-preview-text font-[var(--dm-font-family-mono,_ui-monospace,_SFMono-Regular,_Menlo,_Monaco,_Consolas,_monospace)] text-sm leading-[1.6] [background:var(--dm-preview-bg)] outline-none",
           attributes: {
             n: "preview-text-lines",
             tabindex: "0",
@@ -282,7 +282,7 @@ function PreviewTextFileView(props) {
         ok() {
           return View(
             {
-              class: "preview-text-status",
+              class: "flex-[0_0_auto] text-preview-muted text-xs flex items-center justify-center gap-2 p-[var(--dm-space-2)_var(--dm-space-4)] border-top-[1px_solid_var(--dm-preview-border)]",
               attributes: { n: "preview-text-loading", role: "status" },
             },
             ["正在加载更多内容…"],
@@ -294,7 +294,7 @@ function PreviewTextFileView(props) {
         ok() {
           return View(
             {
-              class: "preview-text-status preview-text-error",
+              class: "flex-[0_0_auto] text-xs flex items-center justify-center gap-2 p-[var(--dm-space-2)_var(--dm-space-4)] border-top-[1px_solid_var(--dm-preview-border)] text-color-danger",
               attributes: { n: "preview-text-error", role: "alert" },
             },
             [
@@ -302,7 +302,7 @@ function PreviewTextFileView(props) {
               View(
                 {
                   as: "button",
-                  class: "preview-text-retry dm-button dm-focus-ring",
+                  class: "min-h-control-height-sm p-[0_var(--dm-space-3)] text-inherit font-inherit bg-transparent border-[1px_solid_currentColor] rounded-control cursor-pointer hover:bg-preview-panel-soft dm-button dm-focus-ring",
                   attributes: {
                     n: "preview-text-retry",
                     type: "button",
@@ -328,7 +328,7 @@ function PreviewTextFileView(props) {
         ok() {
           return View(
             {
-              class: "preview-text-status preview-text-end",
+              class: "flex-[0_0_auto] text-preview-muted text-xs flex items-center justify-center gap-2 p-[var(--dm-space-2)_var(--dm-space-4)] border-top-[1px_solid_var(--dm-preview-border)] preview-text-end",
               attributes: { n: "preview-text-end", role: "status" },
             },
             ["已加载全部内容"],
@@ -350,7 +350,7 @@ function PreviewVideoPlayerView(props) {
   return View(
     {
       class: [
-        "preview-video-player",
+        "group-preview-video-player relative flex w-full min-w-0 min-h-0 flex-1 items-center justify-center overflow-hidden [&.is-live-playback]:bg-color-media-canvas",
         is_live_playback ? "is-live-playback" : "",
       ]
         .filter(Boolean)
@@ -400,7 +400,7 @@ function PreviewVideoPlayerView(props) {
         ok() {
           return Tag(
             {
-              class: "preview-subtitle-error",
+              class: "absolute left-3 z-1 max-w-[calc(100%_-_var(--dm-space-6))] overflow-hidden text-ellipsis bg-color-media-surface border-[1px_solid_var(--dm-color-media-border)] shadow-sm pointer-events-none top-auto bottom-64px text-color-danger",
               attributes: { n: "preview-video-subtitle-error", role: "status" },
             },
             [player$.state.subtitle_error],
@@ -412,7 +412,7 @@ function PreviewVideoPlayerView(props) {
             {
               class: computed(
                 vm$.state.live_playback_status,
-                (status) => `preview-live-status is-${status || "waiting"}`,
+                (status) => `absolute top-3 left-3 z-1 max-w-[calc(100%_-_var(--dm-space-6))] overflow-hidden text-color-media-text text-ellipsis bg-color-media-surface border-[1px_solid_var(--dm-color-media-border)] shadow-sm pointer-events-none [&.is-playing]:text-color-success [&.is-ready]:text-color-success [&.is-error]:text-color-danger is-${status || "waiting"}`,
               ),
               attributes: {
                 n: "live-playback-status",
@@ -432,7 +432,7 @@ function PreviewFileThumbnail(props) {
   if (file.file_type !== "image" || !file.exists) {
     return View(
       {
-        class: "preview-file-icon",
+        class: "group-preview-file-icon text-preview-muted opacity-[0.5]",
         attributes: { n: "file-type-icon" },
       },
       [
@@ -443,10 +443,10 @@ function PreviewFileThumbnail(props) {
       ],
     );
   }
-  return View({ class: "preview-file-thumbnail-wrap" }, [
+  return View({ class: "group-preview-file-thumbnail-wrap absolute inset-0 flex items-center justify-center" }, [
     View(
       {
-        class: "preview-file-icon",
+        class: "group-preview-file-icon text-preview-muted opacity-[0.5]",
         attributes: { n: "file-thumbnail-fallback-icon" },
       },
       [
@@ -457,7 +457,7 @@ function PreviewFileThumbnail(props) {
       ],
     ),
     LazyImg({
-      class: "preview-file-thumbnail",
+      class: "absolute inset-0 w-full h-full object-cover",
       src: vm$.methods.fileURL(file),
       alt: file.name,
       attributes: { loading: "lazy" },
@@ -473,7 +473,7 @@ function PreviewFileCardView(props) {
     {
       as: "button",
       class: [
-        "preview-file-card dm-panel--soft dm-focus-ring",
+        "min-w-0 p-0 overflow-hidden text-inherit font-inherit text-left bg-preview-panel border-[1px_solid_var(--dm-preview-border)] rounded-card cursor-pointer transition-[border-color_var(--dm-duration-base)_var(--dm-ease-standard),_transform_var(--dm-duration-fast)_var(--dm-ease-standard)] [&:hover:not(:disabled)]:border-color-preview-accent [&:hover:not(:disabled)]:outline-none [&:hover:not(:disabled)]:transform-[translateY(-1px)] focus-visible:border-color-preview-accent focus-visible:outline-none focus-visible:transform-[translateY(-1px)] disabled:cursor-default disabled:opacity-[0.68] [&.is-missing]:cursor-default [&.is-missing]:opacity-[0.68] dm-panel--soft dm-focus-ring",
         playable ? "" : "is-missing",
       ]
         .filter(Boolean)
@@ -489,35 +489,35 @@ function PreviewFileCardView(props) {
     },
     [
       View(
-        { class: "preview-file-thumb" },
+        { class: "relative flex w-full h-120px items-center justify-center overflow-hidden bg-preview-panel-soft" },
         [
           PreviewFileThumbnail({ store: vm$, file }),
           file.status
             ? Tag(
-                { name: "preview-file-status", class: "preview-file-status" },
+                { name: "preview-file-status", class: "absolute top-6px right-6px z-1 text-color-media-muted bg-color-media-surface" },
                 [file.status],
               )
             : null,
         ].filter(Boolean),
       ),
       View(
-        { class: "preview-file-info" },
+        { class: "p-[var(--dm-space-2-5)_var(--dm-space-3)]" },
         [
           View(
             {
-              class: "preview-file-name",
+              class: "mb-1 overflow-hidden text-md font-500 text-ellipsis whitespace-nowrap",
               attributes: { title: file.name },
             },
             [file.name],
           ),
-          View({ class: "preview-file-meta" }, [
+          View({ class: "flex justify-between text-preview-subtle text-xs" }, [
             View({}, [vm$.methods.formatBytes(file.size)]),
             View({}, [playable ? "" : "missing"]),
           ]),
           file.status === "downloading" && file.progress > 0
-            ? View({ class: "preview-progress" }, [
+            ? View({ class: "h-3px mt-1-5 overflow-hidden bg-preview-border rounded-round" }, [
                 View({
-                  class: "preview-progress-value",
+                  class: "h-full bg-preview-accent rounded-round transition-[width_var(--dm-duration-slow)_var(--dm-ease-standard)]",
                   style: { width: `${file.progress}%` },
                 }),
               ])
@@ -531,12 +531,12 @@ function PreviewFileCardView(props) {
 function PreviewFileGridView(props) {
   const vm$ = props.store;
   const files = props.files;
-  return View({ class: "preview-main container" }, [
-    View({ as: "h2", class: "preview-files-title" }, [
+  return View({ class: "min-h-0 flex-1 p-4 overflow-auto " }, [
+    View({ as: "h2", class: "m-[0_0_var(--dm-space-3)] text-preview-text text-ui font-600" }, [
       `文件 (${files.length})`,
     ]),
     files.length > 0
-      ? View({ class: "preview-file-grid" }, [
+      ? View({ class: "grid grid-cols-[repeat(auto-fill,_minmax(180px,_1fr))] gap-3 max-520:grid-cols-[repeat(auto-fill,_minmax(140px,_1fr))]" }, [
           For({
             each: files,
             render(file_) {
@@ -553,10 +553,10 @@ function PreviewFileGridView(props) {
 function PreviewGalleryPlaceholderView(props) {
   const vm$ = props.store;
   const file = props.file;
-  return View({ class: "preview-gallery-placeholder" }, [
+  return View({ class: "w-full grid place-items-center content-center gap-3 p-8 text-preview-muted text-center" }, [
     View(
       {
-        class: "preview-gallery-placeholder-icon",
+        class: "w-16 h-16 grid place-items-center text-preview-muted bg-preview-panel border-[var(--dm-border-width)_solid_var(--dm-preview-border)] rounded-content",
         attributes: { n: "gallery-placeholder-file-type-icon" },
       },
       [
@@ -568,12 +568,12 @@ function PreviewGalleryPlaceholderView(props) {
     ),
     View(
       {
-        class: "preview-gallery-placeholder-name",
+        class: "max-w-[min(520px,_90%)] overflow-hidden text-preview-text text-base font-semibold text-ellipsis whitespace-nowrap",
         attributes: { title: file.name },
       },
       [file.name],
     ),
-    View({ class: "preview-gallery-placeholder-message" }, [
+    View({ class: "max-w-48ch text-sm leading-relaxed" }, [
       vm$.methods.filePlayable(file)
         ? "此文件类型无法在画廊中直接预览，请打开文件查看。"
         : "文件尚未下载、下载未完成，或本地文件已被删除。",
@@ -592,7 +592,7 @@ function PreviewGalleryMediaView(props) {
     return PreviewHTMLFileView({
       store: vm$,
       file,
-      class: "preview-gallery-html-reader",
+      class: "group-preview-gallery-html-reader",
       nodeName: "gallery-html-reader",
     });
   }
@@ -600,13 +600,13 @@ function PreviewGalleryMediaView(props) {
     return PreviewTextFileView({
       store: vm$,
       file,
-      class: "preview-gallery-text-reader",
+      class: "group-preview-gallery-text-reader",
       nodeName: "gallery-text-reader",
     });
   }
   if (file.file_type === "image") {
     return Timeless.Img({
-      class: "preview-gallery-image",
+      class: "w-full h-full block object-contain",
       src: url,
       alt: file.name,
       attributes: { loading: "eager" },
@@ -616,15 +616,15 @@ function PreviewGalleryMediaView(props) {
     return PreviewVideoPlayerView({
       store: vm$,
       file,
-      videoClass: "preview-gallery-video",
+      videoClass: "w-full h-full block object-contain outline-none",
       autoplay: vm$.methods.isLivePlayback(file),
     });
   }
   if (file.file_type === "audio") {
-    return View({ class: "preview-gallery-audio-stage" }, [
+    return View({ class: "w-full grid place-items-center gap-6 p-8" }, [
       View(
         {
-          class: "preview-gallery-audio-icon",
+          class: "w-16 h-16 grid place-items-center text-preview-muted bg-preview-panel border-[var(--dm-border-width)_solid_var(--dm-preview-border)] rounded-content",
           attributes: { n: "gallery-audio-file-type-icon" },
         },
         [
@@ -635,7 +635,7 @@ function PreviewGalleryMediaView(props) {
         ],
       ),
       Timeless.Audio({
-        class: "preview-gallery-audio",
+        class: "w-[min(520px,_100%)]",
         src: url,
         controls: true,
         preload: "metadata",
@@ -644,7 +644,7 @@ function PreviewGalleryMediaView(props) {
   }
   if (file.file_type === "pdf") {
     return Timeless.Webview({
-      class: "preview-gallery-document",
+      class: "w-full h-full block bg-color-document-canvas border-0",
       href: url,
       attributes: {
         title: file.name,
@@ -667,18 +667,18 @@ function PreviewGalleryStageView(props) {
     .join(" · ");
   return View(
     {
-      class: `preview-gallery-stage is-${file.file_type}`,
+      class: `w-full min-w-0 flex min-h-0 h-full flex-1 flex-col overflow-hidden bg-preview-panel [&.is-video_.group-preview-gallery-viewport]:bg-color-media-canvas is-${file.file_type}`,
     },
     [
-      View({ class: "preview-gallery-viewport" }, [
+      View({ class: "group-preview-gallery-viewport h-full min-h-0 min-w-0 flex-1 flex items-center justify-center overflow-hidden bg-preview-panel-soft [&_>_.group-preview-gallery-text-reader]:align-self-stretch [&_>_.group-preview-gallery-text-reader]:w-full [&_>_.group-preview-gallery-text-reader]:h-full [&_>_.group-preview-gallery-text-reader]:min-w-0 [&_>_.group-preview-gallery-text-reader]:min-h-0 [&_>_.group-preview-gallery-html-reader]:align-self-stretch [&_>_.group-preview-gallery-html-reader]:w-full [&_>_.group-preview-gallery-html-reader]:h-full [&_>_.group-preview-gallery-html-reader]:min-w-0 [&_>_.group-preview-gallery-html-reader]:min-h-0 [&_>_.group-preview-video-player]:h-full [.group-content-detail-media-viewport&]:flex [.group-content-detail-media-viewport&]:h-[min(72vh,_760px)] [.group-content-detail-media-viewport&]:min-h-0 [.group-content-detail-media-viewport&]:flex-none" }, [
         PreviewGalleryMediaView({ store: vm$, file }),
       ]),
       View(
-        { class: "preview-gallery-caption" },
+        { class: "grid grid-cols-[auto_minmax(0,_1fr)_auto] items-center gap-3 p-[var(--dm-space-3)_var(--dm-space-4)] border-top-[var(--dm-border-width)_solid_var(--dm-preview-border)] max-520:grid-cols-[auto_minmax(0,_1fr)]" },
         [
           View(
             {
-              class: "preview-gallery-caption-icon",
+              class: "w-control-height-sm h-control-height-sm grid place-items-center text-color-primary bg-color-primary-soft rounded-content",
               attributes: { n: "gallery-caption-file-type-icon" },
             },
             [
@@ -688,21 +688,21 @@ function PreviewGalleryStageView(props) {
               }),
             ],
           ),
-          View({ class: "preview-gallery-caption-main" }, [
+          View({ class: "min-w-0" }, [
             View(
               {
-                class: "preview-gallery-name",
+                class: "overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap",
                 attributes: { title: file.name },
               },
               [file.name],
             ),
-            View({ class: "preview-gallery-meta" }, [meta]),
+            View({ class: "mt-0-5 overflow-hidden text-preview-muted text-xs text-ellipsis whitespace-nowrap" }, [meta]),
           ]),
           file.exists
             ? View(
                 {
                   as: "button",
-                  class: "preview-gallery-open dm-button dm-focus-ring",
+                  class: "inline-flex items-center gap-1-5 min-h-control-height-sm p-[0_var(--dm-space-3)] text-preview-text font-inherit text-sm bg-transparent border-[var(--dm-border-width)_solid_var(--dm-preview-border)] rounded-control cursor-pointer hover:bg-preview-panel-soft max-520:grid-column-[1_/_-1] max-520:justify-center dm-button dm-focus-ring",
                   attributes: {
                     n: "gallery-show-file-action",
                     type: "button",
@@ -740,7 +740,7 @@ function PreviewGalleryFileView(props) {
       as: "button",
       class: computed(vm$.state.gallery_file, (selected_file) =>
         [
-          "preview-gallery-file dm-focus-ring",
+          "min-w-0 grid grid-cols-[64px_minmax(0,_1fr)] items-center gap-3 p-2 text-preview-text font-inherit text-left bg-preview-panel border-[var(--dm-border-width)_solid_var(--dm-preview-border)] rounded-card cursor-pointer transition-[background_var(--dm-duration-fast)_var(--dm-ease-standard),_border-color_var(--dm-duration-fast)_var(--dm-ease-standard)] [&:hover:not(:disabled)]:bg-color-primary-soft [&:hover:not(:disabled)]:border-color-color-primary-border [&.is-selected]:bg-color-primary-soft [&.is-selected]:border-color-color-primary-border [&.is-selected]:shadow-[inset_3px_0_0_var(--dm-preview-accent)] disabled:cursor-default disabled:opacity-[0.62] [&.is-missing]:cursor-default [&.is-missing]:opacity-[0.62] dm-focus-ring",
           selected_file === file ? "is-selected" : "",
           playable ? "" : "is-missing",
         ]
@@ -760,18 +760,18 @@ function PreviewGalleryFileView(props) {
       },
     },
     [
-      View({ class: "preview-gallery-file-thumb" }, [
+      View({ class: "relative w-64px h-48px flex items-center justify-center overflow-hidden bg-preview-panel-soft rounded-content [&_.group-preview-file-thumbnail-wrap]:absolute [&_.group-preview-file-icon]:text-2xl" }, [
         PreviewFileThumbnail({ store: vm$, file }),
       ]),
-      View({ class: "preview-gallery-file-main" }, [
+      View({ class: "min-w-0" }, [
         View(
           {
-            class: "preview-gallery-file-name",
+            class: "overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap",
             attributes: { title: file.name },
           },
           [file.name],
         ),
-        View({ class: "preview-gallery-file-meta" }, [
+        View({ class: "mt-0-5 overflow-hidden text-preview-muted text-xs text-ellipsis whitespace-nowrap" }, [
           [
             vm$.methods.fileTypeLabel(file.file_type),
             vm$.methods.formatBytes(file.size),
@@ -789,14 +789,14 @@ function PreviewFileGalleryView(props) {
   const vm$ = props.store;
   const files = props.files;
   if (files.length === 0) {
-    return View({ class: "preview-gallery container" }, [
+    return View({ class: "flex min-w-0 min-h-0 flex-1 flex-col gap-4 p-4 overflow-auto [&.is-single]:overflow-hidden " }, [
       PreviewStateView({ message: "暂无文件" }),
     ]);
   }
   return View(
     {
       class: [
-        "preview-gallery container",
+        "flex min-w-0 min-h-0 flex-1 flex-col gap-4 p-4 overflow-auto [&.is-single]:overflow-hidden ",
         files.length === 1 ? "is-single" : "",
       ]
         .filter(Boolean)
@@ -805,7 +805,7 @@ function PreviewFileGalleryView(props) {
       attributes: { "aria-label": "文件画廊" },
     },
     [
-      View({ class: "preview-gallery-stage-list" }, [
+      View({ class: "flex w-full min-w-0 min-h-0 h-0 flex-1" }, [
         For({
           each: files,
           render(file_) {
@@ -824,8 +824,8 @@ function PreviewFileGalleryView(props) {
         }),
       ]),
       files.length > 1
-        ? View({ class: "preview-gallery-file-list-wrap" }, [
-            View({ class: "preview-gallery-file-list" }, [
+        ? View({ class: "flex-[0_0_auto] p-[0_12px_12px_12px]" }, [
+            View({ class: "grid grid-auto-columns-[minmax(220px,_280px)] grid-auto-flow-column gap-2 p-border-width overflow-x-auto overscroll-behavior-inline-contain" }, [
               For({
                 each: files,
                 render(file_) {
@@ -868,7 +868,7 @@ function PreviewDownloadLinkView(props) {
   return View(
     {
       as: "a",
-      class: "preview-download-link dm-button dm-focus-ring",
+      class: "inline-block mt-3 text-color-info text-decoration-none hover:text-decoration-underline dm-button dm-focus-ring",
       attributes: {
         href: vm$.methods.fileURL(props.file),
         target: "_blank",
@@ -882,7 +882,7 @@ function PreviewDownloadLinkView(props) {
 function PreviewZipView(props) {
   const vm$ = props.store;
   const file = props.file;
-  return View({ class: "preview-overlay-body is-zip" }, [
+  return View({ class: "[&_>_.group-preview-overlay-text-reader]:align-self-stretch [&_>_.group-preview-overlay-text-reader]:w-full [&_>_.group-preview-overlay-text-reader]:h-full [&_>_.group-preview-overlay-text-reader]:min-w-0 [&_>_.group-preview-overlay-text-reader]:min-h-0 [&_>_.group-preview-overlay-html-reader]:align-self-stretch [&_>_.group-preview-overlay-html-reader]:w-full [&_>_.group-preview-overlay-html-reader]:h-full [&_>_.group-preview-overlay-html-reader]:min-w-0 [&_>_.group-preview-overlay-html-reader]:min-h-0 flex min-h-0 flex-1 items-center justify-center p-5 overflow-auto [&.is-zip]:items-start [&.is-zip]:justify-start [&_>_.group-preview-video-player]:h-full max-520:p-3 is-zip" }, [
     Show({
       when: vm$.state.zip_loading,
       ok() {
@@ -908,7 +908,7 @@ function PreviewZipView(props) {
                 (images) => images.length > 0,
               ),
               ok() {
-                return View({ class: "preview-zip-gallery" }, [
+                return View({ class: "grid w-full grid-cols-[repeat(auto-fill,_minmax(180px,_1fr))] gap-3 max-520:grid-cols-[repeat(auto-fill,_minmax(140px,_1fr))]" }, [
                   For({
                     each: vm$.state.zip_images,
                     render(image_) {
@@ -919,12 +919,12 @@ function PreviewZipView(props) {
                       return View(
                         {
                           as: "figure",
-                          class: "preview-zip-item",
+                          class: "m-0 overflow-hidden bg-preview-panel border-[1px_solid_var(--dm-preview-border)] rounded-card",
                           attributes: { title: image.name },
                         },
                         [
                           Timeless.Img({
-                            class: "preview-zip-image",
+                            class: "block w-full aspect-ratio-[1_/_1] object-contain [background:var(--dm-preview-bg)]",
                             src: image.url,
                             alt: image.name,
                             attributes: { loading: "lazy" },
@@ -932,7 +932,7 @@ function PreviewZipView(props) {
                           View(
                             {
                               as: "figcaption",
-                              class: "preview-zip-caption",
+                              class: "p-[var(--dm-space-2)_var(--dm-space-2-5)] overflow-hidden text-preview-muted text-sm text-ellipsis whitespace-nowrap",
                             },
                             [image.name],
                           ),
@@ -964,7 +964,7 @@ function PreviewOverlayMediaView(props) {
     return PreviewHTMLFileView({
       store: vm$,
       file,
-      class: "preview-overlay-html-reader",
+      class: "group-preview-overlay-html-reader",
       nodeName: "overlay-html-reader",
     });
   }
@@ -972,13 +972,13 @@ function PreviewOverlayMediaView(props) {
     return PreviewTextFileView({
       store: vm$,
       file,
-      class: "preview-overlay-text-reader",
+      class: "group-preview-overlay-text-reader",
       nodeName: "overlay-text-reader",
     });
   }
   if (file.file_type === "image") {
     return Timeless.Img({
-      class: "preview-overlay-image",
+      class: "max-w-full max-h-full object-contain rounded-content outline-none",
       src: url,
       alt: file.name,
     });
@@ -987,13 +987,13 @@ function PreviewOverlayMediaView(props) {
     return PreviewVideoPlayerView({
       store: vm$,
       file,
-      videoClass: "preview-overlay-video",
+      videoClass: "max-w-full max-h-full object-contain rounded-content outline-none",
       autoplay: true,
     });
   }
   if (file.file_type === "audio") {
     return Timeless.Audio({
-      class: "preview-overlay-audio",
+      class: "w-[min(400px,_100%)]",
       src: url,
       controls: true,
       autoplay: true,
@@ -1001,7 +1001,7 @@ function PreviewOverlayMediaView(props) {
   }
   if (file.file_type === "pdf") {
     return Timeless.Webview({
-      class: "preview-overlay-frame",
+      class: "w-full h-full bg-color-document-canvas border-0 rounded-content",
       href: url,
       attributes: {
         title: file.name,
@@ -1019,7 +1019,7 @@ function PreviewOverlayView(props) {
   const file = props.file;
   return View(
     {
-      class: "preview-overlay",
+      class: "group-preview-overlay fixed inset-0 z-1000 flex flex-col text-preview-text bg-color-media-canvas",
       onClick(event) {
         if (event.target === event.currentTarget) {
           vm$.methods.closePreview();
@@ -1027,10 +1027,10 @@ function PreviewOverlayView(props) {
       },
     },
     [
-      View({ class: "preview-overlay-header" }, [
+      View({ class: "flex flex-[0_0_auto] items-center justify-between gap-4 p-[var(--dm-space-3)_var(--dm-space-5)] bg-color-media-surface border-bottom-[1px_solid_var(--dm-preview-border)]" }, [
         View(
           {
-            class: "preview-overlay-name",
+            class: "min-w-0 overflow-hidden text-base font-500 text-ellipsis whitespace-nowrap",
             attributes: { title: file.name },
           },
           [file.name],
@@ -1038,7 +1038,7 @@ function PreviewOverlayView(props) {
         View(
           {
             as: "button",
-            class: "preview-close dm-button dm-focus-ring",
+            class: "p-[var(--dm-space-1-5)_var(--dm-space-4)] text-color-media-text font-inherit text-md bg-none border-[1px_solid_var(--dm-color-media-border)] rounded-control cursor-pointer hover:bg-preview-border dm-button dm-focus-ring",
             attributes: { type: "button" },
             onClick() {
               vm$.methods.closePreview();
@@ -1049,7 +1049,7 @@ function PreviewOverlayView(props) {
       ]),
       file.file_type === "zip"
         ? PreviewZipView({ store: vm$, file })
-        : View({ class: "preview-overlay-body" }, [
+        : View({ class: "[&_>_.group-preview-overlay-text-reader]:align-self-stretch [&_>_.group-preview-overlay-text-reader]:w-full [&_>_.group-preview-overlay-text-reader]:h-full [&_>_.group-preview-overlay-text-reader]:min-w-0 [&_>_.group-preview-overlay-text-reader]:min-h-0 [&_>_.group-preview-overlay-html-reader]:align-self-stretch [&_>_.group-preview-overlay-html-reader]:w-full [&_>_.group-preview-overlay-html-reader]:h-full [&_>_.group-preview-overlay-html-reader]:min-w-0 [&_>_.group-preview-overlay-html-reader]:min-h-0 flex min-h-0 flex-1 items-center justify-center p-5 overflow-auto [&.is-zip]:items-start [&.is-zip]:justify-start [&_>_.group-preview-video-player]:h-full max-520:p-3" }, [
             PreviewOverlayMediaView({ store: vm$, file }),
           ]),
     ],
@@ -1063,7 +1063,7 @@ function PreviewPageView(props) {
 
   return View(
     {
-      class: ["preview-page page", props.embedded ? "is-embedded" : ""]
+      class: ["[--dm-preview-bg:var(--dm-color-bg-canvas)] [--dm-preview-panel:var(--dm-color-bg-surface)] [--dm-preview-panel-soft:var(--dm-color-bg-subtle)] [--dm-preview-border:var(--dm-color-border)] [--dm-preview-text:var(--dm-color-text-primary)] [--dm-preview-muted:var(--dm-color-text-secondary)] [--dm-preview-subtle:var(--dm-color-text-disabled)] [--dm-preview-accent:var(--dm-color-primary)] relative flex w-full min-w-0 h-full min-h-0 flex-col overflow-hidden text-preview-text font-sans bg-preview-bg bg-image-[radial-gradient(_circle,_var(--dm-color-border-translucent)_var(--dm-border-width),_transparent_var(--dm-border-width)_)] background-size-[var(--dm-space-6)_var(--dm-space-6)] [&.is-embedded]:h-auto [&.is-embedded]:flex-1 [&.is-embedded_.group-preview-overlay]:absolute min-w-0 font-sans bg-color-bg-canvas", props.embedded ? "is-embedded" : ""]
         .filter(Boolean)
         .join(" "),
       onMounted() {
@@ -1109,7 +1109,7 @@ function PreviewPageView(props) {
                   {
                     as: "button",
                     class:
-                      "preview-retry dm-button dm-button--primary dm-focus-ring",
+                      "group-preview-retry p-[var(--dm-space-1-5)_var(--dm-space-4)] text-color-media-text font-inherit text-md bg-none border-[1px_solid_var(--dm-color-media-border)] rounded-control cursor-pointer hover:bg-preview-border dm-button dm-button--primary dm-focus-ring",
                     attributes: { type: "button" },
                     onClick() {
                       vm$.methods.retry();
