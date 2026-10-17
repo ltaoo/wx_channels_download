@@ -192,7 +192,7 @@ export function FileTreeRow(props) {
   if (is_directory) {
     return View(
       {
-        class: "file-tree-row is-directory",
+        class: "grid grid-cols-[18px_20px_minmax(0,_1fr)_auto] items-center gap-1 p-[4px_var(--dm-space-1-5)] text-color-text-primary text-sm rounded-content [&.is-directory]:text-color-text-secondary [&.is-directory]:font-semibold [&.is-directory]:cursor-pointer [&.is-directory:hover]:bg-color-bg-hover is-directory",
         style: { "padding-left": indent_px },
         attributes: { n: "file-tree-dir", title: node._path || node.name },
         onClick() {
@@ -200,34 +200,34 @@ export function FileTreeRow(props) {
         },
       },
       [
-        View({ class: "file-tree-caret" }, [is_collapsed ? "›" : "⌄"]),
-        View({ class: "file-tree-icon" }, [
+        View({ class: "w-18px shrink-0 text-center text-13px text-color-text-muted leading-1" }, [is_collapsed ? "›" : "⌄"]),
+        View({ class: "w-18px shrink-0" }, [
           Timeless.Icon({ name: "folder", size: 16 }),
         ]),
-        View({ class: "file-tree-name dm-truncate" }, [node.name || "根目录"]),
-        View({ class: "file-tree-meta" }, [`${count_tree_children(node)} 项`]),
+        View({ class: "min-w-0 dm-truncate" }, [node.name || "根目录"]),
+        View({ class: "text-color-text-muted text-11px font-normal whitespace-nowrap pl-2" }, [`${count_tree_children(node)} 项`]),
       ],
     );
   }
 
   return View(
     {
-      class: "file-tree-row",
+      class: "grid grid-cols-[18px_20px_minmax(0,_1fr)_auto] items-center gap-1 p-[4px_var(--dm-space-1-5)] text-color-text-primary text-sm rounded-content [&.is-directory]:text-color-text-secondary [&.is-directory]:font-semibold [&.is-directory]:cursor-pointer [&.is-directory:hover]:bg-color-bg-hover",
       style: { "padding-left": indent_px },
       attributes: { n: "file-tree-file", title: node._path || node.name },
     },
     [
-      View({ class: "file-tree-caret" }),
-      View({ class: "file-tree-icon" }, [
+      View({ class: "w-18px shrink-0 text-center text-13px text-color-text-muted leading-1" }),
+      View({ class: "w-18px shrink-0" }, [
         Timeless.Icon({
           name: resource_file_icon(node && node.name),
           size: 16,
         }),
       ]),
-      View({ class: "file-tree-name dm-truncate" }, [
+      View({ class: "min-w-0 dm-truncate" }, [
         (node && node.name) || "文件",
       ]),
-      View({ class: "file-tree-meta" }, [format_file_size(node && node.size)]),
+      View({ class: "text-color-text-muted text-11px font-normal whitespace-nowrap pl-2" }, [format_file_size(node && node.size)]),
     ],
   );
 }
@@ -324,7 +324,7 @@ export function FileTreeView(props) {
         return Timeless.ui.ScrollViewPrimitive.Root(
           {
             store: scroll_view$,
-            class: "file-tree-scroll",
+            class: "overflow-y-auto overflow-x-hidden relative",
             style: { "max-height": `${maxHeight}px`, overflow: "auto" },
             onUnmounted() {
               scroll_view$.destroy();

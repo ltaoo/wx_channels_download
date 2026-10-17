@@ -121,7 +121,7 @@ function DownloadV2Number(props = {}) {
 
   return View(
     {
-      class: ["number-view", extra_class].filter(Boolean).join(" "),
+      class: ["inline-flex items-center whitespace-nowrap", extra_class].filter(Boolean).join(" "),
       attributes: attributes || {},
     },
     [
@@ -135,7 +135,7 @@ function DownloadV2Number(props = {}) {
           else if (item.character === "/") width = separator_width;
           return View(
             {
-              class: "number-view-character",
+              class: "inline-flex shrink-0 items-center justify-center text-center",
               style: {
                 width,
                 "min-width": width,
@@ -154,7 +154,7 @@ function DownloadV2InfinityIcon(props = {}) {
   const { size = 14 } = props;
   return SVG.SVG(
     {
-      class: "number-view-infinity",
+      class: "block shrink-0",
       attributes: {
         width: String(size),
         height: String(size),
@@ -181,7 +181,7 @@ function DownloadV2InfinityIcon(props = {}) {
 function DownloadV2Skeleton(props = {}) {
   const { attributes, class: extra_class } = props;
   return View({
-    class: ["download-skeleton", extra_class].filter(Boolean).join(" "),
+    class: ["relative block overflow-hidden bg-skeleton-bg [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite]", extra_class].filter(Boolean).join(" "),
     attributes: attributes || {},
   });
 }
@@ -302,7 +302,7 @@ function DownloadV2TaskCover(props) {
     ok() {
       return View(
         {
-          class: "dl-page-task-cover-progress",
+          class: "absolute inset-0 z-2 grid place-items-center text-color-text-primary text-xl font-750 leading-1 pointer-events-none text-shadow-[0_0_2px_var(--dm-color-bg-surface),_0_1px_4px_var(--dm-color-scrim)]",
           attributes: { n: "download-task-cover-progress" },
         },
         [
@@ -315,7 +315,7 @@ function DownloadV2TaskCover(props) {
   });
   const fallback = () =>
     View({
-      class: "dl-page-task-cover dl-page-task-cover-fallback",
+      class: "group-dl-page-task-cover w-control-height-lg h-control-height-lg flex-[0_0_auto] object-cover transition-[opacity_var(--dm-duration-slow)_var(--dm-ease-standard)] mr-3 flex items-center justify-center rounded-content bg-color-bg-subtle text-color-text-secondary",
       attributes: {
         n: "download-task-cover-fallback",
         "aria-hidden": "true",
@@ -327,13 +327,13 @@ function DownloadV2TaskCover(props) {
     ok() {
       return View(
         {
-          class: "dl-page-task-cover-wrap",
+          class: "w-control-height-lg h-control-height-lg flex-[0_0_auto] relative mr-3 rounded-content overflow-hidden bg-color-bg-subtle [&_.group-dl-page-task-cover]:absolute [&_.group-dl-page-task-cover]:inset-0 [&_.group-dl-page-task-cover]:mr-0",
           attributes: { n: "download-task-cover-wrap" },
         },
         [
           fallback(),
           LazyImg({
-            class: "dl-page-task-cover",
+            class: "group-dl-page-task-cover w-control-height-lg h-control-height-lg flex-[0_0_auto] block object-cover transition-[opacity_var(--dm-duration-slow)_var(--dm-ease-standard)]",
             src: computed(raw_, vm$.methods.taskCoverURL),
             alt: task$.state.name,
             attributes: {
@@ -354,7 +354,7 @@ function DownloadV2TaskActionButton(props) {
   return View(
     {
       type: "button",
-      class: ["dl-page-task-action", danger ? "dl-page-task-action-danger" : ""]
+      class: ["focus-visible:outline-0 focus-visible:shadow-focus-ring w-34px h-34px flex-[0_0_auto] border-0 rounded-control bg-transparent text-color-text-secondary cursor-pointer inline-flex items-center justify-center p-0 transition-[background_var(--dm-duration-base)_var(--dm-ease-standard),_color_var(--dm-duration-base)_var(--dm-ease-standard)] hover:bg-color-primary-soft hover:text-color-primary max-520:w-32px max-520:h-32px", danger ? "hover:bg-color-danger-soft hover:text-color-danger" : ""]
         .filter(Boolean)
         .join(" "),
       attributes: {
@@ -405,7 +405,7 @@ export function DownloadV2TaskActions(props) {
           return View(
             {
               type: "button",
-              class: "dl-page-task-action",
+              class: "focus-visible:outline-0 focus-visible:shadow-focus-ring w-34px h-34px flex-[0_0_auto] border-0 rounded-control bg-transparent text-color-text-secondary cursor-pointer inline-flex items-center justify-center p-0 transition-[background_var(--dm-duration-base)_var(--dm-ease-standard),_color_var(--dm-duration-base)_var(--dm-ease-standard)] hover:bg-color-primary-soft hover:text-color-primary max-520:w-32px max-520:h-32px",
               attributes: {
                 type: "button",
                 title: computed(state_, (state) =>
@@ -474,20 +474,20 @@ export function DownloadV2TaskMain(props) {
     DownloadV2TaskCover({ task: task$, state: state_, store: vm$ }),
     View(
       {
-        class: "dl-page-task-info",
+        class: "min-w-0 flex-1 flex flex-col",
         attributes: { n: "download-task-info" },
       },
       [
         View(
           {
-            class: "dl-page-task-title-line",
+            class: "min-w-0 flex items-center gap-1-5",
             attributes: { n: "download-task-title-line" },
           },
           [
             View(
               {
                 as: "button",
-                class: "dl-page-task-title",
+                class: "min-w-0 p-0 overflow-hidden text-color-text-primary [font-family:inherit] text-base font-620 leading-20px text-left text-ellipsis bg-transparent border-0 cursor-pointer whitespace-nowrap",
                 attributes: {
                   n: "download-task-preview-trigger",
                   type: "button",
@@ -504,7 +504,7 @@ export function DownloadV2TaskMain(props) {
               ok() {
                 return Tag(
                   {
-                    class: "dl-page-task-live",
+                    class: "flex-[0_0_auto] border-[var(--dm-border-width)_solid_var(--dm-color-danger-border)] bg-color-danger-soft text-color-danger",
                     attributes: { n: "download-task-live-badge" },
                   },
                   ["流媒体"],
@@ -516,7 +516,7 @@ export function DownloadV2TaskMain(props) {
               ok() {
                 return Tag(
                   {
-                    class: "dl-page-task-missing-detail",
+                    class: "flex-[0_0_auto]",
                     variant: "warning",
                     attributes: {
                       n: "download-task-missing-detail-badge",
@@ -531,13 +531,13 @@ export function DownloadV2TaskMain(props) {
         ),
         View(
           {
-            class: "dl-page-task-desc",
+            class: "min-w-0 mt-1 flex items-center gap-1 overflow-hidden text-color-text-secondary text-sm leading-18px text-ellipsis whitespace-nowrap",
             attributes: { n: "download-task-description" },
           },
           [
             View(
               {
-                class: "dl-page-task-status",
+                class: "flex-[0_0_auto]",
                 style: computed(state_, (state) => ({
                   color: state.status_color,
                 })),
@@ -602,7 +602,7 @@ export function DownloadV2TaskMain(props) {
           ok() {
             return View(
               {
-                class: "dl-page-task-error",
+                class: "mt-0-5 overflow-hidden -webkit-box text-color-danger text-xs leading-16px word-break-break-word -webkit-box-orient-vertical -webkit-line-clamp-2",
                 attributes: {
                   n: "download-task-error",
                   title: computed(state_, (state) => state.error_text),
@@ -621,7 +621,7 @@ export function DownloadV2TaskSkeletonRow() {
   return View(
     {
       class:
-        "dm-table-row dm-grid dm-items-center dl-page-task-row dl-page-task-skeleton",
+        "dm-table-row dm-grid dm-items-center w-full max-w-none hover:bg-color-bg-subtle max-760:grid-cols-[32px_minmax(0,_1fr)_136px_92px] max-520:grid-cols-[32px_minmax(0,_1fr)_124px_78px] pointer-events-none user-select-none",
       attributes: { n: "download-task-skeleton-row", role: "row" },
     },
     [
@@ -633,33 +633,33 @@ export function DownloadV2TaskSkeletonRow() {
         },
         [
           DownloadV2Skeleton({
-            class: "dl-skeleton-checkbox",
+            class: "w-18px h-18px rounded-control",
             attributes: { n: "download-task-skeleton-checkbox" },
           }),
         ],
       ),
       View(
         {
-          class: "dm-table-cell dl-page-task-main-cell",
+          class: "dm-table-cell min-w-0 flex items-center",
           attributes: { n: "download-task-skeleton-main", role: "cell" },
         },
         [
           DownloadV2Skeleton({
-            class: "dl-skeleton-cover",
+            class: "w-control-height-lg h-control-height-lg mr-3 rounded-content",
             attributes: { n: "download-task-skeleton-cover" },
           }),
           View(
             {
-              class: "dl-page-task-info",
+              class: "min-w-0 flex-1 flex flex-col",
               attributes: { n: "download-task-skeleton-info" },
             },
             [
               DownloadV2Skeleton({
-                class: "dl-skeleton-line dl-skeleton-title",
+                class: "dl-skeleton-line w-[56%] h-14px rounded-content",
                 attributes: { n: "download-task-skeleton-title" },
               }),
               DownloadV2Skeleton({
-                class: "dl-skeleton-line dl-skeleton-status",
+                class: "dl-skeleton-line w-[36%] h-12px mt-7px rounded-content",
                 attributes: { n: "download-task-skeleton-status" },
               }),
             ],
@@ -676,23 +676,23 @@ export function DownloadV2TaskSkeletonRow() {
         },
         [
           DownloadV2Skeleton({
-            class: "dl-skeleton-created-at",
+            class: "w-128px h-12px rounded-content",
             attributes: { n: "download-task-skeleton-created-at-value" },
           }),
         ],
       ),
       View(
         {
-          class: "dm-table-cell dl-page-task-actions-cell",
+          class: "dm-table-cell flex items-center justify-end gap-1-5 max-760:gap-1",
           attributes: { n: "download-task-skeleton-actions", role: "cell" },
         },
         [
           DownloadV2Skeleton({
-            class: "dl-skeleton-action",
+            class: "w-34px h-34px rounded-control",
             attributes: { n: "download-task-skeleton-primary-action" },
           }),
           DownloadV2Skeleton({
-            class: "dl-skeleton-action",
+            class: "w-34px h-34px rounded-control",
             attributes: { n: "download-task-skeleton-delete-action" },
           }),
         ],
@@ -717,9 +717,9 @@ function DownloadV2StatusTab(vm$, status, label) {
       },
       class: computed(active_status_, (active_status) =>
         [
-          "dl-v2-tab dm-focus-ring",
-          active_status === status ? "dl-v2-tab-active" : "",
-          status === "error" ? "dl-v2-tab-error" : "",
+          "relative h-control-height-md box-sizing-border-box flex-[0_0_auto] inline-flex items-center justify-center gap-tabs-tab-gap p-0 appearance-none border-0 rounded-0 bg-transparent text-tabs-tab-text cursor-pointer text-base font-regular leading-tight whitespace-nowrap transition-[color_var(--dm-duration-base)_var(--dm-ease-standard)] hover:text-color-primary-hover motion-reduce:transition-none dm-focus-ring",
+          active_status === status ? "group-dl-v2-tab-active text-color-primary hover:text-color-primary [&::after]:content-[\"\"] [&::after]:absolute [&::after]:right-0 [&::after]:bottom--1px [&::after]:left-0 [&::after]:h-border-width-strong [&::after]:bg-color-primary [&::after]:rounded-[var(--dm-radius-round)_var(--dm-radius-round)_0_0] [&_.group-dl-v2-tab-count]:bg-color-primary-soft [&_.group-dl-v2-tab-count]:text-color-primary" : "",
+          status === "error" ? "[&:not(.group-dl-v2-tab-active)_.group-dl-v2-tab-count]:bg-tabs-count-danger-bg [&:not(.group-dl-v2-tab-active)_.group-dl-v2-tab-count]:text-tabs-count-danger-text" : "",
         ]
           .filter(Boolean)
           .join(" "),
@@ -738,7 +738,7 @@ function DownloadV2StatusTab(vm$, status, label) {
       ),
       Tag(
         {
-          class: "dl-v2-tab-count",
+          class: "group-dl-v2-tab-count min-w-tabs-count-min-width h-tabs-count-height box-sizing-border-box inline-flex items-center justify-center p-[0_var(--dm-tabs-count-padding-inline)] rounded-badge bg-tabs-count-bg text-tabs-count-text font-mono text-xs font-variant-numeric-tabular-nums font-bold leading-1",
           attributes: { n: `download-status-${status}-count` },
         },
         [
@@ -756,7 +756,7 @@ function DownloadV2StatusCounts(props) {
 
   return View(
     {
-      class: "dl-page-counts dl-v2-page-counts",
+      class: "min-w-0 flex items-center flex-nowrap overflow-hidden max-520:w-full max-520:overflow-x-auto h-control-height-md flex-[1_1_480px] gap-8 p-0 overflow-x-auto border-bottom-[var(--dm-border-width)_solid_var(--dm-tabs-border)] bg-transparent scrollbar-width-none [&::-webkit-scrollbar]:hidden max-760:w-full max-760:flex-[0_0_auto]",
       attributes: {
         n: "download-status-tabs",
         role: "group",
@@ -777,7 +777,7 @@ function DownloadV2StatusCounts(props) {
 function DownloadV2StatusActions(props) {
   const { store: vm$ } = props;
 
-  return View({ class: "dl-page-status-actions dl-v2-page-status-actions" }, [
+  return View({ class: "flex-[0_0_auto] inline-flex items-center gap-2 max-760:w-full max-760:overflow-x-auto flex-[0_0_auto] max-760:w-full" }, [
     DownloadV2ActionButton({
       name: "download-refresh-action",
       store: vm$.ui.btn_refresh_tasks$,
@@ -807,8 +807,8 @@ function DownloadV2StatusActions(props) {
 
 export function DownloadV2StatusBar(props) {
   const { store: vm$ } = props;
-  return View({ class: "content-toolbar-wrap dl-v2-toolbar-wrap" }, [
-    View({ class: "content-toolbar dl-v2-toolbar" }, [
+  return View({ class: "group-content-toolbar-wrap p-[var(--dm-space-4)_var(--dm-space-4)_0] flex-[0_0_auto]" }, [
+    View({ class: "group-content-toolbar flex items-center justify-between gap-3 max-760:flex-wrap items-center max-760:items-stretch max-760:flex-col" }, [
       DownloadV2StatusCounts({ store: vm$ }),
       DownloadV2StatusActions({ store: vm$ }),
     ]),
@@ -824,14 +824,14 @@ export function DownloadV2SelectionBar(props) {
     ok() {
       return View(
         {
-          class: "dl-page-selection-bar",
+          class: "absolute left-[50%] bottom-[max(var(--dm-space-4),_env(safe-area-inset-bottom))] z-sticky w-[min(460px,_calc(100%_-_var(--dm-space-8)))] min-h-56px box-sizing-border-box flex items-center justify-between gap-4 p-[var(--dm-space-2-5)_var(--dm-space-3)] border-[var(--dm-border-width)_solid_var(--dm-color-border)] rounded-overlay bg-[color-mix(in_srgb,_var(--dm-color-bg-surface)_94%,_transparent)] shadow-lg transform-[translateX(-50%)] -webkit-backdrop-filter-[blur(14px)] backdrop-filter-[blur(14px)]",
           attributes: {
             role: "toolbar",
             "aria-label": "选中任务操作",
           },
         },
         [
-          View({ class: "dl-page-selection-summary" }, [
+          View({ class: "min-w-0 overflow-hidden text-color-text-primary text-sm font-semibold text-ellipsis whitespace-nowrap" }, [
             computed(selected_task_count_, (count) => `已选中 ${count} 个任务`),
           ]),
           DownloadV2ActionButton({
@@ -852,14 +852,14 @@ export function DownloadV2SelectionBar(props) {
 function DownloadV2Field(props) {
   const { control, hint, label } = props;
   return View(
-    { class: "dl-dialog-field" },
+    { class: "grid gap-1-5" },
     [
-      View({ type: "label", class: "dl-dialog-field-label" }, [label]),
+      View({ type: "label", class: "text-color-text-secondary text-sm font-semibold" }, [label]),
       control,
       hint
         ? View(
             {
-              class: "dl-dialog-field-hint",
+              class: "text-color-text-secondary text-xs leading-base",
             },
             [hint],
           )
@@ -892,7 +892,7 @@ function boolean_toggle(props) {
   });
   return View(
     {
-      class: "dl-checkbox-control",
+      class: "flex items-center gap-2-5 p-[var(--dm-space-2)_0] text-base leading-base cursor-pointer user-select-none",
       attributes: { n: `${name}-control` },
       onClick() {
         checkbox_store.toggle();
@@ -936,7 +936,7 @@ export function CreateTaskDialog(props) {
       }),
       DialogBody(
         {
-          class: "dl-dialog-fields",
+          class: "grid gap-4",
         },
         [
           DownloadV2Field({
@@ -985,7 +985,7 @@ export function CreatePlatformTaskDialog(props) {
       }),
       DialogBody(
         {
-          class: "dl-dialog-fields dm-dialog-body--scrollable",
+          class: "grid gap-4 dm-dialog-body--scrollable",
         },
         [
           DownloadV2Field({
@@ -1061,7 +1061,7 @@ function PreviewResourceRow(props) {
   if (is_directory) {
     return View(
       {
-        class: "file-tree-row is-directory",
+        class: "grid grid-cols-[18px_20px_minmax(0,_1fr)_auto] items-center gap-1 p-[4px_var(--dm-space-1-5)] text-color-text-primary text-sm rounded-content [&.is-directory]:text-color-text-secondary [&.is-directory]:font-semibold [&.is-directory]:cursor-pointer [&.is-directory:hover]:bg-color-bg-hover is-directory",
         style: { "padding-left": indent_px },
         attributes: { n: "preview-tree-dir", title: node._path || node.name },
         onClick() {
@@ -1069,34 +1069,34 @@ function PreviewResourceRow(props) {
         },
       },
       [
-        View({ class: "file-tree-caret" }, [is_collapsed ? "›" : "⌄"]),
-        View({ class: "file-tree-icon" }, [
+        View({ class: "w-18px shrink-0 text-center text-13px text-color-text-muted leading-1" }, [is_collapsed ? "›" : "⌄"]),
+        View({ class: "w-18px shrink-0" }, [
           Timeless.Icon({ name: "folder", size: 16 }),
         ]),
-        View({ class: "file-tree-name dm-truncate" }, [node.name || "根目录"]),
-        View({ class: "file-tree-meta" }, [`${count_tree_children(node)} 项`]),
+        View({ class: "min-w-0 dm-truncate" }, [node.name || "根目录"]),
+        View({ class: "text-color-text-muted text-11px font-normal whitespace-nowrap pl-2" }, [`${count_tree_children(node)} 项`]),
       ],
     );
   }
 
   return View(
     {
-      class: "file-tree-row",
+      class: "grid grid-cols-[18px_20px_minmax(0,_1fr)_auto] items-center gap-1 p-[4px_var(--dm-space-1-5)] text-color-text-primary text-sm rounded-content [&.is-directory]:text-color-text-secondary [&.is-directory]:font-semibold [&.is-directory]:cursor-pointer [&.is-directory:hover]:bg-color-bg-hover",
       style: { "padding-left": indent_px },
       attributes: { n: "preview-tree-file", title: node._path || node.name },
     },
     [
-      View({ class: "file-tree-caret" }),
-      View({ class: "file-tree-icon" }, [
+      View({ class: "w-18px shrink-0 text-center text-13px text-color-text-muted leading-1" }),
+      View({ class: "w-18px shrink-0" }, [
         Timeless.Icon({
           name: resource_file_icon(node && node.name),
           size: 16,
         }),
       ]),
-      View({ class: "file-tree-name dm-truncate" }, [
+      View({ class: "min-w-0 dm-truncate" }, [
         (node && node.name) || "文件",
       ]),
-      View({ class: "file-tree-meta" }, [format_file_size(node && node.size)]),
+      View({ class: "text-color-text-muted text-11px font-normal whitespace-nowrap pl-2" }, [format_file_size(node && node.size)]),
     ],
   );
 }
@@ -1105,13 +1105,13 @@ function PreviewDetailRow(props) {
   const { label, value } = props;
   return View(
     {
-      class: "dl-preview-detail-row",
+      class: "grid grid-cols-[104px_minmax(0,_1fr)] gap-3 p-[9px_0] border-bottom-[var(--dm-border-width)_solid_var(--dm-color-border-translucent)]",
     },
     [
-      View({ class: "dl-dialog-field-label" }, [label]),
+      View({ class: "text-color-text-secondary text-sm font-semibold" }, [label]),
       View(
         {
-          class: "dl-preview-detail-value",
+          class: "text-color-text-primary text-base leading-base word-break-break-all",
         },
         [value],
       ),
@@ -1169,17 +1169,17 @@ function PreviewResourceList(props) {
     ok() {
       return View(
         {
-          class: "dl-preview-resource-list",
+          class: "grid gap-2 p-3 bg-color-bg-subtle border-[var(--dm-border-width)_solid_var(--dm-color-border-translucent)] rounded-card",
         },
         [
-          View({ class: "dl-dialog-field-label" }, [
+          View({ class: "text-color-text-secondary text-sm font-semibold" }, [
             "资源列表（",
             computed(resource_count_, (count) => String(count)),
             " 项）",
           ]),
           View(
             {
-              class: "dl-preview-resource-scroll",
+              class: "max-h-360px overflow-y-auto overflow-x-hidden relative",
               onScroll(event) {
                 scroll_top_.value = event.target.scrollTop;
               },

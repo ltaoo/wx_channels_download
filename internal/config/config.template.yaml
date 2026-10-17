@@ -1,4 +1,5 @@
 debug:
+  enabled: false # 显式开启后才记录日志，也可使用 --debug
   error: false
   echolog: false
 

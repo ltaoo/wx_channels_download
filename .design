@@ -1,8 +1,8 @@
 schema: design.v1
 name: wx-channels-download
-version: 1.0.0
+version: 1.0.1
 status: bootstrap
-updated_at: 2026-09-12
+updated_at: 2026-10-17
 description: Living visual contract extracted from the frontend DMUI token and page-composition layers.
 
 agent:
@@ -17,7 +17,7 @@ agent:
       components, patterns, sources, and locked before changing UI.
     - `frontend/src/dmui.css` is the implementation source for design tokens and
       reusable DMUI components. `frontend/src/style.css` is the implementation
-      source for shared page composition.
+      source for local atomic utilities and page composition.
 
     FOLLOW
     - Match the existing Timeless/DMUI component stack; do not introduce a
@@ -26,6 +26,11 @@ agent:
       a page-specific primitive.
     - Consume `--dm-*` semantic CSS variables. Do not copy palette values into
       page styles or JavaScript.
+    - Keep DMUI component styling in `frontend/src/dmui.css` unchanged when
+      refactoring page styles. Declare only consumed atomic utilities in
+      `frontend/src/style.css` and compose them directly in page class strings.
+      Do not introduce Tailwind CSS. Keep group/state classes only as selector
+      or DOM behavior hooks; they do not define visual component rules.
     - Apply the active light, explicit-dark, or system-dark theme without
       component-level theme overrides.
     - Keep the product utilitarian and dense. Spend visual emphasis on the
@@ -598,7 +603,7 @@ components:
         width: 100%
 
   state:
-    implementation: ".dm-empty-state, .dm-table-state, .content-state, .route-error-card"
+    implementation: ".dm-empty-state, .dm-table-state, page utility compositions, ErrorFallbackView"
     when: ["Loading, empty, error, or no-selection state replacing a content region"]
     when_not: ["Transient progress inside a single button"]
     variants: [loading, empty, error, no-selection]
@@ -717,7 +722,7 @@ policy:
   hierarchy: [typography, spacing, contrast, color]
   reuse:
     order: [existing-page-pattern, catalogued-DMUI-component, nearest-DMUI-variant, new-reusable-variant]
-    page_specific: "Only business structure and content-derived geometry belong in page CSS."
+    page_specific: "Compose local atomic utilities in page views; keep content-derived geometry dynamic and DMUI component rules in dmui.css."
   color:
     accent_cycle: [primary-fill, accent-sky, accent-violet, accent-amber]
     semantic: "Gold is brand/action/selection; green is success; orange is warning; red is danger; blue is information."
@@ -802,11 +807,11 @@ sources:
     role: "Normative CSS token declarations, light/dark mappings, DMUI components, state variants, motion, responsive behavior, and utilities."
     inspected_at: 2026-09-12
   - path: frontend/src/style.css
-    role: "Shared application page composition, content toolbars, filters, route states, responsive layouts, and application-level motion."
-    inspected_at: 2026-09-12
-  - path: frontend/src/pages/automation.css
-    role: "Adjacent master-detail workflow showing how the shared system is consumed by the automation workspace."
-    inspected_at: 2026-09-12
+    role: "Consumed atomic utilities for pages and business components, state/child variants, responsive layouts, and page keyframes."
+    inspected_at: 2026-10-17
+  - path: frontend/src/pages/flow.components.js
+    role: "Master-detail workflow consuming local utilities while preserving group and state hooks for canvas interactions."
+    inspected_at: 2026-10-17
 
 exports:
   css:

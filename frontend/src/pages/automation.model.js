@@ -1330,7 +1330,7 @@ function AutomationPageViewModel(props, options) {
     if (run_status) execution_run_status_.as(String(run_status));
   }
 
-  // 浮窗尺寸需与 automation.css 的 .automation-node-log-window 保持一致
+  // 浮窗尺寸需与 style.css 中节点日志浮窗使用的尺寸原子类保持一致
   const execution_window_width = 420;
   const execution_window_margin = 12;
   // 纵向至少留出标题栏，避免点在画布底部时窗口整块跑出屏幕

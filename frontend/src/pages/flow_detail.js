@@ -11,20 +11,20 @@ import {
 
 function AutomationPipelineDetail(props) {
   const vm$ = props.store;
-  return View({ class: "dm-panel automation-detail" }, [
+  return View({ class: "dm-panel flex flex-col gap-4 p-4" }, [
     Show({
       when: vm$.state.selected_pipeline,
       ok() {
         const flow = vm$.state.selected_pipeline.value;
-        return View({ class: "automation-detail__body" }, [
-          View({ class: "automation-detail__header" }, [
+        return View({ class: "flex flex-col gap-4" }, [
+          View({ class: "flex items-start justify-between gap-5 max-900:items-stretch max-900:flex-col" }, [
             View({}, [
-              View({ class: "automation-detail__title" }, [
+              View({ class: "text-color-text-primary font-display text-xl font-semibold" }, [
                 flow.name || flow.id,
               ]),
               View(
                 {
-                  class: "automation-detail__subtitle",
+                  class: "mt-0-5 text-color-text-secondary font-mono text-xs",
                   attributes: { title: flow.id },
                 },
                 [flow.id],
@@ -32,29 +32,29 @@ function AutomationPipelineDetail(props) {
             ]),
             AutomationPipelineTriggerBadges({ store: vm$, pipeline: flow }),
           ]),
-          View({ class: "automation-detail__description" }, [
+          View({ class: "text-color-text-secondary text-sm leading-relaxed" }, [
             flow.description || "暂无描述",
           ]),
-          View({ class: "dm-panel dm-panel--soft automation-properties" }, [
-            View({ class: "automation-summary__item" }, [
-              View({ class: "automation-property__label" }, ["上下文 Schema"]),
-              View({ class: "automation-code" }, [
+          View({ class: "dm-panel dm-panel--soft grid grid-cols-[repeat(3,_minmax(0,_1fr))] gap-3 p-3 max-900:grid-cols-1fr" }, [
+            View({ class: "min-w-0 [&.is-wide]:grid-column-[1_/_-1]" }, [
+              View({ class: "block mb-1 text-color-text-secondary text-xs font-medium" }, ["上下文 Schema"]),
+              View({ class: "group-automation-code overflow-hidden font-mono text-sm text-ellipsis whitespace-nowrap" }, [
                 vm$.methods.schemaText(flow.context_schema),
               ]),
             ]),
-            View({ class: "automation-summary__item" }, [
-              View({ class: "automation-property__label" }, ["开始节点"]),
-              View({ class: "automation-code" }, [flow.start_node_id]),
+            View({ class: "min-w-0 [&.is-wide]:grid-column-[1_/_-1]" }, [
+              View({ class: "block mb-1 text-color-text-secondary text-xs font-medium" }, ["开始节点"]),
+              View({ class: "group-automation-code overflow-hidden font-mono text-sm text-ellipsis whitespace-nowrap" }, [flow.start_node_id]),
             ]),
-            View({ class: "automation-summary__item" }, [
-              View({ class: "automation-property__label" }, ["节点 / 连线"]),
+            View({ class: "min-w-0 [&.is-wide]:grid-column-[1_/_-1]" }, [
+              View({ class: "block mb-1 text-color-text-secondary text-xs font-medium" }, ["节点 / 连线"]),
               View({}, [
                 `${(flow.nodes || []).length} / ${(flow.edges || []).length}`,
               ]),
             ]),
           ]),
           AutomationTriggerSummary({ store: vm$ }),
-          View({ class: "automation-section-title" }, ["流程结构"]),
+          View({ class: "text-color-text-primary text-base font-semibold" }, ["流程结构"]),
           AutomationFlowGraph({ store: vm$, editable: false }),
         ]);
       },
@@ -66,7 +66,7 @@ function FlowDetailPageView(props) {
   const vm$ = AutomationPageViewModel(props, { mode: "detail" });
   return View(
     {
-      class: "content-page automation-page page",
+      class: "group-content-page min-h-full flex flex-col bg-content-bg text-content-text [&_.group-automation-toolbar]:flex [&_.group-automation-toolbar]:items-center [&_.group-automation-toolbar]:justify-between [&_.group-automation-toolbar]:gap-4 max-900:[&_.group-automation-toolbar]:items-stretch max-900:[&_.group-automation-toolbar]:flex-col min-w-0 min-h-full font-sans",
       attributes: { n: "automation-page" },
       onMounted() {
         vm$.methods.ready();
@@ -77,11 +77,11 @@ function FlowDetailPageView(props) {
     },
     [
       View({ class: "automation-detail-page" }, [
-        View({ class: "content-toolbar-wrap container" }, [
+        View({ class: "group-content-toolbar-wrap p-[var(--dm-space-4)_var(--dm-space-4)_0] " }, [
           AutomationWorkspaceToolbar({ store: vm$, mode: "detail" }),
         ]),
         AutomationFeedback({ store: vm$ }),
-        View({ class: "content-main container" }, [
+        View({ class: "group-content-main flex-[1_1_auto] min-w-0 p-4 " }, [
           Show({
             when: vm$.state.selected_pipeline,
             ok() {

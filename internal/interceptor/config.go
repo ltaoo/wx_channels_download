@@ -30,7 +30,7 @@ func NewInterceptorSettings(c *config.Config) *InterceptorConfig {
 	return &InterceptorConfig{
 		Version:                  c.Version,
 		DebugShowError:           viper.GetBool("debug.error"),
-		EchoLogEnabled:           viper.GetBool("debug.echolog"),
+		EchoLogEnabled:           c.Debug && viper.GetBool("debug.echolog"),
 		ProxySetSystem:           viper.GetBool("proxy.system"),
 		ProxyTun:                 viper.GetBool("proxy.tun"),
 		ProxyDefaultInterface:    viper.GetString("proxy.defaultInterface"),

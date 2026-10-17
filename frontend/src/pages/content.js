@@ -3,6 +3,17 @@ import { TagSelect, ContentTagBadge } from "@/components/index.js";
 import { ContentViewModel } from "./content.model.js";
 import ContentDetailPageView from "./content_detail.js";
 
+const content_row_stat_classes = {
+  __proto__: null,
+  "in-progress": "bg-color-warning-soft text-color-warning",
+  "running": "bg-color-warning-soft text-color-warning",
+  "paused": "bg-color-warning-soft text-color-warning",
+  "success": "bg-color-success-soft text-color-success",
+  "finished": "bg-color-success-soft text-color-success",
+  "failed": "bg-color-danger-soft text-color-danger",
+  "files": "bg-color-primary-soft text-color-primary",
+};
+
 const Runtime = window.Timeless;
 
 function ContentDetailDrawer(props) {
@@ -33,14 +44,14 @@ function ContentPageView(props) {
   const vm$ = ContentViewModel(props);
   return View(
     {
-      class: "content-page content-library-page content-list-page page",
+      class: "group-content-page min-h-full flex flex-col bg-content-bg text-content-text [.group-content-page&]:h-full [.group-content-page&]:min-h-0 [.group-content-page&]:overflow-hidden [&_>_.group-content-main]:min-h-0 [&_>_.group-content-main]:flex [&_>_.group-content-main]:flex-col [&_>_.dm-pagination]:flex-[0_0_auto] bg-content-bg max-760:[&_.dm-table-row:not(.dm-table-header)]:grid-cols-[minmax(0,_1fr)_auto] max-760:[&_.group-content-row-meta]:grid-row-[1_/_3] max-760:[&_.group-content-row-meta]:grid-column-2 max-760:[&_.group-content-row-meta]:justify-self-end max-760:[&_.group-content-row-stats]:hidden min-w-0 min-h-full font-sans",
       onMounted() {
         vm$.methods.ready();
       },
     },
     [
       SplitView({
-        class: "content-page-split",
+        class: "min-w-0 min-h-0 flex-[1_1_auto]",
         attributes: { n: "content-page-split" },
         panels: [
           {
@@ -55,13 +66,13 @@ function ContentPageView(props) {
             content() {
               return View(
                 {
-                  class: "content-page-results",
+                  class: "min-h-0 min-w-0 h-full flex flex-col [&_>_.group-content-main]:min-h-0 [&_>_.group-content-main]:flex-[1_1_auto] [&_>_.group-content-main]:flex [&_>_.group-content-main]:flex-col [&_>_.dm-pagination]:flex-[0_0_auto] [&_>_.group-content-toolbar-wrap]:flex-[0_0_auto]",
                   attributes: { n: "content-page-results" },
                 },
                 [
                   View(
                     {
-                      class: "content-toolbar-wrap",
+                      class: "group-content-toolbar-wrap p-[var(--dm-space-4)_var(--dm-space-4)_0]",
                       attributes: { n: "content-toolbar-container" },
                     },
                     [ContentPageToolbar({ store: vm$ })],
@@ -120,7 +131,7 @@ function ContentLayoutMenu(props) {
       IconButton(
         {
           store: vm$.ui.btn_layout$,
-          class: "content-layout-icon-button",
+          class: "w-28px h-28px min-h-28px p-0 border-0 rounded-sm bg-transparent [&:hover:not(:disabled)]:text-color-text-primary [&:hover:not(:disabled)]:bg-[color-mix(_in_srgb,_var(--dm-color-text-primary)_10%,_transparent_)] [&:hover:not(:disabled)]:shadow-none [&:focus-visible:not(:disabled)]:text-color-text-primary [&:focus-visible:not(:disabled)]:bg-[color-mix(_in_srgb,_var(--dm-color-text-primary)_10%,_transparent_)] [&:focus-visible:not(:disabled)]:shadow-none",
           attributes: {
             n: "content-layout-action",
             type: "button",
@@ -157,7 +168,7 @@ function ContentSavedFilterPanel(props) {
   return View(
     {
       type: "form",
-      class: "content-saved-filter-panel",
+      class: "w-full h-full min-h-0 flex flex-col p-3 overflow-hidden bg-content-panel border-right-[var(--dm-border-width)_solid_var(--dm-content-border)]",
       attributes: {
         n: "content-saved-filter-panel",
         "aria-label": "快捷筛选器",
@@ -170,21 +181,21 @@ function ContentSavedFilterPanel(props) {
     [
       View(
         {
-          class: "content-saved-filter-header",
+          class: "mb-3",
           attributes: { n: "content-saved-filter-header" },
         },
         [
           View(
             {
               as: "h2",
-              class: "content-saved-filter-title",
+              class: "m-0 text-content-text text-base font-semibold",
               attributes: { n: "content-saved-filter-title" },
             },
             ["快捷筛选器"],
           ),
           View(
             {
-              class: "content-saved-filter-description",
+              class: "mt-1 text-content-muted text-caption leading-tight",
               attributes: { n: "content-saved-filter-description" },
             },
             ["保存当前多个筛选条件，一键复用"],
@@ -193,7 +204,7 @@ function ContentSavedFilterPanel(props) {
       ),
       View(
         {
-          class: "content-saved-filter-fields",
+          class: "grid gap-2 pb-3 border-bottom-[var(--dm-border-width)_solid_var(--dm-content-border)]",
           attributes: {
             n: "content-saved-filter-fields",
             role: "group",
@@ -203,7 +214,7 @@ function ContentSavedFilterPanel(props) {
         [
           View(
             {
-              class: "content-saved-filter-field",
+              class: "min-w-0 [&_.group-dm-platform-select-trigger]:w-full",
               attributes: { n: "content-platform-filter-field" },
             },
             [
@@ -217,7 +228,7 @@ function ContentSavedFilterPanel(props) {
           ),
           View(
             {
-              class: "content-saved-filter-field",
+              class: "min-w-0 [&_.group-dm-platform-select-trigger]:w-full",
               attributes: { n: "content-type-filter-field" },
             },
             [
@@ -232,7 +243,7 @@ function ContentSavedFilterPanel(props) {
           ),
           View(
             {
-              class: "content-saved-filter-field",
+              class: "min-w-0 [&_.group-dm-platform-select-trigger]:w-full",
               attributes: { n: "content-account-filter-field" },
             },
             [
@@ -263,7 +274,7 @@ function ContentSavedFilterPanel(props) {
       Button(
         {
           store: vm$.ui.btn_save_filter$,
-          class: "content-saved-filter-save",
+          class: "w-full mt-2",
           attributes: {
             n: "content-save-filter-action",
             type: "submit",
@@ -273,7 +284,7 @@ function ContentSavedFilterPanel(props) {
       ),
       View(
         {
-          class: "content-saved-filter-list",
+          class: "min-h-0 flex-[1_1_auto] overflow-y-auto flex flex-col gap-2 mt-3",
           attributes: {
             n: "content-saved-filter-list",
             role: "list",
@@ -289,7 +300,7 @@ function ContentSavedFilterPanel(props) {
             ok() {
               return View(
                 {
-                  class: "content-saved-filter-empty",
+                  class: "p-[var(--dm-space-3)_var(--dm-space-2)] text-content-muted text-sm text-center",
                   attributes: { n: "content-saved-filter-empty" },
                 },
                 ["暂存筛选器后会显示在这里"],
@@ -307,8 +318,8 @@ function ContentSavedFilterPanel(props) {
                 {
                   class: computed(active_, (active) =>
                     active
-                      ? "content-saved-filter is-active"
-                      : "content-saved-filter",
+                      ? "min-w-0 flex items-stretch gap-1 rounded-md [&.is-active_.group-content-saved-filter-apply]:text-color-primary [&.is-active_.group-content-saved-filter-apply]:bg-color-primary-soft is-active"
+                      : "min-w-0 flex items-stretch gap-1 rounded-md [&.is-active_.group-content-saved-filter-apply]:text-color-primary [&.is-active_.group-content-saved-filter-apply]:bg-color-primary-soft",
                   ),
                   attributes: {
                     n: "content-saved-filter",
@@ -320,7 +331,7 @@ function ContentSavedFilterPanel(props) {
                     {
                       as: "button",
                       type: "button",
-                      class: "content-saved-filter-apply dm-focus-ring",
+                      class: "group-content-saved-filter-apply min-w-0 flex-[1_1_auto] p-2 text-left text-inherit bg-transparent border-0 rounded-inherit cursor-pointer hover:text-color-primary hover:bg-color-primary-soft dm-focus-ring",
                       attributes: {
                         n: "content-saved-filter-apply",
                         type: "button",
@@ -333,14 +344,14 @@ function ContentSavedFilterPanel(props) {
                     [
                       View(
                         {
-                          class: "content-saved-filter-name",
+                          class: "overflow-hidden text-ellipsis whitespace-nowrap text-sm font-semibold",
                           attributes: { n: "content-saved-filter-name" },
                         },
                         [filter.name],
                       ),
                       View(
                         {
-                          class: "content-saved-filter-summary",
+                          class: "overflow-hidden text-ellipsis whitespace-nowrap block mt-0-5 text-content-muted text-caption",
                           attributes: {
                             n: "content-saved-filter-summary",
                             title: vm$.methods.filterSummary(filter),
@@ -354,7 +365,7 @@ function ContentSavedFilterPanel(props) {
                     {
                       as: "button",
                       type: "button",
-                      class: "content-saved-filter-delete dm-focus-ring",
+                      class: "flex-[0_0_auto] grid place-items-center p-[0_var(--dm-space-2)] text-content-muted bg-transparent border-0 rounded-md cursor-pointer hover:text-color-danger hover:bg-color-danger-soft focus-visible:text-color-danger focus-visible:bg-color-danger-soft dm-focus-ring",
                       attributes: {
                         n: "content-saved-filter-delete",
                         type: "button",
@@ -390,7 +401,7 @@ function ContentPageToolbar(props) {
   return View(
     {
       type: "form",
-      class: "content-toolbar content-filter-form",
+      class: "group-content-toolbar flex justify-between gap-3 max-760:flex-wrap items-stretch",
       attributes: { role: "search" },
       onSubmit(event) {
         event.preventDefault();
@@ -400,7 +411,7 @@ function ContentPageToolbar(props) {
     [
       View(
         {
-          class: "content-filter-fields dm-flex dm-items-center dm-gap-2",
+          class: "min-w-0 flex-[1_1_0] max-760:flex-[1_1_100%] max-520:flex-wrap dm-flex dm-items-center dm-gap-2",
           attributes: { n: "content-filter-fields" },
         },
         [
@@ -433,7 +444,7 @@ function ContentPageToolbar(props) {
       ),
       View(
         {
-          class: "content-filter-actions dm-flex dm-items-center dm-gap-2",
+          class: "group-content-filter-actions flex-[0_0_auto] max-760:ml-auto max-520:w-full max-520:ml-0 max-520:[&_>_.dm-button]:flex-[1_1_0] dm-flex dm-items-center dm-gap-2",
         },
         [
           ContentPageActionButton({
@@ -456,7 +467,7 @@ function ContentPageToolbar(props) {
           }),
           View(
             {
-              class: "content-scope-toggle",
+              class: "flex items-center gap-2 whitespace-nowrap",
               attributes: { n: "content-scope-toggle" },
             },
             [
@@ -498,9 +509,9 @@ function ContentRowCover(props) {
   const content = props.content;
   const cover_url = content_cover_url(content);
   if (!cover_url) return null;
-  return View({ class: "content-row-cover-wrap" }, [
+  return View({ class: "w-control-height-lg h-control-height-lg relative [&_>_.group-content-row-cover]:absolute [&_>_.group-content-row-cover]:inset-0" }, [
     LazyImg({
-      class: "content-row-cover",
+      class: "group-content-row-cover w-control-height-lg h-control-height-lg grid overflow-hidden place-items-center object-cover text-content-muted border-[var(--dm-border-width)_solid_var(--dm-content-border)] rounded-md",
       src: cover_url,
       alt: content.title,
       attributes: {
@@ -526,14 +537,14 @@ function ContentRowAccounts(props) {
         return View(
           {
             class:
-              "content-row-author-account dm-flex dm-items-center dm-gap-1-5 dm-min-w-0",
+              "max-w-full dm-flex dm-items-center dm-gap-1-5 dm-min-w-0",
           },
           [
             Show({
               when: account.avatar_url,
               ok() {
                 return LazyImg({
-                  class: "content-row-author-avatar",
+                  class: "w-4 h-4 flex-[0_0_auto] object-cover rounded-full",
                   src: account.avatar_url,
                   alt: name,
                   attributes: {
@@ -545,7 +556,7 @@ function ContentRowAccounts(props) {
             }),
             View(
               {
-                class: "content-row-author-name",
+                class: "overflow-hidden text-content-muted text-sm text-ellipsis whitespace-nowrap",
                 attributes: { title: name },
               },
               [name],
@@ -570,12 +581,12 @@ function ContentRowStatistics(props) {
         return Tag(
           {
             name: "content-row-stat",
-            class: `content-row-stat content-row-stat-${item.key}`,
+            class: `flex-[0_0_auto] border-[var(--dm-border-width)_solid_var(--dm-content-border)] ${content_row_stat_classes[item.key] || "bg-content-panel-soft"}`,
             attributes: { title: `${item.label}：${item.value}` },
           },
           [
-            View({ class: "content-row-stat-value" }, [String(item.value)]),
-            View({ class: "content-row-stat-label" }, [item.label]),
+            View({ class: "flex-[0_0_auto] font-semibold" }, [String(item.value)]),
+            View({ class: "overflow-hidden text-ellipsis" }, [item.label]),
           ],
         );
       },
@@ -614,14 +625,14 @@ function ContentRowMain(props) {
     View({ class: "content-row-main dm-min-w-0 dm-flex-1" }, [
       View(
         {
-          class: "content-row-title",
+          class: "overflow-hidden text-content-text text-base font-semibold text-ellipsis whitespace-nowrap",
           attributes: { title: content.title },
         },
         [title],
       ),
       View(
         {
-          class: "content-row-id",
+          class: "min-w-0 max-w-full flex items-center gap-2 mt-1",
           attributes: { n: "content-id" },
         },
         [
@@ -630,8 +641,8 @@ function ContentRowMain(props) {
               type: "button",
               class: computed(copied_, (copied) =>
                 copied
-                  ? "content-copy-id-action dm-focus-ring is-copied"
-                  : "content-copy-id-action dm-focus-ring",
+                  ? "grid flex-[0_0_auto] place-items-center p-0 text-content-muted leading-1 bg-transparent border-0 cursor-pointer [&:hover:not(:disabled)]:text-color-primary [&.is-copied]:text-color-success [&.is-copied:hover]:text-color-success dm-focus-ring is-copied"
+                  : "grid flex-[0_0_auto] place-items-center p-0 text-content-muted leading-1 bg-transparent border-0 cursor-pointer [&:hover:not(:disabled)]:text-color-primary [&.is-copied]:text-color-success [&.is-copied:hover]:text-color-success dm-focus-ring",
               ),
               attributes: {
                 n: "content-copy-id-action",
@@ -671,7 +682,7 @@ function ContentRowMain(props) {
           ),
           View(
             {
-              class: "content-row-id-value",
+              class: "min-w-0 overflow-hidden text-content-muted font-[var(--dm-font-family-mono,_monospace)] text-caption text-ellipsis whitespace-nowrap",
               attributes: {
                 n: "content-id-value",
                 title: content.id || "",
@@ -683,7 +694,7 @@ function ContentRowMain(props) {
       ),
       View(
         {
-          class: "content-row-badges dm-flex dm-items-center dm-gap-1-5",
+          class: "mt-1-5 min-w-0 overflow-hidden flex-nowrap dm-flex dm-items-center dm-gap-1-5",
         },
         [
           PlatformTag({
@@ -729,19 +740,19 @@ function ContentRowMain(props) {
 function ContentSkeletonRow() {
   return View(
     {
-      class: "dm-table-row dm-grid dm-items-center content-skeleton-row",
+      class: "dm-table-row dm-grid dm-items-center pointer-events-none",
       attributes: { n: "content-table-skeleton-row", role: "row" },
     },
     [
       View(
         {
           class:
-            "dm-table-cell content-row-main-cell dm-flex dm-items-center dm-gap-4 dm-min-w-0",
+            "dm-table-cell group-content-row-main-cell dm-flex dm-items-center dm-gap-4 dm-min-w-0",
           attributes: { n: "content-table-skeleton-main-cell", role: "cell" },
         },
         [
           View({
-            class: "content-row-cover content-skeleton",
+            class: "group-content-row-cover w-control-height-lg h-control-height-lg grid overflow-hidden place-items-center object-cover text-content-muted border-[var(--dm-border-width)_solid_var(--dm-content-border)] relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite]",
             attributes: { n: "content-table-skeleton-cover" },
           }),
           View(
@@ -751,11 +762,11 @@ function ContentSkeletonRow() {
             },
             [
               View({
-                class: "content-skeleton content-skeleton-title",
+                class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] w-[min(360px,_80%)] h-4",
                 attributes: { n: "content-table-skeleton-title" },
               }),
               View({
-                class: "content-skeleton content-skeleton-tag",
+                class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-16",
                 attributes: { n: "content-table-skeleton-tag" },
               }),
             ],
@@ -769,7 +780,7 @@ function ContentSkeletonRow() {
         },
         [
           View({
-            class: "content-skeleton content-skeleton-line",
+            class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-[min(180px,_80%)]",
             attributes: { n: "content-table-skeleton-account-value" },
           }),
         ],
@@ -781,7 +792,7 @@ function ContentSkeletonRow() {
         },
         [
           View({
-            class: "content-skeleton content-skeleton-line-short",
+            class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-[min(100px,_72%)]",
             attributes: { n: "content-table-skeleton-time-value" },
           }),
         ],
@@ -796,7 +807,7 @@ function ContentSkeletonRow() {
         },
         [
           View({
-            class: "content-skeleton content-skeleton-line-short",
+            class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-[min(100px,_72%)]",
             attributes: { n: "content-table-skeleton-statistics-value" },
           }),
         ],
@@ -808,30 +819,30 @@ function ContentSkeletonRow() {
 function ContentCardSkeleton() {
   return View(
     {
-      class: "content-card content-card-skeleton",
+      class: "isolation-isolate relative min-w-0 h-full min-h-0 flex flex-col p-0 overflow-hidden text-inherit text-left bg-content-bg border-[var(--dm-border-width)_solid_var(--dm-content-border)] rounded-md cursor-pointer transition-[border-color_0.15s_ease,_box-shadow_0.15s_ease,_transform_0.15s_ease] hover:border-color-color-primary-border hover:shadow-sm hover:transform-[translateY(-1px)] focus-visible:border-color-color-primary-border focus-visible:shadow-sm focus-visible:transform-[translateY(-1px)] content-card-skeleton",
       attributes: { n: "content-card-skeleton", "aria-hidden": "true" },
     },
     [
       View({
-        class: "content-card-media content-skeleton",
+        class: "z-0 absolute inset-0 overflow-hidden bg-content-panel-soft overflow-hidden rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite]",
         attributes: { n: "content-card-skeleton-media" },
       }),
       View(
         {
-          class: "content-card-body",
+          class: "z-3 absolute right-0 bottom-0 left-0 min-w-0 max-h-[78%] flex flex-col gap-2 p-3 overflow-hidden text-white bg-[linear-gradient(_to_top,_rgb(0_0_0_/_92%),_rgb(0_0_0_/_82%)_65%,_transparent_)] [&_:where(.dm-tag)]:text-white [&_:where(.dm-tag)]:bg-[rgb(255_255_255_/_16%)] [&_:where(.dm-tag)]:border-color-[rgb(255_255_255_/_28%)]",
           attributes: { n: "content-card-skeleton-body" },
         },
         [
           View({
-            class: "content-skeleton content-skeleton-title",
+            class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] w-[min(360px,_80%)] h-4",
             attributes: { n: "content-card-skeleton-title" },
           }),
           View({
-            class: "content-skeleton content-skeleton-tag",
+            class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-16",
             attributes: { n: "content-card-skeleton-tag" },
           }),
           View({
-            class: "content-skeleton content-skeleton-line-short",
+            class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-[min(100px,_72%)]",
             attributes: { n: "content-card-skeleton-meta" },
           }),
         ],
@@ -847,7 +858,7 @@ function ContentCardAccounts(props) {
     ok() {
       return View(
         {
-          class: "content-card-account",
+          class: "min-w-0 inline-flex items-center gap-1 text-[rgb(255_255_255_/_82%)] text-sm",
           attributes: { n: "content-card-empty-account" },
         },
         ["暂无关联账号"],
@@ -865,7 +876,7 @@ function ContentCardAccounts(props) {
             account.nickname || account.alias || account.external_id || "未知";
           return View(
             {
-              class: "content-card-account",
+              class: "min-w-0 inline-flex items-center gap-1 text-[rgb(255_255_255_/_82%)] text-sm",
               attributes: { n: "content-card-account", title: name },
             },
             [
@@ -873,7 +884,7 @@ function ContentCardAccounts(props) {
                 when: account.avatar_url,
                 ok() {
                   return LazyImg({
-                    class: "content-row-author-avatar",
+                    class: "w-4 h-4 flex-[0_0_auto] object-cover rounded-full",
                     src: account.avatar_url,
                     alt: name,
                     attributes: {
@@ -886,7 +897,7 @@ function ContentCardAccounts(props) {
               }),
               View(
                 {
-                  class: "content-card-account-name",
+                  class: "min-w-0 overflow-hidden max-w-140px text-ellipsis whitespace-nowrap",
                   attributes: { n: "content-card-account-name" },
                 },
                 [name],
@@ -908,7 +919,7 @@ function ContentCard(props) {
     {
       as: "button",
       type: "button",
-      class: "content-card",
+      class: "isolation-isolate relative min-w-0 h-full min-h-0 flex flex-col p-0 overflow-hidden text-inherit text-left bg-content-bg border-[var(--dm-border-width)_solid_var(--dm-content-border)] rounded-md cursor-pointer transition-[border-color_0.15s_ease,_box-shadow_0.15s_ease,_transform_0.15s_ease] hover:border-color-color-primary-border hover:shadow-sm hover:transform-[translateY(-1px)] focus-visible:border-color-color-primary-border focus-visible:shadow-sm focus-visible:transform-[translateY(-1px)]",
       attributes: {
         n: "content-card",
         type: "button",
@@ -921,7 +932,7 @@ function ContentCard(props) {
     [
       View(
         {
-          class: "content-card-media",
+          class: "z-0 absolute inset-0 overflow-hidden bg-content-panel-soft",
           attributes: { n: "content-card-media" },
         },
         [
@@ -929,7 +940,7 @@ function ContentCard(props) {
             when: cover_url,
             ok() {
               return LazyImg({
-                class: "content-card-image",
+                class: "w-full h-full object-cover object-position-center",
                 src: cover_url,
                 alt: content.title || "内容封面",
                 attributes: {
@@ -942,7 +953,7 @@ function ContentCard(props) {
             else() {
               return View(
                 {
-                  class: "content-card-media-placeholder",
+                  class: "w-full h-full grid place-items-center text-[color-mix(_in_srgb,_var(--dm-color-primary)_72%,_var(--dm-color-text-secondary)_)] bg-[color-mix(_in_srgb,_var(--dm-color-primary-soft)_58%,_var(--dm-color-bg-subtle)_)]",
                   attributes: {
                     n: "content-card-media-placeholder",
                     "aria-hidden": "true",
@@ -950,7 +961,7 @@ function ContentCard(props) {
                 },
                 [
                   PlatformIcon({
-                    class: "content-card-type-icon",
+                    class: "w-[clamp(140px,_68%,_220px)] h-auto aspect-ratio-[132_/_96] opacity-[0.2]",
                     favicon: vm$.methods.typeIcon(
                       content.content_type,
                       content.content_subtype,
@@ -964,13 +975,13 @@ function ContentCard(props) {
           }),
           View(
             {
-              class: "content-card-media-meta",
+              class: "z-2 absolute right-0 left-0 top-0 bottom-auto flex items-center justify-between gap-2 p-[var(--dm-space-1-5)_var(--dm-space-2)] bg-[linear-gradient(_to_bottom,_rgb(0_0_0_/_68%),_transparent_)] text-white [&_:where(.dm-tag)]:text-white [&_:where(.dm-tag)]:bg-[rgb(255_255_255_/_16%)] [&_:where(.dm-tag)]:border-color-[rgb(255_255_255_/_28%)]",
               attributes: { n: "content-card-media-meta" },
             },
             [
               View(
                 {
-                  class: "content-card-media-tags",
+                  class: "min-w-0 flex items-center gap-1-5 overflow-hidden",
                   attributes: { n: "content-card-media-tags" },
                 },
                 [
@@ -990,7 +1001,7 @@ function ContentCard(props) {
               ),
               View(
                 {
-                  class: "content-card-time",
+                  class: "flex-[0_0_auto] text-caption font-variant-numeric-tabular-nums whitespace-nowrap",
                   attributes: { n: "content-card-publish-time" },
                 },
                 [vm$.methods.formatTime(content.publish_time)],
@@ -1001,14 +1012,14 @@ function ContentCard(props) {
       ),
       View(
         {
-          class: "content-card-body",
+          class: "z-3 absolute right-0 bottom-0 left-0 min-w-0 max-h-[78%] flex flex-col gap-2 p-3 overflow-hidden text-white bg-[linear-gradient(_to_top,_rgb(0_0_0_/_92%),_rgb(0_0_0_/_82%)_65%,_transparent_)] [&_:where(.dm-tag)]:text-white [&_:where(.dm-tag)]:bg-[rgb(255_255_255_/_16%)] [&_:where(.dm-tag)]:border-color-[rgb(255_255_255_/_28%)]",
           attributes: { n: "content-card-body" },
         },
         [
           View(
             {
               as: "h3",
-              class: "content-card-title",
+              class: "m-0 overflow-hidden -webkit-box -webkit-box-orient-vertical text-ellipsis text-white text-base font-semibold leading-tight max-h-[calc(2_*_var(--dm-line-height-tight)_*_1em)] -webkit-line-clamp-2",
               attributes: {
                 n: "content-card-title",
                 title: content.title,
@@ -1018,7 +1029,7 @@ function ContentCard(props) {
           ),
           View(
             {
-              class: "content-card-badges",
+              class: "min-w-0 flex flex-nowrap items-center gap-1-5 overflow-hidden",
               attributes: {
                 n: "content-card-badges",
                 title: content_badges_title(vm$, content),
@@ -1035,20 +1046,20 @@ function ContentCard(props) {
           ),
           View(
             {
-              class: "content-card-accounts",
+              class: "min-w-0 flex flex-wrap items-center gap-1-5",
               attributes: { n: "content-card-accounts" },
             },
             [ContentCardAccounts({ content })],
           ),
           View(
             {
-              class: "content-card-footer",
+              class: "flex items-center justify-between gap-2 pt-2 border-top-[var(--dm-border-width)_solid_rgb(255_255_255_/_22%)]",
               attributes: { n: "content-card-footer" },
             },
             [
               View(
                 {
-                  class: "content-card-statistics",
+                  class: "min-w-0 flex flex-wrap gap-1",
                   attributes: { n: "content-card-statistics" },
                 },
                 ContentRowStatistics({
@@ -1057,7 +1068,7 @@ function ContentCard(props) {
               ),
               View(
                 {
-                  class: "content-card-created-time",
+                  class: "flex-[0_0_auto] text-[rgb(255_255_255_/_82%)] text-caption font-variant-numeric-tabular-nums whitespace-nowrap",
                   attributes: { n: "content-card-created-time" },
                 },
                 [vm$.methods.formatTime(content.created_at)],
@@ -1073,7 +1084,7 @@ function ContentCard(props) {
 function ContentCardState(props) {
   return View(
     {
-      class: "content-card-state",
+      class: "flex-[1_1_auto] grid place-items-center p-8 text-center [&_.dm-button]:mt-3",
       attributes: {
         n: "content-card-state",
         role: props.error ? "alert" : "status",
@@ -1083,14 +1094,14 @@ function ContentCardState(props) {
       View(
         {
           as: "strong",
-          class: "content-card-state-title",
+          class: "m-0 text-content-text text-lg",
           attributes: { n: "content-card-state-title" },
         },
         [props.title],
       ),
       View(
         {
-          class: "content-card-state-description",
+          class: "m-0 mt-1 max-w-360px text-content-muted text-sm",
           attributes: { n: "content-card-state-description" },
         },
         [props.description],
@@ -1119,7 +1130,7 @@ function ContentCardBody(props) {
   const vm$ = props.store;
   return View(
     {
-      class: "content-main content-card-main container",
+      class: "group-content-main flex-[1_1_auto] min-w-0 p-4 [.group-content-main&]:p-0 ",
       attributes: { n: "content-card-page-main" },
     },
     [
@@ -1129,7 +1140,7 @@ function ContentCardBody(props) {
           initial() {
             return View(
               {
-                class: "content-card-grid",
+                class: "relative min-h-0 flex-[1_1_auto] grid [align-items:start] grid-auto-rows-360px grid-cols-[repeat(auto-fill,_minmax(240px,_1fr))] gap-3 p-4 overflow-y-auto",
                 attributes: {
                   n: "content-card-skeleton-grid",
                   "aria-busy": "true",
@@ -1155,7 +1166,7 @@ function ContentCardBody(props) {
           normal() {
             return View(
               {
-                class: "content-card-grid",
+                class: "relative min-h-0 flex-[1_1_auto] grid [align-items:start] grid-auto-rows-360px grid-cols-[repeat(auto-fill,_minmax(240px,_1fr))] gap-3 p-4 overflow-y-auto",
                 attributes: {
                   n: "content-card-grid",
                   role: "list",
@@ -1169,7 +1180,7 @@ function ContentCardBody(props) {
                   render(content) {
                     return View(
                       {
-                        class: "content-card-item",
+                        class: "isolation-isolate relative min-w-0 h-full min-h-0",
                         attributes: {
                           n: "content-card-item",
                           role: "listitem",
@@ -1189,7 +1200,7 @@ function ContentCardBody(props) {
                   ok() {
                     return View(
                       {
-                        class: "content-card-loading-overlay",
+                        class: "absolute inset-0 z-1 grid place-items-center text-content-text bg-[color-mix(_in_srgb,_var(--dm-content-panel)_78%,_transparent_)]",
                         attributes: {
                           n: "content-card-loading-overlay",
                           role: "status",
@@ -1206,7 +1217,7 @@ function ContentCardBody(props) {
         },
       }),
       Pagination({
-        class: "container dm-px-4",
+        class: " dm-px-4",
         summary: vm$.state.range_text,
         page: vm$.state.page,
         pageCount: vm$.state.page_count,
@@ -1229,7 +1240,7 @@ function ContentPageBody(props) {
       table() {
         return Table({
           name: "content-table",
-          containerClass: "content-main container",
+          containerClass: "group-content-main flex-[1_1_auto] min-w-0 p-4 ",
           containerAttributes: { n: "content-page-main" },
           panelAttributes: { n: "content-table-panel" },
           columns: [
@@ -1238,7 +1249,7 @@ function ContentPageBody(props) {
               title: "封面 / 标题",
               width: "minmax(300px, 2fr)",
               cellClass:
-                "content-row-main-cell dm-flex dm-items-center dm-gap-4 dm-min-w-0",
+                "group-content-row-main-cell dm-flex dm-items-center dm-gap-4 dm-min-w-0",
               render(content) {
                 return ContentRowMain({
                   store: vm$,
@@ -1252,7 +1263,7 @@ function ContentPageBody(props) {
               title: "账号",
               width: "minmax(150px, 1fr)",
               cellClass:
-                "content-row-author dm-flex dm-items-center dm-gap-1-5 dm-min-w-0",
+                "group-content-row-author overflow-hidden dm-flex dm-items-center dm-gap-1-5 dm-min-w-0",
               render(content) {
                 return ContentRowAccounts({ content });
               },
@@ -1262,7 +1273,7 @@ function ContentPageBody(props) {
               title: "时间",
               width: 240,
               cellClass:
-                "content-row-meta dm-flex dm-items-center dm-gap-1-5 dm-text-muted dm-text-sm dm-tabular-nums dm-whitespace-nowrap",
+                "group-content-row-meta dm-flex dm-items-center dm-gap-1-5 dm-text-muted dm-text-sm dm-tabular-nums dm-whitespace-nowrap",
               render(content) {
                 return [
                   View({ attributes: { n: "content-time" } }, [
@@ -1280,7 +1291,7 @@ function ContentPageBody(props) {
               name: "statistics",
               title: "统计",
               width: 200,
-              cellClass: "content-row-stats",
+              cellClass: "group-content-row-stats min-w-0 flex flex-wrap items-center gap-1-5 text-content-muted text-xs font-variant-numeric-tabular-nums",
               render(content) {
                 return ContentRowStatistics({
                   statistics: vm$.methods.statistics(content),
@@ -1290,7 +1301,7 @@ function ContentPageBody(props) {
           ],
           rows: vm$.state.contents,
           pagination: {
-            class: "container dm-px-4",
+            class: " dm-px-4",
             summary: vm$.state.range_text,
             page: vm$.state.page,
             pageCount: vm$.state.page_count,
@@ -1308,7 +1319,7 @@ function ContentPageBody(props) {
           onRow(content) {
             const detail_href = vm$.methods.detailHref(content);
             return {
-              class: detail_href ? "content-row-clickable" : "",
+              class: detail_href ? "cursor-pointer hover:relative hover:z-1 hover:bg-content-panel-soft hover:shadow-[inset_var(--dm-border-width-strong)_0_var(--dm-color-primary-fill)]" : "",
               attributes: detail_href ? { title: "查看内容详情" } : {},
               onClick() {
                 vm$.methods.openDetail(content);

@@ -47,7 +47,7 @@ export function WxChannelsPlayerView(props) {
         when: vm$.state.playback_url,
         ok() {
           return Timeless.Video({
-            class: "wxchannels-video",
+            class: "group-wxchannels-video",
             src: vm$.state.playback_url.value,
             controls: true,
             autoplay: Boolean(props.autoplay),
