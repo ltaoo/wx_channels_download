@@ -64,6 +64,7 @@ export function AutomationStartTriggers(props) {
     View({ class: "flex flex-wrap items-center gap-2 min-w-0" }, [
       Button({ store: vm$.ui.btn_add_cron_trigger$, attributes: { n: "automation-add-cron-trigger", type: "button" } }, ["添加定时触发"]),
       Button({ store: vm$.ui.btn_add_event_trigger$, attributes: { n: "automation-add-event-trigger", type: "button" } }, ["添加事件触发"]),
+      Button({ store: vm$.ui.btn_add_webhook_trigger$, attributes: { n: "automation-add-webhook-trigger", type: "button" } }, ["添加 Webhook"]),
     ]),
     Show({
       when: computed(vm$.state.edit_triggers, (triggers) => !triggers.length),
@@ -95,6 +96,12 @@ export function AutomationStartTriggers(props) {
             View({ as: "label", class: "text-color-text-secondary text-xs font-semibold", attributes: { for: `${prefix}-enabled` } }, ["启用定时触发"]),
           ]) : null,
           trigger.type === "Event" ? field("事件 Key", trigger.input_event_key$, "event-key") : null,
+          trigger.type !== "Cron" ? View({ class: "flex items-center gap-2" }, [
+            Checkbox({ store: trigger.checkbox_active$, attributes: { id: `${prefix}-active`, "aria-label": "启用触发器" } }),
+            View({ as: "label", attributes: { for: `${prefix}-active` }, class: "text-color-text-secondary text-xs" }, ["启用触发器"]),
+          ]) : null,
+          field("整体超时（秒，包含人工等待）", trigger.input_timeout$, "timeout"),
+          trigger.type === "Webhook" ? View({ class: "min-w-0 text-color-text-secondary text-caption word-break-break-all" }, [trigger.id ? `POST /api/v1/automation/webhook/${trigger.id}；Authorization: Bearer ${trigger.webhook_token || "保存后生成"}` : "保存后生成 Webhook 地址与令牌。事件载荷从 input.event.data 读取，需在流程参数中声明 event。"]): null,
           field("输入参数 JSON", trigger.input_data$, "data", true),
           View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base" }, ["输入参数作为开始节点的 input；所有触发器共用后续流程。"]),
         ].filter(Boolean));
@@ -1880,4 +1887,53 @@ export function AutomationNodeExecutionWindow(props) {
     ],
   );
   return window$;
+}
+
+
+export function AutomationRunHistory(props) {
+  const vm$ = props.store;
+  return View({ class: "dm-panel m-4 p-3 grid gap-3 min-w-0", attributes: { n: "automation-run-history" } }, [
+    View({ class: "flex items-center justify-between gap-2" }, [
+      View({ class: "font-semibold text-color-text-primary" }, ["最近运行"]),
+      Button({ store: vm$.ui.btn_refresh_runs$, attributes: { type: "button", "aria-label": "刷新运行记录" } }, ["刷新运行记录"]),
+    ]),
+    View({ class: "flex flex-wrap gap-2 max-h-200px overflow-auto min-w-0" }, [
+      For({ each: vm$.state.runs, key: "id", render(value) {
+        const run = value && value.value !== undefined ? value.value : value;
+        return Button({ store: vm$.ui.btn_select_run$.bind(run), attributes: { type: "button", title: run.id, "aria-label": `查看运行 ${run.id}` } }, [`${vm$.methods.formatTime(run.created_at)} · ${run.status}`]);
+      } }),
+      Show({ when: computed(vm$.state.runs, (runs) => !runs.length), ok() { return View({ class: "text-color-text-secondary text-sm" }, ["暂无运行记录。保存 Pipeline 后立即执行或配置触发器。"]); } }),
+    ]),
+    For({ each: computed(vm$.state.selected_run, (run) => run ? [{ ...run, render_key: `${run.id}-${run.status}-${run.updated_at}` }] : []), key: "render_key", render(value) {
+      const run = value && value.value !== undefined ? value.value : value;
+      let logs = [];
+      try { logs = JSON.parse(run.node_logs || "[]"); } catch { /* Legacy records may have no trace. */ }
+      return View({ class: "grid gap-2 min-w-0 border-top-[1px_solid_var(--dm-color-border)] pt-3" }, [
+        View({ class: "flex flex-wrap gap-2 items-center text-sm min-w-0" }, [
+          automation_status_badge(run.status), View({ class: "font-mono text-xs word-break-break-all" }, [run.id]),
+          View({ class: "text-color-text-secondary" }, [`当前节点：${run.current_node || "等待执行"}`]),
+        ]),
+        run.error ? View({ class: "text-color-danger text-sm whitespace-pre-wrap", attributes: { role: "alert" } }, [run.error]) : null,
+        run.retry_of ? View({ class: "text-color-text-secondary text-xs" }, [`重试来源：${run.retry_of}`]) : null,
+        run.status === "WAITING" ? View({ class: "grid gap-2 min-w-0" }, [
+          View({ as: "label", attributes: { for: "automation-manual-response" }, class: "text-color-text-secondary text-sm" }, ["人工确认输入 JSON"]),
+          Textarea({ store: vm$.ui.input_manual_response$, class: "font-mono text-xs", attributes: { id: "automation-manual-response", rows: "3", spellcheck: "false", "aria-label": "人工确认输入 JSON" } }),
+          View({ class: "text-color-text-secondary text-xs" }, ["按人工节点的 input_schema 填写，例如 {\"approved\":true}；恢复沿用启动时的流程定义。"]),
+          Button({ store: vm$.ui.btn_resume_run$, attributes: { type: "button" } }, ["提交确认并继续"]),
+        ]) : null,
+        ["QUEUED", "RUNNING", "WAITING"].includes(run.status) ? Button({ store: vm$.ui.btn_cancel_run$, attributes: { type: "button" } }, ["取消运行"]) : null,
+        ["FAILED", "CANCELLED"].includes(run.status) ? View({ class: "grid gap-2" }, [
+          View({ class: "text-color-text-secondary text-xs" }, ["重试会从头执行，已发生的下载或通知可能重复，请先核对外部结果。"]),
+          View({ class: "flex flex-wrap gap-2" }, [
+            Button({ store: vm$.ui.btn_retry_run$, attributes: { type: "button" } }, ["按原流程重试"]),
+            Button({ store: vm$.ui.btn_retry_current_run$, attributes: { type: "button" } }, ["按当前已保存流程重试"]),
+          ]),
+        ]) : null,
+        logs.length ? View({ as: "details", class: "min-w-0 text-sm", attributes: { n: "automation-persisted-logs" } }, [
+          View({ as: "summary", class: "text-color-text-secondary" }, [`节点执行记录（最近 ${logs.length} 条）`]),
+          View({ as: "pre", class: "max-h-200px overflow-auto font-mono text-xs whitespace-pre-wrap word-break-break-all" }, [JSON.stringify(logs, null, 2)]),
+        ]) : null,
+      ].filter(Boolean));
+    } }),
+  ]);
 }

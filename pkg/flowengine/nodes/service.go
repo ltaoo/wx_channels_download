@@ -59,7 +59,7 @@ func (n *ServiceNode) Execute(process_context *engine.ProcessContext) (bool, []s
 	// Audit the arguments that were actually resolved from the templates, not
 	// just the raw config, so the execution log matches the request that ran.
 	process_context.SetExecutionDetail("arguments", arguments)
-	execution_context := context.Background()
+	execution_context := process_context.ExecutionContext()
 	cancel := func() {}
 	if timeout_seconds := service_timeout_seconds(n.Config); timeout_seconds > 0 {
 		execution_context, cancel = context.WithTimeout(execution_context, time.Duration(timeout_seconds)*time.Second)
@@ -74,9 +74,7 @@ func (n *ServiceNode) Execute(process_context *engine.ProcessContext) (bool, []s
 	if configured_key, ok := n.Config["output_key"].(string); ok && strings.TrimSpace(configured_key) != "" {
 		output_key = strings.TrimSpace(configured_key)
 	}
-	process_context.Mu.Lock()
-	process_context.Data[output_key] = result
-	process_context.Mu.Unlock()
+	process_context.SetOutput(n.node_id, output_key, result)
 
 	next_ids := process_context.EngineRef.GetNextNodeIDsFromDefinition(process_context, n.node_id)
 	return true, next_ids, nil
@@ -119,6 +117,29 @@ func service_arguments(config map[string]interface{}, process_context *engine.Pr
 // {{key}} or {{ctx.key}} is rejected, and a "{{" that matches no token at all
 // is an error rather than a silent passthrough.
 func resolve_service_template(value any, ctx *engine.ProcessContext) (any, error) {
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		result := make(map[string]interface{}, len(typed))
+		for key, item := range typed {
+			resolved, err := resolve_service_template(item, ctx)
+			if err != nil {
+				return nil, err
+			}
+			result[key] = resolved
+		}
+		return result, nil
+	case []interface{}:
+		result := make([]interface{}, len(typed))
+		for index, item := range typed {
+			resolved, err := resolve_service_template(item, ctx)
+			if err != nil {
+				return nil, err
+			}
+			result[index] = resolved
+		}
+		return result, nil
+	}
+
 	text, ok := value.(string)
 	if !ok || !strings.Contains(text, "{{") {
 		return value, nil

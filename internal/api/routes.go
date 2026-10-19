@@ -161,6 +161,10 @@ func (c *APIClient) setup_automation_routes() {
 	c.engine.POST("/api/v1/automation/list_runs", c.handle_list_automation_runs)
 	c.engine.POST("/api/v1/automation/get_run", c.handle_get_automation_run)
 	c.engine.POST("/api/v1/automation/cancel_run", c.handle_cancel_automation_run)
+	c.engine.POST("/api/v1/automation/resume_run", c.handle_resume_automation_run)
+	c.engine.POST("/api/v1/automation/retry_run", c.handle_retry_automation_run)
+	c.engine.POST("/api/v1/automation/dispatch_event", c.handle_dispatch_automation_event)
+	c.engine.POST("/api/v1/automation/webhook/:id", c.handle_automation_webhook)
 	// User-defined pipelines
 	c.engine.POST("/api/v1/automation/list_flows", c.handle_list_user_flows)
 	c.engine.POST("/api/v1/automation/create_flow", c.handle_create_user_flow)

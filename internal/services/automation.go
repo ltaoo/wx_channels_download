@@ -1,7 +1,9 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -41,16 +43,21 @@ const (
 // backed ticker, and records every execution. It is transport agnostic so the
 // HTTP API, the MCP server, and the CLI can share the same behaviour.
 type AutomationService struct {
-	db          *gorm.DB
-	logger      *zerolog.Logger
-	flow_engine *flowengine.FlowEngine
-	event_bus   events.Publisher
-	cron_parser cron.Parser
+	lifecycle_context context.Context
+	lifecycle_cancel  context.CancelFunc
+	db                *gorm.DB
+	logger            *zerolog.Logger
+	flow_engine       *flowengine.FlowEngine
+	event_bus         events.Publisher
+	cron_parser       cron.Parser
 
-	start_once sync.Once
-	stop_once  sync.Once
-	stop       chan struct{}
-	wg         sync.WaitGroup
+	claim_mu    sync.Mutex
+	log_mu      sync.Mutex
+	active_runs sync.Map
+	start_once  sync.Once
+	stop_once   sync.Once
+	stop        chan struct{}
+	wg          sync.WaitGroup
 	// running holds the schedules with an in-flight execution. It is the
 	// concurrency guard that keeps one slow run from being started again by the
 	// next tick before it finishes.
@@ -65,7 +72,9 @@ func NewAutomationService(
 	flow_engine *flowengine.FlowEngine,
 	event_bus events.Publisher,
 ) *AutomationService {
+	lifecycle_context, lifecycle_cancel := context.WithCancel(context.Background())
 	service := &AutomationService{
+		lifecycle_context: lifecycle_context, lifecycle_cancel: lifecycle_cancel,
 		db:          db,
 		logger:      logger,
 		flow_engine: flow_engine,
@@ -75,11 +84,17 @@ func NewAutomationService(
 		cron_parser: cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor),
 		stop:        make(chan struct{}),
 	}
-	if flow_engine != nil && (logger != nil || event_bus != nil) {
+	if flow_engine != nil {
 		flow_engine.SetNodeExecutionLogHandler(service.log_node_execution)
 	}
 	if flow_engine != nil && event_bus != nil {
 		flow_engine.SetNodeExecutionStatusHandler(service.publish_node_execution_status)
+	}
+	if flow_engine != nil {
+		flow_engine.SetCheckpointHandler(service.save_run_checkpoint)
+	}
+	if flow_engine != nil {
+		flow_engine.SetConcurrencyLimit(8)
 	}
 	service.load_user_flows()
 	return service
@@ -101,18 +116,26 @@ func (s *AutomationService) Start() {
 	}
 	s.start_once.Do(func() {
 		s.wg.Add(1)
+		s.recover_interrupted_runs()
 		go s.scheduler_loop()
 		s.log_info("automation scheduler started")
 	})
 }
 
-// Stop signals the scheduler and waits for in-flight runs to finish.
+// Stop stops new scheduling, cancels execution contexts and waits for workers.
 func (s *AutomationService) Stop() {
 	if s == nil {
 		return
 	}
 	s.stop_once.Do(func() {
 		close(s.stop)
+		if s.lifecycle_cancel != nil {
+			s.lifecycle_cancel()
+		}
+		s.active_runs.Range(func(_, value interface{}) bool { value.(context.CancelFunc)(); return true })
+		if s.flow_engine != nil {
+			s.flow_engine.CancelAllRuns()
+		}
 	})
 	s.wg.Wait()
 }
@@ -136,6 +159,7 @@ func (s *AutomationService) tick() {
 	if s == nil || s.db == nil {
 		return
 	}
+	s.expire_waiting_runs()
 	now := time.Now().UnixMilli()
 	var due []model.FlowSchedule
 	err := s.db.
@@ -233,7 +257,7 @@ func (s *AutomationService) CreateSchedule(input CreateScheduleInput) (*model.Fl
 		return nil, err
 	}
 
-	initial_data, err := marshal_initial_data(input.InitialData)
+	initial_data, err := marshal_automation_initial_data(input.InitialData)
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +332,7 @@ func (s *AutomationService) UpdateSchedule(id string, input UpdateScheduleInput)
 		updates["timeout_sec"] = *input.TimeoutSec
 	}
 	if input.InitialData != nil {
-		initial_data, err := marshal_initial_data(input.InitialData)
+		initial_data, err := marshal_automation_initial_data(input.InitialData)
 		if err != nil {
 			return nil, err
 		}
@@ -494,7 +518,7 @@ func (s *AutomationService) TriggerScheduleAs(id string, trigger_type string, tr
 	}
 	metadata := automation_schedule_metadata(*schedule)
 	switch trigger_type {
-	case model.FlowRunTriggerManual, model.FlowRunTriggerEvent:
+	case model.FlowRunTriggerManual, model.FlowRunTriggerEvent, model.FlowRunTriggerWebhook:
 	case model.FlowRunTriggerCron:
 		return nil, fmt.Errorf("Cron 触发由调度器执行")
 	default:
@@ -503,11 +527,21 @@ func (s *AutomationService) TriggerScheduleAs(id string, trigger_type string, tr
 	if trigger_key == "" {
 		trigger_key = metadata.EventKey
 	}
+	if trigger_type == model.FlowRunTriggerEvent && (metadata.Type != model.FlowRunTriggerEvent || metadata.EventKey != trigger_key || !metadata.Active) {
+		return nil, fmt.Errorf("事件 key 不匹配或触发器已停用")
+	}
+	if trigger_type == model.FlowRunTriggerWebhook && metadata.Type != model.FlowRunTriggerWebhook {
+		return nil, fmt.Errorf("不是 Webhook 触发器")
+	}
 	if _, claimed := s.running.LoadOrStore(schedule.ID, struct{}{}); claimed {
 		return nil, fmt.Errorf("定时任务 %s 正在执行中", schedule.ID)
 	}
 	defer s.running.Delete(schedule.ID)
-	return s.execute_schedule(*schedule, trigger_type, trigger_key), nil
+	run, err := s.prepare_run(*schedule, trigger_type, trigger_key, "", "")
+	if err != nil {
+		return nil, err
+	}
+	return s.execute_prepared_run(*schedule, run), nil
 }
 
 // ListRuns returns one page of run history and the total matching count.
@@ -535,7 +569,7 @@ func (s *AutomationService) ListRuns(input ListRunsInput) ([]model.FlowRunRecord
 	}
 	runs := make([]model.FlowRunRecord, 0, page_size)
 	if total > 0 {
-		if err := query.Order("created_at DESC").
+		if err := query.Omit("checkpoint", "definition", "initial_data", "node_logs", "node_outputs", "node_attempts").Order("created_at DESC").
 			Offset((page - 1) * page_size).
 			Limit(page_size).
 			Find(&runs).Error; err != nil {
@@ -561,178 +595,121 @@ func (s *AutomationService) GetRun(id string) (*model.FlowRunRecord, error) {
 	return &run, nil
 }
 
-// CancelRun marks a non-terminal run as cancelled. The flow engine executes
-// synchronously, so an already in-flight execution cannot be interrupted; this
-// records the cancellation and stops it from being treated as successful.
+// CancelRun cancels node I/O and marks a terminal state which completion cannot overwrite.
 func (s *AutomationService) CancelRun(id string) error {
 	run, err := s.GetRun(id)
 	if err != nil {
 		return err
 	}
-	switch run.Status {
-	case model.FlowRunStatusCompleted, model.FlowRunStatusFailed, model.FlowRunStatusCancelled:
+	if is_terminal_run_status(run.Status) {
 		return fmt.Errorf("运行记录已结束，无法取消: %s", id)
 	}
 	now := time.Now().UnixMilli()
-	if err := s.db.Model(&model.FlowRunRecord{}).
-		Where("id = ? AND deleted_at IS NULL", id).
-		Updates(map[string]interface{}{
-			"status":       model.FlowRunStatusCancelled,
-			"completed_at": now,
-			"updated_at":   now,
-		}).Error; err != nil {
-		return fmt.Errorf("取消运行记录失败: %w", err)
+	result := s.db.Model(&model.FlowRunRecord{}).Where("id = ? AND status IN ?", id, []string{"QUEUED", "RUNNING", "WAITING"}).Updates(map[string]interface{}{"status": "CANCELLED", "error": "cancelled by user", "completed_at": now, "updated_at": now})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return fmt.Errorf("运行记录已结束")
+	}
+	if cancel, ok := s.active_runs.Load(id); ok {
+		cancel.(context.CancelFunc)()
+	}
+	if s.flow_engine != nil {
+		s.flow_engine.CancelRun(id)
 	}
 	run.Status = model.FlowRunStatusCancelled
-	run.CompletedAt = &now
-	s.publish(events.AutomationRunFailed{
-		ScheduleID: run.ScheduleID,
-		RunID:      run.ID,
-		FlowID:     run.FlowID,
-		Trigger:    run.TriggerType,
-		Error:      "cancelled by user",
-		Status:     model.FlowRunStatusCancelled,
-	})
+	run.Error = "cancelled by user"
+	s.publish_run_result(run)
 	return nil
 }
 
-// execute_schedule runs one flow for a schedule and persists the outcome. It
-// never returns nil for a schedule that could be started; callers own the
-// concurrency guard around it.
-func (s *AutomationService) execute_schedule(schedule model.FlowSchedule, trigger_type string, trigger_key string) *model.FlowRunRecord {
-	now := time.Now()
-	now_millis := now.UnixMilli()
-	started_at := now_millis
-	run := &model.FlowRunRecord{
-		ID:          fmt.Sprintf("run-%d", now.UnixNano()),
-		ScheduleID:  schedule.ID,
-		FlowID:      schedule.FlowID,
-		TriggerType: trigger_type,
-		TriggerKey:  trigger_key,
-		Status:      model.FlowRunStatusRunning,
-		StartedAt:   &started_at,
-		Timestamps: model.Timestamps{
-			CreatedAt: now_millis,
-			UpdatedAt: now_millis,
-		},
+func (s *AutomationService) execute_schedule(schedule model.FlowSchedule, trigger_type, trigger_key string) *model.FlowRunRecord {
+	run, err := s.prepare_run(schedule, trigger_type, trigger_key, "", "")
+	if err != nil {
+		s.log_error(err, "failed to start automation run")
+		return &model.FlowRunRecord{FlowID: schedule.FlowID, Status: model.FlowRunStatusFailed, Error: err.Error()}
 	}
-	if s.db != nil {
-		if err := s.db.Create(run).Error; err != nil {
-			s.log_error(err, "failed to persist flow run record")
-		}
-	}
-	s.publish(events.AutomationRunStarted{
-		ScheduleID: schedule.ID,
-		RunID:      run.ID,
-		FlowID:     schedule.FlowID,
-		Trigger:    trigger_type,
-	})
-
-	instance_id, status, error_text := s.run_flow(schedule, trigger_type, trigger_key, run.ID)
-	run.Status = status
-	run.Error = error_text
-
-	current_node, node_attempts, node_outputs := "", "", ""
-	if s.flow_engine != nil && instance_id != "" {
-		// The engine keys its history by instance id, not by our run id; the
-		// per-node detail lives there.
-		if snapshot, ok := s.flow_engine.GetRunSnapshot(instance_id); ok && snapshot != nil {
-			current_node = snapshot.CurrentNode
-			node_attempts = marshal_json(snapshot.NodeAttempts)
-			node_outputs = marshal_json(snapshot.NodeOutputs)
-		}
-	}
-	run.CurrentNode = current_node
-	run.NodeAttempts = node_attempts
-	run.NodeOutputs = node_outputs
-
-	updates := map[string]interface{}{
-		"status":        status,
-		"current_node":  current_node,
-		"node_attempts": node_attempts,
-		"node_outputs":  node_outputs,
-		"error":         error_text,
-		"updated_at":    time.Now().UnixMilli(),
-	}
-	if is_terminal_run_status(status) {
-		completed_at := time.Now().UnixMilli()
-		updates["completed_at"] = completed_at
-		finished_at := completed_at
-		run.CompletedAt = &finished_at
-	}
-	if s.db != nil {
-		if err := s.db.Model(&model.FlowRunRecord{}).Where("id = ?", run.ID).Updates(updates).Error; err != nil {
-			s.log_error(err, "failed to update flow run record")
-		}
-		s.advance_schedule(schedule, run)
-	}
-
-	switch status {
-	case model.FlowRunStatusCompleted:
-		s.publish(events.AutomationRunCompleted{
-			ScheduleID: schedule.ID,
-			RunID:      run.ID,
-			FlowID:     schedule.FlowID,
-			Trigger:    trigger_type,
-		})
-	case model.FlowRunStatusWaiting:
-		s.publish(events.AutomationRunWaiting{
-			ScheduleID: schedule.ID,
-			RunID:      run.ID,
-			FlowID:     schedule.FlowID,
-			Trigger:    trigger_type,
-		})
-	default:
-		s.publish(events.AutomationRunFailed{
-			ScheduleID: schedule.ID,
-			RunID:      run.ID,
-			FlowID:     schedule.FlowID,
-			Trigger:    trigger_type,
-			Error:      error_text,
-			Status:     status,
-		})
-	}
-	return run
+	return s.execute_prepared_run(schedule, run)
 }
 
-// run_flow starts the flow and translates the engine outcome into the engine
-// instance id, a run status, and error text.
-func (s *AutomationService) run_flow(schedule model.FlowSchedule, trigger_type string, trigger_key string, run_id string) (string, string, string) {
-	if s.flow_engine == nil {
-		return "", model.FlowRunStatusFailed, "流程引擎未初始化"
+func (s *AutomationService) execute_prepared_run(schedule model.FlowSchedule, run *model.FlowRunRecord) *model.FlowRunRecord {
+	s.db.Model(&model.FlowRunRecord{}).Where("id = ? AND status = ?", run.ID, model.FlowRunStatusQueued).Update("status", model.FlowRunStatusRunning)
+	s.publish(events.AutomationRunStarted{ScheduleID: run.ScheduleID, RunID: run.ID, FlowID: run.FlowID, Trigger: run.TriggerType})
+	execution_context, cancel := context.WithDeadline(s.lifecycle_context, time.UnixMilli(run.DeadlineAt))
+	s.active_runs.Store(run.ID, context.CancelFunc(cancel))
+	defer s.active_runs.Delete(run.ID)
+	defer cancel()
+	// Cancellation may have won between persistence and launching this goroutine.
+	if current, err := s.GetRun(run.ID); err != nil || current.Status == model.FlowRunStatusCancelled {
+		if current != nil {
+			return current
+		}
+		return run
 	}
-	metadata := automation_schedule_metadata(schedule)
-	initial_data := flow_initial_data(schedule)
-	instance_id, run_err := s.flow_engine.StartFlowWithOptions(
-		schedule.FlowID,
-		initial_data,
-		flowengine.StartFlowOptions{
-			Trigger: flowengine.TriggerInfo{
-				Type:   flowengine.TriggerType(trigger_type),
-				Key:    trigger_key,
-				Source: schedule.ID,
-			},
-			StartNodeID: metadata.StartNodeID,
-			RunID:       run_id,
-		},
-	)
+	var definition *flowengine.FlowDefinition
+	if run.Definition != "" {
+		parsed := flowengine.FlowDefinition{}
+		if json.Unmarshal([]byte(run.Definition), &parsed) == nil {
+			definition = &parsed
+		}
+	}
+	_, run_err := s.flow_engine.StartFlowWithOptions(run.FlowID, decode_initial_data(run.InitialData), flowengine.StartFlowOptions{
+		Context: execution_context, Definition: definition, RunID: run.ID, ValidateSchemas: strings.HasPrefix(run.FlowID, user_flow_id_prefix),
+		StartNodeID: automation_schedule_metadata(schedule).StartNodeID,
+		Trigger:     flowengine.TriggerInfo{Type: flowengine.TriggerType(run.TriggerType), Key: run.TriggerKey, Source: run.ScheduleID},
+	})
+	return s.finish_run(schedule, run, run_err)
+}
+
+func (s *AutomationService) finish_run(schedule model.FlowSchedule, run *model.FlowRunRecord, run_err error) *model.FlowRunRecord {
+	status := model.FlowRunStatusCompleted
+	error_text := ""
 	if run_err != nil {
-		return instance_id, model.FlowRunStatusFailed, run_err.Error()
+		status = model.FlowRunStatusFailed
+		error_text = run_err.Error()
+		if errors.Is(run_err, context.Canceled) {
+			status = model.FlowRunStatusCancelled
+		}
 	}
-	snapshot, ok := s.flow_engine.GetRunSnapshot(instance_id)
-	if !ok || snapshot == nil {
-		return instance_id, model.FlowRunStatusCompleted, ""
+	updates := map[string]interface{}{}
+	if snapshot, ok := s.flow_engine.GetRunSnapshot(run.ID); ok && snapshot != nil {
+		updates["current_node"] = snapshot.CurrentNode
+		updates["node_attempts"] = marshal_json(snapshot.NodeAttempts)
+		updates["node_outputs"] = marshal_json(snapshot.NodeOutputs)
+		if run_err == nil && snapshot.Status == flowengine.RunStatusWaiting {
+			status = model.FlowRunStatusWaiting
+		}
 	}
-	switch snapshot.Status {
-	case flowengine.RunStatusFailed:
-		return instance_id, model.FlowRunStatusFailed, snapshot.Error
-	case flowengine.RunStatusCancelled:
-		return instance_id, model.FlowRunStatusCancelled, snapshot.Error
-	case flowengine.RunStatusWaiting:
-		// A manual node is parked waiting for input; it is neither done nor broken.
-		return instance_id, model.FlowRunStatusWaiting, snapshot.Error
+	now := time.Now().UnixMilli()
+	updates["status"] = status
+	updates["error"] = error_text
+	updates["updated_at"] = now
+	if is_terminal_run_status(status) {
+		updates["completed_at"] = now
+	}
+	if err := s.db.Model(&model.FlowRunRecord{}).Where("id = ? AND status != ?", run.ID, model.FlowRunStatusCancelled).Updates(updates).Error; err != nil {
+		s.log_error(err, "failed to finish automation run")
+	}
+	persisted, err := s.GetRun(run.ID)
+	if err != nil {
+		run.Status = model.FlowRunStatusFailed
+		run.Error = err.Error()
+		return run
+	}
+	s.advance_schedule(schedule, persisted)
+	s.publish_run_result(persisted)
+	return persisted
+}
+
+func (s *AutomationService) publish_run_result(run *model.FlowRunRecord) {
+	switch run.Status {
+	case model.FlowRunStatusCompleted:
+		s.publish(events.AutomationRunCompleted{ScheduleID: run.ScheduleID, RunID: run.ID, FlowID: run.FlowID, Trigger: run.TriggerType})
+	case model.FlowRunStatusWaiting:
+		s.publish(events.AutomationRunWaiting{ScheduleID: run.ScheduleID, RunID: run.ID, FlowID: run.FlowID, Trigger: run.TriggerType})
 	default:
-		return instance_id, model.FlowRunStatusCompleted, snapshot.Error
+		s.publish(events.AutomationRunFailed{ScheduleID: run.ScheduleID, RunID: run.ID, FlowID: run.FlowID, Trigger: run.TriggerType, Error: run.Error, Status: run.Status})
 	}
 }
 
@@ -747,14 +724,12 @@ func (s *AutomationService) advance_schedule(schedule model.FlowSchedule, run *m
 		"last_run_status": run.Status,
 		"updated_at":      time.Now().UnixMilli(),
 	}
-	next_run, err := s.next_run_at(schedule.CronExpr, time.Now())
-	if err != nil {
-		// A schedule whose expression became invalid would otherwise never be
-		// selected again; keep it visible but stop it from firing.
-		s.log_error(err, "failed to compute next run time")
-		updates["next_run_at"] = nil
-	} else {
-		updates["next_run_at"] = *next_run
+	if run.TriggerType == model.FlowRunTriggerCron {
+		if latest, err := s.GetSchedule(schedule.ID); err == nil && latest.Enabled {
+			if next_run, err := s.next_run_at(latest.CronExpr, time.Now()); err == nil {
+				updates["next_run_at"] = *next_run
+			}
+		}
 	}
 	if err := s.db.Model(&model.FlowSchedule{}).
 		Where("id = ? AND deleted_at IS NULL", schedule.ID).
@@ -800,6 +775,7 @@ func (s *AutomationService) log_error(err error, message string) {
 }
 
 func (s *AutomationService) log_node_execution(entry flowengine.NodeExecutionLog) {
+	s.persist_node_log(entry)
 	s.publish_node_execution_log(entry)
 	if s == nil || s.logger == nil {
 		return
@@ -864,25 +840,31 @@ func normalize_automation_page(page int, page_size int) (int, int, error) {
 }
 
 type automation_schedule_config struct {
-	Type        string
-	StartNodeID string
-	EventKey    string
+	Active       bool
+	WebhookToken string
+	Type         string
+	StartNodeID  string
+	EventKey     string
 }
 
 func automation_schedule_metadata(schedule model.FlowSchedule) automation_schedule_config {
 	raw, _ := decode_initial_data(schedule.InitialData)[automation_metadata_key].(map[string]interface{})
 	config := automation_schedule_config{
-		Type: model.FlowRunTriggerCron,
+		Type: model.FlowRunTriggerCron, Active: true,
 	}
 	if raw == nil {
 		return config
 	}
 	if value, _ := raw["type"].(string); value != "" {
 		switch value {
-		case model.FlowRunTriggerCron, model.FlowRunTriggerEvent, model.FlowRunTriggerManual:
+		case model.FlowRunTriggerCron, model.FlowRunTriggerEvent, model.FlowRunTriggerManual, model.FlowRunTriggerWebhook:
 			config.Type = value
 		}
 	}
+	if active, ok := raw["active"].(bool); ok {
+		config.Active = active
+	}
+	config.WebhookToken, _ = raw["webhook_token"].(string)
 	config.StartNodeID, _ = raw["start_node"].(string)
 	config.EventKey, _ = raw["event_key"].(string)
 	return config

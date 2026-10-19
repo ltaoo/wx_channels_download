@@ -48,7 +48,8 @@ func (b *Bus) Subscribe(eventType string, handler Handler) func() {
 // Publish sends an event to all registered handlers synchronously.
 func (b *Bus) Publish(event Event) {
 	b.mu.RLock()
-	handlers := b.handlers[event.Type()]
+	handlers := append([]Handler(nil), b.handlers[event.Type()]...)
+	handlers = append(handlers, b.handlers["*"]...)
 	b.mu.RUnlock()
 	for _, h := range handlers {
 		if h != nil {

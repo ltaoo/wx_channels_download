@@ -1,6 +1,9 @@
 package nodes
 
-import "github.com/dop251/goja"
+import (
+	"github.com/dop251/goja"
+	"wx_channel/pkg/flowengine/engine"
+)
 
 // node_scope_names is the ordered set of variable scopes exposed to JavaScript
 // nodes, matching ScopeEnv and the template namespaces.
@@ -18,4 +21,16 @@ func new_scope_vm(scope_env map[string]any) (*goja.Runtime, error) {
 		}
 	}
 	return vm, nil
+}
+
+func watch_script_context(ctx *engine.ProcessContext, vm *goja.Runtime) func() {
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.ExecutionContext().Done():
+			vm.Interrupt(ctx.ExecutionContext().Err())
+		case <-done:
+		}
+	}()
+	return func() { close(done) }
 }

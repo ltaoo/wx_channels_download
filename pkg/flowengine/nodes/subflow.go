@@ -1,9 +1,8 @@
 package nodes
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
-
 	"wx_channel/pkg/flowengine/engine"
 )
 
@@ -16,84 +15,79 @@ func NewWorkflowNode(config map[string]interface{}) engine.Node {
 	id, _ := config["id"].(string)
 	return &WorkflowNode{Id: id, Config: config}
 }
-
 func (n *WorkflowNode) ID() string   { return n.Id }
 func (n *WorkflowNode) Type() string { return "WorkflowNode" }
 
-func (n *WorkflowNode) Execute(ctx *engine.ProcessContext) (bool, []string, error) {
-	wf, ok := n.Config["workflow"].(engine.FlowDefinition)
-	if !ok {
-		return false, nil, errors.New("missing workflow")
+func configured_workflow(config map[string]interface{}, ctx *engine.ProcessContext) (engine.FlowDefinition, error) {
+	if flow_id, _ := config["flow_id"].(string); flow_id != "" {
+		definition, ok := ctx.EngineRef.GetFlowDefinition(flow_id)
+		if !ok {
+			return definition, fmt.Errorf("subflow not found: %s", flow_id)
+		}
+		return definition, nil
 	}
+	return decode_workflow(config["workflow"])
+}
 
-	// Register/ensure sub-flow exists in engine
-	ctx.EngineRef.FlowDefinitions[wf.ID] = wf
-
-	// Use the parent context's Data so sub-flow can read/write shared variables.
-	// NodeOutputs / Globals are aliases: they are the runtime index roots, so a
-	// sub-flow sees the same producers and globals as its parent. InputKeys is
-	// NOT aliased: input.<key> is validated against the sub-flow's own
-	// ContextSchema, so the runtime projection has to use that same schema or a
-	// flow that passes validation could still fail to resolve at run time.
-	subCtx := &engine.ProcessContext{
-		InstanceID:  ctx.InstanceID + ":sub:" + n.Id,
-		FlowID:      wf.ID,
-		Data:        ctx.Data,
-		NodeOutputs: ctx.NodeOutputs,
-		Globals:     ctx.Globals,
-		InputKeys:   engine.ContextSchemaKeys(wf.ContextSchema),
-		NodeStates:  map[string]engine.NodeState{},
-		EngineRef:   ctx.EngineRef,
+func decode_workflow(raw interface{}) (engine.FlowDefinition, error) {
+	if definition, ok := raw.(engine.FlowDefinition); ok {
+		return definition, nil
 	}
-
-	// Simple inline driver for the sub-workflow
-	queue := []string{wf.StartNodeID}
-	for len(queue) > 0 {
-		nodeID := queue[0]
-		queue = queue[1:]
-
-		nodeDef, exists := wf.Nodes[nodeID]
-		if !exists {
-			return false, nil, fmt.Errorf("subflow node not found: %s", nodeID)
-		}
-
-		// Build node implementation using engine registry
-		if nodeDef.Config == nil {
-			nodeDef.Config = map[string]interface{}{}
-		}
-		nodeDef.Config["id"] = nodeDef.ID
-		if len(nodeDef.NextNodes) > 0 {
-			nodeDef.Config["next_nodes"] = nodeDef.NextNodes
-		}
-		if len(nodeDef.NextNodeIDs) > 0 {
-			nodeDef.Config["next_node_ids"] = nodeDef.NextNodeIDs
-		}
-
-		constructor := ctx.EngineRef.NodeRegistry[nodeDef.Type]
-		if constructor == nil {
-			return false, nil, fmt.Errorf("node type not registered: %s", nodeDef.Type)
-		}
-		impl := constructor(nodeDef.Config)
-
-		// Sub-flow nodes are driven here rather than by driveFlow, so index
-		// their produced keys explicitly; otherwise output.<node_id> would not
-		// resolve for nodes inside a sub-flow.
-		before := subCtx.SnapshotData()
-		ok, nextIDs, err := impl.Execute(subCtx)
-		subCtx.RecordNodeOutputs(nodeID, engine.ChangedContextValues(before, subCtx.SnapshotData()))
-		if err != nil || !ok {
-			if err == nil {
-				err = errors.New("subflow node execution failed")
+	definition := engine.FlowDefinition{}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return definition, err
+	}
+	if err := json.Unmarshal(encoded, &definition); err != nil {
+		return definition, err
+	}
+	if definition.StartNodeID == "" || len(definition.Nodes) == 0 {
+		return definition, fmt.Errorf("workflow must contain start_node and nodes")
+	}
+	// Imported child definitions need the same normalized edge representation.
+	for id, node := range definition.Nodes {
+		node.ID = id
+		if len(node.NextNodes) == 0 {
+			for _, next := range node.NextNodeIDs {
+				node.NextNodes = append(node.NextNodes, engine.TargetNode{TargetID: next})
 			}
+		}
+		if len(node.NextNodeIDs) == 0 {
+			for _, next := range node.NextNodes {
+				node.NextNodeIDs = append(node.NextNodeIDs, next.TargetID)
+			}
+		}
+		definition.Nodes[id] = node
+	}
+	return definition, nil
+}
+
+func (n *WorkflowNode) Execute(ctx *engine.ProcessContext) (bool, []string, error) {
+	definition, err := configured_workflow(n.Config, ctx)
+	if err != nil {
+		return false, nil, err
+	}
+	output_key, _ := n.Config["output_key"].(string)
+	_, has_arguments := n.Config["arguments"]
+	_, has_flow_id := n.Config["flow_id"]
+	if output_key == "" && !has_arguments && !has_flow_id {
+		// Preserve the shared-data contract of built-in post-processing flows.
+		if err := ctx.EngineRef.ExecuteSharedSubflow(ctx, definition); err != nil {
 			return false, nil, err
 		}
-
-		if len(nextIDs) > 0 {
-			queue = append(queue, nextIDs...)
+	} else {
+		arguments, err := service_arguments(n.Config, ctx)
+		if err != nil {
+			return false, nil, err
 		}
+		result, err := ctx.EngineRef.ExecuteSubflow(ctx, definition, arguments)
+		if err != nil {
+			return false, nil, err
+		}
+		if output_key == "" {
+			output_key = "workflow_result"
+		}
+		ctx.SetOutput(n.Id, output_key, result)
 	}
-
-	// Continue with parent flow
-	parentNext := ctx.EngineRef.GetNextNodeIDsFromDefinition(ctx, n.Id)
-	return true, parentNext, nil
+	return true, ctx.EngineRef.GetNextNodeIDsFromDefinition(ctx, n.Id), nil
 }

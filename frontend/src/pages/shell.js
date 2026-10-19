@@ -19,7 +19,7 @@ export default function SiderLayoutView(props) {
 
   return View(
     {
-      class: "grid grid-cols-[88px_minmax(0,_1fr)] w-full h-full bg-content-bg max-640:grid-cols-[minmax(0,_1fr)] max-640:grid-rows-[minmax(0,_1fr)_58px] min-w-0 min-h-full text-color-text-primary font-sans",
+      class: "grid grid-cols-[var(--dm-space-24)_minmax(0,_1fr)] w-full h-full bg-content-bg max-640:grid-cols-[minmax(0,_1fr)] max-640:grid-rows-[minmax(0,_1fr)_auto] min-w-0 min-h-full text-color-text-primary font-sans",
       onMounted: function () {
         model.methods.ready();
       },
@@ -121,7 +121,7 @@ export default function SiderLayoutView(props) {
         View(
           {
             as: "nav",
-            class: "flex flex-col gap-1 [&_.dm-button--sidebar-nav]:flex-col [&_.dm-button--sidebar-nav]:items-center [&_.dm-button--sidebar-nav]:justify-center [&_.dm-button--sidebar-nav]:gap-0-5 [&_.dm-button--sidebar-nav]:p-[var(--dm-space-1-5)_var(--dm-space-1)] [&_.dm-button--sidebar-nav]:text-sm [&_.dm-button--sidebar-nav]:text-center min-h-0 flex-[1_1_auto] max-640:w-full max-640:min-h-auto max-640:flex-[1_1_auto] max-640:!flex-row max-640:gap-0-5 max-640:overflow-x-auto dm-flex dm-flex-col dm-gap-1",
+            class: "flex flex-col gap-2 p-1 overflow-y-auto [&_.dm-button--sidebar-nav]:flex-col [&_.dm-button--sidebar-nav]:items-center [&_.dm-button--sidebar-nav]:justify-center [&_.dm-button--sidebar-nav]:gap-2 [&_.dm-button--sidebar-nav]:min-h-16 [&_.dm-button--sidebar-nav]:p-[var(--dm-space-1-5)_var(--dm-space-1)] [&_.dm-button--sidebar-nav]:text-sm [&_.dm-button--sidebar-nav]:font-semibold [&_.dm-button--sidebar-nav]:leading-snug [&_.dm-button--sidebar-nav]:text-center min-h-0 flex-[1_1_auto] max-640:w-full max-640:min-h-auto max-640:flex-[1_1_auto] max-640:!flex-row max-640:gap-1 max-640:overflow-x-auto",
             ariaLabel: "页面导航",
             attributes: { n: "app-menu" },
           },
@@ -144,20 +144,20 @@ export default function SiderLayoutView(props) {
                         },
                       ),
                     ]),
-                    attributes: { n: sidebar_menu_id(menu) },
+                    attributes: { n: sidebar_menu_id(menu), title: menu.title },
                   },
                   [
                     View(
                       {
-                        class: "grid place-items-center font-display text-sm font-bold w-5 h-5 text-currentColor border-0 rounded-0 max-640:w-4 max-640:h-4",
-                        attributes: { n: `${sidebar_menu_id(menu)}-icon` },
+                        class: "grid place-items-center w-6 h-6 shrink-0 text-currentColor",
+                        attributes: { n: `${sidebar_menu_id(menu)}-icon`, "aria-hidden": "true" },
                       },
-                      [Timeless.Icon({ name: menu.icon, size: 17 })],
+                      [Timeless.Icon({ name: menu.icon, size: 24 })],
                     ),
                     View(
                       {
                         as: "span",
-                        class: "overflow-hidden text-ellipsis whitespace-nowrap",
+                        class: "max-w-full overflow-hidden text-ellipsis whitespace-nowrap",
                         attributes: { n: `${sidebar_menu_id(menu)}-label` },
                       },
                       [menu.title],
@@ -180,15 +180,16 @@ export default function SiderLayoutView(props) {
                       n: "app-settings-action",
                       "aria-haspopup": "dialog",
                       "aria-label": "打开设置",
+                      title: "打开设置",
                     },
                   },
                   [
                     View(
                       {
-                        class: "grid place-items-center font-display text-sm font-bold w-5 h-5 text-currentColor border-0 rounded-0 max-640:w-4 max-640:h-4",
-                        attributes: { n: "app-settings-action-icon" },
+                        class: "grid place-items-center w-6 h-6 shrink-0 text-currentColor",
+                        attributes: { n: "app-settings-action-icon", "aria-hidden": "true" },
                       },
-                      [Timeless.Icon({ name: "settings", size: 17 })],
+                      [Timeless.Icon({ name: "settings", size: 24 })],
                     ),
                   ],
                 ),

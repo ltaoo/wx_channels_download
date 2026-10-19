@@ -16,7 +16,7 @@ function parse_initial_data(value) {
 }
 
 function schedule_metadata(schedule) {
-  const metadata = { type: "Cron", start_node: "", event_key: "" };
+  const metadata = { type: "Cron", start_node: "", event_key: "", active: true, webhook_token: "" };
   if (!schedule) return metadata;
   try {
     const data = parse_initial_data(schedule.initial_data);
@@ -25,17 +25,20 @@ function schedule_metadata(schedule) {
       if (raw.type) metadata.type = String(raw.type);
       if (raw.start_node) metadata.start_node = String(raw.start_node);
       if (raw.event_key) metadata.event_key = String(raw.event_key);
+      metadata.active = raw.active !== false;
+      metadata.webhook_token = String(raw.webhook_token || "");
     }
   } catch (err) {
     void err;
   }
-  if (!["Cron", "Event", "Manual"].includes(metadata.type)) {
+  if (!["Cron", "Event", "Manual", "Webhook"].includes(metadata.type)) {
     metadata.type = "Cron";
   }
   return metadata;
 }
 
 function trigger_label(type) {
+  if (type === "Webhook") return "Webhook";
   if (type === "Event") return "事件触发";
   if (type === "Manual") return "手动触发";
   return "定时触发";
@@ -70,7 +73,9 @@ function flow_label(type) {
     ServiceNode: "服务调用",
     ManualNode: "人工确认",
     FuncNode: "函数",
-    LoopNode: "循环",
+    LoopNode: "数组迭代",
+    WaitNode: "延时等待",
+    FailNode: "终止并报错",
     WorkflowNode: "子流程",
     JSCodeNode: "执行 JS",
     SetVariableNode: "设置变量",
@@ -89,6 +94,8 @@ function flow_icon(type) {
     ManualNode: "user",
     FuncNode: "settings",
     LoopNode: "refresh-cw",
+    WaitNode: "clock",
+    FailNode: "circle-alert",
     WorkflowNode: "git-fork",
     JSCodeNode: "file-code",
     SetVariableNode: "pen-line",
@@ -354,6 +361,8 @@ function normalize_pipeline(value) {
       next_ids,
       input_schema: node.input_schema || [],
       output_schema: node.output_schema || [],
+      retry: node.retry || null,
+      error_next_node: node.error_next_node || "",
     };
   });
   const edges = [];
@@ -401,6 +410,7 @@ function pipeline_triggers(pipeline, schedules) {
         id: schedule.id, type: metadata.type, name: schedule.name,
         cron_expr: schedule.cron_expr, event_key: metadata.event_key,
         enabled: schedule.enabled, next_run_at: schedule.next_run_at,
+        active: metadata.active, webhook_token: metadata.webhook_token,
         initial_data, timeout_sec: schedule.timeout_sec,
       };
     });
@@ -430,6 +440,31 @@ function AutomationPageViewModel(props, options) {
   const view_query = automation_view_query(props, options && options.mode);
   const view_mode_ = ref(view_query.mode);
   const pipelines_ = refarr([]);
+  const filtered_pipelines_ = refarr([]);
+  const keyword_ = ref("");
+  const search_keyword_ = ref("");
+  const page_ = ref(1);
+  const page_size_ = ref(50);
+  const total_ = computed(filtered_pipelines_, (pipelines) => pipelines.length);
+  const page_count_ = combine(
+    { total: total_, pageSize: page_size_ },
+    ({ total, pageSize }) => Math.max(1, Math.ceil(total / pageSize)),
+  );
+  const paged_pipelines_ = combine(
+    { pipelines: filtered_pipelines_, page: page_, pageSize: page_size_ },
+    ({ pipelines, page, pageSize }) => {
+      const start = (page - 1) * pageSize;
+      return pipelines.slice(start, start + pageSize);
+    },
+  );
+  const range_text_ = combine(
+    { total: total_, page: page_, pageSize: page_size_ },
+    ({ total, page, pageSize }) => {
+      if (!total) return "共 0 条";
+      const start = (page - 1) * pageSize + 1;
+      return `第 ${start}-${Math.min(page * pageSize, total)} 条，共 ${total} 条`;
+    },
+  );
   const catalog_ = refarr([]);
   const schedules_ = refarr([]);
   const selected_flow_id_ = ref(view_query.flow_id);
@@ -442,6 +477,15 @@ function AutomationPageViewModel(props, options) {
   const execution_channel_connected_ = ref(false);
   const execution_run_id_ = ref("");
   const execution_run_status_ = ref("");
+  const runs_ = refarr([]);
+  const selected_run_ = refobj(null);
+  const run_action_busy_ = ref(false);
+  const manual_response_ = ref("{}");
+  const edit_node_policy_ = ref("{}");
+  let run_poll_timer = null;
+  let run_query_sequence = 0;
+  let run_detail_sequence = 0;
+  let selected_run_id = "";
   const node_execution_states_ = refobj({});
   const execution_logs_ = refarr([]);
   // 画布节点执行日志浮窗：可同时存在多个，各自位置独立，层级由 WindowManager 维护
@@ -518,7 +562,11 @@ function AutomationPageViewModel(props, options) {
     execution_channel_connected_.as(Boolean(channel_state.connected));
   });
 
+  const run_request = (endpoint) => new Timeless.kit.RequestCore(
+    (body) => request.post(`/api/v1/automation/${endpoint}`, body), { client: props.client },
+  );
   const reqs = {
+    run: { list: run_request("list_runs"), detail: run_request("get_run"), cancel: run_request("cancel_run"), resume: run_request("resume_run"), retry: run_request("retry_run") },
     pipeline: {
       list: new Timeless.kit.RequestCore(
         function fetchPipelineList(params) {
@@ -586,6 +634,31 @@ function AutomationPageViewModel(props, options) {
   };
 
   const ui = {
+    input_keyword$: new Timeless.vm.InputCore({
+      defaultValue: "",
+      placeholder: "搜索名称",
+      type: "search",
+      allowClear: true,
+      onChange(value) {
+        keyword_.as(String(value || ""));
+      },
+      onEnter() {
+        return search_pipelines();
+      },
+    }),
+    btn_search$: new Timeless.vm.ButtonCore({
+      variant: "primary",
+      disabled: loading_.value,
+    }),
+    btn_reset$: new Timeless.vm.ButtonCore({
+      variant: "outline",
+      disabled: loading_.value,
+      onClick() {
+        ui.input_keyword$.setValue("");
+        search_pipelines();
+        return load_data({ silent: true });
+      },
+    }),
     create_dialog$: new Timeless.vm.DialogCore({
       closeable: true,
       footer: false,
@@ -675,6 +748,14 @@ function AutomationPageViewModel(props, options) {
         update_selected_node({ name: String(value || "") });
       },
     }),
+    input_manual_response$: new Timeless.vm.InputCore({ defaultValue: "{}", onChange(value) { manual_response_.as(value); } }),
+    input_edit_node_policy$: new Timeless.vm.InputCore({ defaultValue: "{}", onChange(value) { edit_node_policy_.as(value); } }),
+    btn_refresh_runs$: new Timeless.vm.ButtonCore({ variant: "outline", onClick() { return load_runs(); } }),
+    btn_select_run$: new Timeless.vm.ButtonInListCore({ variant: "ghost", onClick(run) { return select_run(run.id); } }),
+    btn_cancel_run$: new Timeless.vm.ButtonCore({ variant: "outline", onClick() { return act_on_run("cancel"); } }),
+    btn_resume_run$: new Timeless.vm.ButtonCore({ variant: "outline", onClick() { return act_on_run("resume"); } }),
+    btn_retry_run$: new Timeless.vm.ButtonCore({ variant: "outline", onClick() { return act_on_run("retry"); } }),
+    btn_retry_current_run$: new Timeless.vm.ButtonCore({ variant: "outline", onClick() { return act_on_run("retry_current"); } }),
     input_edit_node_config$: new Timeless.vm.InputCore({
       defaultValue: "{}",
       placeholder: "{}",
@@ -696,7 +777,7 @@ function AutomationPageViewModel(props, options) {
       },
     }),
     btn_create_pipeline$: new Timeless.vm.ButtonCore({
-      variant: "primary",
+      variant: "default",
       onClick() {
         return open_create_dialog();
       },
@@ -807,6 +888,7 @@ function AutomationPageViewModel(props, options) {
       variant: "outline", size: "sm",
       onClick() { add_trigger("Cron"); },
     }),
+    btn_add_webhook_trigger$: new Timeless.vm.ButtonCore({ variant: "outline", onClick() { add_trigger("Webhook"); } }),
     btn_add_event_trigger$: new Timeless.vm.ButtonCore({
       variant: "outline", size: "sm",
       onClick() { add_trigger("Event"); },
@@ -853,10 +935,40 @@ function AutomationPageViewModel(props, options) {
   }
   loading_.subscribe({
     onChange(loading) {
-      if (loading) ui.btn_refresh$.disable();
-      else ui.btn_refresh$.enable();
+      [ui.btn_refresh$, ui.btn_search$, ui.btn_reset$].forEach((button) => {
+        if (loading) button.disable();
+        else button.enable();
+      });
     },
   });
+  pipelines_.subscribe({ onChange: filter_pipelines });
+  search_keyword_.subscribe({ onChange: filter_pipelines });
+
+  function filter_pipelines() {
+    const keyword = search_keyword_.value.toLowerCase();
+    filtered_pipelines_.as(
+      pipelines_.value.filter((pipeline) =>
+        String(pipeline.name || "").toLowerCase().includes(keyword),
+      ),
+      { reset: true },
+    );
+    page_.as(Math.min(page_.value, page_count_.value));
+  }
+
+  function search_pipelines() {
+    if (loading_.value) return;
+    page_.as(1);
+    search_keyword_.as(keyword_.value.trim());
+  }
+
+  function change_page(target_page) {
+    if (loading_.value) return;
+    const page = Math.min(
+      page_count_.value,
+      Math.max(1, Math.floor(Number(target_page) || 1)),
+    );
+    page_.as(page);
+  }
   create_submitting_.subscribe({
     onChange(submitting) {
       if (submitting) ui.btn_create_submit$.disable();
@@ -918,7 +1030,12 @@ function AutomationPageViewModel(props, options) {
       ExprNode: { expression: "", output_key: "calc_out" },
       // keys maps a request parameter name to a scope path, e.g.
       // {"username": "output.cleanup.cleanup"}.
-      APICallNode: { url: "", method: "GET", keys: {} },
+      APICallNode: { url: "", method: "GET", headers: {}, query: {}, keys: {}, timeout_seconds: 15, fail_on_status: true, output_key: "api_response" },
+      WorkflowNode: { flow_id: "", arguments: {}, output_key: "workflow_result" },
+      LoopNode: { items: [], flow_id: "", arguments: {}, max_iterations: 1000, concurrency: 1, continue_on_error: false, output_key: "loop_result" },
+      WaitNode: { seconds: 1 },
+      FailNode: { message: "流程条件不满足" },
+      ManualNode: { output_key: "response" },
       // condition_language 显式写出来，好在「原始 JSON」编辑框里被发现；
       // 老流程没有这个键，缺省即 expr。
       GatewayNode: {
@@ -1492,6 +1609,8 @@ function AutomationPageViewModel(props, options) {
     request_sequence += 1;
     execution_channel_connected_.as(false);
     execution_channel.destroy();
+    if (run_poll_timer !== null) clearInterval(run_poll_timer);
+    run_query_sequence += 1;
   }
 
   async function load_pipelines() {
@@ -1612,6 +1731,8 @@ function AutomationPageViewModel(props, options) {
     trigger.input_event_key$ = new Timeless.vm.InputCore({
       defaultValue: trigger.event_key || "", onChange(value) { change("event_key", value); },
     });
+    trigger.checkbox_active$ = new Timeless.vm.CheckboxCore({ checked: trigger.active !== false, onChange(value) { change("active", value); } });
+    trigger.input_timeout$ = new Timeless.vm.InputCore({ defaultValue: String(trigger.timeout_sec || 3600), onChange(value) { change("timeout_sec", Number(value)); } });
     trigger.checkbox_enabled$ = new Timeless.vm.CheckboxCore({
       checked: Boolean(trigger.enabled), onChange(value) { change("enabled", value); },
     });
@@ -1625,7 +1746,7 @@ function AutomationPageViewModel(props, options) {
 
   function add_trigger(type) {
     edit_triggers_.as([...edit_triggers_.value, new_trigger_row({
-      id: "", type, name: type === "Cron" ? "定时触发" : "事件触发",
+      id: "", type, name: type === "Cron" ? "定时触发" : type === "Webhook" ? "Webhook" : "事件触发",
       cron_expr: "@daily", event_key: "", enabled: type === "Cron", initial_data: {},
     })], { reset: true });
     dirty_.as(true);
@@ -1640,7 +1761,7 @@ function AutomationPageViewModel(props, options) {
       return {
         id: trigger.id, type: trigger.type, name: trigger.name,
         cron_expr: trigger.cron_expr, event_key: trigger.event_key,
-        enabled: Boolean(trigger.enabled), initial_data,
+        enabled: Boolean(trigger.enabled), active: trigger.active !== false, initial_data,
         timeout_sec: trigger.timeout_sec || undefined,
       };
     });
@@ -1655,6 +1776,9 @@ function AutomationPageViewModel(props, options) {
     selected_edit_node_id_.as(node ? node.id : "");
     const config_text = JSON.stringify((node && node.config) || {}, null, 2);
     edit_node_config_.as(config_text);
+    const policy_text = JSON.stringify({ retry: node && node.retry || { max_attempts: 1, delay_ms: 0, backoff_multiplier: 1 }, error_next_node: node && node.error_next_node || "", input_schema: node && node.input_schema || [], output_schema: node && node.output_schema || [] }, null, 2);
+    edit_node_policy_.as(policy_text);
+    ui.input_edit_node_policy$.setValue(policy_text, { silence: true });
     ui.input_edit_node_name$.setValue((node && node.name) || "", {
       silence: true,
     });
@@ -1722,7 +1846,10 @@ function AutomationPageViewModel(props, options) {
         find_edit_node(node_id),
         config,
       );
-      update_selected_node(next_ids ? { config, next_ids } : { config });
+      const policy = JSON.parse(edit_node_policy_.value || "{}");
+      if (!policy || typeof policy !== "object" || Array.isArray(policy)) throw new Error("执行策略必须是 JSON 对象");
+      const patch = { config, retry: policy.retry || { max_attempts: 1, delay_ms: 0, backoff_multiplier: 1 }, error_next_node: String(policy.error_next_node || ""), input_schema: policy.input_schema || [], output_schema: policy.output_schema || [] };
+      update_selected_node(next_ids ? { ...patch, next_ids } : patch);
       notice_.as("节点配置已应用，保存 Pipeline 后生效");
     } catch (err) {
       set_error(err);
@@ -1730,9 +1857,63 @@ function AutomationPageViewModel(props, options) {
     return null;
   }
 
+  async function load_runs() {
+    const flow_id = selected_flow_id_.value;
+    if (!flow_id || disposed) return;
+    const sequence = ++run_query_sequence;
+    const response = await reqs.run.list.run({ flow_id, page: 1, page_size: 20 });
+    if (response.error) throw request_result_error(response, "运行记录加载失败");
+    if (sequence !== run_query_sequence || flow_id !== selected_flow_id_.value || disposed) return;
+    runs_.as(response.data.list || [], { reset: true });
+    const current_id = selected_run_id || selected_run_.value && selected_run_.value.id;
+    const latest = (response.data.list || [])[0];
+    const id = current_id || latest && latest.id;
+    if (id) await select_run(id, flow_id);
+  }
+
+  async function select_run(id, expected_flow_id = selected_flow_id_.value) {
+    selected_run_id = id;
+    const sequence = ++run_detail_sequence;
+    const response = await reqs.run.detail.run({ id });
+    if (response.error) throw request_result_error(response, "运行详情加载失败");
+    if (disposed || sequence !== run_detail_sequence || selected_flow_id_.value !== expected_flow_id) return;
+    selected_run_.as(response.data);
+    return response.data;
+  }
+
+  async function act_on_run(action) {
+    const run = selected_run_.value;
+    if (!run || run_action_busy_.value) return;
+    run_action_busy_.as(true); error_.as("");
+    const action_buttons = [ui.btn_cancel_run$, ui.btn_resume_run$, ui.btn_retry_run$, ui.btn_retry_current_run$];
+    action_buttons.forEach((button) => button.disable());
+    try {
+      let response;
+      if (action === "resume") {
+        const input = JSON.parse(manual_response_.value || "{}");
+        if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("人工确认输入必须为 JSON 对象");
+        response = await reqs.run.resume.run({ id: run.id, node_id: run.current_node, input });
+      } else if (action === "cancel") response = await reqs.run.cancel.run({ id: run.id });
+      else response = await reqs.run.retry.run({ id: run.id, use_current_definition: action === "retry_current" });
+      if (response.error) throw request_result_error(response, "运行操作失败");
+      if (response.data && response.data.id && action !== "cancel") { selected_run_id = response.data.id; selected_run_.as(response.data); }
+      notice_.as(action === "resume" ? "运行已恢复" : action === "cancel" ? "运行已取消" : "已创建重试运行，请核对外部操作结果");
+      await load_runs();
+    } catch (error) { set_error(error); }
+    run_action_busy_.as(false);
+    action_buttons.forEach((button) => button.enable());
+  }
+
+  function execution_policy_is_pending(node) {
+    try {
+      const policy = JSON.parse(edit_node_policy_.value || "{}");
+      return JSON.stringify(policy) !== JSON.stringify({ retry: node && node.retry || { max_attempts: 1, delay_ms: 0, backoff_multiplier: 1 }, error_next_node: node && node.error_next_node || "", input_schema: node && node.input_schema || [], output_schema: node && node.output_schema || [] });
+    } catch { return true; }
+  }
+
   async function select_pipeline(flow_id, options) {
     options = options || {};
-    if (selected_flow_id_.value !== flow_id) reset_execution_tracking();
+    if (selected_flow_id_.value !== flow_id) { reset_execution_tracking(); selected_run_.as(null); selected_run_id = ""; runs_.as([], { reset: true }); }
     selected_flow_id_.as(flow_id);
     const pipeline = find_pipeline(flow_id);
     if (pipeline) enter_edit(pipeline);
@@ -2045,6 +2226,9 @@ function AutomationPageViewModel(props, options) {
             calculated_positions[node.id] ||
             null,
           input_schema: node.input_schema || [],
+          output_schema: node.output_schema || [],
+          retry: node.retry || undefined,
+          error_next_node: node.error_next_node || "",
           next_ids: node.next_ids || [],
         })),
       });
@@ -2176,6 +2360,8 @@ function AutomationPageViewModel(props, options) {
       execution_run_status_.as("FAILED");
       return r;
     }
+    if (r.data.id) { execution_run_id_.as(r.data.id); selected_run_id = r.data.id; selected_run_.as(r.data); }
+    load_runs().catch(set_error);
     notice_.as(`已触发执行（${r.data.status || "RUNNING"}）`);
     return r;
   }
@@ -2285,7 +2471,7 @@ function AutomationPageViewModel(props, options) {
       const selected = find_edit_node(selected_edit_node_id_.value);
       let pending_node_config = false;
       try {
-        pending_node_config = JSON.stringify(JSON.parse(edit_node_config_.value || "{}")) !== JSON.stringify((selected && selected.config) || {});
+        pending_node_config = JSON.stringify(JSON.parse(edit_node_config_.value || "{}")) !== JSON.stringify((selected && selected.config) || {}) || execution_policy_is_pending(selected);
       } catch { pending_node_config = true; }
       let triggers = null;
       let trigger_error = "";
@@ -2297,6 +2483,7 @@ function AutomationPageViewModel(props, options) {
         saving: saving_.value,
         selected_node_id: selected_edit_node_id_.value,
         node_config_text: edit_node_config_.value,
+        node_policy_text: edit_node_policy_.value,
         pending_node_config,
         trigger_error,
         trigger_forms: edit_triggers_.value.map((trigger) => ({
@@ -2345,12 +2532,18 @@ function AutomationPageViewModel(props, options) {
         await select_pipeline(selected_flow_id_.value);
       }
     connect_execution_channel().catch(() => false);
+      if (view_mode_.value !== "list") {
+        await load_runs().catch(set_error);
+        run_poll_timer = setInterval(() => { load_runs().catch(set_error); }, 3000);
+      }
       return null;
     },
     destroy: dispose,
     refresh() {
       return load_data({ silent: true });
     },
+    search: search_pipelines,
+    changePage: change_page,
     selectPipeline: select_pipeline,
     triggerSchedule(id) {
       return trigger_schedule(id);
@@ -2374,6 +2567,9 @@ function AutomationPageViewModel(props, options) {
     runSchemaFields: run_schema_fields,
     openImportDialog: open_import_dialog,
     submitImport: submit_import,
+    refreshRuns: load_runs,
+    selectRun: select_run,
+    actOnRun: act_on_run,
     scheduleMetadata: schedule_metadata,
     triggerLabel: trigger_label,
     schemaText: schema_text,
@@ -2433,6 +2629,14 @@ function AutomationPageViewModel(props, options) {
   const state = {
     view_mode: view_mode_,
     pipelines: pipelines_,
+    filtered_pipelines: filtered_pipelines_,
+    paged_pipelines: paged_pipelines_,
+    total: total_,
+    page: page_,
+    page_size: page_size_,
+    page_count: page_count_,
+    range_text: range_text_,
+    search_keyword: search_keyword_,
     catalog: catalog_,
     schedules: schedules_,
     selected_flow_id: selected_flow_id_,
@@ -2450,6 +2654,8 @@ function AutomationPageViewModel(props, options) {
     execution_channel_connected: execution_channel_connected_,
     execution_run_id: execution_run_id_,
     execution_run_status: execution_run_status_,
+    runs: runs_, selected_run: selected_run_, run_action_busy: run_action_busy_,
+    manual_response: manual_response_, edit_node_policy: edit_node_policy_,
     node_execution_states: node_execution_states_,
     execution_logs: execution_logs_,
     execution_windows: execution_windows_,

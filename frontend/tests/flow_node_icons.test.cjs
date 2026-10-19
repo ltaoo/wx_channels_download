@@ -26,7 +26,7 @@ test("every supported node type has a distinct icon available in the bundled run
   const types = [
     "StartNode", "EndNode", "ExprNode", "GatewayNode", "APICallNode",
     "ServiceNode", "ManualNode", "FuncNode", "LoopNode", "WorkflowNode",
-    "JSCodeNode", "SetVariableNode",
+    "JSCodeNode", "SetVariableNode", "WaitNode", "FailNode",
   ];
   const registry = context.Timeless.getIconRegistry();
   const icons = types.map((type) => context.flow_icon(type));

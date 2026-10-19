@@ -1,7 +1,10 @@
 package engine
 
 import (
+	"context"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // ProcessContext carries the runtime state of one flow run. Variable reads are
@@ -18,6 +21,20 @@ import (
 //
 // The same key name may live in all three scopes without interfering.
 type ProcessContext struct {
+	ValidateSchemas bool
+	reached_stop    bool
+	// Context is shared by node I/O and bounded JavaScript execution.
+	Context             context.Context
+	Definition          *FlowDefinition
+	PendingNodes        []string
+	MaxSteps            int
+	Depth               int
+	step_count          *atomic.Int64
+	cancel              context.CancelFunc
+	checkpoint_disabled bool
+	stop_node           string
+	deadline            time.Time
+
 	InstanceID string
 	FlowID     string
 	// Data is the flat union of everything written into the context at
@@ -138,4 +155,26 @@ func (ctx *ProcessContext) SetGlobal(key string, value interface{}) {
 		ctx.Globals = map[string]interface{}{}
 	}
 	ctx.Globals[key] = value
+}
+
+// ExecutionContext returns a usable context for legacy standalone callers too.
+func (ctx *ProcessContext) ExecutionContext() context.Context {
+	if ctx.Context == nil {
+		return context.Background()
+	}
+	return ctx.Context
+}
+
+// SetOutput records explicit writes, including writes with an unchanged value.
+func (ctx *ProcessContext) SetOutput(node_id, key string, value interface{}) {
+	ctx.Mu.Lock()
+	defer ctx.Mu.Unlock()
+	ctx.Data[key] = value
+	if ctx.NodeOutputs == nil {
+		ctx.NodeOutputs = map[string]map[string]interface{}{}
+	}
+	if ctx.NodeOutputs[node_id] == nil {
+		ctx.NodeOutputs[node_id] = map[string]interface{}{}
+	}
+	ctx.NodeOutputs[node_id][key] = clone_data(value)
 }

@@ -564,7 +564,7 @@ function PlatformPopoverItem(props) {
             : Runtime.Icon({ name: "globe", size: 20 }),
         ],
       ),
-      View({ class: "w-full overflow-hidden text-caption leading-tight text-center text-ellipsis whitespace-nowrap" }, [entry.label]),
+      View({ class: "w-full overflow-hidden leading-tight text-center text-ellipsis whitespace-nowrap" }, [entry.label]),
     ],
   );
 }
@@ -615,7 +615,7 @@ function PlatformPopoverSelect(props) {
         props.rootClass,
       ]),
       class: select_class_names([
-        "box-sizing-border-box w-[min(420px,_calc(100vw_-_var(--dm-space-6)))] max-w-[calc(100vw_-_var(--dm-space-6))] p-2",
+        "box-sizing-border-box w-[min(420px,_calc(100vw_-_var(--dm-space-6)))] max-w-[calc(100vw_-_var(--dm-space-6))] p-2 text-base",
         props.contentClass,
       ]),
       content: [
@@ -800,11 +800,11 @@ function account_option_label(entry) {
       ],
     ),
     View({ class: "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap flex flex-1 flex-col items-start justify-center gap-1px text-left" }, [
-      View({ class: "group-dm-entity-select-option__label min-w-0 overflow-hidden text-ellipsis whitespace-nowrap w-full text-base leading-tight text-left" }, [entry.label]),
+      View({ class: "group-dm-entity-select-option__label min-w-0 overflow-hidden text-ellipsis whitespace-nowrap w-full leading-tight text-left" }, [entry.label]),
       Show({
         when: description,
         ok() {
-          return View({ class: "w-full overflow-hidden text-color-text-secondary text-caption leading-tight text-left text-ellipsis whitespace-nowrap" }, [
+          return View({ class: "w-full overflow-hidden text-color-text-secondary leading-tight text-left text-ellipsis whitespace-nowrap" }, [
             description,
           ]);
         },
@@ -1196,7 +1196,7 @@ export function TagSelect(props = {}) {
       triggerClass: "dm-tag-select-popover-trigger",
       onTriggerMouseEnter() {},
       onTriggerMouseLeave() {},
-      class: "w-260px p-2",
+      class: "w-260px p-2 text-base",
       content: [
         View({ class: "mb-2" }, [
           Input({
@@ -1236,7 +1236,7 @@ export function TagSelect(props = {}) {
                       {
                         type: "button",
                         class: select_class_names([
-                          "inline-flex items-center justify-center flex-[0_0_auto] w-auto max-w-full min-h-5 p-[0_var(--dm-space-2)] text-caption font-semibold leading-[1.2] text-color-text-secondary whitespace-nowrap text-center bg-color-bg-interactive border-[var(--dm-border-width)_solid_var(--dm-color-border)] rounded-badge cursor-pointer transition-[color_0.15s_ease,_background_0.15s_ease,_border-color_0.15s_ease] hover:text-color-primary hover:bg-color-primary-soft hover:border-color-color-primary-border [&.is-selected]:text-color-primary [&.is-selected]:bg-color-primary-soft [&.is-selected]:border-color-color-primary-border",
+                          "inline-flex items-center justify-center flex-[0_0_auto] w-auto max-w-full min-h-5 p-[0_var(--dm-space-2)] font-semibold leading-[1.2] text-color-text-secondary whitespace-nowrap text-center bg-color-bg-interactive border-[var(--dm-border-width)_solid_var(--dm-color-border)] rounded-badge cursor-pointer transition-[color_0.15s_ease,_background_0.15s_ease,_border-color_0.15s_ease] hover:text-color-primary hover:bg-color-primary-soft hover:border-color-color-primary-border [&.is-selected]:text-color-primary [&.is-selected]:bg-color-primary-soft [&.is-selected]:border-color-color-primary-border",
                           Runtime.computed(selected_ids_, (ids) =>
                             (ids || []).indexOf(entry.value) >= 0
                               ? "is-selected"
@@ -1261,7 +1261,7 @@ export function TagSelect(props = {}) {
             );
           },
           else() {
-            return View({ class: "p-[var(--dm-space-3)_var(--dm-space-2)] text-content-muted text-sm text-center" }, [
+            return View({ class: "p-[var(--dm-space-3)_var(--dm-space-2)] text-content-muted text-center" }, [
               "没有匹配的标签，回车可创建",
             ]);
           },

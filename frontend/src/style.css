@@ -261,8 +261,8 @@ body {
   }
 }
 
-.grid-cols-\[88px_minmax\(0\,_1fr\)\] {
-  grid-template-columns: 88px minmax(0, 1fr);
+.grid-cols-\[var\(--dm-space-24\)_minmax\(0\,_1fr\)\] {
+  grid-template-columns: var(--dm-space-24) minmax(0, 1fr);
 }
 
 .border-right-\[var\(--dm-border-width\)_solid_var\(--dm-color-sidebar-border\)\] {
@@ -305,8 +305,12 @@ body {
   justify-content: center;
 }
 
-.\[\&_\.dm-button--sidebar-nav\]\:gap-0-5 .dm-button--sidebar-nav {
-  gap: var(--dm-space-0-5);
+.\[\&_\.dm-button--sidebar-nav\]\:gap-2 .dm-button--sidebar-nav {
+  gap: var(--dm-space-2);
+}
+
+.\[\&_\.dm-button--sidebar-nav\]\:min-h-16 .dm-button--sidebar-nav {
+  min-height: var(--dm-space-16);
 }
 
 .\[\&_\.dm-button--sidebar-nav\]\:p-\[var\(--dm-space-1-5\)_var\(--dm-space-1\)\] .dm-button--sidebar-nav {
@@ -315,6 +319,14 @@ body {
 
 .\[\&_\.dm-button--sidebar-nav\]\:text-sm .dm-button--sidebar-nav {
   font-size: var(--dm-font-size-sm);
+}
+
+.\[\&_\.dm-button--sidebar-nav\]\:font-semibold .dm-button--sidebar-nav {
+  font-weight: var(--dm-font-weight-semibold);
+}
+
+.\[\&_\.dm-button--sidebar-nav\]\:leading-snug .dm-button--sidebar-nav {
+  line-height: var(--dm-line-height-snug);
 }
 
 .\[\&_\.dm-button--sidebar-nav\]\:text-center .dm-button--sidebar-nav {
@@ -601,8 +613,8 @@ body {
 }
 
 @media (max-width: 640px) {
-  .max-640\:grid-rows-\[minmax\(0\,_1fr\)_58px\] {
-    grid-template-rows: minmax(0, 1fr) 58px;
+  .max-640\:grid-rows-\[minmax\(0\,_1fr\)_auto\] {
+    grid-template-rows: minmax(0, 1fr) auto;
   }
   .max-640\:grid-row-2 {
     grid-row: 2;
@@ -2211,10 +2223,6 @@ body {
 
 .\[\&_\.group-automation-toolbar\]\:gap-4 .group-automation-toolbar {
   gap: var(--dm-space-4);
-}
-
-.tracking-\[-0\.01em\] {
-  letter-spacing: -0.01em;
 }
 
 .p-\[var\(--dm-space-4\)_var\(--dm-space-4\)_0\] {
@@ -6179,15 +6187,6 @@ body {
   border-color: color-mix( in srgb, var(--dm-content-primary) 24%, transparent );
 }
 
-@media (max-width: 640px) {
-  .max-640\:w-4 {
-    width: var(--dm-space-4);
-  }
-  .max-640\:h-4 {
-    height: var(--dm-space-4);
-  }
-}
-
 .\[\&\.is-unavailable_\.group-home-platform-status-value\]\:text-content-danger.is-unavailable .group-home-platform-status-value {
   color: var(--dm-content-danger);
 }
@@ -6493,8 +6492,8 @@ body {
 }
 
 @media (max-width: 640px) {
-  .max-640\:gap-0-5 {
-    gap: var(--dm-space-0-5);
+  .max-640\:gap-1 {
+    gap: var(--dm-space-1);
   }
 }
 

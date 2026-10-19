@@ -26,6 +26,7 @@ const (
 
 // Flow types
 type (
+	RunCheckpoint              = engine.RunCheckpoint
 	FlowDefinition             = engine.FlowDefinition
 	FlowEngine                 = engine.FlowEngine
 	ProcessContext             = engine.ProcessContext

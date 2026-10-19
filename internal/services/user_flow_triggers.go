@@ -12,6 +12,7 @@ import (
 // UserFlowTriggerInput configures an additional entry rule on a pipeline's
 // start node. Manual/debug execution is always available without a rule.
 type UserFlowTriggerInput struct {
+	Active      *bool                  `json:"active,omitempty"`
 	ID          string                 `json:"id"`
 	Type        string                 `json:"type"`
 	Name        string                 `json:"name"`
@@ -58,7 +59,13 @@ func (s *AutomationService) replace_user_flow_triggers(tx *gorm.DB, flow_id stri
 				initial_data[key] = value
 			}
 		}
+		previous_metadata := automation_schedule_metadata(previous)
+		active := previous_metadata.Active
+		if input.Active != nil {
+			active = *input.Active
+		}
 		initial_data[automation_metadata_key] = map[string]interface{}{
+			"active": active, "webhook_token": previous_metadata.WebhookToken,
 			"type": trigger_type, "event_key": event_key, "start_node": start_node_id,
 		}
 		cron_expr := strings.TrimSpace(input.CronExpr)
