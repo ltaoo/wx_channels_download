@@ -44,12 +44,14 @@ func (n *JSCodeNode) Execute(ctx *engine.ProcessContext) (bool, []string, error)
 		return false, nil, err
 	}
 
+	stop_watchdog := watch_script_context(ctx, vm)
+	defer stop_watchdog()
 	result, err := vm.RunString(code)
 	if err != nil {
 		return false, nil, err
 	}
 
-	ctx.Data[outKey] = result.Export()
+	ctx.SetOutput(n.Id, outKey, result.Export())
 
 	next := ctx.EngineRef.GetNextNodeIDsFromDefinition(ctx, n.Id)
 	return true, next, nil

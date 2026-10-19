@@ -84,7 +84,14 @@ func (v *scope_validator) collect_declarations() {
 			produced[output_key] = true
 			if node.Type == "APICallNode" {
 				produced[output_key+"_status"] = true
+				produced[output_key+"_headers"] = true
 			}
+		case node.Type == "ManualNode":
+			produced["response"] = true
+		case node.Type == "WorkflowNode":
+			produced["workflow_result"] = true
+		case node.Type == "LoopNode":
+			produced["loop_result"] = true
 		case node.Type == "ServiceNode":
 			produced[default_service_output_key] = true
 		case node.Type == "ExprNode" || node.Type == "ValueCalcNode":
@@ -92,11 +99,15 @@ func (v *scope_validator) collect_declarations() {
 		case node.Type == "APICallNode":
 			produced[default_api_output_key] = true
 			produced[default_api_output_key+"_status"] = true
+			produced[default_api_output_key+"_headers"] = true
 		}
 		for _, field := range node.OutputSchema {
 			if key := strings.TrimSpace(field.Key); key != "" {
 				produced[key] = true
 			}
+		}
+		if node.ErrorNextNodeID != "" {
+			produced["error"] = true
 		}
 		v.produced[node_id] = produced
 		if output_key != "" && v.input_keys[output_key] {
@@ -138,6 +149,9 @@ func (v *scope_validator) collect_references() {
 				v.validate_template_value(node_id, value, fmt.Sprintf("variables.%s", name))
 			}
 		case "APICallNode":
+			for _, name := range []string{"url", "headers", "query", "body", "authentication"} {
+				v.validate_template_value(node_id, node.Config[name], name)
+			}
 			for name, value := range scope_config_object(node.Config, "keys") {
 				path, ok := value.(string)
 				if !ok || strings.TrimSpace(path) == "" {
@@ -150,7 +164,13 @@ func (v *scope_validator) collect_references() {
 			if scope_config_string(node.Config, "output_key") == "" {
 				v.problemf("节点 %s 的 JSCodeNode 必须声明 output_key", node_id)
 			}
+		case "FailNode":
+			v.validate_template_value(node_id, node.Config["message"], "message")
 		case "WorkflowNode", "LoopNode":
+			v.validate_template_value(node_id, node.Config["arguments"], "arguments")
+			if node.Type == "LoopNode" {
+				v.validate_template_value(node_id, node.Config["items"], "items")
+			}
 			v.validate_sub_flow(node)
 		}
 	}
@@ -347,6 +367,7 @@ func (v *scope_validator) node_successors(node_id string) []string {
 		append_target(target.TargetID)
 	}
 	append_target(node.ErrorNextNodeID)
+	append_target(scope_config_string(node.Config, "join_node_id"))
 	for _, rule := range scope_gateway_rules(node.Config) {
 		append_target(scope_config_string(rule, "target_id"))
 	}
@@ -462,6 +483,29 @@ func member_node_path(node *ast.MemberNode) (string, bool) {
 // template value. A value containing "{{" but no valid token is an error, the
 // same rule the runtime resolver applies.
 func template_scope_paths(value any) ([]string, error) {
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		paths := []string{}
+		for _, item := range typed {
+			nested, err := template_scope_paths(item)
+			if err != nil {
+				return nil, err
+			}
+			paths = append(paths, nested...)
+		}
+		return paths, nil
+	case []interface{}:
+		paths := []string{}
+		for _, item := range typed {
+			nested, err := template_scope_paths(item)
+			if err != nil {
+				return nil, err
+			}
+			paths = append(paths, nested...)
+		}
+		return paths, nil
+	}
+
 	text, ok := value.(string)
 	if !ok || !strings.Contains(text, "{{") {
 		return nil, nil

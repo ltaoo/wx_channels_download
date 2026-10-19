@@ -1632,6 +1632,7 @@ img.dm-lazy-img-image[data-lazy-img-state] {
   max-height: min(50vh, var(--dm-layout-dialog-width));
   overflow: hidden;
   color: var(--dm-color-text-primary);
+  font-size: var(--dm-font-size-base);
   background: color-mix(in srgb, var(--dm-color-bg-surface) 96%, transparent);
   border: var(--dm-border-width) solid var(--dm-color-border);
   border-radius: var(--dm-radius-overlay);
@@ -1649,7 +1650,6 @@ img.dm-lazy-img-image[data-lazy-img-state] {
 .dm-select-group-label {
   padding: var(--dm-space-1-5) var(--dm-space-2);
   color: var(--dm-color-text-secondary);
-  font-size: var(--dm-font-size-caption);
   font-weight: var(--dm-font-weight-semibold);
 }
 
@@ -1666,7 +1666,6 @@ img.dm-lazy-img-image[data-lazy-img-state] {
   gap: var(--dm-space-2);
   padding-inline: var(--dm-space-2) var(--dm-space-8);
   color: var(--dm-color-text-primary);
-  font-size: var(--dm-font-size-sm);
   background: transparent;
   border: 0;
   border-radius: var(--dm-radius-control);
@@ -1709,7 +1708,6 @@ img.dm-lazy-img-image[data-lazy-img-state] {
 .dm-select-state {
   padding: var(--dm-space-6) var(--dm-space-3);
   color: var(--dm-color-text-secondary);
-  font-size: var(--dm-font-size-sm);
   text-align: center;
 }
 

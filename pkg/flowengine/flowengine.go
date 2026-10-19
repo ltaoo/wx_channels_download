@@ -13,6 +13,8 @@ func NewWorkflowEngine() *engine.FlowEngine {
 		NodeRegistry:    make(map[string]func(map[string]interface{}) engine.Node),
 	}
 	e.RegisterNode("StartNode", nodes.NewStartNode)
+	e.RegisterNode("WaitNode", nodes.NewWaitNode)
+	e.RegisterNode("FailNode", nodes.NewFailNode)
 	e.RegisterNode("EndNode", nodes.NewEndNode)
 	e.RegisterNode("GatewayNode", nodes.NewGatewayNode)
 	e.RegisterNode("ExprNode", nodes.NewExprNode)

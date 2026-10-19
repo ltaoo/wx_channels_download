@@ -39,7 +39,7 @@ func (n *ExprNode) Execute(ctx *engine.ProcessContext) (bool, []string, error) {
 	if v, ok := n.Config["output_key"].(string); ok && v != "" {
 		outKey = v
 	}
-	ctx.Data[outKey] = out
+	ctx.SetOutput(n.Id, outKey, out)
 	next := ctx.EngineRef.GetNextNodeIDsFromDefinition(ctx, n.Id)
 	return true, next, nil
 }

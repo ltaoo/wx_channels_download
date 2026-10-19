@@ -7,6 +7,7 @@ import {
   AutomationRunPipelineDialog,
   AutomationWorkspaceToolbar,
   AutomationStartTriggers,
+  AutomationRunHistory,
 } from "./flow.components.js";
 
 function AutomationNodeInspector(props) {
@@ -87,6 +88,11 @@ function AutomationNodeInspector(props) {
                       "aria-label": "节点配置 JSON",
                     },
                   }),
+                ]) : null,
+                current_node.type !== "StartNode" ? View({ class: "min-w-0 flex flex-col gap-1" }, [
+                  Label({ attributes: { for: "automation-edit-node-policy" }, class: "text-color-text-secondary text-xs font-semibold" }, ["执行策略 JSON"]),
+                  Textarea({ store: vm$.ui.input_edit_node_policy$, class: "font-mono text-xs", attributes: { id: "automation-edit-node-policy", n: "automation-edit-node-policy", rows: "8", spellcheck: "false", "aria-label": "执行策略 JSON" } }),
+                  View({ class: "text-color-text-secondary text-caption" }, ["retry.max_attempts 是总尝试次数（1～20）；error_next_node 是失败后的节点 ID。人工确认的 input_schema 用于校验回复。"]),
                 ]) : null,
                 current_node.type !== "StartNode" ? Button(
                   {
@@ -586,6 +592,7 @@ function FlowEditPageView(props) {
         AutomationWorkspaceToolbar({ store: vm$, mode: "edit" }),
       ]),
       AutomationFeedback({ store: vm$ }),
+      AutomationRunHistory({ store: vm$ }),
       Show({
         when: vm$.state.selected_pipeline,
         ok() {

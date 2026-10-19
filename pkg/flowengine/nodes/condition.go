@@ -120,6 +120,8 @@ func evaluate_js_condition(ctx *engine.ProcessContext, condition string) (bool, 
 	// flows end with one), so a `while (true) {}` would hang the download
 	// postprocess with no way out. Interrupt only breaks out of JavaScript
 	// code, which is where an infinite loop lives.
+	stop_context := watch_script_context(ctx, vm)
+	defer stop_context()
 	watchdog := time.AfterFunc(time.Second, func() { vm.Interrupt("condition timeout") })
 	defer watchdog.Stop()
 	result, err := vm.RunString(condition)

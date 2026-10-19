@@ -40,7 +40,7 @@ type UserFlowConfigKey struct {
 }
 
 func user_flow_node_catalog() []UserFlowNodeCatalogItem {
-	return []UserFlowNodeCatalogItem{
+	return append(automation_additional_node_catalog(), []UserFlowNodeCatalogItem{
 		{
 			Type:        "ExprNode",
 			Name:        "表达式计算",
@@ -56,7 +56,15 @@ func user_flow_node_catalog() []UserFlowNodeCatalogItem {
 			Description: "调用外部 HTTP 接口，可携带上下文参数",
 			ConfigKeys: []UserFlowConfigKey{
 				{Key: "url", Type: "string", Required: true, Description: "请求地址"},
-				{Key: "method", Type: "string", Required: false, Description: "GET 或 POST，默认 GET"},
+				{Key: "method", Type: "string", Required: false, Description: "GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS，默认 GET"},
+				{Key: "headers", Type: "object", Description: "请求头，支持作用域模板"},
+				{Key: "query", Type: "object", Description: "查询参数，支持作用域模板"},
+				{Key: "body", Type: "any", Description: "请求体，支持嵌套模板"},
+				{Key: "body_type", Type: "string", Description: "json（默认）、form 或 raw"},
+				{Key: "authentication", Type: "object", Description: "{type: basic, username, password} 或 {type: bearer, token}"},
+				{Key: "timeout_seconds", Type: "number", Description: "节点超时，默认 15 秒"},
+				{Key: "fail_on_status", Type: "boolean", Description: "默认 true，非 2xx 走重试/错误分支"},
+				{Key: "output_key", Type: "string", Description: "输出响应体，另含 _status 和 _headers"},
 				{Key: "keys", Type: "object", Required: false, Description: "请求参数名到作用域路径的对象映射，如 {\"username\": \"output.cleanup.username\"}"},
 			},
 		},
@@ -75,6 +83,7 @@ func user_flow_node_catalog() []UserFlowNodeCatalogItem {
 			Description: "按条件表达式路由到不同节点",
 			ConfigKeys: []UserFlowConfigKey{
 				{Key: "gateway_type", Type: "string", Required: false, Description: "Exclusive 或 Parallel"},
+				{Key: "join_node_id", Type: "string", Description: "Parallel 分支共同汇聚节点，全部成功后只执行一次"},
 				{Key: "condition_language", Type: "string", Required: false, Description: "条件语言：expr（默认）或 js。js 下只能访问 input./output./global. 作用域和 Math/JSON/Number 等内置对象，按 JS 真值判断（非空字符串/对象/数组为真，而 expr 只认 bool），单条条件超过 1 秒会被中断"},
 				{Key: "rules", Type: "array", Required: false, Description: "Exclusive 规则列表 [{condition, target_id}]，condition 按 condition_language 求值"},
 			},
@@ -109,7 +118,7 @@ func user_flow_node_catalog() []UserFlowNodeCatalogItem {
 			Name:        "结束",
 			Description: "流程结束节点",
 		},
-	}
+	}...)
 }
 
 // CreateUserFlowInput describes a new user pipeline. Creating a pipeline always
@@ -136,6 +145,10 @@ type UpdateUserFlowInput struct {
 }
 
 type UserFlowNodeInput struct {
+	RetryPolicy     *engine.RetryPolicy  `json:"retry,omitempty"`
+	ErrorNextNodeID *string              `json:"error_next_node,omitempty"`
+	OutputSchema    []engine.FieldSchema `json:"output_schema,omitempty"`
+
 	ID          string                 `json:"id"`
 	Type        string                 `json:"type"`
 	Name        string                 `json:"name"`
@@ -185,7 +198,7 @@ func (s *AutomationService) register_user_flow(definition engine.FlowDefinition)
 	if s == nil || s.flow_engine == nil {
 		return
 	}
-	s.flow_engine.FlowDefinitions[definition.ID] = definition
+	s.flow_engine.RegisterFlow(definition)
 }
 
 func normalize_user_flow_trigger(trigger_type string, event_key string) (string, string, error) {
@@ -193,7 +206,7 @@ func normalize_user_flow_trigger(trigger_type string, event_key string) (string,
 	switch trigger_type {
 	case "":
 		trigger_type = model.FlowRunTriggerCron
-	case model.FlowRunTriggerCron, model.FlowRunTriggerEvent, model.FlowRunTriggerManual:
+	case model.FlowRunTriggerCron, model.FlowRunTriggerEvent, model.FlowRunTriggerManual, model.FlowRunTriggerWebhook:
 	default:
 		return "", "", fmt.Errorf("触发类型不支持: %s", trigger_type)
 	}
@@ -297,6 +310,17 @@ func (s *AutomationService) ImportUserFlow(raw string) (*model.UserFlow, error) 
 // The engine drives ordinary nodes via NextNodes but ManualNode via NextNodeIDs,
 // so both representations must agree for an imported graph to run correctly.
 func normalize_user_flow_definition(definition *engine.FlowDefinition) error {
+	return normalize_user_flow_definition_at_depth(definition, 0)
+}
+
+func normalize_user_flow_definition_at_depth(definition *engine.FlowDefinition, depth int) error {
+	if depth > 16 {
+		return fmt.Errorf("子流程嵌套不能超过 16 层")
+	}
+	if len(definition.Nodes) > 500 {
+		return fmt.Errorf("流程节点数量不能超过 500")
+	}
+
 	name := strings.TrimSpace(definition.Name)
 	if name == "" {
 		return fmt.Errorf("流程定义缺少 name")
@@ -326,6 +350,36 @@ func normalize_user_flow_definition(definition *engine.FlowDefinition) error {
 		if err := validate_user_flow_node_config(node.Type, node.Config); err != nil {
 			return fmt.Errorf("节点 %s 配置无效: %w", node_id, err)
 		}
+		if err := validate_node_execution_policy(node); err != nil {
+			return fmt.Errorf("节点 %s: %w", node_id, err)
+		}
+		if node.Type == "WorkflowNode" || node.Type == "LoopNode" {
+			if raw, exists := node.Config["workflow"]; exists {
+				encoded, err := json.Marshal(raw)
+				if err != nil {
+					return err
+				}
+				child := engine.FlowDefinition{}
+				if err := json.Unmarshal(encoded, &child); err != nil {
+					return err
+				}
+				if child.Name == "" {
+					child.Name = node_id + " 子流程"
+				}
+				if child.ID == "" {
+					child.ID = definition.ID + ":" + node_id
+				}
+				if err := normalize_user_flow_definition_at_depth(&child, depth+1); err != nil {
+					return fmt.Errorf("子流程 %s: %w", node_id, err)
+				}
+				for _, child_node := range child.Nodes {
+					if child_node.Type == "ManualNode" {
+						return fmt.Errorf("子流程或循环内暂不支持人工等待，请在主流程中添加人工确认")
+					}
+				}
+				node.Config["workflow"] = child
+			}
+		}
 		node.ID = node_id
 		node.Config["id"] = node_id
 		next_ids := make([]string, 0)
@@ -353,6 +407,30 @@ func normalize_user_flow_definition(definition *engine.FlowDefinition) error {
 		normalized[node_id] = node
 	}
 	for node_id, node := range normalized {
+		if node.ErrorNextNodeID != "" {
+			if _, ok := normalized[node.ErrorNextNodeID]; !ok {
+				return fmt.Errorf("节点 %s 的错误分支不存在: %s", node_id, node.ErrorNextNodeID)
+			}
+		}
+		if node.Type == "GatewayNode" {
+			if join_id, _ := node.Config["join_node_id"].(string); join_id != "" {
+				if _, ok := normalized[join_id]; !ok {
+					return fmt.Errorf("并行汇聚节点不存在: %s", join_id)
+				}
+			}
+			raw, _ := json.Marshal(node.Config["rules"])
+			var rules []struct {
+				TargetID string `json:"target_id"`
+			}
+			if node.Config["rules"] != nil && json.Unmarshal(raw, &rules) != nil {
+				return fmt.Errorf("节点 %s 的分支规则必须为数组", node_id)
+			}
+			for _, rule := range rules {
+				if _, ok := normalized[rule.TargetID]; !ok {
+					return fmt.Errorf("节点 %s 的分支目标不存在: %s", node_id, rule.TargetID)
+				}
+			}
+		}
 		for _, next_id := range node.NextNodeIDs {
 			if _, ok := normalized[next_id]; !ok {
 				return fmt.Errorf("节点 %s 指向了不存在的节点: %s", node_id, next_id)
@@ -486,7 +564,21 @@ func apply_user_flow_update(definition *engine.FlowDefinition, input UpdateUserF
 				}
 				next_nodes = append(next_nodes, engine.TargetNode{TargetID: next})
 			}
+			previous := definition.Nodes[node_id]
+			retry_policy := node.RetryPolicy
+			if retry_policy == nil {
+				retry_policy = previous.RetryPolicy
+			}
+			error_next := previous.ErrorNextNodeID
+			if node.ErrorNextNodeID != nil {
+				error_next = *node.ErrorNextNodeID
+			}
+			output_schema := node.OutputSchema
+			if output_schema == nil {
+				output_schema = previous.OutputSchema
+			}
 			rebuilt[node_id] = engine.NodeDefinition{
+				RetryPolicy: retry_policy, ErrorNextNodeID: error_next, OutputSchema: output_schema,
 				ID:          node_id,
 				Type:        node.Type,
 				Name:        node.Name,
@@ -530,7 +622,7 @@ func (s *AutomationService) DeleteUserFlow(id string) error {
 		return fmt.Errorf("删除流程失败: %w", err)
 	}
 	if s.flow_engine != nil {
-		delete(s.flow_engine.FlowDefinitions, flow.ID)
+		s.flow_engine.RemoveFlow(flow.ID)
 	}
 	return nil
 }
@@ -564,7 +656,7 @@ func (s *AutomationService) UserFlowVisualization(flow_id string) (*flowengine.F
 // behaviour is fully described by JSON config.
 func user_flow_allows_node_type(node_type string) bool {
 	switch node_type {
-	case "StartNode", "EndNode", "ExprNode", "GatewayNode", "APICallNode", "ManualNode", "ServiceNode", "JSCodeNode", "SetVariableNode":
+	case "StartNode", "EndNode", "ExprNode", "GatewayNode", "APICallNode", "ManualNode", "ServiceNode", "JSCodeNode", "SetVariableNode", "LoopNode", "WorkflowNode", "WaitNode", "FailNode":
 		return true
 	default:
 		return false
@@ -573,7 +665,7 @@ func user_flow_allows_node_type(node_type string) bool {
 
 func validate_user_flow_node_config(node_type string, config map[string]interface{}) error {
 	if node_type != "ServiceNode" {
-		return nil
+		return validate_automation_node_config(node_type, config)
 	}
 	tool_name, _ := config["tool_name"].(string)
 	tool_name = strings.TrimSpace(tool_name)
@@ -632,11 +724,8 @@ func SortedUserFlowNodeCatalog() []UserFlowNodeCatalogItem {
 // unchanged and continues to control automatic executions. initial_data, when
 // non-empty, seeds the flow context with the caller-supplied input parameters.
 //
-// The run is detached: this returns as soon as the flow is claimed and the
-// execution goroutine is launched, and callers follow the progress through the
-// event bus (the same stream a scheduled run uses). The returned record is a
-// placeholder describing the started run — the persisted record, with its real
-// id and final status, is written by the execution goroutine.
+// The run is committed before launching the execution goroutine, so callers
+// receive the real run ID immediately and can query progress without a socket.
 func (s *AutomationService) TriggerFlowDirect(flow_id string, initial_data map[string]interface{}) (*model.FlowRunRecord, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("自动化服务未初始化")
@@ -651,33 +740,13 @@ func (s *AutomationService) TriggerFlowDirect(flow_id string, initial_data map[s
 	if _, err := decode_user_flow_definition(flow.Definition); err != nil {
 		return nil, err
 	}
-	encoded_initial_data, err := marshal_initial_data(initial_data)
+
+	schedule := model.FlowSchedule{FlowID: flow.ID, CronExpr: "@daily", InitialData: marshal_json(initial_data), TimeoutSec: default_schedule_timeout_sec}
+	run, err := s.prepare_run(schedule, model.FlowRunTriggerManual, "", "", "")
 	if err != nil {
 		return nil, err
 	}
-	run_key := "direct-" + flow.ID
-	if _, claimed := s.running.LoadOrStore(run_key, struct{}{}); claimed {
-		return nil, fmt.Errorf("流程 %s 正在执行中", flow.ID)
-	}
-	schedule := model.FlowSchedule{
-		ID:          "",
-		FlowID:      flow.ID,
-		CronExpr:    "@daily",
-		InitialData: encoded_initial_data,
-		TimeoutSec:  default_schedule_timeout_sec,
-	}
-	// Claiming the slot above stays synchronous so a double click is still
-	// rejected while a run is in flight; the goroutine hands it back when the
-	// flow finishes.
 	s.wg.Add(1)
-	go func(schedule model.FlowSchedule) {
-		defer s.wg.Done()
-		defer s.running.Delete(run_key)
-		s.execute_schedule(schedule, model.FlowRunTriggerManual, "")
-	}(schedule)
-	return &model.FlowRunRecord{
-		FlowID:      flow.ID,
-		TriggerType: model.FlowRunTriggerManual,
-		Status:      model.FlowRunStatusRunning,
-	}, nil
+	go func() { defer s.wg.Done(); s.execute_prepared_run(schedule, run) }()
+	return run, nil
 }

@@ -72,7 +72,7 @@ func (n *GatewayNode) Execute(ctx *engine.ProcessContext) (bool, []string, error
 
 // handleMerge 处理汇聚逻辑
 func (n *GatewayNode) handleMerge(ctx *engine.ProcessContext) (bool, []string, error) {
-	waitList := n.Config["wait_for_incoming"].([]string)
+	waitList := toStringSlice(n.Config["wait_for_incoming"])
 
 	// 检查所有依赖节点是否都已完成
 	allCompleted := true

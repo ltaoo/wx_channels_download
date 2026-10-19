@@ -313,6 +313,7 @@ func Start(cfg *config.Config) error {
 	} {
 		bus.Subscribe(event_type, api.BroadcastAutomationEvent)
 	}
+	bus.Subscribe("*", service_automation.HandleEvent)
 	service_automation.Start()
 	bus.Subscribe(events.TypeServiceCommand, func(event events.Event) {
 		command, ok := event.(events.ServiceCommand)

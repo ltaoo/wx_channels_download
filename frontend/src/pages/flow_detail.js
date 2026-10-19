@@ -7,6 +7,7 @@ import {
   AutomationTriggerSummary,
   AutomationWorkspaceToolbar,
   AutomationPipelineTriggerBadges,
+  AutomationRunHistory,
 } from "./flow.components.js";
 
 function AutomationPipelineDetail(props) {
@@ -81,6 +82,7 @@ function FlowDetailPageView(props) {
           AutomationWorkspaceToolbar({ store: vm$, mode: "detail" }),
         ]),
         AutomationFeedback({ store: vm$ }),
+        AutomationRunHistory({ store: vm$ }),
         View({ class: "group-content-main flex-[1_1_auto] min-w-0 p-4 " }, [
           Show({
             when: vm$.state.selected_pipeline,

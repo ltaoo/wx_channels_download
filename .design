@@ -1,6 +1,6 @@
 schema: design.v1
 name: wx-channels-download
-version: 1.0.1
+version: 1.0.7
 status: bootstrap
 updated_at: 2026-10-17
 description: Living visual contract extracted from the frontend DMUI token and page-composition layers.
@@ -446,6 +446,8 @@ components:
     when: ["Text, structured data, or selection input"]
     when_not: ["Read-only metadata that should be plain text"]
     states: [default, hover, focus-within, disabled, invalid, loading]
+    rules:
+      - All Select dropdowns, including platform, account, and tag popovers, use typography.size.base (14px) at the popup container; option text, descriptions, group labels, and loading/empty text inherit it without font-size overrides.
     tokens:
       default:
         backgroundColor: "{tokens.color.surface-subtle}"
@@ -655,7 +657,12 @@ patterns:
     rules:
       - Keep global navigation visually quieter than the active workspace.
       - Use the shared z-index scale for sticky and overlay layers.
+      - The compact desktop rail is 96px wide (spacing.24); stack 24px icons (spacing.6) above 12px labels (typography.size.sm) in 64px-minimum items (spacing.16).
+      - The settings action shows only its 24px icon (spacing.6); retain its accessible name and title.
+      - Space rail items and icon/label pairs by spacing.2; selected rail items use the shared primary-soft surface without a visible border.
+      - In short windows, scroll the rail navigation; inset its content by spacing.1 to keep focus rings visible.
       - At 640px, collapse navigation into compact 44px-minimum touch targets.
+      - Keep the enlarged rail item sizing in the bottom navigation; size its grid row to content and allow horizontal scrolling on narrow screens.
 
   content-page:
     treatment: utilitarian

@@ -2,10 +2,11 @@ package model
 
 // Trigger types recorded on a flow run record.
 const (
-	FlowRunTriggerCron   = "Cron"
-	FlowRunTriggerAPI    = "API"
-	FlowRunTriggerEvent  = "Event"
-	FlowRunTriggerManual = "Manual"
+	FlowRunTriggerCron    = "Cron"
+	FlowRunTriggerAPI     = "API"
+	FlowRunTriggerEvent   = "Event"
+	FlowRunTriggerManual  = "Manual"
+	FlowRunTriggerWebhook = "Webhook"
 )
 
 // Flow run lifecycle statuses.
@@ -18,7 +19,7 @@ const (
 	FlowRunStatusCancelled = "CANCELLED"
 )
 
-// FlowSchedule is a persisted crontab rule that starts a workflow.
+// FlowSchedule stores a Cron/Event/Webhook rule; extended metadata lives in InitialData.
 type FlowSchedule struct {
 	ID            string `gorm:"primaryKey;size:64" json:"id"`
 	Name          string `gorm:"not null" json:"name"`
@@ -39,6 +40,14 @@ func (FlowSchedule) TableName() string { return "flow_schedule" }
 // FlowRunRecord is one execution attempt of a flow, scheduled or on demand.
 // ScheduleID is empty for runs that were not started by a schedule.
 type FlowRunRecord struct {
+	Definition  string `gorm:"type:text" json:"definition"`
+	InitialData string `gorm:"type:text" json:"initial_data"`
+	Checkpoint  string `gorm:"type:text" json:"-"`
+	NodeLogs    string `gorm:"type:text" json:"node_logs"`
+	TimeoutSec  int    `json:"timeout_sec"`
+	DeadlineAt  int64  `gorm:"index" json:"deadline_at"`
+	RetryOf     string `gorm:"index" json:"retry_of,omitempty"`
+
 	ID           string `gorm:"primaryKey;size:96" json:"id"`
 	ScheduleID   string `gorm:"column:schedule_id;index" json:"schedule_id"`
 	FlowID       string `gorm:"column:flow_id;not null;index" json:"flow_id"`

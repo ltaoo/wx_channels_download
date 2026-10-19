@@ -9,7 +9,7 @@ function AutomationPageView(props) {
   const vm$ = AutomationPageViewModel(props);
   return View(
     {
-      class: "group-content-page min-h-full flex flex-col bg-content-bg text-content-text [&_.group-automation-toolbar]:flex [&_.group-automation-toolbar]:items-center [&_.group-automation-toolbar]:justify-between [&_.group-automation-toolbar]:gap-4 max-900:[&_.group-automation-toolbar]:items-stretch max-900:[&_.group-automation-toolbar]:flex-col min-w-0 min-h-full font-sans",
+      class: "group-content-page min-h-full flex flex-col bg-content-bg text-content-text [.group-content-page&]:h-full [.group-content-page&]:min-h-0 [.group-content-page&]:overflow-hidden [&_.group-automation-toolbar]:flex [&_.group-automation-toolbar]:items-center [&_.group-automation-toolbar]:justify-between [&_.group-automation-toolbar]:gap-4 max-900:[&_.group-automation-toolbar]:items-stretch max-900:[&_.group-automation-toolbar]:flex-col min-w-0 min-h-full font-sans",
       attributes: { n: "automation-page" },
       onMounted() {
         // 兼容旧链接 /automation?mode=edit|detail&id=xxx，重定向到独立页面
@@ -45,7 +45,7 @@ function AutomationPageView(props) {
 
 function AutomationListPage(props) {
   const vm$ = props.store;
-  return View({ class: "automation-list-page" }, [
+  return View({ class: "automation-list-page flex flex-col flex-[1_1_auto] min-h-0 [&_>_.group-content-main]:min-h-0 [&_>_.group-content-main]:flex [&_>_.group-content-main]:flex-col [&_>_.dm-pagination]:flex-[0_0_auto]" }, [
     View({ class: "group-content-toolbar-wrap p-[var(--dm-space-4)_var(--dm-space-4)_0] " }, [
       AutomationPageToolbar({ store: vm$ }),
     ]),
@@ -56,17 +56,58 @@ function AutomationListPage(props) {
 
 function AutomationPageToolbar(props) {
   const vm$ = props.store;
-  return View({ class: "group-content-toolbar flex items-center justify-between gap-3 max-760:flex-wrap group-automation-toolbar" }, [
-    View({ class: "dm-flex dm-items-center dm-gap-2" }, [
-      View({ class: "text-color-text-primary text-lg font-semibold tracking-[-0.01em]" }, ["自动化"]),
+  return View({
+    type: "form",
+    class: "group-content-toolbar flex items-center justify-between gap-3 max-760:flex-wrap group-automation-toolbar",
+    attributes: { role: "search" },
+    onSubmit(event) {
+      event.preventDefault();
+      vm$.methods.search();
+    },
+  }, [
+    View({
+      class: "min-w-0 flex-[1_1_0] max-760:flex-[1_1_100%]",
+      attributes: { n: "automation-search-field" },
+    }, [
+      Input({
+        store: vm$.ui.input_keyword$,
+        rootAttributes: { n: "automation-search-control" },
+        prefix: Timeless.Icon({
+          name: "search",
+          size: 16,
+          attributes: { n: "automation-search-icon" },
+        }),
+        attributes: {
+          n: "automation-search-input",
+          name: "keyword",
+          type: "text",
+          autocomplete: "off",
+          "aria-label": "搜索 Pipeline 名称",
+        },
+      }),
     ]),
-    View({ class: "dm-flex dm-items-center dm-gap-2" }, [
+    View({ class: "flex-[0_0_auto] flex-wrap max-760:ml-auto max-520:w-full max-520:ml-0 max-520:[&_>_.dm-button]:flex-[1_1_0] dm-flex dm-items-center dm-gap-2" }, [
       Button(
         {
-          store: vm$.ui.btn_refresh$,
-          attributes: { n: "automation-refresh-button", type: "button" },
+          store: vm$.ui.btn_search$,
+          class: "dm-button--toolbar",
+          attributes: { n: "automation-search-action", type: "submit" },
+          prefix: Timeless.Icon({ name: "search", size: 16 }),
+          onClick(event) {
+            event.preventDefault();
+            vm$.methods.search();
+          },
         },
-        ["刷新"],
+        ["搜索"],
+      ),
+      Button(
+        {
+          store: vm$.ui.btn_reset$,
+          class: "dm-button--toolbar",
+          attributes: { n: "automation-reset-action", type: "button" },
+          prefix: Timeless.Icon({ name: "rotate-ccw", size: 16 }),
+        },
+        ["重置"],
       ),
       Button(
         {
@@ -80,7 +121,7 @@ function AutomationPageToolbar(props) {
           store: vm$.ui.btn_create_pipeline$,
           attributes: { n: "automation-create-pipeline", type: "button" },
         },
-        ["创建 Pipeline"],
+        ["创建自动化"],
       ),
     ]),
   ]);
@@ -191,18 +232,35 @@ function AutomationPipelineList(props) {
         },
       },
     ],
-    rows: vm$.state.pipelines,
-    status: computed(vm$.state.pipelines, (pipelines) =>
+    rows: vm$.state.paged_pipelines,
+    pagination: {
+      class: " dm-px-4",
+      summary: vm$.state.range_text,
+      page: vm$.state.page,
+      pageCount: vm$.state.page_count,
+      pageSize: vm$.state.page_size,
+      loading: vm$.state.loading,
+      onChange(page) {
+        return vm$.methods.changePage(page);
+      },
+    },
+    status: computed(vm$.state.filtered_pipelines, (pipelines) =>
       pipelines.length === 0 ? "empty" : "normal",
     ),
     loading: vm$.state.loading,
-    emptyTitle: computed(vm$.state.loading, (loading) =>
-      loading ? "正在加载 Pipeline…" : "暂无 Pipeline",
+    emptyTitle: combine(
+      { loading: vm$.state.loading, keyword: vm$.state.search_keyword },
+      ({ loading, keyword }) =>
+        loading ? "正在加载 Pipeline…" : keyword ? "没有匹配的 Pipeline" : "暂无 Pipeline",
     ),
-    emptyDescription: computed(vm$.state.loading, (loading) =>
-      loading
-        ? "正在获取最新的流程配置。"
-        : "点击右上角「创建 Pipeline」开始搭建流程。",
+    emptyDescription: combine(
+      { loading: vm$.state.loading, keyword: vm$.state.search_keyword },
+      ({ loading, keyword }) =>
+        loading
+          ? "正在获取最新的流程配置。"
+          : keyword
+            ? "请尝试其他名称或重置搜索条件。"
+            : "点击右上角「创建自动化」开始搭建流程。",
     ),
   });
 }
@@ -217,7 +275,7 @@ function AutomationCreatePipelineDialog(props) {
     },
     [
       DialogHeader({}, [
-        DialogTitle({}, ["创建 Pipeline"]),
+        DialogTitle({}, ["创建自动化"]),
         DialogDescription({}, [
           "为开始节点声明接收参数；创建后在编辑器中添加节点，并配置定时或事件触发器。",
         ]),
@@ -307,7 +365,7 @@ function AutomationCreatePipelineDialog(props) {
             store: vm$.ui.btn_create_submit$,
             attributes: { n: "automation-create-submit", type: "button" },
           },
-          ["创建 Pipeline"],
+          ["创建自动化"],
         ),
       ]),
     ],

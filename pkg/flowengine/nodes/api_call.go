@@ -2,10 +2,12 @@ package nodes
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -28,79 +30,164 @@ func (n *APICallNode) ID() string   { return n.Id }
 func (n *APICallNode) Type() string { return "APICallNode" }
 
 func (n *APICallNode) Execute(ctx *engine.ProcessContext) (bool, []string, error) {
-	u, _ := n.Config["url"].(string)
-	if u == "" {
-		return false, nil, fmt.Errorf("missing url")
+	resolved_url, err := resolve_service_template(n.Config["url"], ctx)
+	if err != nil {
+		return false, nil, err
 	}
-	method := "GET"
-	if v, ok := n.Config["method"].(string); ok && v != "" {
-		method = v
+	request_url, _ := resolved_url.(string)
+	parsed_url, err := url.ParseRequestURI(request_url)
+	if err != nil || (parsed_url.Scheme != "http" && parsed_url.Scheme != "https") {
+		return false, nil, fmt.Errorf("url must be an absolute HTTP(S) URL")
 	}
-	// keys maps the outgoing request parameter name to the scope path its
-	// value is read from, e.g. {"username": "output.cleanup.username"}. An
-	// object (rather than a list of context keys) lets the request parameter
-	// name differ from the producer's key name.
+	method, _ := n.Config["method"].(string)
+	method = strings.ToUpper(strings.TrimSpace(method))
+	if method == "" {
+		method = "GET"
+	}
+	switch method {
+	case "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS":
+	default:
+		return false, nil, fmt.Errorf("unsupported HTTP method: %s", method)
+	}
 	keys, err := api_call_keys(n.Config["keys"])
 	if err != nil {
 		return false, nil, err
 	}
-	values := make(map[string]interface{}, len(keys))
-	for parameter_name, path := range keys {
-		resolved, err := resolve_scope_path(ctx, path)
+	values := map[string]interface{}{}
+	for name, path := range keys {
+		value, err := resolve_scope_path(ctx, path)
 		if err != nil {
-			return false, nil, fmt.Errorf("keys.%s: %w", parameter_name, err)
+			return false, nil, err
 		}
-		values[parameter_name] = resolved
+		values[name] = value
 	}
-	var req *http.Request
-	if method == "GET" {
-		r, err := http.NewRequest("GET", u, nil)
-		if err != nil {
-			return false, nil, err
+	query := parsed_url.Query()
+	if method == "GET" || method == "HEAD" {
+		for name, value := range values {
+			query.Set(name, fmt.Sprint(value))
 		}
-		q := r.URL.Query()
-		for parameter_name, value := range values {
-			q.Set(parameter_name, fmt.Sprint(value))
-		}
-		r.URL.RawQuery = q.Encode()
-		req = r
-	} else {
-		b, err := json.Marshal(values)
-		if err != nil {
-			return false, nil, err
-		}
-		r, err := http.NewRequest(method, u, bytes.NewReader(b))
-		if err != nil {
-			return false, nil, err
-		}
-		r.Header.Set("Content-Type", "application/json")
-		req = r
 	}
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
+	if raw_query, ok := n.Config["query"].(map[string]interface{}); ok {
+		for name, value := range raw_query {
+			resolved, err := resolve_service_template(value, ctx)
+			if err != nil {
+				return false, nil, err
+			}
+			query.Set(name, fmt.Sprint(resolved))
+		}
+	}
+	parsed_url.RawQuery = query.Encode()
+	var body io.Reader
+	content_type := "application/json"
+	if method != "GET" && method != "HEAD" {
+		raw_body, has_body := n.Config["body"]
+		if !has_body {
+			raw_body = values
+		}
+		resolved_body, err := resolve_service_template(raw_body, ctx)
+		if err != nil {
+			return false, nil, err
+		}
+		body_type, _ := n.Config["body_type"].(string)
+		switch body_type {
+		case "", "json":
+			raw, err := json.Marshal(resolved_body)
+			if err != nil {
+				return false, nil, err
+			}
+			body = bytes.NewReader(raw)
+		case "form":
+			fields, ok := resolved_body.(map[string]interface{})
+			if !ok {
+				return false, nil, fmt.Errorf("form body must be an object")
+			}
+			form := url.Values{}
+			for name, value := range fields {
+				form.Set(name, fmt.Sprint(value))
+			}
+			body = strings.NewReader(form.Encode())
+			content_type = "application/x-www-form-urlencoded"
+		case "raw":
+			text, ok := resolved_body.(string)
+			if !ok {
+				return false, nil, fmt.Errorf("raw body must be a string")
+			}
+			body = strings.NewReader(text)
+			content_type = "text/plain"
+		default:
+			return false, nil, fmt.Errorf("unsupported body_type: %s", body_type)
+		}
+	}
+	request_context := ctx.ExecutionContext()
+	timeout := service_timeout_seconds(n.Config)
+	if timeout == 0 {
+		timeout = 15
+	}
+	request_context, cancel := context.WithTimeout(request_context, time.Duration(timeout)*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(request_context, method, parsed_url.String(), body)
 	if err != nil {
 		return false, nil, err
 	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	if body != nil {
+		request.Header.Set("Content-Type", content_type)
+	}
+	if headers, ok := n.Config["headers"].(map[string]interface{}); ok {
+		for name, value := range headers {
+			resolved, err := resolve_service_template(value, ctx)
+			if err != nil {
+				return false, nil, err
+			}
+			request.Header.Set(name, fmt.Sprint(resolved))
+		}
+	}
+	if auth, ok := n.Config["authentication"].(map[string]interface{}); ok {
+		resolved, err := resolve_service_template(auth, ctx)
+		if err != nil {
+			return false, nil, err
+		}
+		fields := resolved.(map[string]interface{})
+		switch fields["type"] {
+		case "bearer":
+			token, _ := fields["token"].(string)
+			request.Header.Set("Authorization", "Bearer "+token)
+		case "basic":
+			username, _ := fields["username"].(string)
+			password, _ := fields["password"].(string)
+			request.SetBasicAuth(username, password)
+		case "none", nil, "":
+		default:
+			return false, nil, fmt.Errorf("unsupported authentication type")
+		}
+	}
+	response, err := (&http.Client{}).Do(request)
 	if err != nil {
 		return false, nil, err
 	}
-	var out interface{}
-	var jm map[string]interface{}
-	if err := json.Unmarshal(body, &jm); err == nil {
-		out = jm
-	} else {
-		out = string(body)
+	defer response.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(response.Body, 8*1024*1024+1))
+	if err != nil {
+		return false, nil, err
 	}
-	outKey := default_api_output_key
-	if v, ok := n.Config["output_key"].(string); ok && v != "" {
-		outKey = v
+	if len(raw) > 8*1024*1024 {
+		return false, nil, fmt.Errorf("HTTP response exceeds 8 MiB")
 	}
-	ctx.Data[outKey] = out
-	ctx.Data[outKey+"_status"] = resp.StatusCode
-	next := ctx.EngineRef.GetNextNodeIDsFromDefinition(ctx, n.Id)
-	return true, next, nil
+	var output interface{}
+	if json.Unmarshal(raw, &output) != nil {
+		output = string(raw)
+	}
+	output_key, _ := n.Config["output_key"].(string)
+	if output_key == "" {
+		output_key = default_api_output_key
+	}
+	ctx.SetOutput(n.Id, output_key, output)
+	ctx.SetOutput(n.Id, output_key+"_status", response.StatusCode)
+	ctx.SetOutput(n.Id, output_key+"_headers", response.Header)
+	fail_on_status, configured := n.Config["fail_on_status"].(bool)
+	if (!configured || fail_on_status) && (response.StatusCode < 200 || response.StatusCode >= 300) {
+		return false, nil, fmt.Errorf("HTTP request returned status %d", response.StatusCode)
+	}
+	return true, ctx.EngineRef.GetNextNodeIDsFromDefinition(ctx, n.Id), nil
 }
 
 // api_call_keys normalizes config["keys"] into {request parameter: scope path}.
