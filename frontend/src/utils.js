@@ -1,3 +1,12 @@
+export function track_error(source, tip) {
+  source.subscribe({
+    onChange(message) {
+      if (message) tip({ msg: [message], type: "error" });
+    },
+  });
+  return source;
+}
+
 export function format_time(
   value,
   fallback_message = "时间未知",

@@ -1,4 +1,12 @@
-import { request } from "@/biz/request.js";
+import { track_error } from "@/utils.js";
+import {
+  fetchScraperContent,
+  fetchDouyinHome,
+  fetchScraperJob,
+  interruptScraperFetch,
+  clearScraperCache,
+  fetchScraperCacheContent,
+} from "@/biz/request.js";
 import { ThirdPartyDownloaderModel } from "@/third-party-downloader.model.js";
 import { proxy_image_url } from "@/image-proxy.model.js";
 import { format_time } from "@/utils.js";
@@ -61,34 +69,35 @@ const content_detail_field_names = {
 function ScraperPageViewModel(props) {
   const { client: home_http_client, downloader } = props;
   const third_party_downloader$ = ThirdPartyDownloaderModel({
+    tip: props.tip,
     client: home_http_client,
     storage: props.storage,
   });
 
   const url_ = ref("");
   const loading_ = ref(false);
-  const error_ = ref("");
+  const error_ = track_error(ref(""), props.tip);
   const result_ = ref(null);
   const json_expanded_ = ref(false);
   const raw_result_expanded_ = ref(true);
   const download_loading_ = ref(false);
-  const download_error_ = ref("");
+  const download_error_ = track_error(ref(""), props.tip);
   const download_success_ = ref("");
   const download_resource_success_ = ref("");
   const download_overwrite_action_ = ref("overwrite");
   const download_overwrite_processing_ = ref(false);
   const download_overwrite_conflict_ = refobj({ name: "" });
   const download_preview_loading_ = ref(false);
-  const download_preview_error_ = ref("");
+  const download_preview_error_ = track_error(ref(""), props.tip);
   const selected_video_variant_ = ref(null);
   const selected_text_track_keys_ = ref([]);
   const fetch_progress_ = ref(null);
   const fetch_notice_ = ref("");
   const interrupt_loading_ = ref(false);
   const cache_loading_ = ref(false);
-  const cache_error_ = ref("");
+  const cache_error_ = track_error(ref(""), props.tip);
   const cache_content_loading_ = ref(false);
-  const cache_content_error_ = ref("");
+  const cache_content_error_ = track_error(ref(""), props.tip);
   const cache_content_entry_ = ref(null);
   const cache_content_data_ = ref(null);
   const chapter_display_limit_ = ref(100);
@@ -163,37 +172,37 @@ function ScraperPageViewModel(props) {
   }
 
   const fetch_request = new Timeless.kit.RequestCore(
-    (body) => request.post("/api/scraper/fetch", body),
+    fetchScraperContent,
     {
       client: home_http_client,
     },
   );
   const platform_home_request = new Timeless.kit.RequestCore(
-    (params) => request.get("/api/douyin/contact/home", params),
+    fetchDouyinHome,
     {
       client: home_http_client,
     },
   );
   const job_request = new Timeless.kit.RequestCore(
-    (params) => request.get("/api/scraper/job", params),
+    fetchScraperJob,
     {
       client: home_http_client,
     },
   );
   const interrupt_request = new Timeless.kit.RequestCore(
-    (body) => request.post("/api/scraper/fetch/interrupt", body),
+    interruptScraperFetch,
     {
       client: home_http_client,
     },
   );
   const cache_clear_request = new Timeless.kit.RequestCore(
-    (body) => request.post("/api/scraper/cache/clear", body),
+    clearScraperCache,
     {
       client: home_http_client,
     },
   );
   const cache_content_request = new Timeless.kit.RequestCore(
-    (params) => request.get("/api/scraper/cache/content", params),
+    fetchScraperCacheContent,
     {
       client: home_http_client,
     },
@@ -2214,6 +2223,7 @@ function ScraperPageViewModel(props) {
   }
 
   const methods = {
+    tip: props.tip,
     setURL: set_url,
     submit,
     forceRefresh() {

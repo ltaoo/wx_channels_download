@@ -218,6 +218,7 @@ export default function SiderLayoutView(props) {
         [
           Timeless.ui.KeepAliveSubViews({
             app: props.app,
+            tip: props.tip,
             client: props.client,
             history: props.history,
             hlsPlayer: props.hlsPlayer,
@@ -225,11 +226,12 @@ export default function SiderLayoutView(props) {
             view: props.view,
             views: props.views,
             placeholder: LoadingView,
-            ErrorFallback: ErrorFallbackView,
+            ErrorFallback: (error, name) => ErrorFallbackView(error, name, props.tip),
           }),
         ],
       ),
       SettingsDialog({
+        tip: props.tip,
         dialog: model.ui.settings_dialog$,
         section: model.state.settings_section,
         version: model.state.version,

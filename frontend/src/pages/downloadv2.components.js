@@ -1,3 +1,4 @@
+import { ErrorMessage } from "@/dmui.js";
 import {
   resource_file_icon,
   format_file_size,
@@ -600,16 +601,7 @@ export function DownloadV2TaskMain(props) {
             (state) => state.is_failed && Boolean(state.error_text),
           ),
           ok() {
-            return View(
-              {
-                class: "mt-0-5 overflow-hidden -webkit-box text-color-danger text-xs leading-16px word-break-break-word -webkit-box-orient-vertical -webkit-line-clamp-2",
-                attributes: {
-                  n: "download-task-error",
-                  title: computed(state_, (state) => state.error_text),
-                },
-              },
-              [computed(state_, (state) => state.error_text)],
-            );
+            return ErrorMessage({ tip: vm$.methods.tip, error: computed(state_, (state) => state.error_text) });
           },
         }),
       ],

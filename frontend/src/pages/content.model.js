@@ -1,4 +1,9 @@
-import { request } from "@/biz/request.js";
+import { track_error } from "@/utils.js";
+import {
+  fetchContentList,
+  fetchAccountList,
+  setContentTags,
+} from "@/biz/request.js";
 import { proxy_image_url } from "@/image-proxy.model.js";
 
 import { task_status } from "./content_detail.model.js";
@@ -389,7 +394,7 @@ function ContentViewModel(props) {
   const scope_ = ref("task");
   const initial_ = ref(true);
   const loading_ = ref(false);
-  const error_ = ref("");
+  const error_ = track_error(ref(""), props.tip);
   const detail_id_ = ref("");
   const copied_content_id_ = ref("");
   const saved_filters_ = refarr(load_saved_filters());
@@ -397,6 +402,7 @@ function ContentViewModel(props) {
   let request_sequence = 0;
   let account_request_sequence = 0;
   let copy_feedback_timer = null;
+  let save_filter_hide_timer = null;
 
   const ui = {
     input_keyword$: new Timeless.vm.InputCore({
@@ -481,7 +487,7 @@ function ContentViewModel(props) {
       },
     }),
     input_filter_name$: new Timeless.vm.InputCore({
-      defaultValue: "",
+      defaultValue: next_filter_name(),
       placeholder: "筛选器名称",
       allowClear: true,
       onEnter() {
@@ -491,6 +497,14 @@ function ContentViewModel(props) {
     btn_save_filter$: new Timeless.vm.ButtonCore({
       variant: "outline",
       size: "sm",
+    }),
+    btn_add_filter$: new Timeless.vm.ButtonCore({
+      variant: "ghost",
+      size: "icon-sm",
+    }),
+    save_filter_popover$: new Timeless.vm.PopoverCore({
+      side: "bottom",
+      align: "start",
     }),
     btn_layout$: new Timeless.vm.ButtonCore({
       variant: "outline",
@@ -554,7 +568,7 @@ function ContentViewModel(props) {
   });
 
   const list_request = new Timeless.kit.RequestCore(
-    (params) => request.get("/api/content/list", params),
+    fetchContentList,
     {
       client: props.client,
       process(response) {
@@ -572,7 +586,11 @@ function ContentViewModel(props) {
     },
   );
   const account_list_request = new Timeless.kit.RequestCore(
-    (params) => request.get("/api/account/list", params),
+    fetchAccountList,
+    { client: props.client },
+  );
+  const set_tags_request = new Timeless.kit.RequestCore(
+    setContentTags,
     { client: props.client },
   );
 
@@ -773,9 +791,40 @@ function ContentViewModel(props) {
     };
   }
 
+  function next_filter_name() {
+    let number = saved_filters_.value.length + 1;
+    while (saved_filters_.value.some((filter) => filter.name === `筛选${number}`)) {
+      number++;
+    }
+    return `筛选${number}`;
+  }
+
+  function show_save_filter_popover() {
+    clearTimeout(save_filter_hide_timer);
+    if (ui.save_filter_popover$.visible) return;
+    ui.input_filter_name$.setValue(next_filter_name(), { silence: true });
+    ui.save_filter_popover$.show();
+  }
+
+  function hide_save_filter_popover() {
+    clearTimeout(save_filter_hide_timer);
+    ui.save_filter_popover$.hide();
+  }
+
+  function schedule_save_filter_popover_hide() {
+    clearTimeout(save_filter_hide_timer);
+    save_filter_hide_timer = setTimeout(() => {
+      if (!ui.input_filter_name$.state.focus) hide_save_filter_popover();
+    }, 240);
+  }
+
   function save_current_filter() {
     const name = String(ui.input_filter_name$.value || "").trim();
-    if (!name) return;
+    if (!name) {
+      props.tip({ msg: ["请输入筛选器名称"], type: "warning" });
+      ui.input_filter_name$.focus();
+      return;
+    }
 
     const filter = normalize_saved_filter({
       ...current_filter(),
@@ -788,7 +837,8 @@ function ContentViewModel(props) {
     ];
     saved_filters_.as(filters, { reset: true });
     persist_saved_filters(filters);
-    ui.input_filter_name$.setValue("", { silence: true });
+    ui.input_filter_name$.setValue(next_filter_name(), { silence: true });
+    hide_save_filter_popover();
   }
 
   async function apply_saved_filter(raw_filter) {
@@ -851,7 +901,28 @@ function ContentViewModel(props) {
     return load(page);
   }
 
+  function content_tags(content) {
+    // Keep tag state on the content object so it survives row re-renders.
+    if (!content.__tag_ref__) {
+      content.__tag_ref__ = ref((content.tags || []).slice());
+    }
+    return content.__tag_ref__;
+  }
+
+  function remove_tag(content, tag) {
+    const tags_ref = content_tags(content);
+    const next = (tags_ref.value || []).filter((item) => item.id !== tag.id);
+    tags_ref.as(next);
+    return set_tags_request
+      .run({
+        content_id: content.id,
+        tag_ids: next.map((item) => item.id),
+      })
+      .catch(() => {});
+  }
+
   const methods = {
+    tip: props.tip,
     ready() {
       return Promise.all([load_accounts(), load(1)]);
     },
@@ -862,6 +933,9 @@ function ContentViewModel(props) {
       return load(1);
     },
     saveFilter: save_current_filter,
+    showSaveFilterPopover: show_save_filter_popover,
+    hideSaveFilterPopover: hide_save_filter_popover,
+    scheduleSaveFilterPopoverHide: schedule_save_filter_popover_hide,
     applyFilter: apply_saved_filter,
     deleteFilter: delete_saved_filter,
     filterSummary: saved_filter_summary,
@@ -874,6 +948,8 @@ function ContentViewModel(props) {
     nextPage() {
       return change_page(page_.value + 1);
     },
+    contentTags: content_tags,
+    removeTag: remove_tag,
     copyId(content) {
       const result = props.app.copy(content.id);
       copied_content_id_.as(content.id);

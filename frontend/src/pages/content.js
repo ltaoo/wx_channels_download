@@ -26,6 +26,7 @@ function ContentDetailDrawer(props) {
     },
     () => [
       ContentDetailPageView({
+        tip: vm$.methods.tip,
         app: props.app,
         client: props.client,
         hlsPlayer: props.hlsPlayer,
@@ -163,6 +164,88 @@ function ContentLayoutMenu(props) {
   );
 }
 
+function ContentSaveFilterPopover(props) {
+  const vm$ = props.store;
+  return Popover(
+    {
+      store: vm$.ui.save_filter_popover$,
+      class: "w-260px p-2",
+      attributes: {
+        n: "content-save-filter-popover",
+        role: "dialog",
+        "aria-label": "保存快捷筛选器",
+      },
+      onTriggerMouseEnter: vm$.methods.showSaveFilterPopover,
+      onTriggerMouseLeave: vm$.methods.scheduleSaveFilterPopoverHide,
+      onContentMouseEnter: vm$.methods.showSaveFilterPopover,
+      onContentMouseLeave: vm$.methods.scheduleSaveFilterPopoverHide,
+      onUnmounted: vm$.methods.hideSaveFilterPopover,
+      content: [
+        View(
+          {
+            class: "flex items-center gap-2",
+            attributes: { n: "content-save-filter-controls" },
+          },
+          [
+            Input({
+              store: vm$.ui.input_filter_name$,
+              rootClass: "min-w-0 flex-[1_1_auto]",
+              rootAttributes: { n: "content-filter-name-control" },
+              attributes: {
+                n: "content-filter-name-input",
+                name: "filter_name",
+                placeholder: "筛选器名称",
+                maxlength: "60",
+                required: true,
+                autocomplete: "off",
+                "aria-label": "筛选器名称",
+              },
+            }),
+            Button(
+              {
+                store: vm$.ui.btn_save_filter$,
+                class: "flex-[0_0_auto]",
+                attributes: {
+                  n: "content-save-filter-action",
+                  type: "submit",
+                },
+                onClick(event) {
+                  event.preventDefault();
+                  vm$.methods.saveFilter();
+                },
+              },
+              ["保存"],
+            ),
+          ],
+        ),
+      ],
+    },
+    [
+      IconButton(
+        {
+          store: vm$.ui.btn_add_filter$,
+          attributes: {
+            n: "content-add-filter-action",
+            type: "button",
+            title: "新增快捷筛选器",
+            "aria-label": "新增快捷筛选器",
+            "aria-haspopup": "dialog",
+          },
+          onClick: vm$.methods.showSaveFilterPopover,
+          onFocus: vm$.methods.showSaveFilterPopover,
+        },
+        [
+          Timeless.Icon({
+            name: "plus",
+            size: 16,
+            attributes: { n: "content-add-filter-icon" },
+          }),
+        ],
+      ),
+    ],
+  );
+}
+
 function ContentSavedFilterPanel(props) {
   const vm$ = props.store;
   return View(
@@ -171,7 +254,7 @@ function ContentSavedFilterPanel(props) {
       class: "w-full h-full min-h-0 flex flex-col p-3 overflow-hidden bg-content-panel border-right-[var(--dm-border-width)_solid_var(--dm-content-border)]",
       attributes: {
         n: "content-saved-filter-panel",
-        "aria-label": "快捷筛选器",
+        "aria-label": "内容筛选",
       },
       onSubmit(event) {
         event.preventDefault();
@@ -179,29 +262,6 @@ function ContentSavedFilterPanel(props) {
       },
     },
     [
-      View(
-        {
-          class: "mb-3",
-          attributes: { n: "content-saved-filter-header" },
-        },
-        [
-          View(
-            {
-              as: "h2",
-              class: "m-0 text-content-text text-base font-semibold",
-              attributes: { n: "content-saved-filter-title" },
-            },
-            ["快捷筛选器"],
-          ),
-          View(
-            {
-              class: "mt-1 text-content-muted text-caption leading-tight",
-              attributes: { n: "content-saved-filter-description" },
-            },
-            ["保存当前多个筛选条件，一键复用"],
-          ),
-        ],
-      ),
       View(
         {
           class: "grid gap-2 pb-3 border-bottom-[var(--dm-border-width)_solid_var(--dm-content-border)]",
@@ -258,33 +318,41 @@ function ContentSavedFilterPanel(props) {
           ),
         ],
       ),
-      Input({
-        store: vm$.ui.input_filter_name$,
-        rootAttributes: { n: "content-filter-name-control" },
-        attributes: {
-          n: "content-filter-name-input",
-          name: "filter_name",
-          placeholder: "筛选器名称",
-          maxlength: "60",
-          required: true,
-          autocomplete: "off",
-          "aria-label": "筛选器名称",
-        },
-      }),
-      Button(
+      View(
         {
-          store: vm$.ui.btn_save_filter$,
-          class: "w-full mt-2",
-          attributes: {
-            n: "content-save-filter-action",
-            type: "submit",
-          },
+          class: "mt-3 mb-3",
+          attributes: { n: "content-saved-filter-header" },
         },
-        ["保存当前筛选"],
+        [
+          View(
+            {
+              class: "flex items-center justify-between gap-2",
+              attributes: { n: "content-saved-filter-heading" },
+            },
+            [
+              View(
+                {
+                  as: "h2",
+                  class: "m-0 text-content-text text-base font-semibold",
+                  attributes: { n: "content-saved-filter-title" },
+                },
+                ["快捷筛选器"],
+              ),
+              ContentSaveFilterPopover({ store: vm$ }),
+            ],
+          ),
+          View(
+            {
+              class: "mt-1 text-content-muted text-caption leading-tight",
+              attributes: { n: "content-saved-filter-description" },
+            },
+            ["保存当前多个筛选条件，一键复用"],
+          ),
+        ],
       ),
       View(
         {
-          class: "min-h-0 flex-[1_1_auto] overflow-y-auto flex flex-col gap-2 mt-3",
+          class: "min-h-0 flex-[1_1_auto] overflow-y-auto flex flex-wrap items-start content-start gap-2 mt-3",
           attributes: {
             n: "content-saved-filter-list",
             role: "list",
@@ -314,12 +382,12 @@ function ContentSavedFilterPanel(props) {
                 vm$.state.active_filter_id,
                 (active_id) => active_id === filter.id,
               );
-              return View(
+              return Tag(
                 {
                   class: computed(active_, (active) =>
                     active
-                      ? "min-w-0 flex items-stretch gap-1 rounded-md [&.is-active_.group-content-saved-filter-apply]:text-color-primary [&.is-active_.group-content-saved-filter-apply]:bg-color-primary-soft is-active"
-                      : "min-w-0 flex items-stretch gap-1 rounded-md [&.is-active_.group-content-saved-filter-apply]:text-color-primary [&.is-active_.group-content-saved-filter-apply]:bg-color-primary-soft",
+                      ? "min-w-0 text-color-primary bg-color-primary-soft"
+                      : "min-w-0",
                   ),
                   attributes: {
                     n: "content-saved-filter",
@@ -331,11 +399,12 @@ function ContentSavedFilterPanel(props) {
                     {
                       as: "button",
                       type: "button",
-                      class: "group-content-saved-filter-apply min-w-0 flex-[1_1_auto] p-2 text-left text-inherit bg-transparent border-0 rounded-inherit cursor-pointer hover:text-color-primary hover:bg-color-primary-soft dm-focus-ring",
+                      class: "min-w-0 p-0 text-left text-inherit font-inherit bg-transparent border-0 rounded-inherit cursor-pointer hover:text-color-primary dm-focus-ring",
                       attributes: {
                         n: "content-saved-filter-apply",
                         type: "button",
-                        title: vm$.methods.filterSummary(filter),
+                        title: filter.name,
+                        "aria-pressed": computed(active_, (active) => String(active)),
                       },
                       onClick() {
                         void vm$.methods.applyFilter(filter);
@@ -344,20 +413,10 @@ function ContentSavedFilterPanel(props) {
                     [
                       View(
                         {
-                          class: "overflow-hidden text-ellipsis whitespace-nowrap text-sm font-semibold",
+                          class: "overflow-hidden text-ellipsis whitespace-nowrap text-sm",
                           attributes: { n: "content-saved-filter-name" },
                         },
                         [filter.name],
-                      ),
-                      View(
-                        {
-                          class: "overflow-hidden text-ellipsis whitespace-nowrap block mt-0-5 text-content-muted text-caption",
-                          attributes: {
-                            n: "content-saved-filter-summary",
-                            title: vm$.methods.filterSummary(filter),
-                          },
-                        },
-                        [vm$.methods.filterSummary(filter)],
                       ),
                     ],
                   ),
@@ -365,7 +424,7 @@ function ContentSavedFilterPanel(props) {
                     {
                       as: "button",
                       type: "button",
-                      class: "flex-[0_0_auto] grid place-items-center p-[0_var(--dm-space-2)] text-content-muted bg-transparent border-0 rounded-md cursor-pointer hover:text-color-danger hover:bg-color-danger-soft focus-visible:text-color-danger focus-visible:bg-color-danger-soft dm-focus-ring",
+                      class: "flex-[0_0_auto] inline-grid place-items-center p-0 text-inherit bg-transparent border-0 rounded-inherit cursor-pointer hover:text-color-danger hover:bg-color-danger-soft focus-visible:text-color-danger focus-visible:bg-color-danger-soft dm-focus-ring",
                       attributes: {
                         n: "content-saved-filter-delete",
                         type: "button",
@@ -597,23 +656,7 @@ function ContentRowStatistics(props) {
 function ContentRowMain(props) {
   const vm$ = props.store;
   const content = props.content;
-  // Per-row reactive tag list, keyed by the content object identity so it
-  // survives re-renders and stays in sync with the TagSelect popover.
-  if (!content.__tag_ref__) {
-    content.__tag_ref__ = ref((content.tags || []).slice());
-  }
-  const tags_ref = content.__tag_ref__;
-
-  function remove_tag(tag) {
-    const next = (tags_ref.value || []).filter((t) => t.id !== tag.id);
-    tags_ref.as(next);
-    window.request
-      .post("/api/tag/content/set", {
-        content_id: content.id,
-        tag_ids: next.map((t) => t.id),
-      })
-      .catch(() => {});
-  }
+  const tags_ref = vm$.methods.contentTags(content);
   const favicon = window.PLATFORM_FAVICONS[content.platform_id] || "";
   const title = content.title || "\u00a0";
   const copied_ = computed(
@@ -728,7 +771,12 @@ function ContentRowMain(props) {
           Runtime.For({
             each: computed(tags_ref, (list) => list),
             render(tag) {
-              return ContentTagBadge({ tag, onRemove: remove_tag });
+              return ContentTagBadge({
+                tag,
+                onRemove(removed_tag) {
+                  return vm$.methods.removeTag(content, removed_tag);
+                },
+              });
             },
           }),
         ],
@@ -1159,7 +1207,7 @@ function ContentCardBody(props) {
             return ContentCardState({
               error: true,
               title: "内容加载失败",
-              description: vm$.state.error,
+
               retry: vm$.ui.btn_retry$,
             });
           },

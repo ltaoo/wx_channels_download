@@ -1,4 +1,10 @@
-import { request } from "@/biz/request.js";
+import { track_error } from "@/utils.js";
+import {
+  fetchMcpStatus,
+  setMcpEnabled,
+  fetchProxyCertificateStatus,
+  uninstallProxyCertificate,
+} from "@/biz/request.js";
 import { format_time } from "@/utils.js";
 
 const Timeless = window.Timeless;
@@ -230,6 +236,7 @@ function createUpdateModel(options = {}) {
   }
 
   function apply_snapshot(snapshot) {
+    if (snapshot?.status === "error" && snapshot.error) options.tip({ msg: [snapshot.error], type: "error" });
     const latest_version = String(
       (snapshot && (snapshot.latest_version || snapshot.name)) || "",
     ).trim();
@@ -404,11 +411,11 @@ function createUpdateModel(options = {}) {
   };
 }
 
-function create_mcp_settings_model(client) {
+function create_mcp_settings_model(client, tip) {
   const data_ = Timeless.ref(null);
   const loading_ = Timeless.ref(false);
   const saving_ = Timeless.ref(false);
-  const error_ = Timeless.ref("");
+  const error_ = track_error(Timeless.ref(""), tip);
   const enabled_ = Timeless.computed(data_, function (data) {
     return Boolean(data && data.enabled);
   });
@@ -417,15 +424,11 @@ function create_mcp_settings_model(client) {
   });
   let request_sequence = 0;
   const status_request = new Timeless.kit.RequestCore(
-    function () {
-      return request.get("/api/mcp/status");
-    },
+    fetchMcpStatus,
     { client },
   );
   const update_request = new Timeless.kit.RequestCore(
-    function (enabled) {
-      return request.post(enabled ? "/api/mcp/enable" : "/api/mcp/disable");
-    },
+    setMcpEnabled,
     { client },
   );
 
@@ -534,6 +537,7 @@ function create_mcp_settings_model(client) {
     },
     ui,
     methods: {
+      tip,
       destroy,
       load,
       set_enabled,
@@ -553,9 +557,9 @@ export function ShellViewModel(props) {
       icon: "history",
     },
     { title: "账号", name: "root.shell.account", icon: "user" },
-    // { title: "视频号", name: "root.shell.wxchannels", icon: "play" },
     { title: "自动化", name: "root.shell.automation", icon: "bot" },
-    { title: "同步", name: "root.shell.sync", icon: "upload" },
+    // { title: "视频号", name: "root.shell.wxchannels", icon: "play" },
+    // { title: "同步", name: "root.shell.sync", icon: "upload" },
     // { title: "日志", name: "root.shell.logs", icon: "user" },
   ];
   const menu$ = Timeless.kit.RouteMenusModel({
@@ -565,22 +569,19 @@ export function ShellViewModel(props) {
   });
   const settings_section_ = Timeless.ref("certificate");
   const update$ = createUpdateModel({
+    tip: props.tip,
     currentVersion: String(window.config.version || "").trim(),
   });
-  const mcp_settings$ = create_mcp_settings_model(props.client);
+  const mcp_settings$ = create_mcp_settings_model(props.client, props.tip);
   const certificate_ = Timeless.ref(null);
   const certificate_loading_ = Timeless.ref(false);
-  const certificate_error_ = Timeless.ref("");
+  const certificate_error_ = track_error(Timeless.ref(""), props.tip);
   const certificate_request = new Timeless.kit.RequestCore(
-    function () {
-      return request.get("/api/proxy/certificate/status");
-    },
+    fetchProxyCertificateStatus,
     { client: props.client },
   );
   const certificate_uninstall_request = new Timeless.kit.RequestCore(
-    function () {
-      return request.post("/api/proxy/certificate/uninstall");
-    },
+    uninstallProxyCertificate,
     { client: props.client },
   );
   let certificate_request_sequence = 0;
@@ -600,6 +601,8 @@ export function ShellViewModel(props) {
       return result;
     }
     certificate_.as(result.data || {});
+    if (result.data?.install_status_error) props.tip({ msg: [result.data.install_status_error], type: "error" });
+    if (result.data?.parse_error) props.tip({ msg: [`证书内容解析失败：${result.data.parse_error}`], type: "error" });
     return result;
   }
 

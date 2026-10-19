@@ -92,7 +92,7 @@ function SyncServerCard(props) {
         ["同步到该服务"],
       ),
       Show({
-        when: server.message,
+        when: computed(server.status, (status) => status === "success"),
         ok() {
           return View(
             {
@@ -205,18 +205,7 @@ export default function SyncPageView(props) {
           attributes: { n: "sync-main" },
         },
         [
-          Show({
-            when: model.state.error,
-            ok() {
-              return View(
-                {
-                  class: "text-color-danger p-8 text-center",
-                  attributes: { n: "sync-page-error", role: "alert" },
-                },
-                [model.state.error.value],
-              );
-            },
-          }),
+
           Show({
             when: computed(
               model.state.visible_servers,

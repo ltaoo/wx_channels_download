@@ -1,4 +1,21 @@
-import { request } from "@/biz/request.js";
+import { track_error } from "@/utils.js";
+import {
+  fetchPipelineList,
+  createPipeline,
+  updatePipeline,
+  deletePipeline,
+  fetchPipelineDetail,
+  fetchPipelineNodeCatalog,
+  triggerPipeline,
+  importPipeline,
+  fetchScheduleList,
+  triggerSchedule,
+  fetchPipelineRunList,
+  fetchPipelineRunDetail,
+  cancelPipelineRun,
+  resumePipelineRun,
+  retryPipelineRun,
+} from "@/biz/request.js";
 import { PipelineEditorBridge } from "./pipeline_editor.model.js";
 
 const AutomationChannelCore = Timeless.kit.ChannelCore;
@@ -470,7 +487,7 @@ function AutomationPageViewModel(props, options) {
   const selected_flow_id_ = ref(view_query.flow_id);
   const selected_pipeline_ = refobj(null);
   const loading_ = ref(false);
-  const error_ = ref("");
+  const error_ = track_error(ref(""), props.tip);
   const notice_ = ref("");
   const dirty_ = ref(false);
   const saving_ = ref(false);
@@ -500,6 +517,7 @@ function AutomationPageViewModel(props, options) {
   const edit_triggers_ = refarr([]);
   const edit_start_node_id_ = ref("");
   const selected_edit_node_id_ = ref("");
+  const node_inspector_open_ = ref(false);
   const edit_node_config_ = ref("{}");
   const staged_node_positions = new Map();
 
@@ -518,7 +536,7 @@ function AutomationPageViewModel(props, options) {
   const add_service_tool_ = ref("");
   const add_service_form_ = refobj(null);
   const add_service_form_schema_ = refarr([]);
-  const add_service_form_error_ = ref("");
+  const add_service_form_error_ = track_error(ref(""), props.tip);
   const add_from_ = ref("");
   // 非空即「插入」模式：在该节点与其 next 之间插入新节点
   const add_insert_to_ = ref("");
@@ -528,13 +546,13 @@ function AutomationPageViewModel(props, options) {
   const run_open_ = ref(false);
   const run_submitting_ = ref(false);
   const run_params_ = refarr([]);
-  const run_error_ = ref("");
+  const run_error_ = track_error(ref(""), props.tip);
 
   // import-pipeline dialog state
   const import_open_ = ref(false);
   const import_submitting_ = ref(false);
   const import_json_ = ref("");
-  const import_error_ = ref("");
+  const import_error_ = track_error(ref(""), props.tip);
 
   // list-row delete state
   const pending_delete_flow_id_ = ref("");
@@ -562,72 +580,57 @@ function AutomationPageViewModel(props, options) {
     execution_channel_connected_.as(Boolean(channel_state.connected));
   });
 
-  const run_request = (endpoint) => new Timeless.kit.RequestCore(
-    (body) => request.post(`/api/v1/automation/${endpoint}`, body), { client: props.client },
-  );
+  const run_request = (fn) =>
+    new Timeless.kit.RequestCore(fn, { client: props.client });
   const reqs = {
-    run: { list: run_request("list_runs"), detail: run_request("get_run"), cancel: run_request("cancel_run"), resume: run_request("resume_run"), retry: run_request("retry_run") },
+    run: {
+      list: run_request(fetchPipelineRunList),
+      detail: run_request(fetchPipelineRunDetail),
+      cancel: run_request(cancelPipelineRun),
+      resume: run_request(resumePipelineRun),
+      retry: run_request(retryPipelineRun),
+    },
     pipeline: {
       list: new Timeless.kit.RequestCore(
-        function fetchPipelineList(params) {
-          return request.post("/api/v1/automation/list_flows", params);
-        },
+        fetchPipelineList,
         { client: props.client },
       ),
       create: new Timeless.kit.RequestCore(
-        function createPipeline(body) {
-          return request.post("/api/v1/automation/create_flow", body);
-        },
+        createPipeline,
         { client: props.client },
       ),
       update: new Timeless.kit.RequestCore(
-        function updatePipeline(body) {
-          return request.post("/api/v1/automation/update_flow", body);
-        },
+        updatePipeline,
         { client: props.client },
       ),
       delete: new Timeless.kit.RequestCore(
-        function deletePipeline(body) {
-          return request.post("/api/v1/automation/delete_flow", body);
-        },
+        deletePipeline,
         { client: props.client },
       ),
       detail: new Timeless.kit.RequestCore(
-        function fetchPipelineDetail(body) {
-          return request.post("/api/v1/automation/get_flow", body);
-        },
+        fetchPipelineDetail,
         { client: props.client },
       ),
       catalog: new Timeless.kit.RequestCore(
-        function fetchPipelineNodeCatalog(params) {
-          return request.post("/api/v1/automation/list_flow_nodes", params);
-        },
+        fetchPipelineNodeCatalog,
         { client: props.client },
       ),
       trigger: new Timeless.kit.RequestCore(
-        function triggerPipeline(body) {
-          return request.post("/api/v1/automation/trigger_flow", body);
-        },
+        triggerPipeline,
         { client: props.client },
       ),
       import: new Timeless.kit.RequestCore(
-        function importPipeline(body) {
-          return request.post("/api/v1/automation/import_flow", body);
-        },
+        importPipeline,
         { client: props.client },
       ),
     },
     schedule: {
       list: new Timeless.kit.RequestCore(
-        function fetchScheduleList(params) {
-          return request.post("/api/v1/automation/list_schedules", params);
-        },
+        fetchScheduleList,
         { client: props.client },
       ),
       trigger: new Timeless.kit.RequestCore(
-        function triggerSchedule(body) {
-          return request.post("/api/v1/automation/trigger_schedule", body);
-        },
+        triggerSchedule,
         { client: props.client },
       ),
     },
@@ -808,6 +811,10 @@ function AutomationPageViewModel(props, options) {
         return open_add_dialog();
       },
     }),
+    btn_close_node_inspector$: new Timeless.vm.ButtonCore({
+      variant: "outline", size: "sm",
+      onClick() { node_inspector_open_.as(false); },
+    }),
     btn_add_submit$: new Timeless.vm.ButtonCore({
       variant: "primary",
       disabled: add_submitting_.value,
@@ -874,14 +881,6 @@ function AutomationPageViewModel(props, options) {
       variant: "ghost",
       onClick() {
         ui.import_dialog$.hide();
-      },
-    }),
-    btn_delete_flow$: new Timeless.vm.ButtonCore({
-      variant: "danger",
-      size: "sm",
-      onClick() {
-        ui.delete_dialog$.show();
-        return null;
       },
     }),
     btn_add_cron_trigger$: new Timeless.vm.ButtonCore({
@@ -1773,6 +1772,7 @@ function AutomationPageViewModel(props, options) {
 
   function select_edit_node(node_id) {
     const node = find_edit_node(String(node_id || ""));
+    node_inspector_open_.as(Boolean(node));
     selected_edit_node_id_.as(node ? node.id : "");
     const config_text = JSON.stringify((node && node.config) || {}, null, 2);
     edit_node_config_.as(config_text);
@@ -2526,15 +2526,18 @@ function AutomationPageViewModel(props, options) {
   });
 
   const methods = {
+    tip: props.tip,
     async ready() {
       await load_data();
       if (view_mode_.value !== "list" && selected_flow_id_.value) {
         await select_pipeline(selected_flow_id_.value);
       }
     connect_execution_channel().catch(() => false);
-      if (view_mode_.value !== "list") {
+      if (view_mode_.value === "detail" && !disposed) {
         await load_runs().catch(set_error);
-        run_poll_timer = setInterval(() => { load_runs().catch(set_error); }, 3000);
+        if (!disposed && run_poll_timer === null) {
+          run_poll_timer = setInterval(() => { load_runs().catch(set_error); }, 3000);
+        }
       }
       return null;
     },
@@ -2555,6 +2558,9 @@ function AutomationPageViewModel(props, options) {
     openAddDialog: open_add_dialog,
     openInsertDialog: open_insert_dialog,
     selectEditNode: select_edit_node,
+    closeNodeInspector() {
+      node_inspector_open_.as(false);
+    },
     stageEditNodePosition: stage_edit_node_position,
     moveEditNode: move_edit_node,
     applySelectedNodeConfig: apply_selected_node_config,
@@ -2645,6 +2651,7 @@ function AutomationPageViewModel(props, options) {
     edit_triggers: edit_triggers_,
     edit_start_node_id: edit_start_node_id_,
     selected_edit_node_id: selected_edit_node_id_,
+    node_inspector_open: node_inspector_open_,
     edit_node_config: edit_node_config_,
     loading: loading_,
     error: error_,

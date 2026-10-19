@@ -1,4 +1,5 @@
-import { request } from "@/biz/request.js";
+import { track_error } from "@/utils.js";
+import { fetchDownloadTaskDetail, fetchFile } from "@/biz/request.js";
 
 function prop_value(value) {
   if (value && typeof value === "object" && "value" in value) {
@@ -487,18 +488,18 @@ function PreviewViewModel(props) {
   const hls_player$ = props.hlsPlayer;
   const task_ = ref(null);
   const loading_ = ref(false);
-  const error_ = ref("");
+  const error_ = track_error(ref(""), props.tip);
   const active_file_ = ref(null);
   const gallery_file_ = ref(null);
   const zip_images_ = refarr([]);
   const zip_loading_ = ref(false);
-  const zip_error_ = ref("");
+  const zip_error_ = track_error(ref(""), props.tip);
   const html_content_ = ref("");
   const html_loading_ = ref(false);
-  const html_error_ = ref("");
+  const html_error_ = track_error(ref(""), props.tip);
   const text_lines_ = refarr([]);
   const text_loading_ = ref(false);
-  const text_error_ = ref("");
+  const text_error_ = track_error(ref(""), props.tip);
   const text_has_more_ = ref(false);
   const text_scroll_top_ = ref(0);
   const text_viewport_height_ = ref(1);
@@ -550,6 +551,7 @@ function PreviewViewModel(props) {
   const unlisten_hls_player = hls_player$.onStateChange((state) => {
     live_playback_status_.as(state.status);
     live_playback_message_.as(live_playback_message(state, live_file));
+    if (state.status === "error") props.tip({ msg: [live_playback_message_.value], type: "error" });
   });
 
   function is_live_playback(file) {
@@ -586,7 +588,7 @@ function PreviewViewModel(props) {
 
   function create_video_player(file, options) {
     const tracks = refarr([]);
-    const subtitle_error = ref("");
+    const subtitle_error = track_error(ref(""), props.tip);
     let controller = null;
     let session = null;
     const player = {
@@ -943,11 +945,11 @@ function PreviewViewModel(props) {
   }
 
   const detail_request = new Timeless.kit.RequestCore(
-    (params) => request.get("/api/v1/download_task/detail", params),
+    fetchDownloadTaskDetail,
     { client: props.client },
   );
   const zip_request = new Timeless.kit.RequestCore(
-    (params) => request.get("/api/file", params),
+    fetchFile,
     { client: props.client },
   );
 
@@ -1026,6 +1028,7 @@ function PreviewViewModel(props) {
   }
 
   const methods = {
+    tip: props.tip,
     ready() {
       return load();
     },

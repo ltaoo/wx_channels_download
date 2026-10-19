@@ -422,18 +422,6 @@ function FileHelperPageView(props) {
         }),
         ...FileHelperHiddenInputsView({ store: vm$ }),
       ]),
-      Show({
-        when: vm$.state.toast_visible,
-        ok() {
-          return View(
-            {
-              class: "fixed top-[50%] left-[50%] z-1000 max-w-[min(360px,_calc(100%_-_32px))] p-[var(--dm-space-3)_var(--dm-space-6)] text-color-media-text text-base text-center overflow-wrap-anywhere bg-color-media-surface rounded-overlay transform-[translate(-50%,_-50%)] dm-panel dm-shadow-popover",
-              attributes: { role: "status", "aria-live": "polite" },
-            },
-            [vm$.state.toast_message],
-          );
-        },
-      }),
     ],
   );
 }

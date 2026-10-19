@@ -7,12 +7,18 @@ const { test } = require("node:test");
 const frontend = path.join(__dirname, "..");
 const source = fs.readFileSync(path.join(frontend, "src/pages/automation.model.js"), "utf8");
 
-function setup({ legacy_event = false, schedules = [], reject_save = false, live_channel = null, flows = null, runs = [] } = {}) {
-  const context = vm.createContext({ setTimeout, clearTimeout, setInterval: () => 0, clearInterval, URLSearchParams });
+function setup({ legacy_event = false, schedules = [], reject_save = false, live_channel = null, flows = null, runs = [], mode = "edit" } = {}) {
+  const timers = new Map();
+  const context = vm.createContext({ setTimeout, clearTimeout, setInterval(fn, delay) {
+    const id = timers.size + 1;
+    timers.set(id, { fn, delay });
+    return id;
+  }, clearInterval(id) { timers.delete(id); }, URLSearchParams });
   context.window = context;
   context.__store = {};
   vm.runInContext(fs.readFileSync(path.join(frontend, "public/timeless/0.33.1/timeless.umd.min.js"), "utf8"), context);
   for (const name of ["ref", "refarr", "refobj", "combine", "computed"]) context[name] = context.Timeless[name];
+  vm.runInContext(fs.readFileSync(path.join(frontend, "src/utils.js"), "utf8").replace(/^export /gm, ""), context);
   vm.runInContext(fs.readFileSync(path.join(frontend, "src/pages/pipeline_editor.model.js"), "utf8").replace(/export \{[^}]+\};\s*$/, ""), context);
   // Only the HTTP transport is replaced. Input,
   // checkbox, array, dirty-state, and selection behavior use the bundled runtime.
@@ -24,7 +30,10 @@ function setup({ legacy_event = false, schedules = [], reject_save = false, live
     } }),
   };
   const calls = [];
-  context.request = { post: (url, body) => ({ url, body }) };
+  vm.runInContext(
+    fs.readFileSync(path.join(frontend, "src/biz/request.js"), "utf8").replace(/^export /gm, ""),
+    context,
+  );
   const TestRequestCore = class {
     constructor(fn) { this.fn = fn; }
     async run(params) {
@@ -57,11 +66,41 @@ function setup({ legacy_event = false, schedules = [], reject_save = false, live
   context.Timeless = { ...context.Timeless, kit: { ...context.Timeless.kit, RequestCore: TestRequestCore,
     ...(live_channel ? { ChannelCore: class { constructor() { return live_channel; } } } : {}),
   } };
-  const executable = source.replace(/^import .*;\n/gm, "");
+  const executable = source.replace(/^import[\s\S]*?;\n/gm, "");
   vm.runInContext(executable.slice(0, executable.lastIndexOf("\nexport {")), context);
-  const model = context.AutomationPageViewModel({ client: {}, view: { query: { id: flow.id } } }, { mode: "edit" });
-  return { model, calls, context, flow };
+  const model = context.AutomationPageViewModel({ client: {}, tip() {}, view: { query: { id: flow.id } } }, { mode });
+  return { model, calls, context, flow, timers };
 }
+
+test("closing the node inspector retains unapplied text; selecting a node reopens it", async () => {
+  const { model } = setup();
+  await model.methods.refresh();
+  assert.equal(model.state.node_inspector_open.value, true);
+  model.ui.input_edit_node_config$.setValue('{"draft":true}');
+  model.methods.closeNodeInspector();
+  assert.equal(model.state.node_inspector_open.value, false);
+  assert.equal(model.state.edit_node_config.value, '{"draft":true}');
+  model.methods.selectEditNode("end");
+  assert.equal(model.state.node_inspector_open.value, true);
+  assert.equal(model.state.selected_edit_node_id.value, "end");
+  model.methods.destroy();
+});
+
+test("the editor does not poll removed run history; the detail page polls and releases its timer", async () => {
+  for (const mode of ["edit", "detail"]) {
+    const { model, calls, timers } = setup({ mode });
+    await model.methods.ready();
+    assert.equal(calls.filter((call) => call.url.endsWith("list_runs")).length, mode === "detail" ? 1 : 0);
+    const polling = [...timers.values()].filter((timer) => timer.delay === 3000);
+    assert.equal(polling.length, mode === "detail" ? 1 : 0);
+    if (polling.length) {
+      await polling[0].fn();
+      assert.equal(calls.filter((call) => call.url.endsWith("list_runs")).length, 2);
+    }
+    model.methods.destroy();
+    assert.equal([...timers.values()].filter((timer) => timer.delay === 3000).length, 0);
+  }
+});
 
 test("automation pagination shows bounded pages and clamps the last page after a reload", async () => {
   const flows = Array.from({ length: 101 }, (_, index) => ({ id: `flow-${index}`, name: `任务 ${index}` }));

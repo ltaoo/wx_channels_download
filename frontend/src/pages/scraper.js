@@ -1,3 +1,4 @@
+import { ErrorMessage } from "@/dmui.js";
 import { ThirdPartyDownloaderPanel } from "@/third-party-downloader.js";
 import {
   FileTreeView,
@@ -17,10 +18,6 @@ const home_typed_detail_classes = {
 };
 
 const {
-  Alert,
-  AlertTitle,
-  AlertDescription,
-  BrandError,
   Tag,
   PlatformTag,
   Tooltip,
@@ -114,57 +111,7 @@ function ScraperPageView(props) {
               ScraperFetchProgress({ store: vm$ }),
             ],
           ),
-          Show({
-            when: vm$.state.error,
-            ok() {
-              return Alert(
-                {
-                  variant: "destructive",
-                  class: "dm-flex dm-flex-col dm-items-center dm-gap-3",
-                  style: { textAlign: "center" },
-                  attributes: {
-                    n: "scraper-fetch-error",
-                    "aria-atomic": "true",
-                  },
-                },
-                [
-                  BrandError({
-                    size: 132,
-                    name: "scraper-fetch-error-symbol",
-                    style: { flexShrink: 0 },
-                  }),
-                  View(
-                    {
-                      class: "dm-min-w-0 dm-w-full",
-                      attributes: { n: "scraper-fetch-error-content" },
-                    },
-                    [
-                      AlertTitle(
-                        {
-                          style: {
-                            "text-align": "center",
-                          },
-                          attributes: { n: "scraper-fetch-error-title" },
-                        },
-                        ["解析失败"],
-                      ),
-                      AlertDescription(
-                        {
-                          attributes: { n: "scraper-fetch-error-message" },
-                          style: {
-                            "text-align": "center",
-                            "white-space": "pre-wrap",
-                            "overflow-wrap": "anywhere",
-                          },
-                        },
-                        [vm$.state.error],
-                      ),
-                    ],
-                  ),
-                ],
-              );
-            },
-          }),
+
           ScraperFetchedRawContent({ store: vm$ }),
           ScraperPageResult({ store: vm$ }),
         ]),
@@ -1727,21 +1674,7 @@ function ScraperDownloadInfo(props) {
           ]),
         ]),
         View({ class: "p-3-5 flex flex-col gap-3 max-520:p-2-5" }, [
-          Show({
-            when: computed(download_info.error, (error) => Boolean(error)),
-            ok() {
-              return View(
-                {
-                  class: "min-h-36px p-[var(--dm-space-2)_var(--dm-space-2-5)] flex items-center gap-2 border-[1px_solid_color-mix(_in_srgb,_var(--dm-content-danger)_34%,_var(--dm-content-border)_)] rounded-content bg-color-danger-soft text-content-danger text-xs",
-                  attributes: { role: "alert" },
-                },
-                [
-                  Timeless.Icon({ name: "circle-alert", size: 15 }),
-                  download_info.error,
-                ],
-              );
-            },
-          }),
+
           Show({
             when: computed(download_info.hide_resources, (hide) => !hide),
             ok() {
@@ -2032,12 +1965,7 @@ function ScraperCacheContentDialog(props) {
             return Show({
               when: computed(cache_content.error, (error) => Boolean(error)),
               ok() {
-                return View(
-                  {
-                    class: "min-h-260px w-full flex items-center justify-center gap-2-5 text-md p-6 box-sizing-border-box text-content-danger text-center",
-                  },
-                  [cache_content.error],
-                );
+                return ErrorMessage({ tip: vm$.methods.tip, error: cache_content.error });
               },
               else() {
                 return View(

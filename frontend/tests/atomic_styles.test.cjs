@@ -196,6 +196,28 @@ test("the account page retains its bounded layout and content region", () => {
   assert.equal(styles(main)["min-height"], "0");
 });
 
+test("the automation editor fills its page and keeps the inspector and toolbar fixed", () => {
+  const page = element(view_classes("pages/flow_edit.js", "automation-page"));
+  assert.equal(styles(page).height, "100%");
+  assert.equal(styles(page)["min-height"], "0");
+  assert.equal(styles(page).overflow, "hidden");
+  const workspace = element(view_classes("pages/flow_edit.js", "automation-editor-workspace"), page);
+  assert.equal(styles(workspace).position, "absolute");
+  assert.equal(styles(workspace).inset, "0");
+  const canvas = element("group-automation-flow-scroll", workspace);
+  assert.equal(styles(canvas).height, "100%");
+  assert.equal(styles(canvas)["min-height"], "0");
+  const inspector = element(view_classes("pages/flow_edit.js", "automation-node-inspector"));
+  assert.equal(styles(inspector).position, "fixed");
+  assert.equal(styles(inspector).width, "min(420px, calc(100vw - 32px))");
+  assert.match(styles(inspector).transition, /transform.*opacity.*visibility/);
+  assert.equal(styles(inspector, { reduced: true }).transition, "none");
+  const toolbar = element(view_classes("pages/flow.components.js", "automation-workspace-toolbar", { is_edit: true }));
+  assert.equal(styles(toolbar).position, "fixed");
+  assert.equal(styles(toolbar).right, "var(--dm-space-4)");
+  assert.doesNotMatch(read("src/pages/flow_edit.js"), /AutomationRunHistory|automation-editor-toolbar-wrap/);
+});
+
 test("dynamic gallery variants retain single-image and three-image layouts", () => {
   for (const count of [1, 2, 3, 4]) {
     const gallery = element(view_classes("pages/account.js", "account-content-card-gallery", {

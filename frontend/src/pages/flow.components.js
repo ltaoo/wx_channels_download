@@ -1,3 +1,4 @@
+import { ErrorMessage } from "@/dmui.js";
 import {
   calculate_flow_minimap_geometry,
   calculate_pipeline_node_positions,
@@ -68,7 +69,7 @@ export function AutomationStartTriggers(props) {
     ]),
     Show({
       when: computed(vm$.state.edit_triggers, (triggers) => !triggers.length),
-      ok() { return View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base" }, ["尚未配置定时或事件触发器，可通过顶部「立即执行」启动。"]); },
+      ok() { return View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base" }, ["尚未配置定时或事件触发器，可通过顶部「手动执行」启动。"]); },
     }),
     For({
       each: vm$.state.edit_triggers, key: "uid",
@@ -209,24 +210,7 @@ export function AutomationPipelineLink(props) {
 export function AutomationFeedback(props) {
   const vm$ = props.store;
   return View({ class: "grid gap-2 p-[var(--dm-space-4)_var(--dm-space-4)_0] [&:empty]:hidden " }, [
-    Show({
-      when: vm$.state.error,
-      ok() {
-        return Alert(
-          {
-            variant: "destructive",
-            class: "m-0",
-            attributes: { n: "automation-error-alert" },
-          },
-          [
-            AlertTitle({ attributes: { n: "automation-error-title" } }, [
-              "请求失败",
-            ]),
-            AlertDescription({}, [vm$.state.error.value]),
-          ],
-        );
-      },
-    }),
+
     Show({
       when: vm$.state.notice,
       ok() {
@@ -245,13 +229,18 @@ export function AutomationFeedback(props) {
 export function AutomationWorkspaceToolbar(props) {
   const vm$ = props.store;
   const is_edit = props.mode === "edit";
-  return View({ class: "group-content-toolbar flex items-center justify-between gap-3 max-760:flex-wrap min-w-0 max-900:items-stretch max-900:flex-col" }, [
-    View({ class: "min-w-0 flex items-center gap-2" }, [
-      View({ class: "min-w-0" }, [
-        View({ class: "text-color-text-secondary text-caption font-semibold text-transform-uppercase" }, [
+  return View({
+    class: is_edit
+      ? "fixed top-4 right-4 z-sticky flex flex-col items-end gap-2 max-w-[calc(100vw_-_32px)]"
+      : "group-content-toolbar flex items-center justify-between gap-3 max-760:flex-wrap min-w-0 max-900:items-stretch max-900:flex-col",
+    attributes: { n: "automation-workspace-toolbar" },
+  }, [
+    View({ class: "min-w-0 flex items-center gap-2", attributes: { n: "automation-workspace-heading" } }, [
+      View({ class: "min-w-0", attributes: { n: "automation-workspace-title" } }, [
+        View({ class: "text-color-text-secondary text-caption font-semibold text-transform-uppercase", attributes: { n: "automation-workspace-mode" } }, [
           is_edit ? "编辑 Pipeline" : "Pipeline 详情",
         ]),
-        View({ class: "overflow-hidden text-color-text-primary font-display text-lg font-semibold text-ellipsis whitespace-nowrap" }, [
+        View({ class: "overflow-hidden text-color-text-primary font-display text-lg font-semibold text-ellipsis whitespace-nowrap", attributes: { n: "automation-workspace-name" } }, [
           computed(vm$.state.selected_pipeline, (flow) =>
             flow ? flow.name || flow.id : vm$.state.selected_flow_id.value,
           ),
@@ -259,7 +248,7 @@ export function AutomationWorkspaceToolbar(props) {
       ]),
     ]),
     View(
-      { class: "min-w-0 flex items-center gap-2 flex-wrap justify-end max-900:justify-start" },
+      { class: "min-w-0 flex items-center gap-2 flex-wrap justify-end", attributes: { n: "automation-workspace-actions" } },
       [
         is_edit
           ? Tag(
@@ -283,7 +272,7 @@ export function AutomationWorkspaceToolbar(props) {
             store: vm$.ui.btn_run_flow$,
             attributes: { n: "automation-run-flow", type: "button" },
           },
-          ["立即执行"],
+          ["手动执行"],
         ),
         is_edit
           ? Button(
@@ -299,18 +288,6 @@ export function AutomationWorkspaceToolbar(props) {
               label: "编辑 Pipeline",
               primary: true,
             }),
-        is_edit
-          ? Button(
-              {
-                store: vm$.ui.btn_delete_flow$,
-                attributes: {
-                  n: "automation-delete-flow",
-                  type: "button",
-                },
-              },
-              ["删除 Pipeline"],
-            )
-          : null,
       ].filter(Boolean),
     ),
   ]);
@@ -1268,12 +1245,25 @@ export function AutomationFlowGraph(props) {
                           }),
                         ]),
                         View({
-                          class: "flex-1 min-w-0 overflow-hidden text-color-text-primary text-base font-bold text-ellipsis whitespace-nowrap",
-                          attributes: {
-                            n: `automation-flow-node-name-${node.id}`,
-                            title: node.name || vm$.methods.flowLabel(node.type),
-                          },
-                        }, [node.name || vm$.methods.flowLabel(node.type)]),
+                          class: "flex-1 min-w-0 flex flex-col items-start gap-1",
+                          attributes: { n: `automation-flow-node-heading-${node.id}` },
+                        }, [
+                          Tag(
+                            {
+                              variant: is_start ? "success" : "info",
+                              class: "min-h-4-5 flex-[0_0_auto] px-1 text-caption",
+                              attributes: { n: `automation-flow-node-type-${node.id}` },
+                            },
+                            [vm$.methods.flowLabel(node.type)],
+                          ),
+                          View({
+                            class: "max-w-full min-w-0 overflow-hidden text-color-text-primary text-base font-bold text-ellipsis whitespace-nowrap",
+                            attributes: {
+                              n: `automation-flow-node-name-${node.id}`,
+                              title: node.name || vm$.methods.flowLabel(node.type),
+                            },
+                          }, [node.name || vm$.methods.flowLabel(node.type)]),
+                        ]),
                         View({
                           class: "inline-flex items-center flex-[0_0_auto] gap-1",
                           attributes: { n: `automation-flow-node-badges-${node.id}` },
@@ -1329,14 +1319,6 @@ export function AutomationFlowGraph(props) {
                         class: "flex items-center gap-1-5 mt-1",
                         attributes: { n: `automation-flow-node-meta-${node.id}` },
                       }, [
-                        Tag(
-                          {
-                            variant: is_start ? "success" : "info",
-                            class: "min-h-4-5 flex-[0_0_auto] px-1 text-caption",
-                            attributes: { n: `automation-flow-node-type-${node.id}` },
-                          },
-                          [vm$.methods.flowLabel(node.type)],
-                        ),
                         View({
                           class: "block min-w-0 overflow-hidden text-color-text-secondary font-mono text-caption text-ellipsis whitespace-nowrap",
                           attributes: {
@@ -1513,7 +1495,7 @@ export function AutomationFlowGraph(props) {
       FlowPrimitive.Minimap(
         {
           store: flow$,
-          class: "dm-panel group-automation-flow-minimap absolute z-sticky right-3 bottom-3 w-176px h-112px p-0 overflow-hidden cursor-crosshair bg-color-bg-surface border-color-color-border-strong shadow-md touch-action-none dm-focus-ring",
+          class: "dm-panel group-automation-flow-minimap absolute z-sticky left-16 bottom-3 w-176px h-112px p-0 overflow-hidden cursor-crosshair bg-color-bg-surface border-color-color-border-strong shadow-md touch-action-none dm-focus-ring",
           attributes: {
             n: "automation-flow-minimap",
             role: "button",
@@ -1649,18 +1631,6 @@ export function AutomationRunPipelineDialog(props) {
               ]);
             },
           }),
-          Show({
-            when: vm$.state.run_error,
-            ok() {
-              return View(
-                {
-                  class: "dm-alert is-destructive",
-                  attributes: { role: "alert" },
-                },
-                [vm$.state.run_error],
-              );
-            },
-          }),
         ]),
       ]),
       DialogFooter({}, [
@@ -1704,7 +1674,7 @@ export function automation_execution_log_data(entry, vm$) {
   );
   if (entry.error) {
     data.push(
-      View({ class: "grid-column-[1_/_-1] p-2 text-color-danger bg-color-danger-soft border-[var(--dm-border-width)_solid_var(--dm-color-danger-border)] rounded-content text-xs" }, [entry.error]),
+      ErrorMessage({ tip: vm$.methods.tip, error: entry.error }),
     );
   }
   return data;
@@ -1902,7 +1872,7 @@ export function AutomationRunHistory(props) {
         const run = value && value.value !== undefined ? value.value : value;
         return Button({ store: vm$.ui.btn_select_run$.bind(run), attributes: { type: "button", title: run.id, "aria-label": `查看运行 ${run.id}` } }, [`${vm$.methods.formatTime(run.created_at)} · ${run.status}`]);
       } }),
-      Show({ when: computed(vm$.state.runs, (runs) => !runs.length), ok() { return View({ class: "text-color-text-secondary text-sm" }, ["暂无运行记录。保存 Pipeline 后立即执行或配置触发器。"]); } }),
+      Show({ when: computed(vm$.state.runs, (runs) => !runs.length), ok() { return View({ class: "text-color-text-secondary text-sm" }, ["暂无运行记录。保存 Pipeline 后手动执行或配置触发器。"]); } }),
     ]),
     For({ each: computed(vm$.state.selected_run, (run) => run ? [{ ...run, render_key: `${run.id}-${run.status}-${run.updated_at}` }] : []), key: "render_key", render(value) {
       const run = value && value.value !== undefined ? value.value : value;
@@ -1913,7 +1883,7 @@ export function AutomationRunHistory(props) {
           automation_status_badge(run.status), View({ class: "font-mono text-xs word-break-break-all" }, [run.id]),
           View({ class: "text-color-text-secondary" }, [`当前节点：${run.current_node || "等待执行"}`]),
         ]),
-        run.error ? View({ class: "text-color-danger text-sm whitespace-pre-wrap", attributes: { role: "alert" } }, [run.error]) : null,
+        run.error ? ErrorMessage({ tip: vm$.methods.tip, error: run.error }) : null,
         run.retry_of ? View({ class: "text-color-text-secondary text-xs" }, [`重试来源：${run.retry_of}`]) : null,
         run.status === "WAITING" ? View({ class: "grid gap-2 min-w-0" }, [
           View({ as: "label", attributes: { for: "automation-manual-response" }, class: "text-color-text-secondary text-sm" }, ["人工确认输入 JSON"]),

@@ -194,7 +194,8 @@ function ThirdPartyDownloaderProgress(props) {
                 },
                 [
                   Timeless.Icon({ name: "refresh-cw", size: 13 }),
-                  computed(progress_, (progress) => progress.decryption_text),
+                  computed(progress_, (progress) => progress.decryption_status === "failed"
+                    ? "微信解密失败" : progress.decryption_text),
                 ],
               );
             },
@@ -322,7 +323,10 @@ export function ThirdPartyDownloaderPanel(props) {
             computed(option_, (option) => option.setup),
           ]),
         ]),
-        ThirdPartyDownloaderNotice({ store: vm$ }),
+        Show({
+          when: computed(vm$.state.notice, (notice) => notice.tone !== "danger"),
+          ok() { return ThirdPartyDownloaderNotice({ store: vm$ }); },
+        }),
         ThirdPartyDownloaderProgress({ store: vm$ }),
         View({ class: "grid gap-4 p-4 border-[var(--dm-border-width)_solid_var(--dm-color-border)] rounded-card bg-color-bg-surface max-620:p-3" }, [
           View({ class: "grid gap-1" }, [

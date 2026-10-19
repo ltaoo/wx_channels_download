@@ -349,7 +349,6 @@ function AutomationCreatePipelineDialog(props) {
             },
             ["+ 添加参数"],
           ),
-
         ]),
       ]),
       DialogFooter({}, [
@@ -404,18 +403,6 @@ function AutomationImportPipelineDialog(props) {
               },
             }),
           ]),
-          Show({
-            when: vm$.state.import_error,
-            ok() {
-              return View(
-                {
-                  class: "dm-alert is-destructive",
-                  attributes: { role: "alert" },
-                },
-                [vm$.state.import_error],
-              );
-            },
-          }),
         ]),
       ]),
       DialogFooter({}, [
