@@ -1,4 +1,5 @@
-import { request } from "@/biz/request.js";
+import { track_error } from "@/utils.js";
+import { fetchBrowseHistoryList } from "@/biz/request.js";
 import { format_time } from "@/utils.js";
 
 function number_or_default(value, fallback) {
@@ -179,7 +180,7 @@ function BrowseHistoryViewModel(props) {
   const platform_id_ = ref("");
   const initial_ = ref(true);
   const loading_ = ref(false);
-  const error_ = ref("");
+  const error_ = track_error(ref(""), props.tip);
   let request_sequence = 0;
 
   const ui = {
@@ -258,7 +259,7 @@ function BrowseHistoryViewModel(props) {
   });
 
   const list_request = new Timeless.kit.RequestCore(
-    (params) => request.post("/api/browse_history/list", params),
+    fetchBrowseHistoryList,
     {
       client: props.client,
       process(response) {
@@ -364,6 +365,7 @@ function BrowseHistoryViewModel(props) {
   }
 
   const methods = {
+    tip: props.tip,
     ready() {
       return load(1);
     },

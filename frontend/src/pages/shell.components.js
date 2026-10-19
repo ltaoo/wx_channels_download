@@ -1,3 +1,4 @@
+import { ErrorMessage } from "@/dmui.js";
 import { format_time } from "@/utils.js";
 
 function certificate_source_label(source) {
@@ -166,25 +167,7 @@ function CertificateSettingsDetails(props) {
         ],
       ),
     ]),
-    Show({
-      when: Timeless.computed(certificate_, function (data) {
-        return Boolean(data && data.install_status_error);
-      }),
-      ok() {
-        return View(
-          {
-            class:
-              "flex items-start gap-2 p-3 text-sm leading-base border-[var(--dm-border-width)_solid_transparent] rounded-content [&_>_svg]:flex-[0_0_auto] [&_>_svg]:mt-[0.1em] text-color-danger bg-color-danger-soft border-color-color-danger-border",
-          },
-          [
-            Timeless.Icon({ name: "circle-alert", size: 16 }),
-            Timeless.computed(certificate_, function (data) {
-              return data.install_status_error;
-            }),
-          ],
-        );
-      },
-    }),
+
     Show({
       when: Timeless.computed(certificate_, function (data) {
         return (
@@ -329,25 +312,7 @@ function CertificateSettingsDetails(props) {
         }),
       ]),
     ]),
-    Show({
-      when: Timeless.computed(certificate_, function (data) {
-        return Boolean(data && data.parse_error);
-      }),
-      ok() {
-        return View(
-          {
-            class:
-              "flex items-start gap-2 p-3 text-sm leading-base border-[var(--dm-border-width)_solid_transparent] rounded-content [&_>_svg]:flex-[0_0_auto] [&_>_svg]:mt-[0.1em] text-color-danger bg-color-danger-soft border-color-color-danger-border",
-          },
-          [
-            Timeless.Icon({ name: "circle-alert", size: 16 }),
-            Timeless.computed(certificate_, function (data) {
-              return "证书内容解析失败：" + data.parse_error;
-            }),
-          ],
-        );
-      },
-    }),
+
     Show({
       when: Timeless.computed(certificate_, function (data) {
         return Boolean(data && data.pem);
@@ -567,9 +532,7 @@ function MCPSettingsDetails(props) {
               View({ class: "text-color-text-primary text-md font-semibold" }, [
                 "MCP 状态读取失败",
               ]),
-              View({ class: "max-w-440px text-sm leading-relaxed" }, [
-                model.state.error,
-              ]),
+              ErrorMessage({ tip: model.methods.tip, error: model.state.error }),
               Button(
                 {
                   store: model.ui.retry_button$,
@@ -614,21 +577,7 @@ function MCPSettingsDetails(props) {
                 ],
               ),
             ]),
-            Show({
-              when: Timeless.computed(model.state.error, Boolean),
-              ok() {
-                return View(
-                  {
-                    class:
-                      "flex items-start gap-2 p-3 text-sm leading-base border-[var(--dm-border-width)_solid_transparent] rounded-content [&_>_svg]:flex-[0_0_auto] [&_>_svg]:mt-[0.1em] text-color-danger bg-color-danger-soft border-color-color-danger-border",
-                  },
-                  [
-                    Timeless.Icon({ name: "circle-alert", size: 16 }),
-                    model.state.error,
-                  ],
-                );
-              },
-            }),
+
             View({ class: "flex items-center justify-between gap-4 p-4 bg-color-bg-surface border-[var(--dm-border-width)_solid_var(--dm-color-border)] rounded-card max-520:items-stretch max-520:flex-col" }, [
               View({ class: "min-w-0" }, [
                 View({ class: "text-color-text-primary text-sm font-semibold" }, [
@@ -862,9 +811,7 @@ export function SettingsDialog(props) {
                             View({ class: "text-color-text-primary text-md font-semibold" }, [
                               "证书信息读取失败",
                             ]),
-                            View({ class: "max-w-440px text-sm leading-relaxed" }, [
-                              props.error,
-                            ]),
+                            ErrorMessage({ tip: props.tip, error: props.error }),
                             Button(
                               {
                                 store: props.retry_button,
@@ -971,7 +918,10 @@ export function UpdateDialog(props) {
           DialogTitle({ attributes: { id: "update-dialog-title" } }, [
             model.state.phase_title,
           ]),
-          DialogDescription({}, [model.state.phase_message]),
+          DialogDescription({}, [Timeless.combine(
+            { status: model.state.status, message: model.state.phase_message }, (state) =>
+            state.status === "error" ? "更新未完成，请重新尝试。" : state.message,
+          )]),
         ]),
       ]),
       DialogBody({ class: "[&.dm-dialog-body]:grid [&.dm-dialog-body]:gap-4 [&.dm-dialog-body]:p-5 max-520:[&.dm-dialog-body]:px-4" }, [
@@ -1103,23 +1053,7 @@ export function UpdateDialog(props) {
             );
           },
         }),
-        Show({
-          when: Timeless.computed(model.state.status, function (status) {
-            return status === "error";
-          }),
-          ok() {
-            return View(
-              {
-                class: "flex items-start gap-2 p-3 text-color-danger bg-color-danger-soft border-[var(--dm-border-width)_solid_var(--dm-color-danger-border)] rounded-content text-sm leading-base [&_>_svg]:flex-[0_0_auto] [&_>_svg]:mt-0-5",
-                attributes: { role: "alert" },
-              },
-              [
-                Timeless.Icon({ name: "circle-alert", size: 17 }),
-                model.state.phase_message,
-              ],
-            );
-          },
-        }),
+
         Show({
           when: Timeless.computed(snapshot_, function (snapshot) {
             return Boolean(snapshot.body);

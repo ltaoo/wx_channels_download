@@ -1,5 +1,7 @@
+import { WxChannelsPlayerViewModel } from "./wxchannels.model.js";
+
 export function WxChannelsPlayerView(props) {
-  const vm$ = props.store;
+  const vm$ = props.store || WxChannelsPlayerViewModel(props);
   if (props.autoplay) {
     queueMicrotask(() => {
       vm$.methods.play({ url: props.url, decode_key: props.decodeKey });
@@ -31,18 +33,7 @@ export function WxChannelsPlayerView(props) {
           );
         },
       }),
-      Show({
-        when: vm$.state.error,
-        ok() {
-          return View(
-            {
-              class: "wxchannels-error",
-              attributes: { n: "wxchannels-player-error", role: "alert" },
-            },
-            [vm$.state.error],
-          );
-        },
-      }),
+
       Show({
         when: vm$.state.playback_url,
         ok() {

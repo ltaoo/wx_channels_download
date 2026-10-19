@@ -1,4 +1,5 @@
-import { request } from "@/biz/request.js";
+import { track_error } from "@/utils.js";
+import { fetchContentDetail, checkDownloadTaskFiles } from "@/biz/request.js";
 
 import { PreviewViewModel, normalize_file } from "./preview.model.js";
 import { format_time } from "@/utils.js";
@@ -632,11 +633,11 @@ function ContentDetailViewModel(props) {
   const detail_ = ref(null);
   const tags_ = ref([]);
   const loading_ = ref(false);
-  const error_ = ref("");
+  const error_ = track_error(ref(""), props.tip);
   let request_sequence = 0;
 
   const request_ = new Timeless.kit.RequestCore(
-    (params) => request.get("/api/content/detail", params),
+    fetchContentDetail,
     {
       client: props.client,
       process(response) {
@@ -649,10 +650,7 @@ function ContentDetailViewModel(props) {
   );
 
   const check_files_request_ = new Timeless.kit.RequestCore(
-    (files) =>
-      request.post("/api/v1/download_task/check_files", {
-        files,
-      }),
+    checkDownloadTaskFiles,
     { client: props.client },
   );
 
@@ -768,6 +766,7 @@ function ContentDetailViewModel(props) {
   }
 
   const methods = {
+    tip: props.tip,
     previewFile(media) {
       return normalize_file({
         ...media.resource,

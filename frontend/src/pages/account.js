@@ -1,3 +1,4 @@
+import { ErrorMessage } from "@/dmui.js";
 import { WxChannelsPlayerView } from "@/components/wxchannels.player.js";
 
 import { AccountViewModel } from "./account.model.js";
@@ -412,22 +413,9 @@ function AccountContentPlayer(props) {
           );
         },
       }),
-      Show({
-        when: vm$.state.drawer_player_download_error,
-        ok() {
-          return View(
-            {
-              class: "text-sm text-color-danger",
-              attributes: {
-                n: "account-content-player-download-error",
-                role: "alert",
-              },
-            },
-            [vm$.state.drawer_player_download_error],
-          );
-        },
-      }),
+
       WxChannelsPlayerView({
+        tip: vm$.methods.tip,
         url: content.url,
         decodeKey: content.decode_key,
         autoplay: true,
@@ -494,7 +482,7 @@ function AccountContentsCollection(props) {
           return AccountContentState({
             error: true,
             title: "内容加载失败",
-            description: vm$.state.drawer_error,
+
             action: AccountPageActionButton({
               name: "account-content-retry-action",
               store: vm$.ui.btn_drawer_retry$,
@@ -561,16 +549,7 @@ function AccountContentsCollection(props) {
                   Boolean(error),
                 ),
                 ok() {
-                  return View(
-                    {
-                      class: "flex items-center justify-center gap-2 text-content-muted text-sm [&.is-error]:text-color-danger [&.is-end::before]:w-38px [&.is-end::before]:h-1px [&.is-end::before]:content-[\"\"] [&.is-end::before]:bg-content-border [&.is-end::after]:w-38px [&.is-end::after]:h-1px [&.is-end::after]:content-[\"\"] [&.is-end::after]:bg-content-border is-error",
-                      attributes: {
-                        n: "account-content-load-more-error",
-                        role: "alert",
-                      },
-                    },
-                    [vm$.state.drawer_more_error],
-                  );
+                  return ErrorMessage({ tip: vm$.methods.tip, error: vm$.state.drawer_more_error });
                 },
               }),
               Show({

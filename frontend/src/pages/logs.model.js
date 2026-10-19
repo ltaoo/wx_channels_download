@@ -1,4 +1,5 @@
-import { request } from "@/biz/request.js";
+import { track_error } from "@/utils.js";
+import { fetchLogs, clearLogs } from "@/biz/request.js";
 
 const LOG_LEVEL_OPTIONS = [
   { value: "info", label: "Info" },
@@ -444,7 +445,7 @@ function LogsPageViewModel(props) {
   const initial_ = ref(true);
   const loading_ = ref(false);
   const clearing_ = ref(false);
-  const error_ = ref("");
+  const error_ = track_error(ref(""), props.tip);
   const keyword_ = ref("");
   const source_ = ref("all");
   const level_ = ref("error");
@@ -457,7 +458,7 @@ function LogsPageViewModel(props) {
   const importing_ = ref(false);
   const import_dragging_ = ref(false);
   const import_drag_invalid_ = ref(false);
-  const import_file_error_ = ref("");
+  const import_file_error_ = track_error(ref(""), props.tip);
   const json_preview_title_ = ref("JSON 预览");
   const json_preview_text_ = ref("");
   let imported_entries = null;
@@ -590,7 +591,6 @@ function LogsPageViewModel(props) {
       ? `不支持文件 ${file_names}，请选择日志文件`
       : "不支持该文件类型，请选择日志文件";
     import_file_error_.as(message);
-    show_toast(message);
     return false;
   }
   keyword_.subscribe({
@@ -645,7 +645,7 @@ function LogsPageViewModel(props) {
   let request_sequence = 0;
 
   const logs_request_core = new Timeless.kit.RequestCore(
-    (params) => request.get("/api/logs", params),
+    fetchLogs,
     {
       client: props.client,
       process(response) {
@@ -659,7 +659,7 @@ function LogsPageViewModel(props) {
     },
   );
   const clear_logs_request_core = new Timeless.kit.RequestCore(
-    () => request.post("/api/logs/clear"),
+    clearLogs,
     { client: props.client },
   );
 
@@ -870,9 +870,7 @@ function LogsPageViewModel(props) {
   }
 
   function show_toast(message) {
-    if (window.DLUtils && DLUtils.toast) {
-      DLUtils.toast(message);
-    }
+    props.tip({ msg: [message], type: "success" });
   }
 
   async function import_log_file(file) {
@@ -911,7 +909,6 @@ function LogsPageViewModel(props) {
         const message = error && error.message ? error.message : String(error);
         error_.as(message || "导入日志失败");
         import_file_error_.as(message || "无法读取日志文件");
-        show_toast(`导入失败：${message || "无法读取日志文件"}`);
         if (resume_auto_refresh) {
           set_auto_refresh(true);
         }
@@ -975,7 +972,6 @@ function LogsPageViewModel(props) {
           clear_result.error.msg ||
           String(clear_result.error);
         error_.as(message);
-        show_toast(`清空失败：${message}`);
         if (resume_auto_refresh) {
           set_auto_refresh(true, true);
         }
@@ -1002,7 +998,6 @@ function LogsPageViewModel(props) {
       if (sequence === request_sequence) {
         const message = error && error.message ? error.message : String(error);
         error_.as(message || "清空日志失败");
-        show_toast(`清空失败：${message || "请求失败"}`);
         if (resume_auto_refresh) {
           set_auto_refresh(true, true);
         }
@@ -1046,6 +1041,7 @@ function LogsPageViewModel(props) {
   }
 
   const methods = {
+    tip: props.tip,
     ready() {
       return load(1);
     },
@@ -1085,21 +1081,15 @@ function LogsPageViewModel(props) {
     copyLogFilePath() {
       const log_file_path = String(log_file_path_.value || "").trim();
       if (!log_file_path) {
-        if (window.DLUtils && DLUtils.toast) {
-          DLUtils.toast("日志文件路径不可用");
-        }
+        props.tip({ msg: ["日志文件路径不可用"], type: "error" });
         return false;
       }
       try {
         props.app.copy(log_file_path);
-        if (window.DLUtils && DLUtils.toast) {
-          DLUtils.toast("日志文件路径已复制");
-        }
+        props.tip({ msg: ["日志文件路径已复制"], type: "success" });
         return true;
       } catch {
-        if (window.DLUtils && DLUtils.toast) {
-          DLUtils.toast("复制失败");
-        }
+        props.tip({ msg: ["复制失败"], type: "error" });
         return false;
       }
     },
@@ -1113,15 +1103,11 @@ function LogsPageViewModel(props) {
     exportLogs() {
       const list = Array.isArray(entries_.value) ? entries_.value : [];
       if (list.length === 0) {
-        if (window.DLUtils && DLUtils.toast) {
-          DLUtils.toast("没有可导出的日志");
-        }
+        props.tip({ msg: ["没有可导出的日志"], type: "error" });
         return;
       }
       export_entries(list);
-      if (window.DLUtils && DLUtils.toast) {
-        DLUtils.toast("日志已导出");
-      }
+      props.tip({ msg: ["日志已导出"], type: "success" });
     },
     fieldRows(entry) {
       return log_field_rows(entry);
@@ -1147,14 +1133,10 @@ function LogsPageViewModel(props) {
       }
       try {
         props.app.copy(text);
-        if (window.DLUtils && DLUtils.toast) {
-          DLUtils.toast("JSON 已复制");
-        }
+        props.tip({ msg: ["JSON 已复制"], type: "success" });
         return true;
       } catch {
-        if (window.DLUtils && DLUtils.toast) {
-          DLUtils.toast("复制失败");
-        }
+        props.tip({ msg: ["复制失败"], type: "error" });
         return false;
       }
     },

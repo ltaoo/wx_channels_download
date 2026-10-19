@@ -46,7 +46,6 @@ func (c *APIClient) handle_cookie_update(ctx *gin.Context) {
 	c.logger.Info().
 		Int("loaded", len(update_result.Cookies)).
 		Int("skipped", update_result.Skipped).
-		Int("local_storage_domains", update_result.LocalStorageDomains).
 		Str("crypto_type", update_result.CryptoType).
 		Str("path", cookie_path).
 		Msg("cookies updated and saved")
@@ -57,10 +56,9 @@ func (c *APIClient) handle_cookie_update(ctx *gin.Context) {
 		"code":   0,
 		"msg":    "成功",
 		"data": gin.H{
-			"count":                 len(update_result.Cookies),
-			"skipped":               update_result.Skipped,
-			"local_storage_domains": update_result.LocalStorageDomains,
-			"path":                  cookie_path,
+			"count":   len(update_result.Cookies),
+			"skipped": update_result.Skipped,
+			"path":    cookie_path,
 		},
 	})
 }
@@ -82,7 +80,7 @@ func handle_cookie_cloud_service_error(c *APIClient, ctx *gin.Context, err error
 		c.logger.Warn().Err(err).Msg("failed to parse CookieCloud update request")
 		write_cookie_update_error(ctx, http.StatusBadRequest, "Cookie 更新请求不是有效的 JSON")
 	case errors.Is(err, services.ErrCookieCloudIncompleteRequest):
-		write_cookie_update_error(ctx, http.StatusBadRequest, "Cookie 加密更新请求缺少 uuid 或 encrypted")
+		write_cookie_update_error(ctx, http.StatusBadRequest, "Cookie 加密更新请求缺少 uuid 或 data（兼容 encrypted）")
 	case errors.Is(err, services.ErrCookieCloudUUIDMismatch):
 		c.logger.Warn().Msg("rejected CookieCloud update with an unexpected UUID")
 		write_cookie_update_error(ctx, http.StatusForbidden, "CookieCloud UUID 与配置不匹配")
@@ -97,7 +95,7 @@ func handle_cookie_cloud_service_error(c *APIClient, ctx *gin.Context, err error
 		write_cookie_update_error(ctx, http.StatusBadRequest, "CookieCloud 数据解密失败，请检查 UUID、密钥和 crypto_type")
 	case errors.Is(err, services.ErrCookieCloudInvalidData):
 		c.logger.Warn().Err(err).Msg("invalid CookieCloud data")
-		write_cookie_update_error(ctx, http.StatusBadRequest, "Cookie 数据格式错误，请通过 cookies 数组提交")
+		write_cookie_update_error(ctx, http.StatusBadRequest, "Cookie 数据格式错误，data 应为 Cookie 数组的 JSON 字符串")
 	default:
 		c.logger.Error().Err(err).Msg("unexpected CookieCloud service error")
 		write_cookie_update_error(ctx, http.StatusInternalServerError, "处理 CookieCloud 数据失败")

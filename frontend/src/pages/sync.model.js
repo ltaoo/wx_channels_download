@@ -1,4 +1,5 @@
-import { request } from "@/biz/request.js";
+import { track_error } from "@/utils.js";
+import { fetchSyncServers, syncToServer } from "@/biz/request.js";
 
 const STATUS_TIMEOUT = 5000;
 
@@ -48,7 +49,7 @@ function remote_service_detail(data) {
 export function SyncPageModel(props) {
   const servers_ = refarr([]);
   const loading_ = ref(false);
-  const error_ = ref("");
+  const error_ = track_error(ref(""), props.tip);
   const keyword_ = ref("");
   const status_controllers = new Map();
   const visible_servers_ = combine(
@@ -75,11 +76,11 @@ export function SyncPageModel(props) {
     },
   );
   const list_request = new Timeless.kit.RequestCore(
-    () => request.get("/api/v1/sync/servers"),
+    fetchSyncServers,
     { client: props.client },
   );
   const sync_request = new Timeless.kit.RequestCore(
-    (server_id) => request.post(`/api/v1/sync/servers/${server_id}`),
+    syncToServer,
     { client: props.client },
   );
   const ui = {
@@ -142,7 +143,10 @@ export function SyncPageModel(props) {
         (status) => DEVICE_STATUS_LABELS[status] || "",
       ),
       device_status_class: computed(device_status_, device_status_class_names),
-      device_status_title: computed(device_message_, (message) => message || ""),
+      device_status_title: combine(
+        { status: device_status_, message: device_message_ },
+        (state) => state.status === "offline" ? "设备离线" : state.message,
+      ),
       button$: null,
     };
     server.button$ = new Timeless.vm.ButtonCore({
@@ -186,6 +190,9 @@ export function SyncPageModel(props) {
       server.version.as("");
       server.device_status.as("offline");
       server.device_message.as(status_error_message(error));
+      if (status_controllers.get(server.id) === controller) {
+        props.tip({ msg: [`${server.name}：${server.device_message.value}`], type: "error" });
+      }
     } finally {
       clearTimeout(timer);
       if (status_controllers.get(server.id) === controller) {
@@ -235,6 +242,7 @@ export function SyncPageModel(props) {
     if (response.error) {
       server.status.as("error");
       server.message.as(response.error.message || String(response.error));
+      props.tip({ msg: [server.message.value], type: "error" });
       return response;
     }
     server.status.as("success");

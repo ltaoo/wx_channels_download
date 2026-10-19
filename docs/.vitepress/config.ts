@@ -124,7 +124,6 @@ export default defineConfig(async () => {
           text: "功能",
           items: [
             { text: "API", link: "/feature/api" },
-            { text: "Automation 实现与平台对比", link: "/feature/automation" },
             { text: "设置下载目录", link: "/feature/download-directory" },
             { text: "指定文件名", link: "/feature/filename" },
             {

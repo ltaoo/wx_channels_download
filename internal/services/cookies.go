@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/md5"
@@ -21,7 +22,7 @@ const cookie_cloud_crypto_aes128_cbc_fixed = "aes-128-cbc-fixed"
 
 var (
 	ErrCookieCloudInvalidRequest    = errors.New("CookieCloud request is invalid")
-	ErrCookieCloudIncompleteRequest = errors.New("CookieCloud request is missing uuid or encrypted")
+	ErrCookieCloudIncompleteRequest = errors.New("CookieCloud request is missing uuid or encrypted data")
 	ErrCookieCloudUUIDMismatch      = errors.New("CookieCloud UUID does not match configuration")
 	ErrCookieCloudKeyNotConfigured  = errors.New("CookieCloud decryption key is not configured")
 	ErrCookieCloudInvalidConfig     = errors.New("CookieCloud decryption configuration is invalid")
@@ -36,10 +37,9 @@ type CookieCloudConfig struct {
 }
 
 type CookieCloudUpdateResult struct {
-	Cookies             []cookies.Cookie
-	Skipped             int
-	LocalStorageDomains int
-	CryptoType          string
+	Cookies    []cookies.Cookie
+	Skipped    int
+	CryptoType string
 }
 
 type cookie_cloud_update_request struct {
@@ -47,11 +47,11 @@ type cookie_cloud_update_request struct {
 	Encrypted  string          `json:"encrypted"`
 	CryptoType string          `json:"crypto_type"`
 	Cookies    json.RawMessage `json:"cookies"`
+	Data       json.RawMessage `json:"data"`
 }
 
 type cookie_cloud_sync_data struct {
-	Cookies          []cookie_cloud_entry       `json:"cookies"`
-	LocalStorageData map[string]json.RawMessage `json:"local_storage_data"`
+	Cookies []cookie_cloud_entry `json:"cookies"`
 }
 
 type cookie_cloud_entry struct {
@@ -81,13 +81,24 @@ func ProcessCookieCloudUpdate(body []byte, cfg CookieCloudConfig) (CookieCloudUp
 	request.Encrypted = strings.TrimSpace(request.Encrypted)
 
 	plaintext := body
-	crypto_type := "plaintext"
-	has_plain_cookies := request.Cookies != nil
-	if normalize_cookie_cloud_crypto_type(request.CryptoType) != "none" && (request.Encrypted != "" || !has_plain_cookies) {
+	crypto_type := normalize_cookie_cloud_crypto_type(request.CryptoType)
+	if request.Data != nil {
+		var data string
+		if err := json.Unmarshal(request.Data, &data); err != nil || strings.TrimSpace(data) == "" {
+			return CookieCloudUpdateResult{}, fmt.Errorf("%w: data must be a non-empty string", ErrCookieCloudInvalidData)
+		}
+		plaintext = []byte(data)
+		request.Encrypted = strings.TrimSpace(data)
+		if crypto_type == "" {
+			crypto_type = "none"
+		}
+	} else if crypto_type == "" && request.Cookies != nil && request.Encrypted == "" {
+		crypto_type = "none"
+	}
+	if crypto_type != "none" {
 		if request.UUID == "" || request.Encrypted == "" {
 			return CookieCloudUpdateResult{}, ErrCookieCloudIncompleteRequest
 		}
-		crypto_type = normalize_cookie_cloud_crypto_type(request.CryptoType)
 		key, err := cookie_cloud_decryption_key(cfg, request.UUID)
 		if err != nil {
 			return CookieCloudUpdateResult{}, err
@@ -96,6 +107,8 @@ func ProcessCookieCloudUpdate(body []byte, cfg CookieCloudConfig) (CookieCloudUp
 		if err != nil {
 			return CookieCloudUpdateResult{}, fmt.Errorf("%w: %v", ErrCookieCloudDecryption, err)
 		}
+	} else {
+		crypto_type = "plaintext"
 	}
 
 	sync_data, err := parse_cookie_cloud_sync_data(plaintext)
@@ -103,11 +116,13 @@ func ProcessCookieCloudUpdate(body []byte, cfg CookieCloudConfig) (CookieCloudUp
 		return CookieCloudUpdateResult{}, fmt.Errorf("%w: %v", ErrCookieCloudInvalidData, err)
 	}
 	cookie_list, skipped := flatten_cookie_cloud_data(sync_data)
+	if len(sync_data.Cookies) > 0 && len(cookie_list) == 0 {
+		return CookieCloudUpdateResult{}, fmt.Errorf("%w: no valid named cookies", ErrCookieCloudInvalidData)
+	}
 	return CookieCloudUpdateResult{
-		Cookies:             cookie_list,
-		Skipped:             skipped,
-		LocalStorageDomains: len(sync_data.LocalStorageData),
-		CryptoType:          crypto_type,
+		Cookies:    cookie_list,
+		Skipped:    skipped,
+		CryptoType: crypto_type,
 	}, nil
 }
 
@@ -142,10 +157,29 @@ func decrypt_cookie_cloud(encrypted string, crypto_type string, key []byte) ([]b
 		return nil, fmt.Errorf("decode encrypted data: %w", err)
 	}
 
-	if normalize_cookie_cloud_crypto_type(crypto_type) != cookie_cloud_crypto_aes128_cbc_fixed {
+	switch crypto_type {
+	case cookie_cloud_crypto_aes128_cbc_fixed:
+		return decrypt_cookie_cloud_aes_cbc(cipher_data, key, make([]byte, aes.BlockSize))
+	case "aes-256-cbc", "legacy":
+		if len(cipher_data) < 32 || (len(cipher_data)-16)%aes.BlockSize != 0 || string(cipher_data[:8]) != "Salted__" {
+			return nil, fmt.Errorf("invalid OpenSSL ciphertext")
+		}
+		salt := cipher_data[8:16]
+		key_iv := make([]byte, 0, 48)
+		var previous []byte
+		// CryptoJS/OpenSSL EVP_BytesToKey derives a 32-byte key and a 16-byte IV.
+		for len(key_iv) < 48 {
+			digest := md5.New()
+			digest.Write(previous)
+			digest.Write(key)
+			digest.Write(salt)
+			previous = digest.Sum(nil)
+			key_iv = append(key_iv, previous...)
+		}
+		return decrypt_cookie_cloud_aes_cbc(cipher_data[16:], key_iv[:32], key_iv[32:])
+	default:
 		return nil, fmt.Errorf("unsupported crypto_type %q", crypto_type)
 	}
-	return decrypt_cookie_cloud_aes_cbc(cipher_data, key, make([]byte, aes.BlockSize))
 }
 
 func normalize_cookie_cloud_crypto_type(crypto_type string) string {
@@ -186,7 +220,12 @@ func cookie_cloud_pkcs7_unpad(data []byte) ([]byte, error) {
 
 func parse_cookie_cloud_sync_data(plaintext []byte) (cookie_cloud_sync_data, error) {
 	var sync_data cookie_cloud_sync_data
-	if err := json.Unmarshal(plaintext, &sync_data); err != nil {
+	var target interface{} = &sync_data
+	plaintext = bytes.TrimSpace(plaintext)
+	if len(plaintext) > 0 && plaintext[0] == '[' {
+		target = &sync_data.Cookies
+	}
+	if err := json.Unmarshal(plaintext, target); err != nil {
 		return cookie_cloud_sync_data{}, fmt.Errorf("parse decrypted CookieCloud data: %w", err)
 	}
 	if sync_data.Cookies == nil {

@@ -1,3 +1,5 @@
+import { track_error } from "../utils.js";
+
 function wxchannels_play_url(input) {
   const base = window.API_ORIGIN || window.location.origin;
   const url = new URL("/play", base);
@@ -6,13 +8,13 @@ function wxchannels_play_url(input) {
   return url.href;
 }
 
-export function WxChannelsPlayerViewModel() {
+export function WxChannelsPlayerViewModel(props) {
   const Timeless = window.Timeless;
   const url_ = Timeless.ref("");
   const decode_key_ = Timeless.ref("");
   const playback_url_ = Timeless.ref("");
   const loading_ = Timeless.ref(false);
-  const error_ = Timeless.ref("");
+  const error_ = track_error(Timeless.ref(""), props.tip);
   const status_ = Timeless.ref("");
 
   const submit_disabled_ = Timeless.combine(

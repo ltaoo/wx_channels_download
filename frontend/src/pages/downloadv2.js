@@ -87,6 +87,7 @@ function DownloadV2TaskPreviewDrawer(props) {
     },
     () => [
       PreviewPageView({
+        tip: vm$.methods.tip,
         app: props.app,
         client: props.client,
         embedded: true,

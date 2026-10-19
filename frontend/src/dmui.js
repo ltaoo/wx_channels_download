@@ -1,5 +1,237 @@
 const Runtime = window.Timeless;
 
+export function SonnerModel({ duration = 6000, limit = 4 } = {}) {
+  // 当前运行时的 ToasterModel 尚未公开 error/dismiss 方法。
+  const toasts = Runtime.refarr([]);
+  const expanded = Runtime.ref(false);
+  const timers = new Map();
+  const removal_timers = new Map();
+  const pauses = new Set();
+  let sequence = 0;
+  const layout = Runtime.derive({ toasts, expanded }, ({ toasts, expanded }) => {
+    const active = toasts.filter((toast) => !toast.removed);
+    const front_height = active.at(-1)?.height || 72;
+    const cards = {};
+    let offset = 0;
+    [...active].reverse().forEach((toast, depth) => {
+      const height = toast.height || 72;
+      cards[toast.id] = {
+        height: expanded ? height : front_height,
+        offset: expanded ? offset : depth * 14,
+        scale: expanded ? 1 : 1 - depth * 0.05,
+        depth,
+        hidden: !expanded && depth > 0,
+        removed: false,
+        z_index: active.length - depth,
+      };
+      offset += height + 14;
+    });
+    toasts.filter((toast) => toast.removed).forEach((toast) => {
+      cards[toast.id] = { ...toast.exit_layout, removed: true };
+    });
+    return {
+      cards,
+      height: active.length ? (expanded ? offset - 14 : front_height + (active.length - 1) * 14) : 0,
+    };
+  });
+
+  function sync_expanded() {
+    expanded.as(pauses.has("hover") || pauses.has("focus"));
+  }
+
+  function dismiss(id) {
+    const toast = toasts.value.find((toast) => toast.id === id);
+    if (!toast || toast.removed) return;
+    clearTimeout(timers.get(id)?.timer);
+    timers.delete(id);
+    const exit_layout = layout.value.cards[id];
+    toasts.as(toasts.value.map((toast) => toast.id === id
+      ? { ...toast, removed: true, exit_layout } : toast));
+    removal_timers.set(id, setTimeout(() => {
+      removal_timers.delete(id);
+      toasts.as(toasts.value.filter((toast) => toast.id !== id));
+    }, 400));
+    if (!toasts.value.some((toast) => !toast.removed)) {
+      pauses.delete("hover");
+      pauses.delete("focus");
+      sync_expanded();
+    }
+  }
+
+  function start_timer(id, remaining) {
+    const entry = { remaining, started: Date.now(), timer: null };
+    if (!pauses.size) entry.timer = setTimeout(() => dismiss(id), remaining);
+    timers.set(id, entry);
+  }
+
+  function show(type, value) {
+    const message = String(value?.message || value || "").trim();
+    if (!message) return null;
+    const toast = { id: ++sequence, type, message, height: 0, removed: false };
+    toasts.as([...toasts.value, toast]);
+    start_timer(toast.id, duration);
+    while (toasts.value.filter((toast) => !toast.removed).length > limit) {
+      dismiss(toasts.value.find((toast) => !toast.removed).id);
+    }
+    return toast.id;
+  }
+
+  return {
+    state: { toasts, expanded, layout },
+    error(value) { return show("error", value); },
+    warn(value) { return show("warn", value); },
+    success(value) { return show("success", value); },
+    info(value) { return show("info", value); },
+    message(value) { return show("normal", value); },
+    dismiss,
+    measure(id, height) {
+      const toast = toasts.value.find((toast) => toast.id === id);
+      if (!toast || toast.removed || height <= 0 || toast.height === height) return;
+      toasts.as(toasts.value.map((toast) => toast.id === id ? { ...toast, height } : toast));
+    },
+    pause(reason) {
+      if (pauses.has(reason)) return;
+      if (!pauses.size) {
+        timers.forEach((entry) => {
+          clearTimeout(entry.timer);
+          entry.remaining = Math.max(0, entry.remaining - (Date.now() - entry.started));
+        });
+      }
+      pauses.add(reason);
+      sync_expanded();
+    },
+    resume(reason) {
+      if (!pauses.delete(reason)) return;
+      sync_expanded();
+      if (pauses.size) return;
+      timers.forEach((entry, id) => start_timer(id, entry.remaining));
+    },
+    clear() {
+      timers.forEach((entry) => clearTimeout(entry.timer));
+      timers.clear();
+      removal_timers.forEach(clearTimeout);
+      removal_timers.clear();
+      toasts.as([]);
+      pauses.delete("hover");
+      pauses.delete("focus");
+      sync_expanded();
+    },
+  };
+}
+
+export function Toaster({ store }) {
+  const { expanded, layout } = store.state;
+  const visibility_change = () => document.hidden
+    ? store.pause("document") : store.resume("document");
+  const blur = (event) => {
+    if (!event?.relatedTarget?.closest(".dm-sonner")) store.resume("focus");
+  };
+  return Runtime.View({
+    class: "dm-sonner",
+    attributes: { n: "sonner-root", role: "region", "aria-label": "通知" },
+    onMounted() {
+      document.addEventListener("visibilitychange", visibility_change);
+      visibility_change();
+    },
+    onUnmounted() {
+      document.removeEventListener("visibilitychange", visibility_change);
+      store.resume("document");
+      store.resume("hover");
+      store.resume("focus");
+    },
+  }, [Runtime.View({
+    class: "dm-sonner-viewport",
+    attributes: { n: "sonner-viewport", "data-expanded": Runtime.computed(expanded, String) },
+    onMouseEnter() { store.pause("hover"); },
+    onMouseLeave() { store.resume("hover"); },
+  }, [Runtime.View({
+    class: "dm-sonner-list",
+    attributes: { n: "sonner-list" },
+    style: { height: Runtime.computed(layout, (value) => `${value.height}px`) },
+  }, [Runtime.For({
+    each: store.state.toasts,
+    key: "id",
+    render(toast) {
+      toast = source_value(toast);
+      const card = Runtime.computed(layout, (value) => value.cards[toast.id] || {});
+      let observer;
+      return Runtime.View({
+        class: `dm-sonner-toast dm-sonner-toast--${toast.type}`,
+        style: {
+          height: Runtime.computed(card, (value) => `${value.height || 72}px`),
+          transform: Runtime.computed(card, (value) => value.removed
+            ? `translateY(calc(-${value.offset}px - 100%)) scale(${value.scale})`
+            : `translateY(-${value.offset}px) scale(${value.scale})`),
+          opacity: Runtime.computed(card, (value) => value.removed ? 0 : 1),
+          "z-index": Runtime.computed(card, (value) => value.z_index),
+          "pointer-events": Runtime.computed(card, (value) => value.removed ? "none" : "auto"),
+        },
+        attributes: {
+          n: `sonner-toast-${toast.id}`,
+          role: toast.type === "error" ? "alert" : "status",
+          "aria-atomic": "true",
+          "aria-hidden": Runtime.computed(card, (value) => value.removed ? "true" : "false"),
+        },
+      }, [Runtime.View({
+        class: "dm-sonner-content",
+        attributes: { n: "sonner-toast-content" },
+        style: { opacity: Runtime.computed(card, (value) => value.hidden ? 0 : 1) },
+        onMounted(event) {
+          const element = dom_element(event);
+          if (!element || observer) return;
+          // ResizeObserver 首次回调在列表挂载完成后执行，避免同步测量触发重入渲染。
+          observer = new ResizeObserver(() => {
+            const parent = element.parentElement;
+            store.measure(toast.id, element.offsetHeight + parent.offsetHeight - parent.clientHeight);
+          });
+          observer.observe(element);
+        },
+        onUnmounted() { observer?.disconnect(); },
+      }, [
+        Runtime.Icon({ name: {
+          error: "circle-alert", warn: "circle-alert", success: "check",
+          info: "message-circle", normal: "message-circle",
+        }[toast.type], size: 22,
+          attributes: { n: "sonner-toast-icon", "aria-hidden": "true" } }),
+        Runtime.View({
+          class: "dm-sonner-message dm-focus-ring",
+          attributes: {
+            n: "sonner-toast-message",
+            tabindex: Runtime.computed(card, (value) => value.removed ? "-1" : "0"),
+          },
+          onFocus() { store.pause("focus"); },
+          onBlur: blur,
+        }, [toast.message]),
+        Runtime.Button({
+          class: "dm-sonner-close dm-focus-ring",
+          attributes: {
+            n: "sonner-toast-dismiss", type: "button", "aria-label": "关闭通知",
+            tabindex: Runtime.computed(card, (value) => value.removed ? "-1" : "0"),
+          },
+          onFocus() { store.pause("focus"); },
+          onBlur: blur,
+          onClick() {
+            store.dismiss(toast.id);
+            store.resume("focus");
+          },
+        }, [Runtime.Icon({ name: "x", size: 20, attributes: { n: "sonner-toast-dismiss-icon", "aria-hidden": "true" } })]),
+      ])]);
+    },
+  })])])]);
+}
+
+export function ErrorMessage(props) {
+  return Runtime.Button({
+    class: "dm-button dm-button--ghost dm-button--sm dm-focus-ring",
+    attributes: { n: props.name || "error-details-action", type: "button" },
+    onClick(event) {
+      event?.stopPropagation?.();
+      const error = source_value(props.error);
+      props.tip({ msg: [error?.message || String(error)], type: "error" });
+    },
+  }, ["查看错误详情"]);
+}
+
 function class_names(values) {
   return Runtime.classNames(values.filter(Boolean));
 }
@@ -2727,7 +2959,7 @@ export function CardFooter(props = {}, children = []) {
   );
 }
 
-function waterfall_dom_element(event) {
+function dom_element(event) {
   let target = event && (event.currentTarget || event.target || event);
   for (let depth = 0; depth < 4; depth += 1) {
     if (target && typeof target.get$elm === "function") {
@@ -2967,7 +3199,7 @@ export function Waterfall(props = {}) {
 
   function mount_root(event) {
     const next_root =
-      waterfall_dom_element(event) ||
+      dom_element(event) ||
       document.querySelector(`[data-dm-waterfall-id="${waterfall_id}"]`);
     if (!next_root) return false;
     if (root !== next_root) {
@@ -3000,7 +3232,7 @@ export function Waterfall(props = {}) {
   }
 
   function handle_scroll(event) {
-    const target = waterfall_dom_element(event) || root;
+    const target = dom_element(event) || root;
     if (!target) return;
     const scroll_top = Math.max(0, Number(target.scrollTop) || 0);
     scroll_top_.as(scroll_top);
@@ -3540,7 +3772,7 @@ function TableError(props) {
         ? BrandError({ size: 132, name: `${props.name}-error-symbol` })
         : table_state_icon(props.errorIcon, "circle-alert", 32),
     title: props.errorTitle ?? "数据加载失败",
-    description: props.errorMessage ?? props.error,
+    description: null,
     descriptionSuffix: "message",
     action,
   });
@@ -4311,6 +4543,8 @@ export function AlertDescription(props = {}, children = []) {
 }
 
 Object.assign(window, {
+  Toaster,
+  ErrorMessage,
   createInputStore,
   createCheckboxStore,
   LazyImg,

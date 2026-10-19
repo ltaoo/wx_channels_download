@@ -1,4 +1,5 @@
 import { request } from "@/biz/request.js";
+import { ErrorMessage, LazyImg } from "@/dmui.js";
 
 const Runtime = window.Timeless;
 
@@ -189,6 +190,76 @@ function select_entry(select_store, entry, render_label, semantic_name) {
   );
 }
 
+function AccountSelectListModel(store, options_) {
+  const item_height = 48;
+  const scroll_request_ = Runtime.ref({ top: 0 });
+  const height_ = Runtime.computed(options_, (options) =>
+    `${Math.min(options.length, 6) * item_height}px`,
+  );
+  let scroll_top = 0;
+  let viewport_height = 6 * item_height;
+
+  function sync_selection() {
+    const selected = store.options.find((entry) => entry.value === store.value) || null;
+    store.options.forEach((entry) => entry.setSelected(entry === selected));
+    store.setSelectedItem(selected);
+  }
+
+  function reveal_selected() {
+    const index = options_.value.findIndex((entry) => entry.value === store.value);
+    scroll_top = Math.max(0, index) * item_height;
+    scroll_request_.as({ top: scroll_top });
+  }
+
+  const unlisten = options_.subscribe({
+    onChange() {
+      sync_selection();
+      scroll_top = 0;
+      scroll_request_.as({ top: 0 });
+    },
+  });
+  const selection_unlisten = store.onStateChange(sync_selection);
+  sync_selection();
+  if (store.state.open) reveal_selected();
+
+  return {
+    state: { height_, scroll_request_ },
+    item_height,
+    methods: {
+      reveal_selected,
+      on_scroll(position) {
+        scroll_top = position.scrollTop;
+        viewport_height = position.clientHeight;
+      },
+      move_focus(direction) {
+        const options = options_.value.filter((entry) => !entry.disabled);
+        if (!options.length) return;
+        const focused_index = options.findIndex((entry) => entry.focused);
+        const index = focused_index < 0
+          ? (direction > 0 ? 0 : options.length - 1)
+          : (focused_index + direction + options.length) % options.length;
+        const entry = options[index];
+        store.focusOption(entry.value);
+        const top = options_.value.indexOf(entry) * item_height;
+        const next_top = Math.max(0, top < scroll_top
+          ? top
+          : Math.max(scroll_top, top + item_height - viewport_height));
+        scroll_request_.as({ top: next_top });
+      },
+      select_focused() {
+        const entry = options_.value.find((entry) => entry.focused && !entry.disabled);
+        if (entry) store.handleClickItem(entry);
+      },
+      destroy() {
+        unlisten();
+        selection_unlisten();
+        height_.destroy();
+        scroll_request_.destroy();
+      },
+    },
+  };
+}
+
 function EntitySelect(props, render_label, render_value) {
   const primitives = require_select_primitives();
   const semantic_name = props.name || "entity-select";
@@ -212,6 +283,7 @@ function EntitySelect(props, render_label, render_value) {
     was_open = Boolean(state.open);
     if (opening) reset_search();
     state_.as(state);
+    if (opening) list_model.methods.reveal_selected();
   });
   const search_unlisten = store.onSearchChange?.((value) =>
     search_keyword_.as(String(value || "")),
@@ -230,6 +302,30 @@ function EntitySelect(props, render_label, render_value) {
       return filter_select_options(options, source.keyword);
     },
   );
+  const list_model = AccountSelectListModel(store, options_);
+
+  function handle_list_keydown(event) {
+    switch (event.key) {
+      case "ArrowDown":
+      case "ArrowUp":
+        event.preventDefault();
+        event.stopPropagation();
+        list_model.methods.move_focus(event.key === "ArrowDown" ? 1 : -1);
+        break;
+      case "Enter":
+        event.preventDefault();
+        event.stopPropagation();
+        list_model.methods.select_focused();
+        break;
+      case "Escape":
+        event.preventDefault();
+        event.stopPropagation();
+        store.hide();
+        break;
+      default:
+        break;
+    }
+  }
   let suppress_next_click = false;
   let click_suppression_timer = null;
 
@@ -360,28 +456,7 @@ function EntitySelect(props, render_label, render_value) {
                       store,
                       name: semantic_name,
                       label: search_placeholder,
-                      onKeyDown(event) {
-                        switch (event.key) {
-                          case "ArrowDown":
-                            event.preventDefault();
-                            store.focusNextOption();
-                            break;
-                          case "ArrowUp":
-                            event.preventDefault();
-                            store.focusPrevOption();
-                            break;
-                          case "Enter":
-                            event.preventDefault();
-                            store.selectFocusedOption();
-                            break;
-                          case "Escape":
-                            event.preventDefault();
-                            store.hide();
-                            break;
-                          default:
-                            break;
-                        }
-                      },
+                      onKeyDown: handle_list_keydown,
                     }),
                   ],
                 );
@@ -390,8 +465,9 @@ function EntitySelect(props, render_label, render_value) {
             primitives.SelectViewport(
               {
                 store,
-                class: "dm-select-viewport",
+                class: "dm-select-viewport flex flex-col",
                 attributes: { n: `${semantic_name}-options` },
+                onKeyDown: handle_list_keydown,
               },
               [
                 Show({
@@ -412,12 +488,31 @@ function EntitySelect(props, render_label, render_value) {
                         (options) => options.length > 0,
                       ),
                       ok() {
-                        return Runtime.For({
+                        return VirtualListView({
+                          attributes: { n: `${semantic_name}-virtual-list` },
+                          style: {
+                            height: list_model.state.height_,
+                            "min-height": "0",
+                            flex: "0 1 auto",
+                          },
                           each: options_,
-                          render(entry) {
+                          key: (entry) => entry,
+                          size: 6,
+                          buffer: 3,
+                          itemHeight: list_model.item_height,
+                          onScroll: list_model.methods.on_scroll,
+                          onMounted(event) {
+                            const target = event.target;
+                            const element = target.get$elm?.() || target;
+                            element.scrollTop = list_model.state.scroll_request_.value.top;
+                            return list_model.state.scroll_request_.subscribe({
+                              onChange({ top }) { element.scrollTop = top; },
+                            });
+                          },
+                          render(entry_) {
                             return select_entry(
                               store,
-                              entry,
+                              entry_.value,
                               render_label,
                               semantic_name,
                             );
@@ -462,6 +557,7 @@ function EntitySelect(props, render_label, render_value) {
         consume_click_suppression();
         if (typeof unlisten === "function") unlisten();
         if (typeof search_unlisten === "function") search_unlisten();
+        list_model.methods.destroy();
         options_.destroy?.();
         search_keyword_.destroy?.();
         state_.destroy?.();
@@ -779,10 +875,11 @@ function account_option_label(entry) {
         Show({
           when: account.avatar_url,
           ok() {
-            return Runtime.Img({
+            return LazyImg({
               class: "w-full h-full object-cover",
               src: account.avatar_url,
               attributes: {
+                n: "account-select-option-avatar",
                 alt: "",
                 loading: "lazy",
                 referrerpolicy: "no-referrer",
@@ -804,7 +901,7 @@ function account_option_label(entry) {
       Show({
         when: description,
         ok() {
-          return View({ class: "w-full overflow-hidden text-color-text-secondary leading-tight text-left text-ellipsis whitespace-nowrap" }, [
+          return View({ class: "w-full overflow-hidden text-color-text-secondary text-sm leading-tight text-left text-ellipsis whitespace-nowrap", attributes: { n: "account-select-option-platform" } }, [
             description,
           ]);
         },
@@ -831,7 +928,7 @@ function account_selected_value(state_, semantic_name) {
     Show({
       when: Runtime.computed(avatar_, Boolean),
       ok() {
-        return Runtime.Img({
+        return LazyImg({
           class: "w-5 h-5 flex-[0_0_auto] object-cover rounded-full",
           src: avatar_,
           attributes: {
@@ -952,11 +1049,12 @@ export function LoadingView() {
  * @param {Error} error
  * @param {string} view_name
  */
-export function ErrorFallbackView(error, view_name) {
+export function ErrorFallbackView(error, view_name, tip) {
   return View(
     {
       class: "flex min-h-full items-center justify-center p-8 bg-[radial-gradient(_circle_at_50%_38%,_var(--dm-color-danger-soft),_transparent_min(360px,_46vw)_),_var(--dm-color-bg-canvas)] min-w-0 min-h-full text-color-text-primary font-sans dm-grid dm-place-center dm-p-8",
-      attributes: { role: "alert" },
+      attributes: { n: "route-error-state", role: "alert" },
+      onMounted() { tip({ msg: [error.message || String(error)], type: "error" }); },
     },
     [
       View({ class: "relative w-[min(100%,_520px)] grid grid-cols-[auto_minmax(0,_1fr)] gap-4 p-6 overflow-hidden text-color-text-primary bg-color-bg-surface border-[var(--dm-border-width)_solid_var(--dm-color-danger-border)] rounded-xl shadow-lg [&::before]:content-[\"\"] [&::before]:absolute [&::before]:inset-[0_auto_0_0] [&::before]:w-1 [&::before]:bg-color-danger" }, [
@@ -975,7 +1073,7 @@ export function ErrorFallbackView(error, view_name) {
             view_name || "未知页面",
           ]),
         ]),
-        View({ as: "pre", class: "grid-column-[1_/_-1] max-w-full m-[var(--dm-space-1)_0_0] p-[var(--dm-space-3)_var(--dm-space-4)] overflow-auto text-color-danger font-mono text-sm leading-relaxed whitespace-pre-wrap overflow-wrap-anywhere bg-color-danger-soft border-[var(--dm-border-width)_solid_var(--dm-color-danger-border)] rounded-md" }, [error.message]),
+        ErrorMessage({ error, tip, name: "route-error-details" }),
       ]),
     ],
   );

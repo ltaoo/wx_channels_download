@@ -192,12 +192,6 @@ function empty_progress() {
   };
 }
 
-function show_downloader_success(message) {
-  if (window.DLUtils && typeof DLUtils.toast === "function") {
-    DLUtils.toast(message);
-  }
-}
-
 export function ThirdPartyDownloaderModel(props = {}) {
   const storage = props.storage;
   const saved = read_saved_settings(storage);
@@ -225,6 +219,9 @@ export function ThirdPartyDownloaderModel(props = {}) {
     title: "尚未检测连接",
     message: "选择下载器并检测连接后，即可发送下载任务。",
   });
+  notice_.subscribe({ onChange(notice) {
+    if (notice.tone === "danger") props.tip({ msg: [notice.message || notice.title], type: "error" });
+  } });
   const last_result_ = ref(null);
   let resource_context = { decode_key: "", requires_decryption: false };
   let active_task_context = null;
@@ -257,7 +254,9 @@ export function ThirdPartyDownloaderModel(props = {}) {
       Boolean(state.decrypting),
   );
 
-  const methods = {};
+  const methods = {
+    tip: props.tip,
+  };
   const ui = {
     advanced_button$: new Timeless.vm.ButtonCore({
       variant: "ghost",
@@ -668,7 +667,7 @@ export function ThirdPartyDownloaderModel(props = {}) {
         title: "下载完成",
         message: progress.file_path || "三方下载器已完成任务。",
       });
-      show_downloader_success("三方下载已完成");
+      props.tip({ msg: ["三方下载已完成"], type: "success" });
       return null;
     }
     if (!task_context.decode_key) {
@@ -739,7 +738,7 @@ export function ThirdPartyDownloaderModel(props = {}) {
         title: "下载并解密完成",
         message: decrypted_path,
       });
-      show_downloader_success("三方下载及微信解密已完成");
+      props.tip({ msg: ["三方下载及微信解密已完成"], type: "success" });
       return response;
     } catch (error) {
       if (sequence !== tracking_sequence) return null;
@@ -900,7 +899,7 @@ export function ThirdPartyDownloaderModel(props = {}) {
         });
       }
       persist_settings();
-      show_downloader_success("已发送到三方下载器");
+      props.tip({ msg: ["已发送到三方下载器"], type: "success" });
       return response;
     } catch (error) {
       notice_.as({

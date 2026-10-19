@@ -1,8 +1,9 @@
-import { request } from "@/biz/request.js";
+import { track_error } from "@/utils.js";
+import { fetchAccountList, fetchAccountContents } from "@/biz/request.js";
 import { proxy_image_url } from "@/image-proxy.model.js";
+import { format_time } from "@/utils.js";
 
 import { content_type_label, normalize_content_item } from "./content.model.js";
-import { format_time } from "@/utils.js";
 
 function first_non_empty(...values) {
   for (const value of values) {
@@ -329,7 +330,7 @@ function AccountViewModel(props) {
   const platform_id_ = ref(initial_search.platform_id);
   const initial_ = ref(true);
   const loading_ = ref(false);
-  const error_ = ref("");
+  const error_ = track_error(ref(""), props.tip);
   const copied_account_id_ = ref("");
   const selected_account_ = ref(null);
   const drawer_tabs_ = refarr([]);
@@ -339,11 +340,11 @@ function AccountViewModel(props) {
   const drawer_loading_ = ref(false);
   const drawer_loading_more_ = ref(false);
   const drawer_next_marker_ = ref("");
-  const drawer_more_error_ = ref("");
-  const drawer_error_ = ref("");
+  const drawer_more_error_ = track_error(ref(""), props.tip);
+  const drawer_error_ = track_error(ref(""), props.tip);
   const drawer_player_content_ = ref(null);
   const drawer_player_download_loading_ = ref(false);
-  const drawer_player_download_error_ = ref("");
+  const drawer_player_download_error_ = track_error(ref(""), props.tip);
   const drawer_player_download_success_ = ref("");
   let request_sequence = 0;
   let drawer_request_sequence = 0;
@@ -351,23 +352,12 @@ function AccountViewModel(props) {
 
   const reqs = {
     account: {
-      list: new Timeless.kit.RequestCore(
-        (params) => request.get("/api/account/list", params),
-        { client: props.client },
-      ),
-      details: new Timeless.kit.RequestCore(
-        (body) => {
-          return request.get(
-            `/api/account/${encodeURIComponent(body.scope)}/content/list`,
-            body.params,
-          );
-        },
-        { client: props.client },
-      ),
-      download_create: new Timeless.kit.RequestCore(
-        (body) => request.post("/api/v1/download_task/create", body),
-        { client: props.client },
-      ),
+      list: new Timeless.kit.RequestCore(fetchAccountList, {
+        client: props.client,
+      }),
+      details: new Timeless.kit.RequestCore(fetchAccountContents, {
+        client: props.client,
+      }),
     },
   };
 
@@ -674,34 +664,33 @@ function AccountViewModel(props) {
     drawer_player_download_error_.as("");
     drawer_player_download_success_.as("");
 
-    const result = await reqs.account.download_create.run({
-      objects: [
-        {
-          platform: "wxchannels",
-          content,
-          filename: content.title || content.external_id || "",
-        },
-      ],
-    });
-    drawer_player_download_loading_.as(false);
-    if (result.error) {
-      drawer_player_download_error_.as(
-        result.error.message || String(result.error),
-      );
-      return result;
-    }
+    try {
+      if (!window.dl$) throw new Error("下载服务尚未初始化");
+      const result = await window.dl$.create(content, {
+        platform: "wxchannels",
+        filename: content.title || content.external_id || "",
+      });
+      const error = result.error || result.data.error;
+      if (error) {
+        drawer_player_download_error_.as(error.message || String(error));
+        return result;
+      }
 
-    const task = result.data?.tasks?.[0];
-    if (Number(task?.code) !== 0) {
-      drawer_player_download_error_.as(task?.msg || "下载任务创建失败");
+      drawer_player_download_success_.as("下载任务创建成功");
+      props.tip({ msg: ["下载任务创建成功"], type: "success" });
       return result;
+    } catch (error) {
+      drawer_player_download_error_.as(
+        error.message || String(error),
+      );
+      return Timeless.Result.Err(error);
+    } finally {
+      drawer_player_download_loading_.as(false);
     }
-    drawer_player_download_success_.as("下载任务创建成功");
-    window.DLUtils?.toast?.("下载任务创建成功");
-    return result;
   }
 
   const methods = {
+    tip: props.tip,
     ready() {
       return load(1);
     },

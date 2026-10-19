@@ -1,3 +1,4 @@
+import { ErrorMessage } from "@/dmui.js";
 import { PreviewViewModel } from "./preview.model.js";
 
 function PreviewStateView(props) {
@@ -158,7 +159,7 @@ function PreviewHTMLFileView(props) {
         ok() {
           return PreviewStateView({
             role: "alert",
-            message: vm$.state.html_error,
+
             action: View(
               {
                 as: "button",
@@ -298,7 +299,7 @@ function PreviewTextFileView(props) {
               attributes: { n: "preview-text-error", role: "alert" },
             },
             [
-              vm$.state.text_error,
+              ErrorMessage({ tip: vm$.methods.tip, error: vm$.state.text_error }),
               View(
                 {
                   as: "button",
@@ -395,18 +396,7 @@ function PreviewVideoPlayerView(props) {
           unsubscribe_tracks = null;
         },
       }),
-      Show({
-        when: computed(player$.state.subtitle_error, Boolean),
-        ok() {
-          return Tag(
-            {
-              class: "absolute left-3 z-1 max-w-[calc(100%_-_var(--dm-space-6))] overflow-hidden text-ellipsis bg-color-media-surface border-[1px_solid_var(--dm-color-media-border)] shadow-sm pointer-events-none top-auto bottom-64px text-color-danger",
-              attributes: { n: "preview-video-subtitle-error", role: "status" },
-            },
-            [player$.state.subtitle_error],
-          );
-        },
-      }),
+
       is_live_playback
         ? Tag(
             {
@@ -419,7 +409,8 @@ function PreviewVideoPlayerView(props) {
                 role: "status",
               },
             },
-            [vm$.state.live_playback_message],
+            [combine({ status: vm$.state.live_playback_status, message: vm$.state.live_playback_message },
+              (state) => state.status === "error" ? "播放失败" : state.message)],
           )
         : null,
     ].filter(Boolean),
@@ -897,7 +888,7 @@ function PreviewZipView(props) {
           ok() {
             return PreviewStateView({
               role: "alert",
-              message: vm$.state.zip_error,
+
               action: PreviewDownloadLinkView({ store: vm$, file }),
             });
           },
@@ -1104,7 +1095,7 @@ function PreviewPageView(props) {
               return PreviewStateView({
                 role: "alert",
                 title: "无法打开预览",
-                message: vm$.state.error,
+
                 action: View(
                   {
                     as: "button",

@@ -8,7 +8,7 @@ const context = vm.createContext({ Date, JSON, Promise });
 const source = fs.readFileSync(path.join(__dirname, '../src/pages/pipeline_editor.model.js'), 'utf8');
 vm.runInContext(source.replace(/export \{[^}]+\};\s*$/, ''), context);
 
-function setup() {
+function setup({ emit_on_send = false } = {}) {
   let value = { flow_id: 'flow-1', dirty: true, saving: false, pending_node_config: false, draft: { start_node_id: 'start', nodes: [{ id: 'start', name: '未保存节点' }] } };
   let message, state;
   const sent = [];
@@ -17,7 +17,10 @@ function setup() {
     channel: {
       onMessage(fn) { message = fn; return () => { message = null; }; },
       onStateChange(fn) { state = fn; return () => { state = null; }; },
-      async send(raw) { sent.push(JSON.parse(raw)); },
+      async send(raw) {
+        sent.push(JSON.parse(raw));
+        if (emit_on_send && sent.length <= 10) state({ connected: true });
+      },
     },
     read: () => value,
     apply(draft) { applied += 1; value = { ...value, draft, dirty: true }; },
@@ -26,6 +29,7 @@ function setup() {
     bridge, sent, value: () => value, applied: () => applied,
     change(patch) { value = { ...value, ...patch }; },
     connected() { state({ connected: true }); },
+    disconnected() { state({ connected: false }); },
     async receive(patch) {
       message({ type: 'pipeline_editor_read', flow_id: 'flow-1', request_id: 'request', expires_at: Date.now() + 4000, ...patch });
       await new Promise(setImmediate);
@@ -81,9 +85,26 @@ test('reconnect registers the current pipeline and closing releases its subscrip
   const h = setup();
   h.connected();
   h.change({ flow_id: 'flow-2' });
+  h.disconnected();
   h.connected();
   assert.equal(h.sent[1].flow_id, 'flow-2');
   h.bridge.destroy();
   h.bridge.register();
   assert.equal(h.sent.length, 2);
+});
+
+test('sending registration or replies cannot recursively register the connected channel', async () => {
+  const h = setup({ emit_on_send: true });
+  h.connected();
+  assert.equal(h.sent.length, 1);
+  h.connected();
+  assert.equal(h.sent.length, 1);
+  const read = await h.receive();
+  assert.equal(read.type, 'pipeline_editor_reply');
+  assert.equal(h.sent.length, 2);
+  h.disconnected();
+  h.connected();
+  assert.equal(h.sent.length, 3);
+  assert.equal(h.sent[2].type, 'pipeline_editor_register');
+  h.bridge.destroy();
 });

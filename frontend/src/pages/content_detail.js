@@ -1,3 +1,4 @@
+import { ErrorMessage } from "@/dmui.js";
 import { TagSelect, ContentTagBadge } from "@/components/index.js";
 
 import {
@@ -1149,7 +1150,7 @@ function ContentDetailBody(props) {
                 name: "content-detail-error-symbol",
               }),
               View({ class: "group-content-state-title text-content-text text-lg font-semibold" }, ["内容加载失败"]),
-              View({ class: "group-content-state-text max-w-480px text-md leading-relaxed" }, [vm$.state.error]),
+              ErrorMessage({ tip: vm$.methods.tip, error: vm$.state.error }),
               ContentDetailAction({
                 name: "content-detail-retry-action",
                 icon: "refresh-cw",

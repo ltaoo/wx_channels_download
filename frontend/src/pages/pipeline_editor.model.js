@@ -4,6 +4,7 @@ function PipelineEditorBridge({ channel, read, apply, on_error = () => {} }) {
   let revision = 0;
   let fingerprint = "";
   let destroyed = false;
+  let connected = false;
   function snapshot() {
     const value = read();
     if (!value) throw new Error("Pipeline 编辑器尚未就绪，请等待加载完成后重试");
@@ -40,7 +41,12 @@ function PipelineEditorBridge({ channel, read, apply, on_error = () => {} }) {
     if (!destroyed) await send(reply);
   }
   const unsubscribe_message = channel.onMessage((message) => { receive(message).catch(on_error); });
-  const unsubscribe_state = channel.onStateChange((state) => { if (state.connected) register(); });
+  const unsubscribe_state = channel.onStateChange((state) => {
+    const was_connected = connected;
+    connected = Boolean(state.connected);
+    // Sending also emits state; register only when the connection becomes ready.
+    if (connected && !was_connected) register();
+  });
   return {
     register,
     destroy() {

@@ -413,7 +413,6 @@ function LogsPageImportDialog(props) {
             ),
             hint: "或点击此区域选择文件",
             formats: "支持 .log、.txt、.json、.jsonl、.ndjson",
-            error: vm$.state.import_file_error,
             inputLabel: "选择要导入的日志文件",
             dropZoneLabel: "点击选择或拖拽上传日志文件",
             onChange(event) {
