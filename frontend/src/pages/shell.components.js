@@ -503,7 +503,7 @@ function MCPUsageGuide(props) {
           ]),
           View({ as: "pre", class: "m-[var(--dm-space-3)_0_0] p-3 overflow-x-auto text-color-media-text font-mono text-xs leading-relaxed bg-color-media-canvas border-[var(--dm-border-width)_solid_var(--dm-color-media-border)] rounded-content whitespace-pre" }, [
             View({ as: "code" }, [
-              'download_content({\n  "job_id": "<job_id>",\n  "wait_for_completion": true\n})',
+              "download_content({\n \"job_id\": \"<job_id>\",\n \"wait_for_completion\": true\n})",
             ]),
           ]),
         ]),
@@ -517,7 +517,7 @@ function MCPUsageGuide(props) {
           ]),
           View({ as: "pre", class: "m-[var(--dm-space-3)_0_0] p-3 overflow-x-auto text-color-media-text font-mono text-xs leading-relaxed bg-color-media-canvas border-[var(--dm-border-width)_solid_var(--dm-color-media-border)] rounded-content whitespace-pre" }, [
             View({ as: "code" }, [
-              'decrypt_wxchannels_video({\n  "file_path": "<已下载文件的绝对路径>",\n  "key": "<decode_key>"\n})',
+              "decrypt_wxchannels_video({\n \"file_path\": \"<已下载文件的绝对路径>\",\n \"key\": \"<decode_key>\"\n})",
             ]),
           ]),
         ]),

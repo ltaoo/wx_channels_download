@@ -165,7 +165,7 @@ function TaskOverwriteConfirmDialog(props) {
             }),
             View(
               {
-                class: "dm-truncate dm-flex-1 dm-text-sm dm-font-semibold",
+                class: "dm-flex-1 dm-text-sm dm-font-semibold dm-truncate",
                 attributes: {
                   n: "download-overwrite-conflict-name",
                   title: computed(conflict_, (conflict) => conflict.name || ""),
@@ -1016,7 +1016,7 @@ function ScraperNovelDetails(props) {
                     Button(
                       {
                         store: vm$.ui.btn_show_more_chapters$,
-                        class: "dm-button--dashed",
+                        class: "w-full dm-button--dashed",
                         attributes: {
                           n: "scraper-novel-more-action",
                           type: "button",

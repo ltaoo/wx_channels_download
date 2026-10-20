@@ -30,7 +30,7 @@ function ContentDetailAction(props) {
     {
       type: "button",
       class: [
-        "dm-button dm-button--surface dm-focus-ring",
+        "dm-button--surface dm-button dm-focus-ring",
         props.compact ? "dm-button--sm" : "dm-button--md",
       ]
         .filter(Boolean)
