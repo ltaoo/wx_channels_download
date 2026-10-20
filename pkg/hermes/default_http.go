@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -182,27 +181,51 @@ func (d *default_http_driver) do(req *http.Request, proxy_server ProxyServer) (*
 	if err != nil {
 		return nil, err
 	}
-	return client.Do(req)
+	resp, err := client.Do(req)
+	if err == nil || proxy_url != "" || !IsCertificateVerifyError(err) {
+		return resp, err
+	}
+	// Go dials IPv6 first (RFC 6724) and a failed TLS handshake never falls back
+	// to the next address, so a CDN edge that serves the wrong certificate over
+	// IPv6 fails the request even when the IPv4 address of the same host works.
+	ipv4_client, client_err := d.client_for_family(proxy_url, "tcp4")
+	if client_err != nil {
+		return nil, err
+	}
+	// The request was already sent, so replay a clone rather than the original.
+	resp, retry_err := ipv4_client.Do(req.Clone(req.Context()))
+	if retry_err != nil {
+		return nil, fmt.Errorf("%w (IPv4 retry failed: %v)", err, retry_err)
+	}
+	return resp, nil
 }
 
 func (d *default_http_driver) client(raw_proxy_url string) (*http.Client, error) {
+	return d.client_for_family(raw_proxy_url, "")
+}
+
+// client_for_family returns a cached client. family restricts dialing to one
+// address family ("tcp4" for IPv4-only, "" for both) and forms part of the
+// cache key.
+func (d *default_http_driver) client_for_family(raw_proxy_url, family string) (*http.Client, error) {
 	proxy_url, parsed_proxy_url, err := normalize_default_http_proxy_url(raw_proxy_url)
 	if err != nil {
 		return nil, err
 	}
+	cache_key := proxy_url
+	if family != "" {
+		cache_key += "|" + family
+	}
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if client := d.clients[proxy_url]; client != nil {
+	if client := d.clients[cache_key]; client != nil {
 		return client, nil
 	}
 
 	transport := &http.Transport{
-		ForceAttemptHTTP2: true,
-		DialContext: (&net.Dialer{
-			Timeout:   5 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
+		ForceAttemptHTTP2:   true,
+		DialContext:         HTTPDialContext(family),
 		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 32,
 		IdleConnTimeout:     90 * time.Second,
@@ -212,7 +235,7 @@ func (d *default_http_driver) client(raw_proxy_url string) (*http.Client, error)
 		transport.Proxy = http.ProxyURL(parsed_proxy_url)
 	}
 	client := &http.Client{Transport: transport}
-	d.clients[proxy_url] = client
+	d.clients[cache_key] = client
 	return client, nil
 }
 
