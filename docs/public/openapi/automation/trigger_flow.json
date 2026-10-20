@@ -1,0 +1,64 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "立即执行自定义工作流",
+    "description": "显式手动执行，不受工作流已配置的 Cron/Event 等触发方式限制；initial_data 是初始上下文。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/model_FlowRunRecord"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_automation_trigger_flow",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "initial_data": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "example": {
+            "id": "flow-demo",
+            "initial_data": {}
+          }
+        }
+      }
+    }
+  }
+}

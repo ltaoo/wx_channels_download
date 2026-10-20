@@ -1,0 +1,97 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "读取在线 Pipeline 编辑器草稿",
+    "description": "需有通过 /ws/v1/automation 注册的在线编辑页面。可用 flow_id 筛选；多个编辑器且未提供 editor_id 时返回 editors 和 selection_required=true。请求体上限 16 KiB。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "editors": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "editor_id": {
+                                "type": "string"
+                              },
+                              "flow_id": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "selection_required": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "editor_id": {
+                          "type": "string"
+                        },
+                        "snapshot": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "catalog": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "../components.json#/schemas/services_UserFlowNodeCatalogItem"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_automation_get_editor",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "editor_id": {
+                "type": "string"
+              },
+              "flow_id": {
+                "type": "string"
+              }
+            }
+          },
+          "example": {}
+        }
+      }
+    }
+  }
+}

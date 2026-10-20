@@ -1,0 +1,44 @@
+{
+  "get": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "订阅自动化运行与节点事件",
+    "description": "可按 flow_id、run_id 过滤。消息类型为 automation_run_started/completed/failed/waiting、automation_node_status、automation_node_log（均以 automation_ 为前缀）。慢客户端可能丢消息，应重新查询运行详情。此连接也承载 Pipeline 编辑器注册及草稿读写消息。",
+    "responses": {
+      "101": {
+        "description": "升级为 WebSocket，服务端每 10 秒发 Ping，30 秒未收到 Pong 会断开。"
+      }
+    },
+    "operationId": "get_ws_v1_automation",
+    "parameters": [
+      {
+        "name": "flow_id",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "工作流 ID"
+      },
+      {
+        "name": "run_id",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "运行 ID"
+      }
+    ],
+    "x-websocket-server-message-schema": {
+      "$ref": "../components.json#/schemas/api_automation_ws_message"
+    },
+    "x-websocket-client-messages": [
+      {
+        "type": "pipeline_editor_register",
+        "flow_id": "flow-demo"
+      }
+    ]
+  }
+}

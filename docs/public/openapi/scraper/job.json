@@ -1,0 +1,48 @@
+{
+  "get": {
+    "tags": [
+      "抓取"
+    ],
+    "summary": "查询抓取任务",
+    "description": "按 id 返回当前完整快照，包含已收集的内容、账号、缓存及最终 output。任务不存在或已被淘汰时返回业务码 400。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/services_ScraperFetchJob"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "get_api_scraper_job",
+    "parameters": [
+      {
+        "name": "id",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "对象主键；具体对象类型见接口说明"
+      }
+    ]
+  }
+}

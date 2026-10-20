@@ -4,7 +4,7 @@
       "下载任务"
     ],
     "summary": "暂停全部运行中任务",
-    "description": "暂停符合状态的未删除任务。普通任务进入已暂停状态；包含 STREAM 资源的直播任务会停止并收尾为已完成。请求体可省略。",
+    "description": "暂停符合状态的未删除普通下载任务；包含 STREAM 资源的直播任务会跳过并继续录制，不计入 total。请求体可省略。",
     "requestBody": {
       "required": false,
       "content": {

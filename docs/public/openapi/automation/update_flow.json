@@ -1,0 +1,85 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "更新自定义工作流定义",
+    "description": "nodes 非空时替换完整节点集合，省略或空数组保留已有节点，边通过 next_ids 指定。triggers 省略/null 保留规则，传 [] 移除额外触发规则；context_schema 为上下文定义。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/model_UserFlow"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_automation_update_flow",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "nullable": true
+              },
+              "description": {
+                "type": "string",
+                "nullable": true
+              },
+              "context_schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "../components.json#/schemas/engine_FieldSchema"
+                }
+              },
+              "start_node_id": {
+                "type": "string"
+              },
+              "nodes": {
+                "type": "array",
+                "items": {
+                  "$ref": "../components.json#/schemas/services_UserFlowNodeInput"
+                }
+              },
+              "triggers": {
+                "type": "array",
+                "items": {
+                  "$ref": "../components.json#/schemas/services_UserFlowTriggerInput"
+                }
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

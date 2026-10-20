@@ -2,8 +2,8 @@
   "openapi": "3.0.0",
   "info": {
     "title": "WeChat Channels Download API",
-    "version": "v260613",
-    "description": "可以通过 HTTP 请求来调用下载器的 API，现在提供了以下几类接口：\n\n- 视频号相关\n- 公众号相关\n- 下载器相关"
+    "version": "2026-10-20",
+    "description": "本地下载器 HTTP API，默认地址 http://127.0.0.1:2022。核心接口以 internal/api/routes.go 及处理器实现为准，视频号与公众号接口由平台适配器注册。\n\n普通 JSON 接口返回 {code,msg,data?}：code=0 成功；业务失败通常仍为 HTTP 200，请同时检查 code。文件助手、Cookie、自动化 Webhook、媒体文件、WebSocket、MCP 使用各自的 HTTP 状态及响应格式，详见对应接口。\n\n抓取接口创建异步任务；创建任务后请查询任务或订阅 WebSocket。视频号/公众号依赖微信页面连接与平台凭据，具体以前置条件和平台可用状态为准。\n\n此文档收录业务接口；前端页面、静态资源及 favicon 不列入接口列表。"
   },
   "servers": [
     {
@@ -18,7 +18,7 @@
     },
     {
       "name": "公众号",
-      "description": "部分接口需要保持任意文章页面打开的状态，否则调用接口时会提示 `{\"code\":400,\"msg\":\"请先初始化客户端 socket 连接\"}`。当出现该提示时，打开任意公众号文章页面即可，如果已经打开，刷新一下。"
+      "description": "公众号读取接口的 token 来自 mp.tokenFilepath 指定的文件（每行一个令牌；未加载令牌时无需鉴权）；更新凭证和删除接口的 token 必须与 mp.refreshToken 一致。部分接口需要在线公众号文章页面，未连接时业务码为 5001。download_all 在当前版本未注册。"
     },
     {
       "name": "下载任务",
@@ -27,6 +27,66 @@
     {
       "name": "媒体",
       "description": "媒体文件预览与播放接口"
+    },
+    {
+      "name": "抓取",
+      "description": "异步抓取、任务查询、平台状态、缓存与 WebSocket"
+    },
+    {
+      "name": "三方下载器",
+      "description": "本机 aria2、Motrix、Gopeed 调用"
+    },
+    {
+      "name": "账号",
+      "description": "归档账号与平台主页同步"
+    },
+    {
+      "name": "内容",
+      "description": "归档内容、详情与关联关系"
+    },
+    {
+      "name": "标签",
+      "description": "标签及内容/账号关联"
+    },
+    {
+      "name": "浏览历史",
+      "description": "浏览历史记录与查询"
+    },
+    {
+      "name": "文件",
+      "description": "本地文件读取、目录列表及图片代理"
+    },
+    {
+      "name": "文件助手",
+      "description": "微信文件传输助手扫码登录与消息"
+    },
+    {
+      "name": "应用",
+      "description": "配置、重启、更新、状态与日志"
+    },
+    {
+      "name": "服务",
+      "description": "应用服务控制及配置"
+    },
+    {
+      "name": "代理与证书",
+      "description": "代理配置、系统代理与证书管理"
+    },
+    {
+      "name": "Cookie",
+      "description": "Cookie 更新及兼容入口"
+    },
+    {
+      "name": "同步",
+      "description": "跨实例数据及文件同步"
+    },
+    {
+      "name": "自动化",
+      "description": "工作流、触发计划、运行记录、编辑器与 WebSocket"
+    },
+    {
+      "name": "MCP",
+      "description": "MCP 服务管理及 Streamable HTTP"
     }
   ],
   "paths": {
@@ -116,6 +176,374 @@
     },
     "/ws/v1/download_task": {
       "$ref": "./download_task/ws.json"
+    },
+    "/api/scraper/fetch": {
+      "$ref": "./scraper/fetch.json"
+    },
+    "/api/scraper/job": {
+      "$ref": "./scraper/job.json"
+    },
+    "/api/scraper/platform/status": {
+      "$ref": "./scraper/platform_status.json"
+    },
+    "/api/scraper/fetch/interrupt": {
+      "$ref": "./scraper/fetch_interrupt.json"
+    },
+    "/api/scraper/cache/content": {
+      "$ref": "./scraper/cache_content.json"
+    },
+    "/api/scraper/cache/clear": {
+      "$ref": "./scraper/cache_clear.json"
+    },
+    "/api/filehelper/qrcode": {
+      "$ref": "./filehelper/qrcode.json"
+    },
+    "/api/filehelper/login/wait": {
+      "$ref": "./filehelper/login_wait.json"
+    },
+    "/api/filehelper/status": {
+      "$ref": "./filehelper/status.json"
+    },
+    "/api/filehelper/synccheck": {
+      "$ref": "./filehelper/synccheck.json"
+    },
+    "/api/filehelper/sync": {
+      "$ref": "./filehelper/sync.json"
+    },
+    "/api/filehelper/messages": {
+      "$ref": "./filehelper/messages.json"
+    },
+    "/api/filehelper/send": {
+      "$ref": "./filehelper/send.json"
+    },
+    "/api/filehelper/logout": {
+      "$ref": "./filehelper/logout.json"
+    },
+    "/api/filehelper/parse_finder_feed": {
+      "$ref": "./filehelper/parse_finder_feed.json"
+    },
+    "/api/show_file": {
+      "$ref": "./files/show_file.json"
+    },
+    "/api/file": {
+      "$ref": "./files/file.json"
+    },
+    "/api/v1/fs/list": {
+      "$ref": "./files/fs_list.json"
+    },
+    "/api/v1/download_task/live/{task_id}/{resource_id}/{asset_name}": {
+      "$ref": "./download_task/live.json"
+    },
+    "/imgproxy": {
+      "$ref": "./files/imgproxy.json"
+    },
+    "/ws/scraper": {
+      "$ref": "./scraper/ws.json"
+    },
+    "/api/browse_history/create": {
+      "$ref": "./browse_history/create.json"
+    },
+    "/api/browse_history/list": {
+      "$ref": "./browse_history/list.json"
+    },
+    "/api/v1/download_task/update_resource": {
+      "$ref": "./download_task/update_resource.json"
+    },
+    "/api/v1/third_party_downloader/probe": {
+      "$ref": "./third_party_downloader/probe.json"
+    },
+    "/api/v1/third_party_downloader/create": {
+      "$ref": "./third_party_downloader/create.json"
+    },
+    "/api/v1/third_party_downloader/status": {
+      "$ref": "./third_party_downloader/status.json"
+    },
+    "/api/account/list": {
+      "$ref": "./account/list.json"
+    },
+    "/api/account/{scope}/content/list": {
+      "$ref": "./account/scope_content_list.json"
+    },
+    "/api/account/details/{scope}/content/list": {
+      "$ref": "./account/details_scope_content_list.json"
+    },
+    "/api/account/synchronize": {
+      "$ref": "./account/synchronize.json"
+    },
+    "/api/content/list": {
+      "$ref": "./content/list.json"
+    },
+    "/api/content/detail": {
+      "$ref": "./content/detail.json"
+    },
+    "/api/content/relations": {
+      "$ref": "./content/relations.json"
+    },
+    "/api/tag/list": {
+      "$ref": "./tag/list.json"
+    },
+    "/api/tag/create": {
+      "$ref": "./tag/create.json"
+    },
+    "/api/tag/delete": {
+      "$ref": "./tag/delete.json"
+    },
+    "/api/tag/rename": {
+      "$ref": "./tag/rename.json"
+    },
+    "/api/tag/content/set": {
+      "$ref": "./tag/content_set.json"
+    },
+    "/api/tag/account/set": {
+      "$ref": "./tag/account_set.json"
+    },
+    "/api/logs": {
+      "$ref": "./application/logs.json"
+    },
+    "/api/logs/clear": {
+      "$ref": "./application/logs_clear.json"
+    },
+    "/report": {
+      "$ref": "./application/report.json"
+    },
+    "/api/status": {
+      "$ref": "./application/status.json"
+    },
+    "/api/config": {
+      "$ref": "./application/config.json"
+    },
+    "/api/v1/sync/servers": {
+      "$ref": "./sync/servers.json"
+    },
+    "/api/v1/sync/servers/{server_id}": {
+      "$ref": "./sync/servers_server_id.json"
+    },
+    "/api/v1/sync/import": {
+      "$ref": "./sync/import.json"
+    },
+    "/api/restart/status": {
+      "$ref": "./application/restart_status.json"
+    },
+    "/api/update/check": {
+      "$ref": "./application/update_check.json"
+    },
+    "/api/update/status": {
+      "$ref": "./application/update_status.json"
+    },
+    "/api/update/download": {
+      "$ref": "./application/update_download.json"
+    },
+    "/api/update/restart": {
+      "$ref": "./application/update_restart.json"
+    },
+    "/api/mcp/status": {
+      "$ref": "./mcp/status.json"
+    },
+    "/api/mcp/enable": {
+      "$ref": "./mcp/enable.json"
+    },
+    "/api/mcp/disable": {
+      "$ref": "./mcp/disable.json"
+    },
+    "/mcp": {
+      "$ref": "./mcp/mcp.json"
+    },
+    "/api/service/start": {
+      "$ref": "./service/start.json"
+    },
+    "/api/service/stop": {
+      "$ref": "./service/stop.json"
+    },
+    "/api/service/config": {
+      "$ref": "./service/config.json"
+    },
+    "/api/proxy/status": {
+      "$ref": "./proxy/status.json"
+    },
+    "/api/proxy/config": {
+      "$ref": "./proxy/config.json"
+    },
+    "/api/proxy/restart": {
+      "$ref": "./proxy/restart.json"
+    },
+    "/api/proxy/system/enable": {
+      "$ref": "./proxy/system_enable.json"
+    },
+    "/api/proxy/system/disable": {
+      "$ref": "./proxy/system_disable.json"
+    },
+    "/api/proxy/certificate/status": {
+      "$ref": "./proxy/certificate_status.json"
+    },
+    "/api/proxy/certificate/pem": {
+      "$ref": "./proxy/certificate_pem.json"
+    },
+    "/api/proxy/certificate/generate": {
+      "$ref": "./proxy/certificate_generate.json"
+    },
+    "/api/proxy/certificate/install": {
+      "$ref": "./proxy/certificate_install.json"
+    },
+    "/api/proxy/certificate/replace": {
+      "$ref": "./proxy/certificate_replace.json"
+    },
+    "/api/proxy/certificate/uninstall": {
+      "$ref": "./proxy/certificate_uninstall.json"
+    },
+    "/api/proxy/certificate/uninstall_by_name": {
+      "$ref": "./proxy/certificate_uninstall_by_name.json"
+    },
+    "/api/cookies/update": {
+      "$ref": "./cookies/update.json"
+    },
+    "/api/cookie/update": {
+      "$ref": "./cookies/cookie_update.json"
+    },
+    "/api/v1/automation/get_editor": {
+      "$ref": "./automation/get_editor.json"
+    },
+    "/api/v1/automation/update_editor": {
+      "$ref": "./automation/update_editor.json"
+    },
+    "/ws/v1/automation": {
+      "$ref": "./automation/ws.json"
+    },
+    "/api/v1/automation/list_schedules": {
+      "$ref": "./automation/list_schedules.json"
+    },
+    "/api/v1/automation/create_schedule": {
+      "$ref": "./automation/create_schedule.json"
+    },
+    "/api/v1/automation/get_schedule": {
+      "$ref": "./automation/get_schedule.json"
+    },
+    "/api/v1/automation/update_schedule": {
+      "$ref": "./automation/update_schedule.json"
+    },
+    "/api/v1/automation/delete_schedule": {
+      "$ref": "./automation/delete_schedule.json"
+    },
+    "/api/v1/automation/toggle_schedule": {
+      "$ref": "./automation/toggle_schedule.json"
+    },
+    "/api/v1/automation/trigger_schedule": {
+      "$ref": "./automation/trigger_schedule.json"
+    },
+    "/api/v1/automation/list_runs": {
+      "$ref": "./automation/list_runs.json"
+    },
+    "/api/v1/automation/get_run": {
+      "$ref": "./automation/get_run.json"
+    },
+    "/api/v1/automation/cancel_run": {
+      "$ref": "./automation/cancel_run.json"
+    },
+    "/api/v1/automation/resume_run": {
+      "$ref": "./automation/resume_run.json"
+    },
+    "/api/v1/automation/retry_run": {
+      "$ref": "./automation/retry_run.json"
+    },
+    "/api/v1/automation/dispatch_event": {
+      "$ref": "./automation/dispatch_event.json"
+    },
+    "/api/v1/automation/webhook/{id}": {
+      "$ref": "./automation/webhook_id.json"
+    },
+    "/api/v1/automation/list_flows": {
+      "$ref": "./automation/list_flows.json"
+    },
+    "/api/v1/automation/create_flow": {
+      "$ref": "./automation/create_flow.json"
+    },
+    "/api/v1/automation/import_flow": {
+      "$ref": "./automation/import_flow.json"
+    },
+    "/api/v1/automation/get_flow": {
+      "$ref": "./automation/get_flow.json"
+    },
+    "/api/v1/automation/update_flow": {
+      "$ref": "./automation/update_flow.json"
+    },
+    "/api/v1/automation/delete_flow": {
+      "$ref": "./automation/delete_flow.json"
+    },
+    "/api/v1/automation/list_flow_nodes": {
+      "$ref": "./automation/list_flow_nodes.json"
+    },
+    "/api/v1/automation/get_flow_graph": {
+      "$ref": "./automation/get_flow_graph.json"
+    },
+    "/api/v1/automation/trigger_flow": {
+      "$ref": "./automation/trigger_flow.json"
+    },
+    "/api/mp/list": {
+      "$ref": "./mp/list.json"
+    },
+    "/api/mp/ws_pool": {
+      "$ref": "./mp/ws_pool.json"
+    },
+    "/api/mp/msg/list": {
+      "$ref": "./mp/msg_list.json"
+    },
+    "/api/mp/article/list": {
+      "$ref": "./mp/article_list.json"
+    },
+    "/api/mp/delete": {
+      "$ref": "./mp/delete.json"
+    },
+    "/api/mp/refresh": {
+      "$ref": "./mp/refresh.json"
+    },
+    "/api/mp/refresh_with_frontend": {
+      "$ref": "./mp/refresh_with_frontend.json"
+    },
+    "/rss/mp": {
+      "$ref": "./mp/rss.json"
+    },
+    "/mp/proxy": {
+      "$ref": "./mp/proxy.json"
+    },
+    "/api/mp/biz/msg/list": {
+      "$ref": "./mp/biz_msg_list.json"
+    },
+    "/api/mp/page/content": {
+      "$ref": "./mp/page_content.json"
+    },
+    "/rss/mpbiz": {
+      "$ref": "./mp/mpbiz.json"
+    },
+    "/rss/mpbiz/{format}": {
+      "$ref": "./mp/mpbiz_format.json"
+    },
+    "/api/channels/status": {
+      "$ref": "./channels/status.json"
+    },
+    "/api/channels/parse_sph": {
+      "$ref": "./channels/parse_sph.json"
+    },
+    "/api/channels/decrypt": {
+      "$ref": "./channels/decrypt.json"
+    },
+    "/api/channels/postprocess/flows": {
+      "$ref": "./channels/postprocess_flows.json"
+    },
+    "/api/channels/shared_feed/profile": {
+      "$ref": "./channels/shared_feed_profile.json"
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "syncToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "接收实例配置 sync.token"
+      },
+      "automationWebhookToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Webhook 触发规则令牌"
+      }
     }
   }
 }

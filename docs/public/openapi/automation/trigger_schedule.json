@@ -1,0 +1,71 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "立即触发自动化计划",
+    "description": "立即触发并返回已创建的运行记录；trigger_type 默认 Manual，可选 Manual、Event、Webhook。Cron 只能由调度器触发。Event 必须与已启用规则的 event_key 匹配。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/model_FlowRunRecord"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_automation_trigger_schedule",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "trigger_type": {
+                "type": "string",
+                "enum": [
+                  "Manual",
+                  "Event",
+                  "Webhook"
+                ],
+                "default": "Manual"
+              },
+              "event_key": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "example": {
+            "id": "sched-demo"
+          }
+        }
+      }
+    }
+  }
+}

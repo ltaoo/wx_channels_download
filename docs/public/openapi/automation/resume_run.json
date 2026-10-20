@@ -1,0 +1,63 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "恢复等待中的自动化运行",
+    "description": "恢复 WAITING 运行；node_id 用于指定等待节点，input 为恢复输入。 node_id 省略时使用检查点的当前节点；运行不能超过整体截止时间。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/model_FlowRunRecord"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_automation_resume_run",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "node_id": {
+                "type": "string"
+              },
+              "input": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "get": {
+    "tags": [
+      "文件助手"
+    ],
+    "summary": "等待扫码登录结果",
+    "description": "阻塞等待扫码结果；data.status 为 logged_in、scanned、expired、waiting 或 unknown。登录成功后自动启动后台消息检查。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "logged_in",
+                        "scanned",
+                        "expired",
+                        "waiting",
+                        "unknown"
+                      ]
+                    },
+                    "user_avatar": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      },
+      "500": {
+        "description": "微信请求失败",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "get_api_filehelper_login_wait"
+  }
+}
