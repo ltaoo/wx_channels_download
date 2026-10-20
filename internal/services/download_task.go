@@ -1256,25 +1256,6 @@ func (s *DownloadTaskService) CancelTask(task_id int) error {
 	return nil
 }
 
-// DeleteTask deletes a download task and returns the deleted task's record.
-func (s *DownloadTaskService) DeleteTask(task_id int) (*DownloadTaskRecord, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("应用未初始化，数据库不可用")
-	}
-
-	var task model.DownloadTask
-	if err := s.db.Where("id = ?", task_id).First(&task).Error; err != nil {
-		return nil, fmt.Errorf("下载任务不存在")
-	}
-
-	s.downloader.DeleteTask(task.Id)
-	deleted_record, _ := s.BuildTaskRecord(task.Id)
-	if err := s.soft_delete_task_graph([]int{task.Id}, time.Now().UnixMilli()); err != nil {
-		return nil, fmt.Errorf("删除下载任务失败: %w", err)
-	}
-	return deleted_record, nil
-}
-
 // ListTasks queries the download task list.
 func (s *DownloadTaskService) ListTasks(task_id int, page int, page_size int, status_filter string) (*TaskListResult, error) {
 	if s.db == nil {
@@ -1432,36 +1413,6 @@ func (s *DownloadTaskService) PauseAllTasks(status string) (int, []int, error) {
 	}
 
 	return paused, stream_task_ids, nil
-}
-
-// ClearTasks clears completed/failed/cancelled download tasks.
-func (s *DownloadTaskService) ClearTasks(delete_files bool) (int, error) {
-	if s.db == nil {
-		return 0, fmt.Errorf("应用未初始化，数据库不可用")
-	}
-
-	var tasks []model.DownloadTask
-	if err := s.db.Where("deleted_at IS NULL").
-		Where("status IN (?, ?, ?)",
-			model.TaskStatusFinished, model.TaskStatusFailed, model.TaskStatusCancelled).
-		Find(&tasks).Error; err != nil {
-		return 0, fmt.Errorf("查询下载任务失败: %w", err)
-	}
-
-	task_ids := make([]int, 0, len(tasks))
-	for _, task := range tasks {
-		s.downloader.DeleteTask(task.Id)
-		task_ids = append(task_ids, task.Id)
-	}
-	if len(task_ids) == 0 {
-		return 0, nil
-	}
-
-	if err := s.soft_delete_task_graph(task_ids, time.Now().UnixMilli()); err != nil {
-		return 0, fmt.Errorf("清理下载任务失败: %w", err)
-	}
-
-	return len(task_ids), nil
 }
 
 func (s *DownloadTaskService) soft_delete_task_graph(task_ids []int, deleted_at int64) error {
@@ -3323,7 +3274,7 @@ func (s *DownloadTaskService) check_duplicate(save_dir string, task_unique_id st
 				if _, deleted := deleted_task_ids[conflict.TaskID]; deleted {
 					continue
 				}
-				if err := s.delete_task_with_files(conflict.TaskID); err != nil {
+				if err := s.delete_terminal_task_record(conflict.TaskID); err != nil {
 					return fmt.Errorf("覆盖已存在任务失败: %w", err)
 				}
 				deleted_task_ids[conflict.TaskID] = struct{}{}
@@ -3358,7 +3309,10 @@ func (s *DownloadTaskService) check_duplicate(save_dir string, task_unique_id st
 	return err_resp
 }
 
-func (s *DownloadTaskService) delete_task_with_files(task_id int) error {
+// delete_terminal_task_record soft-deletes a finished/failed/cancelled task's
+// record so a re-download can reuse its unique ID. It intentionally leaves the
+// previous files on disk untouched.
+func (s *DownloadTaskService) delete_terminal_task_record(task_id int) error {
 	var task model.DownloadTask
 	if err := s.db.First(&task, task_id).Error; err != nil {
 		return fmt.Errorf("任务不存在: %w", err)
