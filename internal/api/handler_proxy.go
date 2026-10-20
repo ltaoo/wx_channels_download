@@ -3,7 +3,6 @@ package api
 import (
 	"fmt"
 	"net"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -125,10 +124,7 @@ func (c *APIClient) handle_proxy_certificate_generate(ctx *gin.Context) {
 	_ = ctx.ShouldBindJSON(&body)
 	name := strings.TrimSpace(body.Name)
 	if name == "" {
-		name = strings.TrimSpace(c.cfg.Original.GetString("cert.name"))
-	}
-	if name == "" {
-		name = "wx_channels_download"
+		name = certificate.LocalCAName
 	}
 	years := body.ValidYears
 	if years <= 0 {
@@ -143,7 +139,7 @@ func (c *APIClient) handle_proxy_certificate_generate(ctx *gin.Context) {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
-	cert_path, key_path, err := c.write_generated_certificate(name, cert_pem, key_pem)
+	cert_path, key_path, err := services.WriteGeneratedCertificate(c.cfg.Original, name, cert_pem, key_pem)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
@@ -232,7 +228,7 @@ func (c *APIClient) handle_proxy_certificate_replace(ctx *gin.Context) {
 	}
 
 	// 3. Generate new RootCA
-	name := "wx_channels_download"
+	name := certificate.LocalCAName
 	cert_pem, key_pem, err := certificate.GenerateRootCA(name, 10*365*24*time.Hour)
 	if err != nil {
 		result.Err(ctx, 500, "生成新证书失败: "+err.Error())
@@ -240,7 +236,7 @@ func (c *APIClient) handle_proxy_certificate_replace(ctx *gin.Context) {
 	}
 
 	// 4. Write to certs/ directory
-	cert_path, key_path, err := c.write_generated_certificate(name, cert_pem, key_pem)
+	cert_path, key_path, err := services.WriteGeneratedCertificate(c.cfg.Original, name, cert_pem, key_pem)
 	if err != nil {
 		result.Err(ctx, 500, "写入证书文件失败: "+err.Error())
 		return
@@ -452,50 +448,6 @@ func (c *APIClient) apply_proxy_settings_from_config() error {
 	}
 	c.event_publisher.Publish(events.ProxyCommand{Action: events.ProxyApplySettings})
 	return nil
-}
-
-func (c *APIClient) write_generated_certificate(name string, cert_pem []byte, key_pem []byte) (string, string, error) {
-	base_dir := c.cfg.WorkDir
-	if strings.TrimSpace(base_dir) == "" {
-		base_dir = c.cfg.RootDir
-	}
-	dir := filepath.Join(base_dir, "certs")
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", "", err
-	}
-	slug := certificate_filename_slug(name)
-	cert_path := filepath.Join(dir, slug+".pem")
-	key_path := filepath.Join(dir, slug+".key")
-	if err := os.WriteFile(cert_path, cert_pem, 0644); err != nil {
-		return "", "", err
-	}
-	if err := os.WriteFile(key_path, key_pem, 0600); err != nil {
-		return "", "", err
-	}
-	return cert_path, key_path, nil
-}
-
-func certificate_filename_slug(name string) string {
-	name = strings.ToLower(strings.TrimSpace(name))
-	var b strings.Builder
-	prev_underscore := false
-	for _, r := range name {
-		ok := r >= 'a' && r <= 'z' || r >= '0' && r <= '9'
-		if ok {
-			b.WriteRune(r)
-			prev_underscore = false
-			continue
-		}
-		if !prev_underscore {
-			b.WriteByte('_')
-			prev_underscore = true
-		}
-	}
-	slug := strings.Trim(b.String(), "_")
-	if slug == "" {
-		return "wx_channels_download"
-	}
-	return slug
 }
 
 func get_config_string(c *config.Config, key string) string {

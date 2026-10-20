@@ -766,6 +766,12 @@ img.dm-lazy-img-image[data-lazy-img-state] {
   border-color: color-mix(in srgb, var(--dm-color-warning) 34%, transparent);
 }
 
+.settings-certificate-status--warning {
+  color: color-mix(in srgb, #eab308 50%, var(--dm-color-text-primary));
+  background: color-mix(in srgb, #eab308 16%, var(--dm-color-bg-surface));
+  border-color: color-mix(in srgb, #eab308 55%, transparent);
+}
+
 .dm-tag--danger {
   color: var(--dm-color-danger);
   background: var(--dm-color-danger-soft);

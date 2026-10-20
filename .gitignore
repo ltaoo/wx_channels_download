@@ -33,6 +33,7 @@ workdir
 !pkg/cache/provider_test.go
 
 config.yaml
+/certs/
 global.js
 hooks.js
 downloads
