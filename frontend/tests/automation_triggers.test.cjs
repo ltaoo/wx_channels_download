@@ -52,6 +52,7 @@ function setup({ legacy_event = false, schedules = [], reject_save = false, live
       }
       if (url.endsWith("update_flow")) {
         if (reject_save) return { error: new Error("invalid Cron") };
+        if (body.name !== undefined) flow.name = body.name;
         schedules = body.triggers.map((trigger, index) => ({
           ...trigger, id: trigger.id || `new-${index}`, flow_id: flow.id,
           initial_data: JSON.stringify({ ...trigger.initial_data, __automation: { type: trigger.type, event_key: trigger.event_key, start_node: "start" } }),
@@ -71,6 +72,37 @@ function setup({ legacy_event = false, schedules = [], reject_save = false, live
   const model = context.AutomationPageViewModel({ client: {}, tip() {}, view: { query: { id: flow.id } } }, { mode });
   return { model, calls, context, flow, timers };
 }
+
+test("editing the pipeline title marks the draft dirty and saves the trimmed name", async () => {
+  const { model, calls } = setup();
+  await model.methods.refresh();
+  assert.equal(model.ui.input_edit_name$.state.value, "test");
+  assert.equal(model.state.dirty.value, false);
+  model.ui.input_edit_name$.setValue("  下载任务  ");
+  assert.equal(model.state.dirty.value, true);
+  assert.equal(model.state.selected_pipeline.value.name, "test");
+  await model.methods.saveFlow();
+  assert.equal(calls.find((call) => call.url.endsWith("update_flow")).body.name, "下载任务");
+  assert.equal(model.state.selected_pipeline.value.name, "下载任务");
+  assert.equal(model.ui.input_edit_name$.state.value, "下载任务");
+  assert.equal(model.state.dirty.value, false);
+  model.methods.destroy();
+});
+
+test("an empty title blocks saving and a failed save retains the entered title", async () => {
+  const { model, calls } = setup({ reject_save: true });
+  await model.methods.refresh();
+  model.ui.input_edit_name$.setValue("   ");
+  await model.methods.saveFlow();
+  assert.equal(calls.filter((call) => call.url.endsWith("update_flow")).length, 0);
+  assert.match(model.state.error.value, /请输入 Pipeline 标题/);
+  model.ui.input_edit_name$.setValue("新标题");
+  await model.methods.saveFlow();
+  assert.equal(model.ui.input_edit_name$.state.value, "新标题");
+  assert.equal(model.state.selected_pipeline.value.name, "test");
+  assert.equal(model.state.dirty.value, true);
+  model.methods.destroy();
+});
 
 test("closing the node inspector retains unapplied text; selecting a node reopens it", async () => {
   const { model } = setup();

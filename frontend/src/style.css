@@ -5,6 +5,10 @@
  * express state/child selectors. group-* classes are selector/DOM hooks only.
  * Keep utility order: it preserves shorthand and longhand cascade precedence. */
 
+.bottom-full {
+  bottom: 100%;
+}
+
 html {
   width: 100%;
   min-width: 0;

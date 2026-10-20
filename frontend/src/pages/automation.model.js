@@ -513,6 +513,7 @@ function AutomationPageViewModel(props, options) {
   execution_windows.onStateChange(sync_execution_windows);
 
   // editor working copy: [{id,type,name,config,next_ids,input_schema}]
+  const edit_name_ = ref("");
   const edit_nodes_ = refarr([]);
   const edit_triggers_ = refarr([]);
   const edit_start_node_id_ = ref("");
@@ -720,6 +721,13 @@ function AutomationPageViewModel(props, options) {
       placeholder: "连接自（上一个节点）",
       position: "popper",
       options: [],
+    }),
+    input_edit_name$: new Timeless.vm.InputCore({
+      placeholder: "Pipeline 标题",
+      onChange(value) {
+        edit_name_.as(String(value || ""));
+        dirty_.as(true);
+      },
     }),
     input_create_name$: new Timeless.vm.InputCore({
       placeholder: "Pipeline 名称",
@@ -1686,6 +1694,8 @@ function AutomationPageViewModel(props, options) {
   function enter_edit(flow) {
     staged_node_positions.clear();
     selected_pipeline_.as(flow);
+    edit_name_.as(flow.name || flow.id);
+    ui.input_edit_name$.setValue(edit_name_.value, { silence: true });
     edit_triggers_.as(pipeline_triggers(flow, schedules_.value).map(new_trigger_row), { reset: true });
     const edit_nodes = (flow.nodes || []).map((node) => ({
       id: node.id,
@@ -2209,11 +2219,14 @@ function AutomationPageViewModel(props, options) {
     saving_.as(true);
     error_.as("");
     try {
+      const name = edit_name_.value.trim();
+      if (!name) throw new Error("请输入 Pipeline 标题");
       const calculated_positions = calculate_pipeline_node_positions(
         edit_nodes_.value,
       );
       const r = await reqs.pipeline.update.run({
         id: selected_flow_id_.value,
+        name,
         triggers: serialize_triggers(),
         start_node_id: edit_start_node_id_.value,
         nodes: (edit_nodes_.value || []).map((node) => ({
@@ -2478,7 +2491,7 @@ function AutomationPageViewModel(props, options) {
       try { triggers = serialize_triggers(); } catch (error) { trigger_error = error.message; }
       return {
         flow_id: selected_flow_id_.value,
-        name: selected_pipeline_.value.name,
+        name: edit_name_.value,
         dirty: dirty_.value,
         saving: saving_.value,
         selected_node_id: selected_edit_node_id_.value,

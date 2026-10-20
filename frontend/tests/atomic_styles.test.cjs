@@ -214,7 +214,7 @@ test("the automation editor fills its page and keeps the inspector and toolbar f
   assert.equal(styles(inspector, { reduced: true }).transition, "none");
   const toolbar = element(view_classes("pages/flow.components.js", "automation-workspace-toolbar", { is_edit: true }));
   assert.equal(styles(toolbar).position, "fixed");
-  assert.equal(styles(toolbar).right, "var(--dm-space-4)");
+  assert.equal(styles(toolbar).left, "var(--dm-space-4)");
   assert.doesNotMatch(read("src/pages/flow_edit.js"), /AutomationRunHistory|automation-editor-toolbar-wrap/);
 });
 
