@@ -1,0 +1,169 @@
+{
+  "id": "02_creator_live_record",
+  "name": "监控创作者直播并自动录制",
+  "start_node": "start",
+  "context_schema": [],
+  "nodes": {
+    "start": {
+      "type": "StartNode",
+      "name": "开始",
+      "config": {},
+      "next_node_ids": [
+        "config"
+      ],
+      "id": "start",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    "config": {
+      "type": "SetVariableNode",
+      "name": "配置直播创作者和录制目录",
+      "config": {
+        "variables": {
+          "creator_username": "REPLACE_CREATOR_USERNAME@finder",
+          "download_dir": "",
+          "max_pages": 1000,
+          "max_videos": 100000
+        }
+      },
+      "next_node_ids": [
+        "validate"
+      ],
+      "id": "config",
+      "position": {
+        "x": 340,
+        "y": 0
+      }
+    },
+    "validate": {
+      "type": "JSCodeNode",
+      "name": "校验创作者参数",
+      "config": {
+        "code": "(function () {\nvar username = String(global.creator_username || '').trim().replace(/^wxchannels:/, '');\nif (!username || username.indexOf('REPLACE_') >= 0) throw new Error('请先配置创作者 username');\nif (!/@finder$/.test(username)) username += '@finder';\nif (!(global.max_pages > 0) || !(global.max_videos > 0)) throw new Error('max_pages 和 max_videos 必须大于 0');\nreturn {username: username};\n})()",
+        "output_key": "creator"
+      },
+      "next_node_ids": [
+        "fetch_live"
+      ],
+      "id": "validate",
+      "position": {
+        "x": 680,
+        "y": 0
+      }
+    },
+    "fetch_live": {
+      "type": "ServiceNode",
+      "name": "检查创作者当前直播",
+      "config": {
+        "tool_name": "get_wxchannels_account_videos",
+        "arguments": {
+          "username": "{{output.validate.creator.username}}"
+        },
+        "output_key": "live_page",
+        "timeout_seconds": 120
+      },
+      "next_node_ids": [
+        "inspect_live"
+      ],
+      "id": "fetch_live",
+      "position": {
+        "x": 1020,
+        "y": 0
+      }
+    },
+    "inspect_live": {
+      "type": "JSCodeNode",
+      "name": "识别属于该创作者的直播",
+      "config": {
+        "code": "(function () {\nvar response = output.fetch_live.live_page;\nif (!response || (response.errCode !== undefined && Number(response.errCode) !== 0) || (response.code !== undefined && Number(response.code) !== 0)) throw new Error('查询直播状态失败');\nvar data = response.data;\nif (!data) throw new Error('直播响应缺少 data');\nvar live_objects = data.liveObjects;\nif (!Array.isArray(live_objects)) {\n  if (data.contact && data.contact.liveStatus !== undefined && Number(data.contact.liveStatus) === 0) live_objects = [];\n  else throw new Error('直播响应缺少 data.liveObjects，无法判断是否开播');\n}\nif (data.BaseResponse && Number(data.BaseResponse.ret || 0) !== 0) throw new Error('查询直播 BaseResponse 返回错误');\nvar username = output.validate.creator.username;\nvar lives = live_objects.filter(function (item) { return String(item.username || (item.contact || {}).username || '') === username && String((item.liveInfo || {}).liveId || '') !== ''; });\nreturn {is_live:lives.length > 0,username:username,live_id:lives.length ? String(lives[0].liveInfo.liveId) : ''};\n})()",
+        "output_key": "live_state"
+      },
+      "next_node_ids": [
+        "live_gate"
+      ],
+      "id": "inspect_live",
+      "position": {
+        "x": 0,
+        "y": 180
+      }
+    },
+    "live_gate": {
+      "type": "GatewayNode",
+      "name": "正在直播才启动录制",
+      "config": {
+        "gateway_type": "Exclusive",
+        "condition_language": "js",
+        "rules": [
+          {
+            "condition": "output.inspect_live.live_state.is_live",
+            "target_id": "record_live"
+          },
+          {
+            "condition": "true",
+            "target_id": "offline"
+          }
+        ]
+      },
+      "next_node_ids": [
+        "record_live",
+        "offline"
+      ],
+      "id": "live_gate",
+      "position": {
+        "x": 340,
+        "y": 180
+      }
+    },
+    "record_live": {
+      "type": "ServiceNode",
+      "name": "录制当前直播，已有任务跳过",
+      "config": {
+        "tool_name": "download_wxchannels_live",
+        "arguments": {
+          "account": "{{output.validate.creator.username}}",
+          "download_dir": "{{global.download_dir}}",
+          "existing_action": "skip"
+        },
+        "output_key": "recording_result",
+        "timeout_seconds": 120
+      },
+      "next_node_ids": [
+        "end"
+      ],
+      "id": "record_live",
+      "position": {
+        "x": 680,
+        "y": 180
+      }
+    },
+    "offline": {
+      "type": "JSCodeNode",
+      "name": "未开播，本次正常结束",
+      "config": {
+        "code": "(function () {\nreturn {is_live:false,username:output.validate.creator.username,note:'等待下一次定时检查'};\n})()",
+        "output_key": "offline_result"
+      },
+      "next_node_ids": [
+        "end"
+      ],
+      "id": "offline",
+      "position": {
+        "x": 1020,
+        "y": 180
+      }
+    },
+    "end": {
+      "type": "EndNode",
+      "name": "结束",
+      "config": {},
+      "next_node_ids": [],
+      "id": "end",
+      "position": {
+        "x": 0,
+        "y": 360
+      }
+    }
+  }
+}
