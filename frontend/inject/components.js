@@ -116,7 +116,7 @@ const Icons = {
   },
   download_btn7() {
     var $icon = document.createElement("div");
-    $icon.innerHTML = `<div data-v-81be080d class="mr-2 relative h-5 w-5 flex-initial flex-shrink-0 text-white/50 cursor-pointer"></div>`;
+    $icon.innerHTML = `<div data-n="download-panel-trigger-container" class="pointer-events-auto flex-initial flex-shrink-0 pl-4"></div>`;
     return $icon.firstChild;
   },
   /**

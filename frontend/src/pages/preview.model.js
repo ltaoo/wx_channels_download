@@ -1,3 +1,6 @@
+import { track_error } from "@/utils.js";
+import { fetchDownloadTaskDetail, fetchFile } from "@/biz/request.js";
+
 function prop_value(value) {
   if (value && typeof value === "object" && "value" in value) {
     return value.value;
@@ -37,7 +40,8 @@ function html_preview_content(content) {
     const css = html_preview_rules(sheet.cssRules);
     return element.media ? `@media ${element.media} { ${css} }` : css;
   });
-  document_.querySelectorAll("style, link, base, meta, title, script")
+  document_
+    .querySelectorAll("style, link, base, meta, title, script")
     .forEach((element) => element.remove());
   const root = document_.createElement("div");
   const body = document_.createElement("div");
@@ -60,24 +64,32 @@ function html_preview_content(content) {
 }
 
 function html_preview_rules(rules) {
-  return [...rules].map((rule) => {
-    if (rule.type === CSSRule.STYLE_RULE) {
-      // Preserve quoted/attribute values while mapping document roots to wrappers.
-      rule.selectorText = rule.selectorText.replace(
-        /\[(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\\.|[^\]\\])*\]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(^|[\s>+~,(])(html|body|:root)(?=[\s.#:[>+~),]|$)/g,
-        (match, prefix, root) => root
-          ? `${prefix}${root === "body" ? ".preview-html-body" : ":scope"}`
-          : match,
-      );
-      return `${rule.selectorText} { ${rule.style.cssText} ${html_preview_rules(rule.cssRules || [])} }`;
-    }
-    if (rule.cssRules && /^@(media|supports|container|layer|scope|starting-style)\b/.test(rule.cssText)) {
-      const header = rule.cssText.slice(0, rule.cssText.indexOf("{"));
-      return `${header} { ${html_preview_rules(rule.cssRules)} }`;
-    }
-    // Document-wide rules such as @font-face and @page must not escape the preview.
-    return "";
-  }).join("\n");
+  return [...rules]
+    .map((rule) => {
+      if (rule.type === CSSRule.STYLE_RULE) {
+        // Preserve quoted/attribute values while mapping document roots to wrappers.
+        rule.selectorText = rule.selectorText.replace(
+          /\[(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\\.|[^\]\\])*\]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(^|[\s>+~,(])(html|body|:root)(?=[\s.#:[>+~),]|$)/g,
+          (match, prefix, root) =>
+            root
+              ? `${prefix}${root === "body" ? ".preview-html-body" : ":scope"}`
+              : match,
+        );
+        return `${rule.selectorText} { ${rule.style.cssText} ${html_preview_rules(rule.cssRules || [])} }`;
+      }
+      if (
+        rule.cssRules &&
+        /^@(media|supports|container|layer|scope|starting-style)\b/.test(
+          rule.cssText,
+        )
+      ) {
+        const header = rule.cssText.slice(0, rule.cssText.indexOf("{"));
+        return `${header} { ${html_preview_rules(rule.cssRules)} }`;
+      }
+      // Document-wide rules such as @font-face and @page must not escape the preview.
+      return "";
+    })
+    .join("\n");
 }
 
 function normalized_content_type(value) {
@@ -222,7 +234,8 @@ function playback_url(file) {
 
 function subtitle_format(file) {
   const extension = String(file.name || file.local_path || "")
-    .match(/\.(vtt|srt|ass|ssa)$/i)?.[1]?.toLowerCase();
+    .match(/\.(vtt|srt|ass|ssa)$/i)?.[1]
+    ?.toLowerCase();
   if (extension) return extension;
   const formats = {
     "text/vtt": "vtt",
@@ -235,7 +248,10 @@ function subtitle_format(file) {
 }
 
 function subtitle_to_vtt(content, format) {
-  const text = content.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").trim();
+  const text = content
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n?/g, "\n")
+    .trim();
   if (format === "vtt") {
     if (!/^WEBVTT(?:[ \t\n]|$)/.test(text)) {
       throw new Error("无效的 WebVTT 字幕");
@@ -254,19 +270,38 @@ function subtitle_to_vtt(content, format) {
     cues = text.split(/\n[ \t]*\n/).map((block) => {
       const lines = block.split("\n");
       if (/^\d+$/.test(lines[0].trim())) lines.shift();
-      const times = lines.shift().trim().split(/\s*-->\s*/);
-      if (times.length !== 2 || !lines.length) throw new Error("无效的 SRT 字幕");
+      const times = lines
+        .shift()
+        .trim()
+        .split(/\s*-->\s*/);
+      if (times.length !== 2 || !lines.length)
+        throw new Error("无效的 SRT 字幕");
       return `${timestamp(times[0])} --> ${timestamp(times[1])}\n${lines.join("\n")}`;
     });
   } else if (format === "ass" || format === "ssa") {
     let in_events = false;
-    let fields = ["layer", "start", "end", "style", "name", "marginl", "marginr", "marginv", "effect", "text"];
+    let fields = [
+      "layer",
+      "start",
+      "end",
+      "style",
+      "name",
+      "marginl",
+      "marginr",
+      "marginv",
+      "effect",
+      "text",
+    ];
     cues = [];
     for (const line of text.split("\n")) {
-      if (/^\[.*\]$/.test(line.trim())) in_events = /^\[Events\]$/i.test(line.trim());
+      if (/^\[.*\]$/.test(line.trim()))
+        in_events = /^\[Events\]$/i.test(line.trim());
       if (!in_events) continue;
       if (/^Format:/i.test(line)) {
-        fields = line.slice(7).split(",").map((field) => field.trim().toLowerCase());
+        fields = line
+          .slice(7)
+          .split(",")
+          .map((field) => field.trim().toLowerCase());
       }
       if (!/^Dialogue:/i.test(line)) continue;
       const values = line.slice(9).split(",");
@@ -275,10 +310,18 @@ function subtitle_to_vtt(content, format) {
         throw new Error("无效的 ASS 字幕");
       }
       // ponytail: ASS styles/positioning are discarded; use an ASS renderer if exact styling is needed.
-      const body = values.slice(text_index).join(",").replace(/\{[^}]*\}/g, "")
-        .replace(/\\[Nn]/g, "\n").replace(/\\h/g, "\u00a0")
-        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      cues.push(`${timestamp(values[fields.indexOf("start")] || "")} --> ${timestamp(values[fields.indexOf("end")] || "")}\n${body}`);
+      const body = values
+        .slice(text_index)
+        .join(",")
+        .replace(/\{[^}]*\}/g, "")
+        .replace(/\\[Nn]/g, "\n")
+        .replace(/\\h/g, "\u00a0")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+      cues.push(
+        `${timestamp(values[fields.indexOf("start")] || "")} --> ${timestamp(values[fields.indexOf("end")] || "")}\n${body}`,
+      );
     }
   }
   if (!cues?.length) throw new Error("字幕内容为空或格式不受支持");
@@ -287,9 +330,7 @@ function subtitle_to_vtt(content, format) {
 
 function should_use_stream_playback(file) {
   return Boolean(
-    file &&
-      playback_url(file) &&
-      (!file.exists || file.playback_available),
+    file && playback_url(file) && (!file.exists || file.playback_available),
   );
 }
 
@@ -447,18 +488,18 @@ function PreviewViewModel(props) {
   const hls_player$ = props.hlsPlayer;
   const task_ = ref(null);
   const loading_ = ref(false);
-  const error_ = ref("");
+  const error_ = track_error(ref(""), props.tip);
   const active_file_ = ref(null);
   const gallery_file_ = ref(null);
   const zip_images_ = refarr([]);
   const zip_loading_ = ref(false);
-  const zip_error_ = ref("");
+  const zip_error_ = track_error(ref(""), props.tip);
   const html_content_ = ref("");
   const html_loading_ = ref(false);
-  const html_error_ = ref("");
+  const html_error_ = track_error(ref(""), props.tip);
   const text_lines_ = refarr([]);
   const text_loading_ = ref(false);
-  const text_error_ = ref("");
+  const text_error_ = track_error(ref(""), props.tip);
   const text_has_more_ = ref(false);
   const text_scroll_top_ = ref(0);
   const text_viewport_height_ = ref(1);
@@ -484,8 +525,10 @@ function PreviewViewModel(props) {
   function handle_text_scroll(value) {
     const target = event_target_element(value);
     const scroll_top = Number(value?.scrollTop ?? target?.scrollTop) || 0;
-    const client_height = Number(value?.clientHeight ?? target?.clientHeight) || 0;
-    const scroll_height = Number(value?.scrollHeight ?? target?.scrollHeight) || 0;
+    const client_height =
+      Number(value?.clientHeight ?? target?.clientHeight) || 0;
+    const scroll_height =
+      Number(value?.scrollHeight ?? target?.scrollHeight) || 0;
     text_scroll_top_.as(scroll_top);
     if (client_height > 0) {
       text_viewport_height_.as(client_height);
@@ -508,6 +551,7 @@ function PreviewViewModel(props) {
   const unlisten_hls_player = hls_player$.onStateChange((state) => {
     live_playback_status_.as(state.status);
     live_playback_message_.as(live_playback_message(state, live_file));
+    if (state.status === "error") props.tip({ msg: [live_playback_message_.value], type: "error" });
   });
 
   function is_live_playback(file) {
@@ -544,7 +588,7 @@ function PreviewViewModel(props) {
 
   function create_video_player(file, options) {
     const tracks = refarr([]);
-    const subtitle_error = ref("");
+    const subtitle_error = track_error(ref(""), props.tip);
     let controller = null;
     let session = null;
     const player = {
@@ -558,25 +602,39 @@ function PreviewViewModel(props) {
         const files = (task_.value?.files || []).filter(
           (candidate) => candidate.exists && subtitle_format(candidate),
         );
-        const results = await Promise.all(files.map(async (subtitle) => {
-          try {
-            const response = await window.fetch(file_url(subtitle), { signal: request.signal });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const content = subtitle_to_vtt(await response.text(), subtitle_format(subtitle));
-            return { label: subtitle.name, content };
-          } catch (error) {
-            if (!request.signal.aborted) {
-              subtitle_error.as(`字幕加载失败：${subtitle.name}（${error_message(error, "读取失败")}）`);
+        const results = await Promise.all(
+          files.map(async (subtitle) => {
+            try {
+              const response = await window.fetch(file_url(subtitle), {
+                signal: request.signal,
+              });
+              if (!response.ok) throw new Error(`HTTP ${response.status}`);
+              const content = subtitle_to_vtt(
+                await response.text(),
+                subtitle_format(subtitle),
+              );
+              return { label: subtitle.name, content };
+            } catch (error) {
+              if (!request.signal.aborted) {
+                subtitle_error.as(
+                  `字幕加载失败：${subtitle.name}（${error_message(error, "读取失败")}）`,
+                );
+              }
+              return null;
             }
-            return null;
-          }
-        }));
+          }),
+        );
         if (request.signal.aborted) return;
-        tracks.as(results.filter(Boolean).map((result, index) => ({
-          label: result.label,
-          src: URL.createObjectURL(new Blob([result.content], { type: "text/vtt" })),
-          is_default: index === 0,
-        })), { reset: true });
+        tracks.as(
+          results.filter(Boolean).map((result, index) => ({
+            label: result.label,
+            src: URL.createObjectURL(
+              new Blob([result.content], { type: "text/vtt" }),
+            ),
+            is_default: index === 0,
+          })),
+          { reset: true },
+        );
       },
       mountTrack(event, track) {
         const element = event_target_element(event);
@@ -600,10 +658,14 @@ function PreviewViewModel(props) {
         apply_mode();
         // The browser also selects tracks in a queued task after insertion.
         setTimeout(apply_mode, 0);
-        element.addEventListener("error", () => {
-          if (!element.isConnected) return;
-          subtitle_error.as(`字幕加载失败：${track.label}`);
-        }, { signal });
+        element.addEventListener(
+          "error",
+          () => {
+            if (!element.isConnected) return;
+            subtitle_error.as(`字幕加载失败：${track.label}`);
+          },
+          { signal },
+        );
       },
       unmount() {
         controller?.abort();
@@ -697,7 +759,8 @@ function PreviewViewModel(props) {
       }
       const bytes = result.value || new Uint8Array();
       const remaining = maximum_bytes - byte_count;
-      const chunk = bytes.byteLength > remaining ? bytes.slice(0, remaining) : bytes;
+      const chunk =
+        bytes.byteLength > remaining ? bytes.slice(0, remaining) : bytes;
       chunks.push(chunk);
       byte_count += chunk.byteLength;
       if (chunk.byteLength < bytes.byteLength) {
@@ -744,22 +807,29 @@ function PreviewViewModel(props) {
       if (response.status !== 206 && start > 0) {
         throw new Error("文件服务不支持文本分段读取");
       }
-      const content_range = String(response.headers.get("content-range") || "").match(
-        /^bytes\s+(\d+)-(\d+)\/(\d+|\*)$/i,
-      );
+      const content_range = String(
+        response.headers.get("content-range") || "",
+      ).match(/^bytes\s+(\d+)-(\d+)\/(\d+|\*)$/i);
       if (content_range && Number(content_range[1]) !== start) {
         throw new Error("文本分段位置异常");
       }
-      const response_total = content_range && content_range[3] !== "*"
-        ? Number(content_range[3])
-        : 0;
-      if (response.status !== 206 && response_total > text_preview_chunk_bytes) {
+      const response_total =
+        content_range && content_range[3] !== "*"
+          ? Number(content_range[3])
+          : 0;
+      if (
+        response.status !== 206 &&
+        response_total > text_preview_chunk_bytes
+      ) {
         throw new Error("文件服务不支持文本分段读取");
       }
       if (response_total > 0) {
         text_reader_total = response_total;
       }
-      const result = await read_response_bytes(response, text_preview_chunk_bytes);
+      const result = await read_response_bytes(
+        response,
+        text_preview_chunk_bytes,
+      );
       if (sequence !== text_reader_sequence || text_reader_file !== file) {
         return null;
       }
@@ -767,7 +837,10 @@ function PreviewViewModel(props) {
       const is_final =
         result.ended ||
         (text_reader_total > 0 && text_reader_offset >= text_reader_total);
-      append_text_lines(text_reader_decoder.decode(result.bytes, { stream: !is_final }), false);
+      append_text_lines(
+        text_reader_decoder.decode(result.bytes, { stream: !is_final }),
+        false,
+      );
       if (is_final) {
         append_text_lines(text_reader_decoder.decode(), true);
       }
@@ -872,11 +945,11 @@ function PreviewViewModel(props) {
   }
 
   const detail_request = new Timeless.kit.RequestCore(
-    (params) => window.request.get("/api/v1/download_task/detail", params),
+    fetchDownloadTaskDetail,
     { client: props.client },
   );
   const zip_request = new Timeless.kit.RequestCore(
-    (params) => window.request.get("/api/file", params),
+    fetchFile,
     { client: props.client },
   );
 
@@ -955,6 +1028,7 @@ function PreviewViewModel(props) {
   }
 
   const methods = {
+    tip: props.tip,
     ready() {
       return load();
     },

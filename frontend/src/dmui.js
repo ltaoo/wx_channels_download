@@ -1,11 +1,236 @@
 const Runtime = window.Timeless;
 
-if (!Runtime) {
-  throw new Error("组件库无法启动：Timeless 运行时未加载");
+export function SonnerModel({ duration = 6000, limit = 4 } = {}) {
+  // 当前运行时的 ToasterModel 尚未公开 error/dismiss 方法。
+  const toasts = Runtime.refarr([]);
+  const expanded = Runtime.ref(false);
+  const timers = new Map();
+  const removal_timers = new Map();
+  const pauses = new Set();
+  let sequence = 0;
+  const layout = Runtime.derive({ toasts, expanded }, ({ toasts, expanded }) => {
+    const active = toasts.filter((toast) => !toast.removed);
+    const front_height = active.at(-1)?.height || 72;
+    const cards = {};
+    let offset = 0;
+    [...active].reverse().forEach((toast, depth) => {
+      const height = toast.height || 72;
+      cards[toast.id] = {
+        height: expanded ? height : front_height,
+        offset: expanded ? offset : depth * 14,
+        scale: expanded ? 1 : 1 - depth * 0.05,
+        depth,
+        hidden: !expanded && depth > 0,
+        removed: false,
+        z_index: active.length - depth,
+      };
+      offset += height + 14;
+    });
+    toasts.filter((toast) => toast.removed).forEach((toast) => {
+      cards[toast.id] = { ...toast.exit_layout, removed: true };
+    });
+    return {
+      cards,
+      height: active.length ? (expanded ? offset - 14 : front_height + (active.length - 1) * 14) : 0,
+    };
+  });
+
+  function sync_expanded() {
+    expanded.as(pauses.has("hover") || pauses.has("focus"));
+  }
+
+  function dismiss(id) {
+    const toast = toasts.value.find((toast) => toast.id === id);
+    if (!toast || toast.removed) return;
+    clearTimeout(timers.get(id)?.timer);
+    timers.delete(id);
+    const exit_layout = layout.value.cards[id];
+    toasts.as(toasts.value.map((toast) => toast.id === id
+      ? { ...toast, removed: true, exit_layout } : toast));
+    removal_timers.set(id, setTimeout(() => {
+      removal_timers.delete(id);
+      toasts.as(toasts.value.filter((toast) => toast.id !== id));
+    }, 400));
+    if (!toasts.value.some((toast) => !toast.removed)) {
+      pauses.delete("hover");
+      pauses.delete("focus");
+      sync_expanded();
+    }
+  }
+
+  function start_timer(id, remaining) {
+    const entry = { remaining, started: Date.now(), timer: null };
+    if (!pauses.size) entry.timer = setTimeout(() => dismiss(id), remaining);
+    timers.set(id, entry);
+  }
+
+  function show(type, value) {
+    const message = String(value?.message || value || "").trim();
+    if (!message) return null;
+    const toast = { id: ++sequence, type, message, height: 0, removed: false };
+    toasts.as([...toasts.value, toast]);
+    start_timer(toast.id, duration);
+    while (toasts.value.filter((toast) => !toast.removed).length > limit) {
+      dismiss(toasts.value.find((toast) => !toast.removed).id);
+    }
+    return toast.id;
+  }
+
+  return {
+    state: { toasts, expanded, layout },
+    error(value) { return show("error", value); },
+    warn(value) { return show("warn", value); },
+    success(value) { return show("success", value); },
+    info(value) { return show("info", value); },
+    message(value) { return show("normal", value); },
+    dismiss,
+    measure(id, height) {
+      const toast = toasts.value.find((toast) => toast.id === id);
+      if (!toast || toast.removed || height <= 0 || toast.height === height) return;
+      toasts.as(toasts.value.map((toast) => toast.id === id ? { ...toast, height } : toast));
+    },
+    pause(reason) {
+      if (pauses.has(reason)) return;
+      if (!pauses.size) {
+        timers.forEach((entry) => {
+          clearTimeout(entry.timer);
+          entry.remaining = Math.max(0, entry.remaining - (Date.now() - entry.started));
+        });
+      }
+      pauses.add(reason);
+      sync_expanded();
+    },
+    resume(reason) {
+      if (!pauses.delete(reason)) return;
+      sync_expanded();
+      if (pauses.size) return;
+      timers.forEach((entry, id) => start_timer(id, entry.remaining));
+    },
+    clear() {
+      timers.forEach((entry) => clearTimeout(entry.timer));
+      timers.clear();
+      removal_timers.forEach(clearTimeout);
+      removal_timers.clear();
+      toasts.as([]);
+      pauses.delete("hover");
+      pauses.delete("focus");
+      sync_expanded();
+    },
+  };
 }
 
-const { Fragment, For, Match, Show, View, Img, combine, computed, ref, refobj } = Runtime;
-const { ui, vm } = Runtime;
+export function Toaster({ store }) {
+  const { expanded, layout } = store.state;
+  const visibility_change = () => document.hidden
+    ? store.pause("document") : store.resume("document");
+  const blur = (event) => {
+    if (!event?.relatedTarget?.closest(".dm-sonner")) store.resume("focus");
+  };
+  return Runtime.View({
+    class: "dm-sonner",
+    attributes: { n: "sonner-root", role: "region", "aria-label": "通知" },
+    onMounted() {
+      document.addEventListener("visibilitychange", visibility_change);
+      visibility_change();
+    },
+    onUnmounted() {
+      document.removeEventListener("visibilitychange", visibility_change);
+      store.resume("document");
+      store.resume("hover");
+      store.resume("focus");
+    },
+  }, [Runtime.View({
+    class: "dm-sonner-viewport",
+    attributes: { n: "sonner-viewport", "data-expanded": Runtime.computed(expanded, String) },
+    onMouseEnter() { store.pause("hover"); },
+    onMouseLeave() { store.resume("hover"); },
+  }, [Runtime.View({
+    class: "dm-sonner-list",
+    attributes: { n: "sonner-list" },
+    style: { height: Runtime.computed(layout, (value) => `${value.height}px`) },
+  }, [Runtime.For({
+    each: store.state.toasts,
+    key: "id",
+    render(toast) {
+      toast = source_value(toast);
+      const card = Runtime.computed(layout, (value) => value.cards[toast.id] || {});
+      let observer;
+      return Runtime.View({
+        class: `dm-sonner-toast dm-sonner-toast--${toast.type}`,
+        style: {
+          height: Runtime.computed(card, (value) => `${value.height || 72}px`),
+          transform: Runtime.computed(card, (value) => value.removed
+            ? `translateY(calc(-${value.offset}px - 100%)) scale(${value.scale})`
+            : `translateY(-${value.offset}px) scale(${value.scale})`),
+          opacity: Runtime.computed(card, (value) => value.removed ? 0 : 1),
+          "z-index": Runtime.computed(card, (value) => value.z_index),
+          "pointer-events": Runtime.computed(card, (value) => value.removed ? "none" : "auto"),
+        },
+        attributes: {
+          n: `sonner-toast-${toast.id}`,
+          role: toast.type === "error" ? "alert" : "status",
+          "aria-atomic": "true",
+          "aria-hidden": Runtime.computed(card, (value) => value.removed ? "true" : "false"),
+        },
+      }, [Runtime.View({
+        class: "dm-sonner-content",
+        attributes: { n: "sonner-toast-content" },
+        style: { opacity: Runtime.computed(card, (value) => value.hidden ? 0 : 1) },
+        onMounted(event) {
+          const element = dom_element(event);
+          if (!element || observer) return;
+          // ResizeObserver 首次回调在列表挂载完成后执行，避免同步测量触发重入渲染。
+          observer = new ResizeObserver(() => {
+            const parent = element.parentElement;
+            store.measure(toast.id, element.offsetHeight + parent.offsetHeight - parent.clientHeight);
+          });
+          observer.observe(element);
+        },
+        onUnmounted() { observer?.disconnect(); },
+      }, [
+        Runtime.Icon({ name: {
+          error: "circle-alert", warn: "circle-alert", success: "check",
+          info: "message-circle", normal: "message-circle",
+        }[toast.type], size: 22,
+          attributes: { n: "sonner-toast-icon", "aria-hidden": "true" } }),
+        Runtime.View({
+          class: "dm-sonner-message dm-focus-ring",
+          attributes: {
+            n: "sonner-toast-message",
+            tabindex: Runtime.computed(card, (value) => value.removed ? "-1" : "0"),
+          },
+          onFocus() { store.pause("focus"); },
+          onBlur: blur,
+        }, [toast.message]),
+        Runtime.Button({
+          class: "dm-sonner-close dm-focus-ring",
+          attributes: {
+            n: "sonner-toast-dismiss", type: "button", "aria-label": "关闭通知",
+            tabindex: Runtime.computed(card, (value) => value.removed ? "-1" : "0"),
+          },
+          onFocus() { store.pause("focus"); },
+          onBlur: blur,
+          onClick() {
+            store.dismiss(toast.id);
+            store.resume("focus");
+          },
+        }, [Runtime.Icon({ name: "x", size: 20, attributes: { n: "sonner-toast-dismiss-icon", "aria-hidden": "true" } })]),
+      ])]);
+    },
+  })])])]);
+}
+
+export function ErrorMessage(props) {
+  return Runtime.Button({
+    class: "dm-button--ghost dm-button dm-button--sm dm-focus-ring",
+    attributes: { n: props.name || "error-details-action", type: "button" },
+    onClick(event) {
+      event?.stopPropagation?.();
+      const error = source_value(props.error);
+      props.tip({ msg: [error?.message || String(error)], type: "error" });
+    },
+  }, ["查看错误详情"]);
+}
 
 function class_names(values) {
   return Runtime.classNames(values.filter(Boolean));
@@ -25,9 +250,9 @@ function require_store(component, store) {
 function is_source(value) {
   return Boolean(
     value &&
-      typeof value === "object" &&
-      "value" in value &&
-      typeof value.subscribe === "function",
+    typeof value === "object" &&
+    "value" in value &&
+    typeof value.subscribe === "function",
   );
 }
 
@@ -95,7 +320,7 @@ function create_lazy_img_model(props) {
   }
 
   function handle_error(event) {
-    console.log('handle error', event);
+    console.log("handle error", event);
     failed_.as(true);
     loaded_.as(false);
     if (typeof props.onError === "function") {
@@ -504,7 +729,11 @@ export function Button(props, children = []) {
 }
 
 export function IconButton(props, children = []) {
-  const store = require_store("IconButton", props && props.store, vm.ButtonCore);
+  const store = require_store(
+    "IconButton",
+    props && props.store,
+    vm.ButtonCore,
+  );
   if (!String(store.state.size || "").startsWith("icon")) {
     store.setSize("icon");
   }
@@ -535,17 +764,15 @@ export function Input(props) {
   const store = require_store("Input", provided_store, vm.InputCore);
   const state_ = refobj(store.state);
   const unlisten = store.onStateChange((state) => state_.as(state));
-  const show_clear_ = combine(
-    { state: state_ },
-    ({ state }) =>
-      Boolean(
-        state.allowClear &&
-          state.value !== "" &&
-          state.value !== null &&
-          state.value !== undefined &&
-          !state.loading &&
-          !state.disabled,
-      ),
+  const show_clear_ = combine({ state: state_ }, ({ state }) =>
+    Boolean(
+      state.allowClear &&
+      state.value !== "" &&
+      state.value !== null &&
+      state.value !== undefined &&
+      !state.loading &&
+      !state.disabled,
+    ),
   );
   const show_suffix_ = combine(
     { state: state_, clear: show_clear_ },
@@ -662,15 +889,18 @@ export function ArrayField(props = {}) {
   const store = require_store("ArrayField", provided_store, vm.ArrayFieldCore);
   const fields_ = ref(store.fields.slice());
   const unlisten = store.onStateChange(() => fields_.as(store.fields.slice()));
-  return View({
-    ...rest,
-    class: class_names(["dm-array-field", rest.class]),
-    attributes: { n: "array-field", ...rest.attributes },
-    onUnmounted() {
-      unlisten();
-      if (typeof onUnmounted === "function") onUnmounted();
+  return View(
+    {
+      ...rest,
+      class: class_names(["dm-array-field", rest.class]),
+      attributes: { n: "array-field", ...rest.attributes },
+      onUnmounted() {
+        unlisten();
+        if (typeof onUnmounted === "function") onUnmounted();
+      },
     },
-  }, [For({ each: fields_, key: "id", render })]);
+    [For({ each: fields_, key: "id", render })],
+  );
 }
 
 export function Textarea(props) {
@@ -709,13 +939,17 @@ export function Textarea(props) {
         onMounted(event) {
           // Timeless 0.33 applies initial textarea attributes before the DOM exists.
           const element = table_scroll_element(event);
-          for (const [name, source] of Object.entries({ n: "textarea-input", ...attributes })) {
+          for (const [name, source] of Object.entries({
+            n: "textarea-input",
+            ...attributes,
+          })) {
             const value = source_value(source);
-            if (value !== undefined && value !== null && value !== false) element.setAttribute(name, value === true ? "" : String(value));
+            if (value !== undefined && value !== null && value !== false)
+              element.setAttribute(name, value === true ? "" : String(value));
           }
           if (typeof onMounted === "function") onMounted(event);
         },
-        class: class_names(["dm-field dm-textarea", extra_class]),
+        class: class_names(["dm-textarea dm-field", extra_class]),
         onKeyDown(event) {
           store.handleKeyDown(event);
           if (typeof onKeyDown === "function") onKeyDown(event);
@@ -723,7 +957,11 @@ export function Textarea(props) {
       }),
       showCount
         ? ui.TextareaPrimitive.Count(
-            { store, class: "dm-textarea-count", attributes: { n: "textarea-count" } },
+            {
+              store,
+              class: "dm-textarea-count",
+              attributes: { n: "textarea-count" },
+            },
             [],
           )
         : null,
@@ -836,10 +1074,9 @@ export function FilePicker(props = {}) {
                     size: 14,
                     attributes: { n: `${name}-error-icon` },
                   }),
-                  View(
-                    { attributes: { n: `${name}-error-message` } },
-                    [props.error],
-                  ),
+                  View({ attributes: { n: `${name}-error-message` } }, [
+                    props.error,
+                  ]),
                 ],
               );
             },
@@ -852,23 +1089,26 @@ export function FilePicker(props = {}) {
 
 function select_entry(select_store, entry) {
   if (is_instance(entry, vm.SelectGroupCore)) {
-    return Fragment({}, [
-      entry.label
-        ? View(
-            {
-              class: "dm-select-group-label",
-              attributes: { n: "select-group-label" },
-            },
-            [entry.label],
-          )
-        : null,
-      For({
-        each: entry.options || [],
-        render(child) {
-          return select_entry(select_store, child);
-        },
-      }),
-    ].filter(Boolean));
+    return Fragment(
+      {},
+      [
+        entry.label
+          ? View(
+              {
+                class: "dm-select-group-label",
+                attributes: { n: "select-group-label" },
+              },
+              [entry.label],
+            )
+          : null,
+        For({
+          each: entry.options || [],
+          render(child) {
+            return select_entry(select_store, child);
+          },
+        }),
+      ].filter(Boolean),
+    );
   }
 
   const item_ = refobj(entry.state);
@@ -957,6 +1197,9 @@ export function Select(props = {}) {
     ...trigger_props
   } = rest;
   const store = require_store("Select", provided_store, vm.SelectCore);
+  // Conditional children can finish mounting after the root starts unmounting.
+  // Keep every derived Select state null-safe because refobj.destroy() clears
+  // its snapshot before those queued computations have necessarily completed.
   const state_ = refobj(store.state);
   const unlisten = store.onStateChange((state) => state_.as(state));
   let suppress_next_click = false;
@@ -1017,8 +1260,8 @@ export function Select(props = {}) {
             "dm-field dm-select",
             computed(state_, (state) =>
               static_classes([
-                state.open ? "is-open" : "",
-                state.disabled ? "is-disabled" : "",
+                state?.open ? "is-open" : "",
+                state?.disabled ? "is-disabled" : "",
               ]),
             ),
             extra_class,
@@ -1053,7 +1296,7 @@ export function Select(props = {}) {
         },
         [
           Show({
-            when: computed(state_, (state) => state.search),
+            when: computed(state_, (state) => Boolean(state?.search)),
             ok() {
               return ui.SelectPrimitive.Search({
                 store,
@@ -1067,17 +1310,19 @@ export function Select(props = {}) {
                   class: class_names([
                     "dm-select-value",
                     computed(state_, (state) =>
-                      state.selectedOption ? "has-value" : "is-placeholder",
+                      state?.selectedOption ? "has-value" : "is-placeholder",
                     ),
                   ]),
                   attributes: { n: "select-value" },
                 },
                 [
-                  computed(state_, (state) =>
-                    state.selectedOption?.label ??
-                    state.selectedOption?.value ??
-                    state.placeholder ??
-                    "请选择",
+                  computed(
+                    state_,
+                    (state) =>
+                      state?.selectedOption?.label ??
+                      state?.selectedOption?.value ??
+                      state?.placeholder ??
+                      "请选择",
                   ),
                 ],
               );
@@ -1086,7 +1331,7 @@ export function Select(props = {}) {
           View(
             {
               as: "button",
-              class: "dm-select-action dm-select-clear dm-focus-ring",
+              class: "dm-select-clear dm-select-action dm-focus-ring",
               attributes: {
                 n: "select-clear-button",
                 type: "button",
@@ -1122,9 +1367,7 @@ export function Select(props = {}) {
                 size: 14,
                 attributes: { n: "select-chevron-icon" },
                 class: class_names([
-                  computed(state_, (state) =>
-                    state.open ? "is-open" : "",
-                  ),
+                  computed(state_, (state) => (state?.open ? "is-open" : "")),
                 ]),
               }),
             ],
@@ -1132,7 +1375,7 @@ export function Select(props = {}) {
         ],
       ),
       Show({
-        when: computed(state_, (state) => state.open),
+        when: computed(state_, (state) => Boolean(state?.open)),
         ok() {
           return ui.SelectPrimitive.Content(
             {
@@ -1153,7 +1396,7 @@ export function Select(props = {}) {
                 },
                 [
                   Show({
-                    when: computed(state_, (state) => state.loading),
+                    when: computed(state_, (state) => Boolean(state?.loading)),
                     ok() {
                       return View(
                         {
@@ -1168,7 +1411,7 @@ export function Select(props = {}) {
                         when: computed(
                           state_,
                           (state) =>
-                            (state.options || store.raw_options || []).length >
+                            (state?.options || store.raw_options || []).length >
                             0,
                         ),
                         ok() {
@@ -1176,7 +1419,7 @@ export function Select(props = {}) {
                             each: computed(
                               state_,
                               (state) =>
-                                state.options || store.raw_options || [],
+                                state?.options || store.raw_options || [],
                             ),
                             render(entry) {
                               return select_entry(store, entry);
@@ -1210,14 +1453,14 @@ export function Select(props = {}) {
         computed(state_, (state) =>
           static_classes([
             "dm-select-root",
-            state.allowClear &&
-            state.value !== null &&
-            !state.loading &&
-            !state.disabled
+            state?.allowClear &&
+            state?.value !== null &&
+            !state?.loading &&
+            !state?.disabled
               ? "can-clear"
               : "",
-            state.open ? "is-open" : "",
-            state.disabled ? "is-disabled" : "",
+            state?.open ? "is-open" : "",
+            state?.disabled ? "is-disabled" : "",
           ]),
         ),
         root_class,
@@ -1255,10 +1498,8 @@ export function Checkbox(props) {
       ? "is-indeterminate"
       : "";
   const aria_checked_ = is_source(indeterminate)
-    ? combine(
-        { state: state_, indeterminate },
-        (state) =>
-          state.indeterminate ? "mixed" : String(Boolean(state.state.checked)),
+    ? combine({ state: state_, indeterminate }, (state) =>
+        state.indeterminate ? "mixed" : String(Boolean(state.state.checked)),
       )
     : computed(state_, (state) =>
         indeterminate ? "mixed" : String(Boolean(state.checked)),
@@ -1557,15 +1798,11 @@ export function Confirm(props = {}, children = []) {
       DialogHeader(
         { attributes: { n: `${name}-header` } },
         [
-          DialogTitle(
-            { attributes: { n: `${name}-title` } },
-            [title],
-          ),
+          DialogTitle({ attributes: { n: `${name}-title` } }, [title]),
           description
-            ? DialogDescription(
-                { attributes: { n: `${name}-description` } },
-                [description],
-              )
+            ? DialogDescription({ attributes: { n: `${name}-description` } }, [
+                description,
+              ])
             : null,
         ].filter(Boolean),
       ),
@@ -1816,8 +2053,12 @@ function create_tooltip_model(store) {
 
 export function Tooltip(props, children = []) {
   const {
-    store: provided_store, content, class: extra_class, attributes,
-    onContentMouseEnter, onContentMouseLeave,
+    store: provided_store,
+    content,
+    class: extra_class,
+    attributes,
+    onContentMouseEnter,
+    onContentMouseLeave,
   } = props;
   const store = require_store("Tooltip", provided_store);
   const model = create_tooltip_model(store);
@@ -1871,11 +2112,13 @@ export function Tooltip(props, children = []) {
             onReferenceOutOfView: model.hide,
             onMouseEnter(event) {
               model.enter_content();
-              if (typeof onContentMouseEnter === "function") onContentMouseEnter(event);
+              if (typeof onContentMouseEnter === "function")
+                onContentMouseEnter(event);
             },
             onMouseLeave(event) {
               model.leave_content();
-              if (typeof onContentMouseLeave === "function") onContentMouseLeave(event);
+              if (typeof onContentMouseLeave === "function")
+                onContentMouseLeave(event);
             },
           },
           [
@@ -1985,9 +2228,7 @@ export function Popover(props, children = []) {
             ),
           },
           [
-            title
-              ? View({ class: "dm-popover-title" }, [title])
-              : null,
+            title ? View({ class: "dm-popover-title" }, [title]) : null,
             Fragment({}, content || []),
           ].filter(Boolean),
         ),
@@ -2085,16 +2326,12 @@ function dropdown_item(store) {
               ]);
             },
           }),
-          store.icon
-            ? View({ class: "dm-dropdown-icon" }, [store.icon])
-            : null,
+          store.icon ? View({ class: "dm-dropdown-icon" }, [store.icon]) : null,
           View({ class: "dm-dropdown-item-label" }, [store.label]),
           store.shortcut
             ? View({ class: "dm-dropdown-shortcut" }, [store.shortcut])
             : null,
-          store.menu
-            ? Runtime.Icon({ name: "chevron-right", size: 14 })
-            : null,
+          store.menu ? Runtime.Icon({ name: "chevron-right", size: 14 }) : null,
         ].filter(Boolean),
       ),
       store.menu
@@ -2149,22 +2386,19 @@ export function DropdownMenu(props, children = []) {
       children.length
         ? ui.DropdownMenuPrimitive.Trigger({ store }, children)
         : null,
-      ui.DropdownMenuPrimitive.Content(
-        { ...rest, store },
-        () => [
-          View(
-            {
-              class: class_names(["dm-dropdown-content", extra_class]),
-            },
-            [
-              For({
-                each: computed(state_, (state) => state.items || []),
-                render: dropdown_entry,
-              }),
-            ],
-          ),
-        ],
-      ),
+      ui.DropdownMenuPrimitive.Content({ ...rest, store }, () => [
+        View(
+          {
+            class: class_names(["dm-dropdown-content", extra_class]),
+          },
+          [
+            For({
+              each: computed(state_, (state) => state.items || []),
+              render: dropdown_entry,
+            }),
+          ],
+        ),
+      ]),
     ].filter(Boolean),
   );
 }
@@ -2172,9 +2406,7 @@ export function DropdownMenu(props, children = []) {
 export const Dropdown = DropdownMenu;
 
 function pagination_source(value, fallback) {
-  return is_source(value)
-    ? value
-    : ref(value === undefined ? fallback : value);
+  return is_source(value) ? value : ref(value === undefined ? fallback : value);
 }
 
 export function pagination_items(page, page_count) {
@@ -2427,12 +2659,10 @@ export function Pagination(props = {}) {
                         "aria-current": computed(model.state.page, (page) =>
                           Number(page) === item.page ? "page" : undefined,
                         ),
-                        disabled: computed(
-                          model.state.loading,
-                          (loading) =>
-                            loading || typeof props.onChange !== "function"
-                              ? true
-                              : undefined,
+                        disabled: computed(model.state.loading, (loading) =>
+                          loading || typeof props.onChange !== "function"
+                            ? true
+                            : undefined,
                         ),
                       },
                       onClick() {
@@ -2607,9 +2837,10 @@ export function Tabs(props = {}, children = []) {
     render,
     ...rest
   } = props;
-  const tab_children = each && typeof render === "function"
-    ? [For({ each, key, render })]
-    : children;
+  const tab_children =
+    each && typeof render === "function"
+      ? [For({ each, key, render })]
+      : children;
   return View(
     {
       ...rest,
@@ -2630,20 +2861,20 @@ export function Tabs(props = {}, children = []) {
 }
 
 export function Tab(props = {}, children = []) {
-  const {
-    class: extra_class,
-    selected = false,
-    ...rest
-  } = props;
+  const { class: extra_class, selected = false, ...rest } = props;
   const selected_class = is_source(selected)
-    ? computed(selected, (value) => value ? "is-active" : "")
-    : selected ? "is-active" : "";
+    ? computed(selected, (value) => (value ? "is-active" : ""))
+    : selected
+      ? "is-active"
+      : "";
   const aria_selected = is_source(selected)
     ? computed(selected, (value) => String(Boolean(value)))
     : String(Boolean(selected));
   const tab_index = is_source(selected)
-    ? computed(selected, (value) => value ? "0" : "-1")
-    : selected ? "0" : "-1";
+    ? computed(selected, (value) => (value ? "0" : "-1"))
+    : selected
+      ? "0"
+      : "-1";
   return View(
     {
       ...rest,
@@ -2666,7 +2897,7 @@ export function Card(props = {}, children = []) {
   return View(
     {
       ...props,
-      class: class_names(["dm-panel dm-card", props.class]),
+      class: class_names(["dm-card dm-panel", props.class]),
       attributes: { n: "card", ...(props.attributes || {}) },
     },
     children,
@@ -2728,7 +2959,7 @@ export function CardFooter(props = {}, children = []) {
   );
 }
 
-function waterfall_dom_element(event) {
+function dom_element(event) {
   let target = event && (event.currentTarget || event.target || event);
   for (let depth = 0; depth < 4; depth += 1) {
     if (target && typeof target.get$elm === "function") {
@@ -2752,14 +2983,13 @@ function waterfall_dom_element(event) {
 }
 
 function waterfall_item_key(item, index, key) {
-  const value = typeof key === "function"
-    ? key(item, index)
-    : key && item && typeof item === "object"
-      ? item[key]
-      : index;
-  return value === undefined || value === null || value === ""
-    ? index
-    : value;
+  const value =
+    typeof key === "function"
+      ? key(item, index)
+      : key && item && typeof item === "object"
+        ? item[key]
+        : index;
+  return value === undefined || value === null || value === "" ? index : value;
 }
 
 let waterfall_id_seed = 0;
@@ -2830,8 +3060,12 @@ export function Waterfall(props = {}) {
     );
     return Math.max(
       1,
-      Math.min(maximum, Math.floor((Math.max(0, width) + column_gap) /
-        (minimum_width + column_gap)) || 1),
+      Math.min(
+        maximum,
+        Math.floor(
+          (Math.max(0, width) + column_gap) / (minimum_width + column_gap),
+        ) || 1,
+      ),
     );
   }
 
@@ -2850,9 +3084,10 @@ export function Waterfall(props = {}) {
 
   function estimated_item_height(item, index) {
     const fallback = 280;
-    const value = typeof itemHeight === "function"
-      ? itemHeight(item, index, column_width_.value)
-      : source_value(itemHeight, fallback);
+    const value =
+      typeof itemHeight === "function"
+        ? itemHeight(item, index, column_width_.value)
+        : source_value(itemHeight, fallback);
     const height = Number(value);
     return Number.isFinite(height) && height > 0 ? height : fallback;
   }
@@ -2880,7 +3115,8 @@ export function Waterfall(props = {}) {
         column_gap * (column_count - 1)) /
         column_count,
     );
-    const layout_changed = layout_column_count !== column_count ||
+    const layout_changed =
+      layout_column_count !== column_count ||
       Math.abs(layout_column_width - column_width) >= 1;
     if (layout_changed) {
       measured_heights.clear();
@@ -2906,15 +3142,19 @@ export function Waterfall(props = {}) {
       let target_index = column_assignments.get(height_key);
       if (!Number.isInteger(target_index) || target_index >= column_count) {
         target_index = 0;
-        for (let column_index = 1; column_index < heights.length; column_index += 1) {
+        for (
+          let column_index = 1;
+          column_index < heights.length;
+          column_index += 1
+        ) {
           if (heights[column_index] < heights[target_index]) {
             target_index = column_index;
           }
         }
         column_assignments.set(height_key, target_index);
       }
-      const estimated_height = measured_heights.get(height_key) ||
-        estimated_item_height(item, index);
+      const estimated_height =
+        measured_heights.get(height_key) || estimated_item_height(item, index);
       const bucket = buckets[target_index];
       if (bucket.length > 0) heights[target_index] += column_gap;
       bucket.push({
@@ -2958,7 +3198,8 @@ export function Waterfall(props = {}) {
   }
 
   function mount_root(event) {
-    const next_root = waterfall_dom_element(event) ||
+    const next_root =
+      dom_element(event) ||
       document.querySelector(`[data-dm-waterfall-id="${waterfall_id}"]`);
     if (!next_root) return false;
     if (root !== next_root) {
@@ -2991,7 +3232,7 @@ export function Waterfall(props = {}) {
   }
 
   function handle_scroll(event) {
-    const target = waterfall_dom_element(event) || root;
+    const target = dom_element(event) || root;
     if (!target) return;
     const scroll_top = Math.max(0, Number(target.scrollTop) || 0);
     scroll_top_.as(scroll_top);
@@ -3011,7 +3252,8 @@ export function Waterfall(props = {}) {
       0,
       Number(source_value(reachBottomThreshold, 240)) || 0,
     );
-    const near_bottom = position.scrollHeight > 0 &&
+    const near_bottom =
+      position.scrollHeight > 0 &&
       position.scrollTop + position.clientHeight >=
         position.scrollHeight - threshold;
     if (near_bottom && !reached_bottom) {
@@ -3023,10 +3265,12 @@ export function Waterfall(props = {}) {
   }
 
   if (is_source(each)) {
-    cleanups.push(each.subscribe({
-      onPatch: schedule_distribute,
-      onChange: schedule_distribute,
-    }));
+    cleanups.push(
+      each.subscribe({
+        onPatch: schedule_distribute,
+        onChange: schedule_distribute,
+      }),
+    );
   }
   [columns, minColumnWidth, maxColumns, gap, itemHeight].forEach((source) => {
     const cleanup = subscribe_source(source, schedule_distribute);
@@ -3057,7 +3301,8 @@ export function Waterfall(props = {}) {
         if (fallback_mount_timer) window.clearTimeout(fallback_mount_timer);
         root?.removeEventListener("scroll", handle_scroll);
         resize_observer?.disconnect();
-        if (resize_handler) window.removeEventListener("resize", resize_handler);
+        if (resize_handler)
+          window.removeEventListener("resize", resize_handler);
         cleanups.forEach((cleanup) => cleanup?.());
         column_sources.forEach((source) => source.destroy?.());
         measured_heights.clear();
@@ -3132,9 +3377,7 @@ export function Waterfall(props = {}) {
 
 function table_source(value) {
   return Boolean(
-    value &&
-      typeof value === "object" &&
-      typeof value.subscribe === "function",
+    value && typeof value === "object" && typeof value.subscribe === "function",
   );
 }
 
@@ -3362,9 +3605,7 @@ export function BrandLoading(props = {}) {
           class: "dm-brand-loading__visual",
           attributes: { "aria-hidden": "true" },
         },
-        [
-          View({ class: "dm-brand-loading__symbol" }),
-        ],
+        [View({ class: "dm-brand-loading__symbol" })],
       ),
       props.labelVisible
         ? View({ class: "dm-brand-loading__label" }, [label])
@@ -3511,6 +3752,18 @@ function TableEmpty(props) {
   });
 }
 
+export function EmptyCard(props = {}) {
+  return TableEmpty({
+    name: props.name || "empty-card",
+    emptyClass: static_classes(["dm-empty-state", props.class]),
+    emptyAttributes: props.attributes,
+    emptyTitle: props.title,
+    emptyDescription: props.description,
+    emptyIcon: props.icon,
+    emptyAction: props.action,
+  });
+}
+
 function TableError(props) {
   const action =
     typeof props.renderErrorAction === "function"
@@ -3531,7 +3784,7 @@ function TableError(props) {
         ? BrandError({ size: 132, name: `${props.name}-error-symbol` })
         : table_state_icon(props.errorIcon, "circle-alert", 32),
     title: props.errorTitle ?? "数据加载失败",
-    description: props.errorMessage ?? props.error,
+    description: null,
     descriptionSuffix: "message",
     action,
   });
@@ -3578,7 +3831,7 @@ function TableSelectionHeaderCell(props) {
   return View(
     {
       class: static_classes([
-        "dm-table-selection-cell dm-flex dm-items-center dm-justify-center dm-min-w-0",
+        "dm-min-w-0 dm-table-selection-cell dm-items-center dm-justify-center dm-flex",
         row_selection.headerClass,
       ]),
       style: row_selection.headerStyle || {},
@@ -3676,7 +3929,7 @@ function DataTableHeader(props) {
   return View(
     {
       class: static_classes([
-        "dm-table-row dm-grid dm-items-center",
+        "dm-grid dm-items-center dm-table-row",
         "dm-table-header",
         props.headerClass,
       ]),
@@ -3697,7 +3950,7 @@ function TableSelectionCell(props) {
   return View(
     {
       class: static_classes([
-        "dm-table-selection-cell dm-flex dm-items-center dm-justify-center dm-min-w-0",
+        "dm-min-w-0 dm-table-selection-cell dm-items-center dm-justify-center dm-flex",
         row_selection.cellClass,
       ]),
       style: row_selection.cellStyle || {},
@@ -3756,10 +4009,7 @@ function TableDataCell(props) {
 
 function TableDataRow(props) {
   const item = table_item_value(props.itemSource);
-  if (
-    typeof props.isPlaceholder === "function" &&
-    props.isPlaceholder(item)
-  ) {
+  if (typeof props.isPlaceholder === "function" && props.isPlaceholder(item)) {
     if (typeof props.onPlaceholder === "function") {
       props.onPlaceholder(item, props.itemSource);
     }
@@ -3815,7 +4065,7 @@ function TableDataRow(props) {
     {
       ...row_events,
       class: class_names([
-        "dm-table-row dm-grid dm-items-center",
+        "dm-grid dm-items-center dm-table-row",
         table_resolve(props.rowClass, item, props.itemSource),
         row_class,
         last_row_class,
@@ -3843,34 +4093,30 @@ function TableList(props) {
       }
     },
   });
-  return TableScrollView(
-    props,
-    scroll_view$,
-    [
-      Show({
-        when: table_has_rows(props.rows),
-        ok() {
-          return For({
-            key: row_key,
-            each: keyed_rows,
-            render(entry, index_) {
-              return TableDataRow({
-                ...props,
-                itemSource: table_keyed_item(entry, props.rowKey),
-                lastRow: table_last_row(props.rows, index_),
-                rowIndex: index_,
-              });
-            },
-          });
-        },
-        else() {
-          return typeof props.renderEmpty === "function"
-            ? props.renderEmpty()
-            : null;
-        },
-      }),
-    ],
-  );
+  return TableScrollView(props, scroll_view$, [
+    Show({
+      when: table_has_rows(props.rows),
+      ok() {
+        return For({
+          key: row_key,
+          each: keyed_rows,
+          render(entry, index_) {
+            return TableDataRow({
+              ...props,
+              itemSource: table_keyed_item(entry, props.rowKey),
+              lastRow: table_last_row(props.rows, index_),
+              rowIndex: index_,
+            });
+          },
+        });
+      },
+      else() {
+        return typeof props.renderEmpty === "function"
+          ? props.renderEmpty()
+          : null;
+      },
+    }),
+  ]);
 }
 
 function TableVirtualList(props) {
@@ -3942,15 +4188,10 @@ function TableVirtualList(props) {
         : null;
     },
   });
-  return TableScrollView(
-    props,
-    scroll_view$,
-    [content],
-    () => {
-      scroll_top_.destroy?.();
-      viewport_height_.destroy?.();
-    },
-  );
+  return TableScrollView(props, scroll_view$, [content], () => {
+    scroll_top_.destroy?.();
+    viewport_height_.destroy?.();
+  });
 }
 
 function TableScrollView(props, scroll_view$, children, on_unmounted) {
@@ -3999,9 +4240,7 @@ function TableLoading(props) {
       },
     },
     typeof render_skeleton_row === "function"
-      ? Array.from({ length: props.skeletonCount }, () =>
-          render_skeleton_row(),
-        )
+      ? Array.from({ length: props.skeletonCount }, () => render_skeleton_row())
       : [],
   );
 }
@@ -4030,7 +4269,7 @@ function TablePanel(props, render_list) {
   return View(
     {
       class: static_classes([
-        "dm-table-panel dm-panel dm-flex dm-flex-col dm-min-w-0 dm-overflow-hidden",
+        "dm-min-w-0 dm-flex-col dm-overflow-hidden dm-panel dm-flex dm-table-panel",
         props.border !== false && "dm-table--bordered",
         props.panelClass,
       ]),
@@ -4081,10 +4320,7 @@ function TablePagination(props, scroll_to_top) {
   const pagination = props.pagination;
   if (!pagination) return null;
   return Show({
-    when:
-      typeof pagination.visible === "undefined"
-        ? true
-        : pagination.visible,
+    when: typeof pagination.visible === "undefined" ? true : pagination.visible,
     ok() {
       return Pagination({
         ...pagination,
@@ -4148,10 +4384,7 @@ function table_render(props, render_list) {
 
   const table = View(
     {
-      class: static_classes([
-        "dm-table-container",
-        props.containerClass,
-      ]),
+      class: static_classes(["dm-table-container", props.containerClass]),
       attributes: {
         n: `${name}-container`,
         ...(props.containerAttributes || {}),
@@ -4162,39 +4395,37 @@ function table_render(props, render_list) {
       },
     },
     [
-      TablePanel(
-        { ...table_props, headerVisible: header_visible },
-        () =>
-          Match({
-            when: status,
-            cases: {
-              initial() {
-                return TableLoading({
-                  ...table_props,
-                  loadingClass: props.loadingClass,
-                  skeletonCount: props.skeletonCount || 8,
-                });
-              },
-              empty() {
-                return show_header_when_empty
-                  ? render_list({ ...table_props, renderEmpty: render_empty })
-                  : render_empty();
-              },
-              error() {
-                return render_list({
-                  ...table_props,
-                  rows: [],
-                  renderEmpty: render_error_state,
-                });
-              },
-              normal() {
-                return render_list({
-                  ...table_props,
-                  renderEmpty: render_empty,
-                });
-              },
+      TablePanel({ ...table_props, headerVisible: header_visible }, () =>
+        Match({
+          when: status,
+          cases: {
+            initial() {
+              return TableLoading({
+                ...table_props,
+                loadingClass: props.loadingClass,
+                skeletonCount: props.skeletonCount || 8,
+              });
             },
-          }),
+            empty() {
+              return show_header_when_empty
+                ? render_list({ ...table_props, renderEmpty: render_empty })
+                : render_empty();
+            },
+            error() {
+              return render_list({
+                ...table_props,
+                rows: [],
+                renderEmpty: render_error_state,
+              });
+            },
+            normal() {
+              return render_list({
+                ...table_props,
+                renderEmpty: render_empty,
+              });
+            },
+          },
+        }),
       ),
       Show({
         when: table_loading_visible(status, props.loading),
@@ -4323,4 +4554,62 @@ export function AlertDescription(props = {}, children = []) {
   );
 }
 
-export default Popover;
+Object.assign(window, {
+  Toaster,
+  ErrorMessage,
+  createInputStore,
+  createCheckboxStore,
+  LazyImg,
+  Button,
+  IconButton,
+  Input,
+  ArrayField,
+  Textarea,
+  FilePicker,
+  Select,
+  Checkbox,
+  Dialog,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogBody,
+  DialogFooter,
+  Confirm,
+  Drawer,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+  DrawerBody,
+  DrawerFooter,
+  Tooltip,
+  Popover,
+  DropdownMenu,
+  Dropdown,
+  pagination_items,
+  Pagination,
+  Label,
+  Tag,
+  Badge: Tag,
+  PlatformIcon,
+  PlatformTag,
+  Tabs,
+  Tab,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+  Waterfall,
+  BrandLoading,
+  BrandEmpty,
+  BrandError,
+  Table,
+  TableWithVirtualList,
+  Skeleton,
+  Progress,
+  Separator,
+  Alert,
+  AlertTitle,
+  AlertDescription,
+});
