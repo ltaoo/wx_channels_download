@@ -89,10 +89,25 @@ func NewMiniBrowser(timeout time.Duration, cookie_providers ...*cookies.Reader) 
 	}, nil
 }
 
-// Request sends one request with exactly headers, plus cookies kept by this session.
+// Request sends one HTTP request with exactly headers, plus cookies kept by
+// this session. File URLs read the local filesystem without cookies or HTTP
+// request headers.
 func (b *MiniBrowser) Request(ctx context.Context, method, raw_url string, body io.Reader, headers http.Header) (*clawreq.Response, error) {
 	if b == nil || b.http_client == nil {
 		return nil, fmt.Errorf("minib: browser is closed")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	request_url, err := url.Parse(raw_url)
+	if err != nil {
+		return nil, err
+	}
+	if request_url.Scheme == "file" {
+		started_at := time.Now()
+		response, file_err := request_local_file(ctx, method, request_url)
+		har_recorder_from_context(ctx).record_network(ctx, started_at, time.Since(started_at), method, raw_url, headers, nil, response, file_err)
+		return response, file_err
 	}
 	release_request := func() {}
 	if b.request_scheduler != nil {
@@ -104,10 +119,6 @@ func (b *MiniBrowser) Request(ctx context.Context, method, raw_url string, body 
 	}
 	defer release_request()
 	prepared_headers, err := b.prepare_request_headers(raw_url, headers)
-	if err != nil {
-		return nil, err
-	}
-	request_url, err := url.Parse(raw_url)
 	if err != nil {
 		return nil, err
 	}
