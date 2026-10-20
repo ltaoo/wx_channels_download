@@ -1,4 +1,5 @@
 import { TagSelect, ContentTagBadge } from "@/components/index.js";
+import { EmptyCard } from "@/dmui.js";
 
 import { ContentViewModel } from "./content.model.js";
 import ContentDetailPageView from "./content_detail.js";
@@ -366,13 +367,12 @@ function ContentSavedFilterPanel(props) {
               (filters) => filters.length === 0,
             ),
             ok() {
-              return View(
-                {
-                  class: "p-[var(--dm-space-3)_var(--dm-space-2)] text-content-muted text-sm text-center",
-                  attributes: { n: "content-saved-filter-empty" },
-                },
-                ["暂存筛选器后会显示在这里"],
-              );
+              return EmptyCard({
+                name: "content-saved-filter",
+                class: "w-full min-w-0",
+                title: "暂无快捷筛选器",
+                description: "暂存筛选器后会显示在这里",
+              });
             },
           }),
           For({

@@ -3752,6 +3752,18 @@ function TableEmpty(props) {
   });
 }
 
+export function EmptyCard(props = {}) {
+  return TableEmpty({
+    name: props.name || "empty-card",
+    emptyClass: static_classes(["dm-empty-state", props.class]),
+    emptyAttributes: props.attributes,
+    emptyTitle: props.title,
+    emptyDescription: props.description,
+    emptyIcon: props.icon,
+    emptyAction: props.action,
+  });
+}
+
 function TableError(props) {
   const action =
     typeof props.renderErrorAction === "function"

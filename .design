@@ -1,8 +1,8 @@
 schema: design.v1
 name: wx-channels-download
-version: 1.0.7
+version: 1.0.8
 status: bootstrap
-updated_at: 2026-10-17
+updated_at: 2026-10-19
 description: Living visual contract extracted from the frontend DMUI token and page-composition layers.
 
 agent:
@@ -605,10 +605,12 @@ components:
         width: 100%
 
   state:
-    implementation: ".dm-empty-state, .dm-table-state, page utility compositions, ErrorFallbackView"
+    implementation: "EmptyCard, .dm-empty-state, .dm-table-state, page utility compositions, ErrorFallbackView"
     when: ["Loading, empty, error, or no-selection state replacing a content region"]
     when_not: ["Transient progress inside a single button"]
     variants: [loading, empty, error, no-selection]
+    rules:
+      - EmptyCard reuses the table empty-state illustration, title, description, and optional action inside the shared empty card surface.
     tokens:
       default:
         backgroundColor: "{tokens.color.surface}"

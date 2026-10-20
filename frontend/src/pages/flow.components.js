@@ -69,7 +69,7 @@ export function AutomationStartTriggers(props) {
     ]),
     Show({
       when: computed(vm$.state.edit_triggers, (triggers) => !triggers.length),
-      ok() { return View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base" }, ["尚未配置定时或事件触发器，可通过顶部「手动执行」启动。"]); },
+      ok() { return View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base" }, ["尚未配置定时或事件触发器，可通过开始节点上方的「手动执行」启动。"]); },
     }),
     For({
       each: vm$.state.edit_triggers, key: "uid",
@@ -231,14 +231,14 @@ export function AutomationWorkspaceToolbar(props) {
   const is_edit = props.mode === "edit";
   return View({
     class: is_edit
-      ? "fixed top-4 right-4 z-sticky flex flex-col items-end gap-2 max-w-[calc(100vw_-_32px)]"
+      ? "fixed top-4 left-4 z-sticky flex flex-col items-start gap-2 max-w-[calc(100vw_-_32px)]"
       : "group-content-toolbar flex items-center justify-between gap-3 max-760:flex-wrap min-w-0 max-900:items-stretch max-900:flex-col",
     attributes: { n: "automation-workspace-toolbar" },
   }, [
-    View({ class: "min-w-0 flex items-center gap-2", attributes: { n: "automation-workspace-heading" } }, [
+    !is_edit ? View({ class: "min-w-0 flex items-center gap-2", attributes: { n: "automation-workspace-heading" } }, [
       View({ class: "min-w-0", attributes: { n: "automation-workspace-title" } }, [
         View({ class: "text-color-text-secondary text-caption font-semibold text-transform-uppercase", attributes: { n: "automation-workspace-mode" } }, [
-          is_edit ? "编辑 Pipeline" : "Pipeline 详情",
+          "Pipeline 详情",
         ]),
         View({ class: "overflow-hidden text-color-text-primary font-display text-lg font-semibold text-ellipsis whitespace-nowrap", attributes: { n: "automation-workspace-name" } }, [
           computed(vm$.state.selected_pipeline, (flow) =>
@@ -246,12 +246,31 @@ export function AutomationWorkspaceToolbar(props) {
           ),
         ]),
       ]),
-    ]),
+    ]) : null,
     View(
-      { class: "min-w-0 flex items-center gap-2 flex-wrap justify-end", attributes: { n: "automation-workspace-actions" } },
+      { class: is_edit ? "min-w-0 flex items-center gap-2 flex-wrap justify-start" : "min-w-0 flex items-center gap-2 flex-wrap justify-end", attributes: { n: "automation-workspace-actions" } },
       [
+        !is_edit ? Button(
+          {
+            store: vm$.ui.btn_run_flow$,
+            attributes: { n: "automation-run-flow", type: "button" },
+          },
+          ["手动执行"],
+        ) : null,
         is_edit
-          ? Tag(
+          ? View({ class: "min-w-0 flex items-center gap-2", attributes: { n: "automation-save-controls" } }, [
+            Input({
+              store: vm$.ui.input_edit_name$,
+              attributes: { n: "automation-pipeline-name", "aria-label": "Pipeline 标题" },
+            }),
+            Button(
+              {
+                store: vm$.ui.btn_save_flow$,
+                attributes: { n: "automation-save-flow", type: "button" },
+              },
+              ["保存"],
+            ),
+            Tag(
               {
                 variant: "warning",
                 class: computed(vm$.state.dirty, (dirty) =>
@@ -265,23 +284,8 @@ export function AutomationWorkspaceToolbar(props) {
                   dirty ? "有未保存变更" : "已保存",
                 ),
               ],
-            )
-          : null,
-        Button(
-          {
-            store: vm$.ui.btn_run_flow$,
-            attributes: { n: "automation-run-flow", type: "button" },
-          },
-          ["手动执行"],
-        ),
-        is_edit
-          ? Button(
-              {
-                store: vm$.ui.btn_save_flow$,
-                attributes: { n: "automation-save-flow", type: "button" },
-              },
-              ["保存 Pipeline"],
-            )
+            ),
+          ])
           : AutomationPipelineLink({
               flowId: vm$.state.selected_flow_id.value,
               mode: "edit",
@@ -1193,6 +1197,17 @@ export function AutomationFlowGraph(props) {
                   })),
                 },
                 [
+                  editable && is_start
+                    ? View({
+                        class: "absolute bottom-full left-0 z-raised",
+                        attributes: { n: "automation-start-run" },
+                        onMouseDown(event) { event.stopPropagation(); },
+                        onClick(event) { event.stopPropagation(); },
+                      }, [Button({
+                        store: vm$.ui.btn_run_flow$,
+                        attributes: { n: "automation-run-flow", type: "button" },
+                      }, ["手动执行"])])
+                    : null,
                   View(
                     {
                     class: combine(
