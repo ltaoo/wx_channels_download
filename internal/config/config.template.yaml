@@ -9,6 +9,8 @@ download:
   dir: "%UserDownloads%"
   playDoneAudio: true
   defaultActionWhenExisting: ""
+  # 除主资源外额外保存一份封面图片（与 channels.download.cover 任一开启即生效）
+  cover: false
   maxRunning: 3
   resourceConcurrency: 100
   segmentConcurrency: 10

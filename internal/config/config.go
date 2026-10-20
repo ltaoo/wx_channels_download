@@ -487,6 +487,15 @@ func (c *Config) LoadConfig() error {
 		HotReload:   true,
 	})
 	Register(ConfigField{
+		Key:         "download.cover",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "视频号下载时，除主资源外额外保存一份封面图片；与 channels.download.cover 任一开启即生效",
+		Title:       "额外下载封面",
+		Group:       "Download",
+		HotReload:   true,
+	})
+	Register(ConfigField{
 		Key:         "download.maxRunning",
 		Type:        ConfigTypeInt,
 		Default:     3,

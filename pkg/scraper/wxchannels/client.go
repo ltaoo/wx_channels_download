@@ -365,15 +365,11 @@ func (c *Client) FetchChannelsLiveReplayList(username, next_marker string) (json
 	return resp, nil
 }
 
-// FetchLiveInfo fetches a live profile through the Channels frontend joinLive API.
-func (c *Client) FetchLiveProfile(username, oid, nid, live_id string) (json.RawMessage, error) {
-	username = strings.TrimSpace(username)
+// FetchLiveProfile fetches a live profile through the Channels frontend joinLive API.
+func (c *Client) FetchLiveProfile(oid, nid, live_id string) (json.RawMessage, error) {
 	oid = strings.TrimSpace(oid)
 	nid = strings.TrimSpace(nid)
 	live_id = strings.TrimSpace(live_id)
-	if username == "" {
-		return nil, errors.New("username cannot be empty")
-	}
 	if oid == "" {
 		return nil, errors.New("oid cannot be empty")
 	}
@@ -384,7 +380,6 @@ func (c *Client) FetchLiveProfile(username, oid, nid, live_id string) (json.RawM
 		return nil, errors.New("id cannot be empty")
 	}
 	return c.RequestFrontend("key:channels:live_profile", ChannelsLiveInfoBody{
-		Username:      username,
 		ObjectId:      oid,
 		ObjectNonceId: nid,
 		LiveId:        live_id,

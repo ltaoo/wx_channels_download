@@ -7,15 +7,6 @@
     "description": "通过视频号页面的 joinLive API 获取直播详情。调用时需要保持视频号页面打开。所有 ID 均以字符串传入，避免大整数精度损失。",
     "parameters": [
       {
-        "name": "username",
-        "in": "query",
-        "required": true,
-        "schema": {
-          "type": "string"
-        },
-        "description": "视频号 finderUsername"
-      },
-      {
         "name": "oid",
         "in": "query",
         "required": true,
@@ -193,7 +184,6 @@
                       "clientStatus": {
                         "videoDecoderSupportMask": 1
                       },
-                      "finderUsername": "v2_060000231003b20faec8c5e18a1cc7d1ce06eb37b07734c376ea7b7de117cb7552928d70ba04@finder",
                       "liveId": "2078984966935324211",
                       "objectId": "15010075332842626347",
                       "objectNonceId": "13591232813757408819_0_142_0_0",
