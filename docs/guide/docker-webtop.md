@@ -193,13 +193,18 @@ docker run -d \
 ## 持久化文件
 
 - `/config/wx_video_download/config.yaml`
-- `/config/wx_video_download/app.log`
 - `/config/.wx_identity/machine-id`
 - `/config/.wx_identity/hostname`
+- `/config/logs/app.log`
 - `/config/logs/wx_video_download.out.log`
 - `/config/logs/wx_video_download_terminal.log`
 - `/config/logs/wechat.log`
 - `/config/Downloads`
+
+`app.log` 是应用自身的日志（zerolog），到 `WX_LOG_DIR`（默认 `/config/logs`）下，
+超过 50 MiB 轮转、保留 3 份并压缩。`wx_video_download.out.log` /
+`wx_video_download_terminal.log` 是启动脚本对进程 stdout/stderr 的重定向，由镜像里的
+`wx-log-rotate` 服务在超过上限时原地裁剪（保留最近 5 MiB），所以都不会无限增长。
 
 ## 常用运行参数
 
@@ -207,6 +212,9 @@ docker run -d \
 - `WECHAT_AUTOSTART=false`
 - `WX_VIDEO_AUTOSTART=false`
 - `WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH=/config/wx_video_download/config.yaml`
+- `WX_LOG_DIR=/config/logs`
+- `WX_OUT_LOG_MAX_BYTES=52428800`
+- `WX_OUT_LOG_KEEP_BYTES=5242880`
 - `CONFIG_DIR=/host/path`
 - `CONTAINER_HOSTNAME=wx-linux`
 - `WEB_PORT=3100`

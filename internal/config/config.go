@@ -17,21 +17,23 @@ import (
 	"github.com/adrg/xdg"
 	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
+
+	"wx_channel/internal/logfile"
 )
 
 type Config struct {
-	RootDir  string // Directory where the binary is located
-	WorkDir  string // Runtime data directory
-	Filename string // Config file name
-	FullPath string // Full path to the config file
-	Existing bool   // Whether the config file exists
-	Error    error
-	Debug    bool
-	Version  string
-	Mode     string
-	logger   *zerolog.Logger
-	log_file *os.File
-	log_path string
+	RootDir    string // Directory where the binary is located
+	WorkDir    string // Runtime data directory
+	Filename   string // Config file name
+	FullPath   string // Full path to the config file
+	Existing   bool   // Whether the config file exists
+	Error      error
+	Debug      bool
+	Version    string
+	Mode       string
+	logger     *zerolog.Logger
+	log_writer *logfile.Writer
+	log_path   string
 
 	// Resolved global script
 	GlobalScriptPath string // Absolute path to configured global script
@@ -77,7 +79,7 @@ const EnvConfigPath = "WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH"
 
 var config_write_mu sync.Mutex
 
-func New(ver string, mode string, logger *zerolog.Logger, log_file *os.File, log_path string) *Config {
+func New(ver string, mode string, logger *zerolog.Logger, log_writer *logfile.Writer, log_path string) *Config {
 	exe, _ := os.Executable()
 	exe_dir := filepath.Dir(exe)
 	base_dir := exe_dir
@@ -103,7 +105,7 @@ func New(ver string, mode string, logger *zerolog.Logger, log_file *os.File, log
 			Version:  ver,
 			Mode:     mode,
 		}
-		c.set_logger(logger, log_file, log_path)
+		c.set_logger(logger, log_writer, log_path)
 		return c
 	}
 
@@ -140,16 +142,16 @@ func New(ver string, mode string, logger *zerolog.Logger, log_file *os.File, log
 		Version:  ver,
 		Mode:     mode,
 	}
-	c.set_logger(logger, log_file, log_path)
+	c.set_logger(logger, log_writer, log_path)
 	return c
 }
 
-func (c *Config) set_logger(logger *zerolog.Logger, log_file *os.File, log_path string) {
+func (c *Config) set_logger(logger *zerolog.Logger, log_writer *logfile.Writer, log_path string) {
 	if c == nil {
 		return
 	}
 	c.logger = logger
-	c.log_file = log_file
+	c.log_writer = log_writer
 	c.log_path = log_path
 }
 
@@ -157,8 +159,8 @@ func (c *Config) Logger() *zerolog.Logger {
 	return c.logger
 }
 
-func (c *Config) LogFile() *os.File {
-	return c.log_file
+func (c *Config) LogWriter() *logfile.Writer {
+	return c.log_writer
 }
 
 func (c *Config) LogPath() string {
@@ -411,6 +413,14 @@ func (c *Config) LoadConfig() error {
 		Title:       "上游代理",
 		Group:       "Proxy",
 		HotReload:   true,
+	})
+	Register(ConfigField{
+		Key:         "debug.enabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否开启调试并记录日志，默认不记录日志",
+		Title:       "调试日志",
+		Group:       "Debug",
 	})
 	Register(ConfigField{
 		Key:         "debug.error",
@@ -880,6 +890,11 @@ func (c *Config) LoadConfig() error {
 		}
 	}
 
+	if err := c.configure_logging(); err != nil {
+		c.Error = err
+		return err
+	}
+
 	// Load plugin configs: each plugin declares its schema and reads its own config
 	LoadPluginConfigs()
 
@@ -904,6 +919,25 @@ func (c *Config) LoadConfig() error {
 	c.resolve_script_path("download.hooksScript", &c.HookScriptPath)
 	c.resolve_script("inject.contentScript", &c.ContentScriptContent)
 
+	return nil
+}
+
+func (c *Config) configure_logging() error {
+	zerolog.SetGlobalLevel(zerolog.Disabled)
+	c.Debug = c.GetBool("debug.enabled")
+	if !c.Debug {
+		return nil
+	}
+	if c.log_writer != nil {
+		if err := os.MkdirAll(filepath.Dir(c.log_writer.Filename), 0755); err != nil {
+			return fmt.Errorf("创建日志目录失败: %w", err)
+		}
+		// Preserve truncate-on-start only when logging is explicitly enabled.
+		if err := c.log_writer.Truncate(); err != nil {
+			return fmt.Errorf("初始化日志文件失败: %w", err)
+		}
+	}
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	return nil
 }
 
