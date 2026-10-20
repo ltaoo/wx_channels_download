@@ -1,0 +1,151 @@
+{
+  "post": {
+    "tags": [
+      "Cookie"
+    ],
+    "summary": "更新 Cookie（兼容路径）",
+    "description": "接受明文或加密的 Cookie JSON，也支持 Content-Encoding: gzip。请求体及解压后内容上限均为 50 MiB；保存到工作目录 cookies.json 并刷新平台可用状态。成功含 action=done；失败 action=error，使用真实 HTTP 400/403/500。",
+    "responses": {
+      "200": {
+        "description": "action=done，code=0；Cookie 已保存",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "skipped": {
+                      "type": "integer"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "done"
+                  ]
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      },
+      "400": {
+        "description": "请求、压缩或解密格式错误",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "403": {
+        "description": "UUID 不匹配",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "500": {
+        "description": "配置或保存失败",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_cookie_update",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "../components.json#/schemas/services_cookie_update_request"
+          },
+          "example": {
+            "cookies": [
+              {
+                "domain": ".example.com",
+                "name": "session",
+                "value": "example"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "parameters": [
+      {
+        "name": "Content-Encoding",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "identity",
+            "gzip"
+          ]
+        },
+        "description": "Content-Encoding"
+      }
+    ]
+  }
+}

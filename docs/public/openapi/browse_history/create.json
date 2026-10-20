@@ -1,0 +1,76 @@
+{
+  "post": {
+    "tags": [
+      "浏览历史"
+    ],
+    "summary": "批量记录浏览历史",
+    "description": "objects 非空；逐项处理，返回 results、created_count、failed_count、skipped_count。缺少内容 ID 的对象标记 skipped，其他单项失败不阻断整个批次。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "created_count": {
+                      "type": "integer"
+                    },
+                    "failed_count": {
+                      "type": "integer"
+                    },
+                    "skipped_count": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_browse_history_create",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "objects": {
+                "type": "array",
+                "items": {
+                  "$ref": "../components.json#/schemas/services_CreateBrowseHistoryBody"
+                }
+              }
+            },
+            "required": [
+              "objects"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

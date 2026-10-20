@@ -1,0 +1,65 @@
+{
+  "post": {
+    "tags": [
+      "代理与证书"
+    ],
+    "summary": "保存代理配置",
+    "description": "values 支持与 /api/service/config 相同的配置键；restart=true 时发布代理重启命令。返回当前代理状态，重启异步完成。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/ProxyStatus"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_proxy_config",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "values": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "restart": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "values"
+            ]
+          },
+          "example": {
+            "values": {
+              "proxy.port": 2023
+            },
+            "restart": false
+          }
+        }
+      }
+    }
+  }
+}

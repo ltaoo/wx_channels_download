@@ -1,0 +1,67 @@
+{
+  "post": {
+    "tags": [
+      "代理与证书"
+    ],
+    "summary": "生成根证书并更新配置",
+    "description": "name 默认读取配置 cert.name，再回退为 wx_channels_download。valid_years 非正数时为 10，超过 30 时截为 30。生成并保存证书与私钥，更新 cert.file/key/name；install 和 restart 默认 false。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/ProxyStatus"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_proxy_certificate_generate",
+    "requestBody": {
+      "required": false,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "install": {
+                "type": "boolean"
+              },
+              "restart": {
+                "type": "boolean"
+              },
+              "valid_years": {
+                "type": "integer"
+              }
+            }
+          },
+          "example": {
+            "name": "wx_channels_download",
+            "valid_years": 10,
+            "install": false,
+            "restart": false
+          }
+        }
+      }
+    }
+  }
+}
