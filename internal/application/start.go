@@ -42,6 +42,10 @@ func Start(cfg *config.Config) error {
 	fmt.Printf("\nv%v\n", cfg.Version)
 	fmt.Printf("Feedback/Issues https://github.com/ltaoo/wx_channels_download/issues\n\n")
 
+	if err := services.EnsureLocalCertificate(cfg); err != nil {
+		return fmt.Errorf("certificate initialization failed: %w", err)
+	}
+
 	logger := cfg.Logger()
 	cache_registry, err := cache.NewProviderRegistry(cfg.WorkDir)
 	if err != nil {

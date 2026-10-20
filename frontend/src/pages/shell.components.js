@@ -99,7 +99,7 @@ function CertificateSettingsDetails(props) {
               class: Timeless.classNames([
                 "border-default border-solid border-current",
                 Timeless.computed(status_, function (status) {
-                  return "settings-certificate-status--" + status.tone;
+                  return "dm-tag--" + status.tone + " settings-certificate-status--" + status.tone;
                 }),
               ]),
               attributes: { n: "settings-certificate-status" },

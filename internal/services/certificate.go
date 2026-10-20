@@ -3,12 +3,15 @@ package services
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -48,7 +51,7 @@ func NewCertificateService(application_config *config.Config) *CertificateServic
 func (s *CertificateService) Status() map[string]any {
 	cert_info := LoadCertFilesWithInfo()
 	cert := cert_info.Cert
-	installed, install_err := certificate.CheckHasCertificate(cert.Name)
+	installed, install_err := certificate.CheckHasCertificateData(cert.Cert)
 	data := map[string]any{
 		"name":          cert.Name,
 		"source":        string(cert_info.Source),
@@ -93,7 +96,7 @@ func (s *CertificateService) Status() map[string]any {
 }
 
 func certificate_status_entry(available_cert AvailableCert) map[string]any {
-	installed, _ := certificate.CheckHasCertificate(available_cert.Cert.Name)
+	installed, _ := certificate.CheckHasCertificateData(available_cert.Cert.Cert)
 	entry := map[string]any{
 		"name":          available_cert.Cert.Name,
 		"source":        string(available_cert.Source),
@@ -169,13 +172,8 @@ func LoadCertFilesWithInfo() CertFilesInfo {
 		return info
 	}
 
-	if cert := try_load_mitmproxy_cert(); cert != nil {
-		return CertFilesInfo{
-			Cert:         cert,
-			Source:       CertSourceMitmproxy,
-			IsLegacy:     true,
-			RiskWarnings: []string{"当前使用第三方mitmproxy证书，非本机生成，存在潜在安全风险"},
-		}
+	if info, err := load_trusted_default_cert_files(check_certificate_trusted); err == nil && info.Cert != nil {
+		return info
 	}
 
 	return CertFilesInfo{
@@ -184,6 +182,43 @@ func LoadCertFilesWithInfo() CertFilesInfo {
 		IsLegacy:     true,
 		RiskWarnings: []string{"该证书为旧版SunnyNet证书，使用硬编码密钥对，存在安全风险，建议删除后安装本机专有证书"},
 	}
+}
+
+func check_certificate_trusted(cert_data []byte, cert_name string) (bool, error) {
+	installed, err := certificate.CheckHasCertificateData(cert_data)
+	if err != nil || !installed {
+		return false, err
+	}
+	return certificate.CheckCertificateDataTrusted(cert_data, cert_name)
+}
+
+func load_trusted_default_cert_files(check_certificate func([]byte, string) (bool, error)) (CertFilesInfo, error) {
+	for _, cert := range []*certificate.CertFileAndKeyFile{try_load_mitmproxy_cert(), certificate.DefaultCertFiles} {
+		if cert == nil {
+			continue
+		}
+		if _, err := tls.X509KeyPair(cert.Cert, cert.PrivateKey); err != nil {
+			continue
+		}
+		trusted, err := check_certificate(cert.Cert, cert.Name)
+		if err != nil {
+			return CertFilesInfo{}, fmt.Errorf("检查 %s 根证书信任状态失败: %w", cert.Name, err)
+		}
+		if !trusted {
+			continue
+		}
+		if cert == certificate.DefaultCertFiles {
+			return CertFilesInfo{
+				Cert: cert, Source: CertSourceSunnyNet, IsLegacy: true,
+				RiskWarnings: []string{"该证书为旧版SunnyNet证书，使用硬编码密钥对，存在安全风险，建议删除后安装本机专有证书"},
+			}, nil
+		}
+		return CertFilesInfo{
+			Cert: cert, Source: CertSourceMitmproxy, IsLegacy: true,
+			RiskWarnings: []string{"当前使用第三方mitmproxy证书，非本机生成，存在潜在安全风险"},
+		}, nil
+	}
+	return CertFilesInfo{}, nil
 }
 
 // AvailableCert represents a certificate available to the proxy.
@@ -243,6 +278,18 @@ func ScanAvailableCerts() []AvailableCert {
 		certs = append(certs, conf_entry)
 	}
 
+	source_order := map[CertSource]int{
+		CertSourceSunnyNet:   0,
+		CertSourceGenerated:  1,
+		CertSourceConfigured: 1,
+		CertSourceMitmproxy:  2,
+	}
+	sort.SliceStable(certs, func(first_index, second_index int) bool {
+		if certs[first_index].IsActive != certs[second_index].IsActive {
+			return certs[first_index].IsActive
+		}
+		return source_order[certs[first_index].Source] < source_order[certs[second_index].Source]
+	})
 	return certs
 }
 

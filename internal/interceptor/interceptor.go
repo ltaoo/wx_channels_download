@@ -71,7 +71,7 @@ func (c *Interceptor) Start() error {
 	}
 	c.proxy = client
 	if !c.Settings.ProxySkipInstallRootCert {
-		existing, err := certificate.CheckHasCertificate(c.Cert.Name)
+		existing, err := certificate.CheckHasCertificateData(c.Cert.Cert)
 		if err != nil {
 			return fmt.Errorf("failed to check certificate: %v", err)
 		}
@@ -90,7 +90,7 @@ func (c *Interceptor) Start() error {
 			if err := certificate.InstallCertificate(c.Cert.Cert); err != nil {
 				return fmt.Errorf("failed to install certificate: %v", err)
 			}
-			installed, verify_err := certificate.CheckHasCertificate(c.Cert.Name)
+			installed, verify_err := certificate.CheckHasCertificateData(c.Cert.Cert)
 			if verify_err != nil {
 				return fmt.Errorf("failed to verify certificate installation: %v", verify_err)
 			}

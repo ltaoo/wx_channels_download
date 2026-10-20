@@ -3,7 +3,6 @@ package api
 import (
 	"fmt"
 	"net"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -125,10 +124,7 @@ func (c *APIClient) handle_proxy_certificate_generate(ctx *gin.Context) {
 	_ = ctx.ShouldBindJSON(&body)
 	name := strings.TrimSpace(body.Name)
 	if name == "" {
-		name = strings.TrimSpace(c.cfg.Original.GetString("cert.name"))
-	}
-	if name == "" {
-		name = "wx_channels_download"
+		name = certificate.LocalCAName
 	}
 	years := body.ValidYears
 	if years <= 0 {
@@ -138,26 +134,26 @@ func (c *APIClient) handle_proxy_certificate_generate(ctx *gin.Context) {
 		years = 30
 	}
 
-	certPEM, keyPEM, err := certificate.GenerateRootCA(name, time.Duration(years)*365*24*time.Hour)
+	cert_pem, key_pem, err := certificate.GenerateRootCA(name, time.Duration(years)*365*24*time.Hour)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
-	certPath, keyPath, err := c.writeGeneratedCertificate(name, certPEM, keyPEM)
+	cert_path, key_path, err := services.WriteGeneratedCertificate(c.cfg.Original, name, cert_pem, key_pem)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
 	if err := c.saveConfigValues(map[string]interface{}{
-		"cert.file": certPath,
-		"cert.key":  keyPath,
+		"cert.file": cert_path,
+		"cert.key":  key_path,
 		"cert.name": name,
 	}); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
 	if body.Install {
-		if err := certificate.InstallCertificate(certPEM); err != nil {
+		if err := certificate.InstallCertificate(cert_pem); err != nil {
 			result.Err(ctx, 500, err.Error())
 			return
 		}
@@ -219,28 +215,28 @@ func (c *APIClient) handle_proxy_certificate_replace(ctx *gin.Context) {
 	}
 
 	// 1. Get old cert info
-	certInfo := services.LoadCertFilesWithInfo()
-	oldName := certInfo.Cert.Name
+	cert_info := services.LoadCertFilesWithInfo()
+	old_name := cert_info.Cert.Name
 
 	// 2. If installed, uninstall old cert
-	installed, _ := certificate.CheckHasCertificate(oldName)
+	installed, _ := certificate.CheckHasCertificate(old_name)
 	if installed {
-		if err := certificate.UninstallCertificate(oldName); err != nil {
+		if err := certificate.UninstallCertificate(old_name); err != nil {
 			result.Err(ctx, 500, "卸载旧证书失败: "+err.Error())
 			return
 		}
 	}
 
 	// 3. Generate new RootCA
-	name := "wx_channels_download"
-	certPEM, keyPEM, err := certificate.GenerateRootCA(name, 10*365*24*time.Hour)
+	name := certificate.LocalCAName
+	cert_pem, key_pem, err := certificate.GenerateRootCA(name, 10*365*24*time.Hour)
 	if err != nil {
 		result.Err(ctx, 500, "生成新证书失败: "+err.Error())
 		return
 	}
 
 	// 4. Write to certs/ directory
-	certPath, keyPath, err := c.writeGeneratedCertificate(name, certPEM, keyPEM)
+	cert_path, key_path, err := services.WriteGeneratedCertificate(c.cfg.Original, name, cert_pem, key_pem)
 	if err != nil {
 		result.Err(ctx, 500, "写入证书文件失败: "+err.Error())
 		return
@@ -248,8 +244,8 @@ func (c *APIClient) handle_proxy_certificate_replace(ctx *gin.Context) {
 
 	// 5. Update config
 	if err := c.saveConfigValues(map[string]interface{}{
-		"cert.file": certPath,
-		"cert.key":  keyPath,
+		"cert.file": cert_path,
+		"cert.key":  key_path,
 		"cert.name": name,
 	}); err != nil {
 		result.Err(ctx, 500, "保存配置失败: "+err.Error())
@@ -257,7 +253,7 @@ func (c *APIClient) handle_proxy_certificate_replace(ctx *gin.Context) {
 	}
 
 	// 6. Install new cert
-	if err := certificate.InstallCertificate(certPEM); err != nil {
+	if err := certificate.InstallCertificate(cert_pem); err != nil {
 		result.Err(ctx, 500, "安装新证书失败: "+err.Error())
 		return
 	}
@@ -452,50 +448,6 @@ func (c *APIClient) applyProxySettingsFromConfig() error {
 	}
 	c.event_publisher.Publish(events.ProxyCommand{Action: events.ProxyApplySettings})
 	return nil
-}
-
-func (c *APIClient) writeGeneratedCertificate(name string, certPEM []byte, keyPEM []byte) (string, string, error) {
-	baseDir := c.cfg.WorkDir
-	if strings.TrimSpace(baseDir) == "" {
-		baseDir = c.cfg.RootDir
-	}
-	dir := filepath.Join(baseDir, "certs")
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", "", err
-	}
-	slug := certificateFilenameSlug(name)
-	certPath := filepath.Join(dir, slug+".pem")
-	keyPath := filepath.Join(dir, slug+".key")
-	if err := os.WriteFile(certPath, certPEM, 0644); err != nil {
-		return "", "", err
-	}
-	if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
-		return "", "", err
-	}
-	return certPath, keyPath, nil
-}
-
-func certificateFilenameSlug(name string) string {
-	name = strings.ToLower(strings.TrimSpace(name))
-	var b strings.Builder
-	prevUnderscore := false
-	for _, r := range name {
-		ok := r >= 'a' && r <= 'z' || r >= '0' && r <= '9'
-		if ok {
-			b.WriteRune(r)
-			prevUnderscore = false
-			continue
-		}
-		if !prevUnderscore {
-			b.WriteByte('_')
-			prevUnderscore = true
-		}
-	}
-	slug := strings.Trim(b.String(), "_")
-	if slug == "" {
-		return "wx_channels_download"
-	}
-	return slug
 }
 
 func getConfigString(c *config.Config, key string) string {
