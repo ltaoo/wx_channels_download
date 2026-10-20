@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"path"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/database/model"
@@ -93,6 +96,7 @@ func (h *handler) ToContent(data any) (*model.Content, error) {
 	metadata, _ := json.Marshal(map[string]any{
 		"author_id":       result.AuthorID,
 		"author_username": result.AuthorUsername,
+		"images":          result.Images,
 		"videos":          result.Videos,
 	})
 	now := util.NowMillis()
@@ -107,7 +111,7 @@ func (h *handler) ToContent(data any) (*model.Content, error) {
 		Description:  result.BodyText,
 		URL:          result.SourceURL,
 		SourceURL:    result.SourceURL,
-		CoverURL:     first_video_cover(result),
+		CoverURL:     post_cover_url(result),
 		PublishTime:  positive_int64_pointer(result.PublishTime),
 		ViewCount:    result.ViewCount,
 		LikeCount:    result.LikeCount,
@@ -142,11 +146,79 @@ func (h *handler) ToContentDetails(data any) ([]adapter.ContentDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	video := content_video(result)
-	if video == nil {
-		return nil, nil
+	return content_details(result), nil
+}
+
+// content_details is the post's detail list in viewer order: every attached
+// video, then the photo grid, then the post body. A post can carry several
+// videos and photos at once, so every detail needs a key of its own -- the
+// scraper job and the viewer both collapse details that share one.
+func content_details(result *x_scraper.FetchResult) []adapter.ContentDetail {
+	if result == nil {
+		return nil
 	}
-	return []adapter.ContentDetail{{Type: model.ContentTypeVideo, Key: video.Id, Data: video}}, nil
+	videos := content_videos(result)
+	details := make([]adapter.ContentDetail, 0, len(videos)+2)
+	for video_index, video := range videos {
+		details = append(details, adapter.ContentDetail{
+			Type:    model.ContentTypeVideo,
+			Key:     video.Id,
+			Content: video_content(result, video_index, video),
+			Data:    video,
+			// A post's own record cannot carry a video's downloads: the viewer
+			// lists resources filed under the post or under a `contains` child,
+			// so every video gets a child content record of its own.
+			Relation: &model.ContentRelation{
+				SourceContentId: PlatformID + ":" + result.ExternalID,
+				TargetContentId: video.Id,
+				Type:            model.ContentRelationContains,
+				SortOrder:       video_index,
+			},
+		})
+	}
+	// A photo post is a gallery: its images come before the caption so the
+	// viewer shows the grid first.
+	if album := content_album(result); album != nil {
+		details = append(details, adapter.ContentDetail{Type: model.ContentTypeAlbum, Key: album.Id + ":album", Data: album})
+	}
+	// A post whose whole content is its text still needs one detail record, so
+	// the long-form article body (or the tweet text) stays viewable.
+	if article := content_article(result); article != nil {
+		details = append(details, adapter.ContentDetail{Type: model.ContentTypePost, Key: article.Id + ":post", Data: article})
+	}
+	return details
+}
+
+// x_video_content_id addresses one attached video. The post id alone cannot:
+// X allows more than one video per post.
+func x_video_content_id(external_id string, video_index int) string {
+	return fmt.Sprintf("%s:%s:video:%d", PlatformID, external_id, video_index+1)
+}
+
+func content_album(result *x_scraper.FetchResult) *model.ContentAlbum {
+	if result == nil || len(result.Images) == 0 {
+		return nil
+	}
+	album := &model.ContentAlbum{
+		Id:          PlatformID + ":" + result.ExternalID,
+		ImageCount:  len(result.Images),
+		CoverWidth:  result.Images[0].Width,
+		CoverHeight: result.Images[0].Height,
+		Description: strings.TrimSpace(result.BodyText),
+	}
+	for image_index, source_image := range result.Images {
+		album.Images = append(album.Images, model.ContentImage{
+			AlbumId:   album.Id,
+			ImageKey:  model.BuildContentAlbumImageKey(source_image.ID, source_image.URL, image_index),
+			SortOrder: image_index,
+			URL:       source_image.URL,
+			Width:     source_image.Width,
+			Height:    source_image.Height,
+			Ext:       image_extension(source_image.URL),
+			ImageType: model.ContentImageTypeStill,
+		})
+	}
+	return album
 }
 
 func (h *handler) BuildDownloadTask(content_json json.RawMessage, config_json json.RawMessage) (*adapter.DownloadTaskResult, error) {
@@ -199,29 +271,66 @@ func (h *handler) build_download_task(result *x_scraper.FetchResult, config_json
 	task_name, _ := config["filename"].(string)
 	task_name = first_non_empty(task_name, content.Title)
 	content_id := content.Id
-	resources := make([]*adapter.ResourceInfo, 0, 2)
-	if result.BodyText != "" {
+	resources := make([]*adapter.ResourceInfo, 0, 2+len(result.Images))
+	body_text := post_text(result)
+	if body_text != "" {
 		resources = append(resources, &adapter.ResourceInfo{
-			Resource:  model.DownloadResource{ContentId: &content_id, Name: task_name, Kind: "text/plain", UniqueID: result.ExternalID + "_body", Size: int64(len(result.BodyText))},
-			Endpoints: []model.DownloadEndpoint{{Protocol: "inline", URL: result.BodyText, Enabled: 1}},
+			Resource:  model.DownloadResource{ContentId: &content_id, Name: task_name, Kind: "text/plain", UniqueID: result.ExternalID + "_body", Size: int64(len(body_text))},
+			Endpoints: []model.DownloadEndpoint{{Protocol: "inline", URL: body_text, Enabled: 1}},
 			ContentAssets: []adapter.ContentAssetReference{{
 				Kind: model.ContentAssetKindText, Role: model.ContentAssetRoleArticleBody, AssetKey: "body:text", Relation: model.DownloadResourceAssetRelationSource,
 			}},
 		})
 	}
-	video := content_video(result)
-	if video != nil {
-		resource, err := video_resource(content_id, task_name, result.SourceURL, &result.Videos[0])
+	// One resource per attached video; each carries the id of its own video
+	// detail so the saved variant links back to the right record.
+	for video_index := range result.Videos {
+		video_name := task_name
+		if len(result.Videos) > 1 {
+			video_name += fmt.Sprintf("_%02d", video_index+1)
+		}
+		resource, err := video_resource(
+			x_video_content_id(result.ExternalID, video_index),
+			video_name,
+			result.SourceURL,
+			&result.Videos[video_index],
+		)
 		if err != nil {
 			return nil, err
 		}
 		resources = append(resources, resource)
+	}
+	image_headers, _ := json.Marshal(map[string]string{"Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8", "Referer": result.SourceURL, "User-Agent": x_scraper.DefaultUserAgent})
+	for image_index, source_image := range result.Images {
+		image_name := task_name
+		if len(result.Images) > 1 {
+			image_name += fmt.Sprintf("_%02d", image_index+1)
+		}
+		image_key := model.BuildContentAlbumImageKey(source_image.ID, source_image.URL, image_index)
+		resources = append(resources, &adapter.ResourceInfo{
+			Resource: model.DownloadResource{
+				ContentId: &content_id, Name: image_name, Kind: image_mime_type(image_extension(source_image.URL)),
+				UniqueID: fmt.Sprintf("%s_image_%d", result.ExternalID, image_index+1), MergeOrder: image_index,
+			},
+			Endpoints: []model.DownloadEndpoint{{Protocol: "https", URL: source_image.URL, Enabled: 1, Headers: string(image_headers)}},
+			ContentAssets: []adapter.ContentAssetReference{{
+				Kind: model.ContentAssetKindImage, Role: model.ContentAssetRolePrimary,
+				AssetKey: model.BuildContentAlbumImageAssetKey(image_key, "original"), Relation: model.DownloadResourceAssetRelationSource,
+				SubjectType: model.ContentAssetSubjectAlbumImage, SubjectKey: image_key, SubjectRelation: model.ContentAssetSubjectRelationRepresentation,
+			}},
+		})
 	}
 	if len(resources) == 0 {
 		return nil, fmt.Errorf("x post %s has no downloadable content", result.ExternalID)
 	}
 	now := util.NowMillis()
 	details, _ := h.ToContentDetails(result)
+	// The preview is only valid when the primary detail is backed by a published
+	// detail record, so derive it from the same list instead of a bare pointer.
+	var content_detail any
+	if len(details) > 0 {
+		content_detail = details[0].Data
+	}
 	return &adapter.DownloadTaskResult{
 		Task: &model.DownloadTask{
 			ContentId: &content_id, Name: task_name, UniqueID: result.ExternalID, PlatformId: PlatformID,
@@ -229,7 +338,7 @@ func (h *handler) build_download_task(result *x_scraper.FetchResult, config_json
 			ConfigJSON: config_text, MetadataJSON: content.Metadata,
 			Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},
 		},
-		Resources: resources, ContentDetail: video, ContentDetails: details, Account: account, Content: content,
+		Resources: resources, ContentDetail: content_detail, ContentDetails: details, Account: account, Content: content,
 	}, nil
 }
 
@@ -237,12 +346,60 @@ func (h *handler) BuildBrowseHistory(_ json.RawMessage) (*adapter.BrowseHistoryR
 	return nil, adapter.ErrBrowseHistoryNotSupported
 }
 
-func content_video(result *x_scraper.FetchResult) *model.ContentVideo {
+// post_text is the post's own text: the long-form article body when the status
+// carries one, otherwise the tweet text.
+func post_text(result *x_scraper.FetchResult) string {
+	if result == nil {
+		return ""
+	}
+	if result.Article != nil {
+		if text := strings.TrimSpace(result.Article.Text); text != "" {
+			return text
+		}
+	}
+	return strings.TrimSpace(result.BodyText)
+}
+
+func content_article(result *x_scraper.FetchResult) *model.ContentArticle {
+	text := post_text(result)
+	if text == "" {
+		return nil
+	}
+	article := &model.ContentArticle{
+		Id:        PlatformID + ":" + result.ExternalID,
+		Type:      model.ContentArticleTypeText,
+		WordCount: utf8.RuneCountInString(text),
+		Text:      text,
+	}
+	// A long-form post keeps its headings, links, images and code blocks in
+	// markdown, which the flattened text above cannot represent.
+	if result.Article != nil {
+		if markdown := strings.TrimSpace(result.Article.Markdown); markdown != "" {
+			article.Type = model.ContentArticleTypeMarkdown
+			article.Markdown = markdown
+		}
+	}
+	return article
+}
+
+// content_videos turns every video attached to the post into its own record.
+func content_videos(result *x_scraper.FetchResult) []*model.ContentVideo {
 	if result == nil || len(result.Videos) == 0 {
 		return nil
 	}
-	video := result.Videos[0]
-	content_id := PlatformID + ":" + result.ExternalID
+	videos := make([]*model.ContentVideo, 0, len(result.Videos))
+	for video_index := range result.Videos {
+		videos = append(videos, content_video(result, video_index))
+	}
+	return videos
+}
+
+func content_video(result *x_scraper.FetchResult, video_index int) *model.ContentVideo {
+	if result == nil || video_index < 0 || video_index >= len(result.Videos) {
+		return nil
+	}
+	video := result.Videos[video_index]
+	content_id := x_video_content_id(result.ExternalID, video_index)
 	now := util.NowMillis()
 	variants := make([]model.ContentVideoVariant, 0, len(video.Variants))
 	selected_bitrate := 0
@@ -274,6 +431,36 @@ func content_video(result *x_scraper.FetchResult) *model.ContentVideo {
 	}
 }
 
+// video_content is the child content record one attached video files under.
+// Resources are listed per content id, so without a record of its own a video's
+// download would never show up on the post's detail page.
+func video_content(result *x_scraper.FetchResult, video_index int, content_video *model.ContentVideo) *model.Content {
+	if result == nil || content_video == nil || video_index < 0 || video_index >= len(result.Videos) {
+		return nil
+	}
+	video := result.Videos[video_index]
+	title := post_title(result.BodyText, result.AuthorName)
+	if len(result.Videos) > 1 {
+		title = fmt.Sprintf("%s_%02d", title, video_index+1)
+	}
+	now := util.NowMillis()
+	return &model.Content{
+		Id:          content_video.Id,
+		PlatformId:  PlatformID,
+		Type:        model.ContentTypeVideo,
+		Subtype:     model.ContentSubtypeShortVideo,
+		ExternalId:  video.ID,
+		ExternalId2: result.AuthorID,
+		Title:       title,
+		Description: strings.TrimSpace(result.BodyText),
+		URL:         video.URL,
+		SourceURL:   result.SourceURL,
+		CoverURL:    first_non_empty(video.CoverURL, result.CoverURL),
+		PublishTime: positive_int64_pointer(result.PublishTime),
+		Timestamps:  model.Timestamps{CreatedAt: now, UpdatedAt: now},
+	}
+}
+
 func video_resource(content_id string, task_name string, source_url string, video *x_scraper.Video) (*adapter.ResourceInfo, error) {
 	if video == nil || strings.TrimSpace(video.URL) == "" {
 		return nil, fmt.Errorf("x post video has no download URL")
@@ -281,7 +468,7 @@ func video_resource(content_id string, task_name string, source_url string, vide
 	headers, _ := json.Marshal(map[string]string{"Accept": "*/*", "Referer": source_url, "User-Agent": x_scraper.DefaultUserAgent})
 	is_hls := strings.Contains(strings.ToLower(video.URL), ".m3u8")
 	resource := model.DownloadResource{
-		ContentId: &content_id, Name: task_name, Kind: "video/mp4", UniqueID: video.ID, Duration: (video.DurationMillis + 999) / 1000,
+		ContentId: &content_id, Name: task_name, Kind: "video/mp4", UniqueID: first_non_empty(video.ID, content_id), Duration: (video.DurationMillis + 999) / 1000,
 	}
 	protocol := "https"
 	asset_key := selected_variant_key(video)
@@ -334,8 +521,8 @@ func validate_result(result *x_scraper.FetchResult) (*x_scraper.FetchResult, err
 	if result == nil || strings.TrimSpace(result.ExternalID) == "" {
 		return nil, fmt.Errorf("x fetch result has no post ID")
 	}
-	if strings.TrimSpace(result.BodyText) == "" && len(result.Videos) == 0 {
-		return nil, fmt.Errorf("x post %s has no text or video", result.ExternalID)
+	if strings.TrimSpace(result.BodyText) == "" && result.Article == nil && len(result.Videos) == 0 && len(result.Images) == 0 {
+		return nil, fmt.Errorf("x post %s has no text, image, or video", result.ExternalID)
 	}
 	return result, nil
 }
@@ -349,6 +536,25 @@ func post_title(body_text string, author_name string) string {
 		return string(title_runes)
 	}
 	return first_non_empty(author_name, "X post")
+}
+
+// post_cover_url prefers the video poster, then the long-form article's own
+// cover, then the first attached photo, then the page's og:image.
+func post_cover_url(result *x_scraper.FetchResult) string {
+	if cover := first_video_cover(result); cover != "" {
+		return cover
+	}
+	if result.Article != nil {
+		if cover := strings.TrimSpace(result.Article.CoverURL); cover != "" {
+			return cover
+		}
+	}
+	if len(result.Images) > 0 {
+		if cover := strings.TrimSpace(result.Images[0].URL); cover != "" {
+			return cover
+		}
+	}
+	return strings.TrimSpace(result.CoverURL)
 }
 
 func first_video_cover(result *x_scraper.FetchResult) string {
@@ -379,4 +585,34 @@ func first_non_empty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// image_extension reads the photo's format, which X carries either in the path
+// or in a format query parameter (pbs.twimg.com/media/<id>?format=jpg).
+func image_extension(raw_url string) string {
+	parsed_url, err := url.Parse(strings.TrimSpace(raw_url))
+	if err != nil {
+		return ""
+	}
+	if extension := strings.TrimPrefix(strings.ToLower(path.Ext(parsed_url.Path)), "."); extension != "" {
+		return extension
+	}
+	return strings.ToLower(strings.TrimSpace(parsed_url.Query().Get("format")))
+}
+
+func image_mime_type(extension string) string {
+	switch strings.ToLower(strings.TrimPrefix(strings.TrimSpace(extension), ".")) {
+	case "jpg", "jpeg":
+		return "image/jpeg"
+	case "png":
+		return "image/png"
+	case "gif":
+		return "image/gif"
+	case "webp":
+		return "image/webp"
+	case "avif":
+		return "image/avif"
+	default:
+		return "image"
+	}
 }
