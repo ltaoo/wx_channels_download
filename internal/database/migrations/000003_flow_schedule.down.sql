@@ -1,3 +1,6 @@
+DROP INDEX IF EXISTS `idx_user_flow_deleted_at`;
+DROP TABLE IF EXISTS `user_flow`;
+
 -- Drop the tag tables first because content_tag/account_tag reference tag.
 DROP TABLE IF EXISTS `account_tag`;
 DROP TABLE IF EXISTS `content_tag`;
