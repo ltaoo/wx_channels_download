@@ -1,0 +1,75 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "创建自定义工作流",
+    "description": "创建只含 StartNode 的工作流。trigger_type 默认为 Cron，可选 Cron、Event、Manual、Webhook；Event 必须提供 event_key。后续通过 update_flow 配置节点和触发规则。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/model_UserFlow"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_automation_create_flow",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": "string"
+              },
+              "trigger_type": {
+                "type": "string"
+              },
+              "event_key": {
+                "type": "string"
+              },
+              "context_schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "../components.json#/schemas/engine_FieldSchema"
+                }
+              }
+            },
+            "required": [
+              "name"
+            ]
+          },
+          "example": {
+            "name": "示例工作流",
+            "trigger_type": "Manual"
+          }
+        }
+      }
+    }
+  }
+}

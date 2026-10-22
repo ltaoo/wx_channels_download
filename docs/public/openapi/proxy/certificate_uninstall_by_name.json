@@ -1,0 +1,59 @@
+{
+  "post": {
+    "tags": [
+      "代理与证书"
+    ],
+    "summary": "按名称卸载根证书",
+    "description": "按名称卸载根证书。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/ProxyStatus"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_proxy_certificate_uninstall_by_name",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "name"
+            ]
+          },
+          "example": {
+            "name": "wx_channels_download"
+          }
+        }
+      }
+    }
+  }
+}

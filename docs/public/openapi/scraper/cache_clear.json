@@ -1,0 +1,73 @@
+{
+  "post": {
+    "tags": [
+      "抓取"
+    ],
+    "summary": "清除 URL 对应的抓取缓存",
+    "description": "按 URL 自动识别平台；平台不支持缓存时仍成功，supported=false、removed=false。不会删除已归档内容或下载任务。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "platform": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "supported": {
+                      "type": "boolean"
+                    },
+                    "removed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_scraper_cache_clear",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "url"
+            ]
+          },
+          "example": {
+            "url": "https://www.bilibili.com/video/BV1xx411c7mD"
+          }
+        }
+      }
+    }
+  }
+}

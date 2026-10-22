@@ -7,8 +7,7 @@ import (
 )
 
 const (
-	MethodWXChannelsFetch = "wxchannels.fetch"
-	MethodDownloadCreate  = "download.create"
+	MethodDownloadCreate = "download.create"
 
 	max_message_bytes = 2 * 1024 * 1024
 )

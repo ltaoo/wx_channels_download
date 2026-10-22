@@ -1,0 +1,58 @@
+{
+  "post": {
+    "tags": [
+      "应用"
+    ],
+    "summary": "上报前端日志",
+    "description": "接收一条日志对象或对象数组。支持 level、message/msg、time 及额外日志字段。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_report",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "oneOf": [
+              {
+                "$ref": "../components.json#/schemas/api_FrontendReport"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "../components.json#/schemas/api_FrontendReport"
+                }
+              }
+            ]
+          },
+          "example": {
+            "level": "info",
+            "message": "接口调用完成"
+          }
+        }
+      }
+    }
+  }
+}

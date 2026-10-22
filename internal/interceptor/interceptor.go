@@ -71,7 +71,7 @@ func (c *Interceptor) Start() error {
 	}
 	c.proxy = client
 	if !c.Settings.ProxySkipInstallRootCert {
-		existing, err := certificate.CheckHasCertificate(c.Cert.Name)
+		existing, err := certificate.CheckHasCertificateData(c.Cert.Cert)
 		if err != nil {
 			return fmt.Errorf("failed to check certificate: %v", err)
 		}
@@ -90,7 +90,7 @@ func (c *Interceptor) Start() error {
 			if err := certificate.InstallCertificate(c.Cert.Cert); err != nil {
 				return fmt.Errorf("failed to install certificate: %v", err)
 			}
-			installed, verify_err := certificate.CheckHasCertificate(c.Cert.Name)
+			installed, verify_err := certificate.CheckHasCertificateData(c.Cert.Cert)
 			if verify_err != nil {
 				return fmt.Errorf("failed to verify certificate installation: %v", verify_err)
 			}
@@ -161,7 +161,7 @@ func (c *Interceptor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	is_upgrade := r.Header.Get("Upgrade") != ""
 	if is_local || is_upgrade {
-		c.log.Info().
+		c.log.Debug().
 			Str("method", r.Method).
 			Str("host", r.Host).
 			Str("url_scheme", r.URL.Scheme).
@@ -217,7 +217,7 @@ func (c *Interceptor) serve_loopback_tunnel(w http.ResponseWriter, r *http.Reque
 	if target_addr == "" {
 		target_addr = r.Host
 	}
-	c.log.Info().Str("target_addr", target_addr).Msg("interceptor: tunnel loopback directly")
+	c.log.Debug().Str("target_addr", target_addr).Msg("interceptor: tunnel loopback directly")
 
 	dst, err := net.Dial("tcp", target_addr)
 	if err != nil {
@@ -273,7 +273,7 @@ func (c *Interceptor) serve_loopback_direct(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "invalid loopback target", http.StatusBadGateway)
 		return
 	}
-	c.log.Info().
+	c.log.Debug().
 		Str("target", target.String()).
 		Str("path", r.URL.Path).
 		Msg("interceptor: bypass loopback directly")

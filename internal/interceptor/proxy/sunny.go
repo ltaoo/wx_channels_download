@@ -20,6 +20,7 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/qtgolang/SunnyNet/SunnyNet"
+	"github.com/qtgolang/SunnyNet/src/Certificate"
 	"github.com/qtgolang/SunnyNet/src/http"
 	"github.com/qtgolang/SunnyNet/src/public"
 	"golang.org/x/text/encoding/simplifiedchinese"
@@ -31,9 +32,18 @@ type SunnyNetProxy struct {
 	plugins  []interface{}
 }
 
-func NewProxy(cert []byte, private_key []byte, upstreamProxy string, tunEnabled bool, proxyHostname string, proxyPort int, defaultInterface string, tcpRelayConfig *TCPRelayConfig) (InnerProxy, error) {
-	Sunny := SunnyNet.NewSunny()
-	return &SunnyNetProxy{Sunny: Sunny}, nil
+func NewProxy(cert []byte, private_key []byte, upstream_proxy string, tun_enabled bool, proxy_hostname string, proxy_port int, default_interface string, tcp_relay_config *TCPRelayConfig) (InnerProxy, error) {
+	manager_id := Certificate.CreateCertificate()
+	defer Certificate.RemoveCertificate(manager_id)
+	manager := Certificate.LoadCertificateContext(manager_id)
+	if !manager.LoadX509Certificate("", string(cert), string(private_key)) {
+		return nil, fmt.Errorf("failed to load proxy root certificate")
+	}
+	sunny := SunnyNet.NewSunny().SetCert(manager_id)
+	if sunny.Error != nil {
+		return nil, sunny.Error
+	}
+	return &SunnyNetProxy{Sunny: sunny}, nil
 }
 
 func (p *SunnyNetProxy) Start(port int) error {
@@ -171,7 +181,7 @@ func (c *sunnyBridgeContext) Req() *ContextReq {
 			RawQuery: r.URL.RawQuery,
 		},
 		Body:   bytes.NewReader(r.Body),
-		Header: r.Header,
+		Header: h.Header(r.Header),
 	}
 }
 

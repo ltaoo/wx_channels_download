@@ -1,0 +1,86 @@
+{
+  "post": {
+    "tags": [
+      "三方下载器"
+    ],
+    "summary": "检测三方下载器连接",
+    "description": "支持 aria2（兼容 aria/ariang）、motrix、gopeed。endpoint 只允许本机环回 HTTP(S) 地址；省略时 aria2 使用 127.0.0.1:6800/jsonrpc，Motrix 使用 :16800/jsonrpc，Gopeed 使用 :9999。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/api_third_party_downloader_result"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_third_party_downloader_probe",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "minLength": 1
+              },
+              "endpoint": {
+                "type": "string"
+              },
+              "token": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "filename": {
+                "type": "string"
+              },
+              "directory": {
+                "type": "string"
+              },
+              "referer": {
+                "type": "string"
+              },
+              "cookie": {
+                "type": "string"
+              },
+              "user_agent": {
+                "type": "string"
+              },
+              "task_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "example": {
+            "kind": "aria2"
+          }
+        }
+      }
+    }
+  }
+}

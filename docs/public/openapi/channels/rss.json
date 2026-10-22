@@ -4,7 +4,7 @@
       "视频号"
     ],
     "summary": "RSS 订阅",
-    "description": "获取指定视频号的 RSS Feed。",
+    "description": "调用视频号列表抓取后返回 Atom 订阅元信息；当前实现尚未将视频列表写入 entry，因此成功响应为不含视频条目的 Feed。失败返回 code/msg JSON。",
     "parameters": [
       {
         "name": "username",
@@ -29,8 +29,23 @@
       "200": {
         "description": "RSS XML",
         "content": {
-          "application/xml": {
-            "example": "<feed></feed>"
+          "application/atom+xml": {
+            "schema": {
+              "type": "string"
+            }
+          },
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       }

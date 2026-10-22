@@ -1,0 +1,85 @@
+{
+  "get": {
+    "tags": [
+      "文件"
+    ],
+    "summary": "读取本地文件或预览 ZIP 图片",
+    "description": "path 相对应用下载目录解析。默认返回原始文件字节；preview=1 时仅支持 ZIP，返回 {type:\"zip\",images:[{name,url}]}，url 为图片 data URL，跳过超过 10 MiB 的图片。校验失败使用 HTTP 200 的业务错误响应。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "zip"
+                      ]
+                    },
+                    "images": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          },
+          "application/octet-stream": {
+            "schema": {
+              "type": "string",
+              "format": "binary"
+            }
+          }
+        }
+      }
+    },
+    "operationId": "get_api_file",
+    "parameters": [
+      {
+        "name": "path",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "本地绝对路径，或相对下载目录的路径"
+      },
+      {
+        "name": "preview",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "传 1 返回 ZIP 图片预览；其他值返回原始文件"
+      }
+    ]
+  }
+}

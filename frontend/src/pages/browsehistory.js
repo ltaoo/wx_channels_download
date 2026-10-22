@@ -1,18 +1,16 @@
-import { Tag, PlatformTag } from "../dmui.js";
 import { BrowseHistoryViewModel } from "./browsehistory.model.js";
 
 function BrowseHistoryPageView(props) {
   const vm$ = BrowseHistoryViewModel(props);
   return View(
     {
-      class:
-        "content-page content-library-page browse-history-page page",
+      class: "flex min-h-full min-w-0 flex-col font-sans bg-content-bg text-content-text group-content-page responsive-table-page",
       onMounted() {
         vm$.methods.ready();
       },
     },
     [
-      View({ class: "content-toolbar-wrap" }, [
+      View({ class: "pt-4 pb-0 px-4 group-content-toolbar-wrap" }, [
         BrowseHistoryPageToolbar({ store: vm$ }),
       ]),
       BrowseHistoryPageBody({ store: vm$ }),
@@ -50,7 +48,7 @@ function BrowseHistoryPageToolbar(props) {
   return View(
     {
       type: "form",
-      class: "content-toolbar content-filter-form",
+      class: "flex max-760:flex-wrap justify-between items-stretch gap-3 group-content-toolbar",
       attributes: { role: "search" },
       onSubmit(event) {
         event.preventDefault();
@@ -60,67 +58,65 @@ function BrowseHistoryPageToolbar(props) {
     [
       View(
         {
-          class:
-            "content-filter-fields dm-flex dm-items-center dm-gap-2",
+          class: "min-w-0 grow shrink basis-0 max-760:grow max-760:shrink max-760:basis-full max-520:flex-wrap dm-items-center dm-gap-2 dm-flex",
         },
         [
-        PlatformSelect({
-          name: "browse-history-platform-select",
-          store: vm$.ui.select_platform$,
-          attributes: {
-            n: "browse-history-platform-select-trigger",
-            "aria-label": "按平台筛选浏览记录",
-          },
-        }),
-        View(
-          {
-            class: "content-filter-search",
-            attributes: { n: "browse-history-search-field" },
-          },
-          [
-            Input({
-              store: vm$.ui.input_keyword$,
-              rootAttributes: { n: "browse-history-search-control" },
-              prefix: Timeless.Icon({
-                name: "search",
-                size: 16,
-                attributes: { n: "browse-history-search-icon" },
+          PlatformSelect({
+            name: "browse-history-platform-select",
+            store: vm$.ui.select_platform$,
+            attributes: {
+              n: "browse-history-platform-select-trigger",
+              "aria-label": "按平台筛选浏览记录",
+            },
+          }),
+          View(
+            {
+              class: "min-w-0 grow shrink basis-0 max-520:basis-full",
+              attributes: { n: "browse-history-search-field" },
+            },
+            [
+              Input({
+                store: vm$.ui.input_keyword$,
+                rootAttributes: { n: "browse-history-search-control" },
+                prefix: Timeless.Icon({
+                  name: "search",
+                  size: 16,
+                  attributes: { n: "browse-history-search-icon" },
+                }),
+                attributes: {
+                  n: "browse-history-search-input",
+                  name: "keyword",
+                  type: "text",
+                  autocomplete: "off",
+                  "aria-label": "搜索浏览记录标题、账号或链接",
+                },
               }),
-              attributes: {
-                n: "browse-history-search-input",
-                name: "keyword",
-                type: "text",
-                autocomplete: "off",
-                "aria-label": "搜索浏览记录标题、账号或链接",
-              },
-            }),
-          ],
-        ),
+            ],
+          ),
         ],
       ),
       View(
         {
-          class:
-            "content-filter-actions dm-flex dm-items-center dm-gap-2",
+          class: "max-520:w-full flex-none dm-items-center max-760:ml-auto max-520:ml-0 dm-gap-2 dm-flex group-content-filter-actions toolbar-actions",
         },
         [
-        BrowseHistoryPageActionButton({
-          name: "browse-history-search-action",
-          store: vm$.ui.btn_search$,
-          icon: "search",
-          label: "搜索",
-          type: "submit",
-          onClick(event) {
-            event.preventDefault();
-            vm$.methods.search();
-          },
-        }),
-        BrowseHistoryPageActionButton({
-          name: "browse-history-reset-action",
-          store: vm$.ui.btn_refresh$,
-          icon: "rotate-ccw",
-          label: "重置",
-        }),
+          BrowseHistoryPageActionButton({
+            name: "browse-history-search-action",
+            store: vm$.ui.btn_search$,
+            icon: "search",
+            label: "搜索",
+            type: "submit",
+            onClick(event) {
+              event.preventDefault();
+              vm$.methods.search();
+            },
+          }),
+          BrowseHistoryPageActionButton({
+            name: "browse-history-reset-action",
+            store: vm$.ui.btn_refresh$,
+            icon: "rotate-ccw",
+            label: "重置",
+          }),
         ],
       ),
     ],
@@ -135,9 +131,9 @@ function BrowseHistoryRowCover(props) {
   const history = props.history;
   const cover_url = browse_history_cover_url(history);
   if (!cover_url) return null;
-  return View({ class: "content-row-cover-wrap" }, [
+  return View({ class: "relative w-control-height-lg h-control-height-lg cover-anchor " }, [
     LazyImg({
-      class: "content-row-cover",
+      class: "grid w-control-height-lg h-control-height-lg place-items-center overflow-hidden object-cover border-default border-solid border-color-content rounded-md text-content-muted cover-target",
       src: cover_url,
       alt: history.title,
       attributes: {
@@ -151,7 +147,7 @@ function BrowseHistoryRowCover(props) {
 function BrowseHistorySourceAction(props) {
   return Link(
     {
-      class: "browse-history-source-action dm-focus-ring",
+      class: "inline-flex min-h-32px max-520:w-32px items-center justify-center py-0 px-2.5 max-520:p-0 gap-1.5 font-inherit text-sm border-default border-solid border-color-content rounded-control hover:border-color-color-primary-border bg-content-panel-soft hover:bg-color-primary-soft text-content-primary hover:text-color-primary-hover cursor-pointer transition-colors-base dm-focus-ring",
       href: props.href,
       target: "_blank",
       attributes: {
@@ -164,7 +160,7 @@ function BrowseHistorySourceAction(props) {
     [
       View(
         {
-          class: "browse-history-source-action-label",
+          class: "max-520:hidden",
           attributes: { n: "browse-history-source-action-label" },
         },
         ["源站"],
@@ -185,21 +181,20 @@ function BrowseHistoryRowMain(props) {
     BrowseHistoryRowCover({ history }),
     View(
       {
-        class: "content-row-main dm-min-w-0 dm-flex-1",
+        class: "dm-min-w-0 dm-flex-1 content-row-main",
         attributes: { n: "browse-history-main" },
       },
       [
         View(
           {
-            class: "content-row-title",
+            class: "overflow-hidden text-base font-semibold whitespace-nowrap text-ellipsis text-content-text",
             attributes: { n: "browse-history-title", title: history.title },
           },
           [history.title],
         ),
         View(
           {
-            class:
-              "content-row-badges dm-flex dm-items-center dm-gap-1-5",
+            class: "min-w-0 flex-nowrap dm-items-center mt-1.5 dm-gap-1-5 overflow-hidden dm-flex",
             attributes: { n: "browse-history-badges" },
           },
           [
@@ -231,7 +226,7 @@ function BrowseHistoryRowAccounts(props) {
         return View(
           {
             class:
-              "content-row-author-account dm-flex dm-items-center dm-gap-1-5 dm-min-w-0",
+              "max-w-full dm-min-w-0 dm-items-center dm-gap-1-5 dm-flex",
             attributes: { n: "browse-history-account" },
           },
           [
@@ -239,7 +234,7 @@ function BrowseHistoryRowAccounts(props) {
               when: acc.avatar_url,
               ok() {
                 return LazyImg({
-                  class: "content-row-author-avatar",
+                  class: "w-4 h-4 flex-none object-cover rounded-full",
                   src: acc.avatar_url,
                   attributes: {
                     n: "browse-history-account-avatar",
@@ -252,7 +247,7 @@ function BrowseHistoryRowAccounts(props) {
             }),
             View(
               {
-                class: "content-row-author-name",
+                class: "overflow-hidden text-sm whitespace-nowrap text-ellipsis text-content-muted",
                 attributes: {
                   n: "browse-history-account-name",
                   title: acc.nickname || acc.external_id || "",
@@ -275,7 +270,7 @@ function BrowseHistoryRowAccess(props) {
       ? View(
           {
             class:
-              "dm-flex dm-items-center dm-gap-1-5 dm-text-primary dm-text-sm dm-font-medium dm-tabular-nums dm-whitespace-nowrap",
+              "dm-items-center dm-gap-1-5 dm-text-sm dm-font-medium dm-tabular-nums dm-whitespace-nowrap dm-text-primary dm-flex",
             attributes: { n: "browse-history-visit-count" },
           },
           [`浏览 ${history.visited_times} 次`],
@@ -284,12 +279,10 @@ function BrowseHistoryRowAccess(props) {
     View(
       {
         class:
-          "dm-flex dm-items-center dm-gap-1-5 dm-text-muted dm-text-sm dm-tabular-nums dm-whitespace-nowrap",
+          "dm-items-center dm-gap-1-5 dm-text-sm dm-tabular-nums dm-whitespace-nowrap dm-text-muted dm-flex",
         attributes: { n: "browse-history-updated-at" },
       },
-      [
-        vm$.methods.formatTime(history.updated_at),
-      ],
+      [vm$.methods.formatTime(history.updated_at)],
     ),
   ].filter(Boolean);
 }
@@ -308,49 +301,49 @@ function BrowseHistoryRowActions(props) {
 function BrowseHistorySkeletonRow() {
   return View(
     {
-      class: "dm-table-row dm-grid dm-items-center content-skeleton-row",
+      class: "dm-grid dm-items-center pointer-events-none dm-table-row",
       attributes: { n: "browse-history-skeleton-row", role: "row" },
     },
     [
       View(
         {
           class:
-            "dm-table-cell content-row-main-cell dm-flex dm-items-center dm-gap-4 dm-min-w-0",
+            "dm-min-w-0 dm-items-center dm-gap-4 dm-flex dm-table-cell table-primary-cell",
           attributes: { n: "browse-history-skeleton-main", role: "cell" },
         },
         [
-          View({ class: "content-row-cover content-skeleton" }),
-          View({ class: "content-row-main dm-min-w-0 dm-flex-1" }, [
-            View({ class: "content-skeleton content-skeleton-title" }),
-            View({ class: "content-skeleton content-skeleton-tag" }),
+          View({ class: "grid relative w-control-height-lg h-control-height-lg place-items-center overflow-hidden object-cover border-default border-solid border-color-content rounded-sm bg-skeleton-bg text-content-muted cover-target skeleton-shimmer " }),
+          View({ class: "dm-min-w-0 dm-flex-1 content-row-main" }, [
+            View({ class: "relative w-4/5 max-w-90 h-4 overflow-hidden rounded-sm bg-skeleton-bg skeleton-shimmer" }),
+            View({ class: "relative h-3 w-16 mt-2 overflow-hidden rounded-sm bg-skeleton-bg skeleton-shimmer" }),
           ]),
         ],
       ),
       View(
         {
-          class: "dm-table-cell dm-min-w-0",
+          class: "dm-min-w-0 dm-table-cell",
           attributes: { n: "browse-history-skeleton-account", role: "cell" },
         },
-        [View({ class: "content-skeleton content-skeleton-line" })],
+        [View({ class: "relative h-3 w-4/5 max-w-45 mt-2 overflow-hidden rounded-sm bg-skeleton-bg skeleton-shimmer" })],
       ),
       View(
         {
-          class: "dm-table-cell browse-history-access",
+          class: "flex min-w-0 flex-col items-start gap-1 dm-table-cell table-meta-cell",
           attributes: { n: "browse-history-skeleton-access", role: "cell" },
         },
         [
-          View({ class: "content-skeleton content-skeleton-line-short" }),
-          View({ class: "content-skeleton content-skeleton-line-short" }),
+          View({ class: "relative h-3 w-72pct max-w-25 mt-2 overflow-hidden rounded-sm bg-skeleton-bg skeleton-shimmer" }),
+          View({ class: "relative h-3 w-72pct max-w-25 mt-2 overflow-hidden rounded-sm bg-skeleton-bg skeleton-shimmer" }),
         ],
       ),
       View(
         {
-          class: "dm-table-cell browse-history-action-cell",
+          class: "flex min-w-0 items-center dm-table-cell table-action-cell",
           attributes: { n: "browse-history-skeleton-action", role: "cell" },
         },
         [
           View({
-            class: "content-skeleton browse-history-action-skeleton",
+            class: "relative w-64px h-32px overflow-hidden rounded-sm bg-skeleton-bg skeleton-shimmer",
           }),
         ],
       ),
@@ -362,7 +355,7 @@ function BrowseHistoryPageBody(props) {
   const vm$ = props.store;
   return Table({
     name: "browse-history-table",
-    containerClass: "content-main container",
+    containerClass: "min-w-0 flex-auto p-4 group-content-main ",
     containerAttributes: { n: "browse-history-page-main" },
     panelAttributes: { n: "browse-history-table-panel" },
     columns: [
@@ -371,7 +364,7 @@ function BrowseHistoryPageBody(props) {
         title: "封面 / 标题",
         width: "minmax(300px, 2fr)",
         cellClass:
-          "content-row-main-cell dm-flex dm-items-center dm-gap-4 dm-min-w-0",
+          "dm-min-w-0 dm-items-center dm-gap-4 dm-flex table-primary-cell",
         render(history) {
           return BrowseHistoryRowMain({ store: vm$, history });
         },
@@ -381,7 +374,7 @@ function BrowseHistoryPageBody(props) {
         title: "账号",
         width: "minmax(150px, 1fr)",
         cellClass:
-          "content-row-author dm-flex dm-items-center dm-gap-1-5 dm-min-w-0",
+          "dm-min-w-0 dm-items-center dm-gap-1-5 overflow-hidden dm-flex table-secondary-cell",
         cellAttributes(history) {
           return { title: vm$.methods.authorName(history) };
         },
@@ -393,7 +386,7 @@ function BrowseHistoryPageBody(props) {
         name: "access",
         title: "最近访问时间",
         width: 180,
-        cellClass: "browse-history-access",
+        cellClass: "flex min-w-0 flex-col items-start gap-1 table-meta-cell",
         render(history) {
           return BrowseHistoryRowAccess({ store: vm$, history });
         },
@@ -402,7 +395,7 @@ function BrowseHistoryPageBody(props) {
         name: "actions",
         title: "操作",
         width: 120,
-        cellClass: "browse-history-action-cell",
+        cellClass: "flex min-w-0 items-center table-action-cell",
         render(history) {
           return BrowseHistoryRowActions({ history });
         },
@@ -410,7 +403,7 @@ function BrowseHistoryPageBody(props) {
     ],
     rows: vm$.state.histories,
     pagination: {
-      class: "container dm-px-4",
+      class: " dm-px-4",
       summary: vm$.state.range_text,
       page: vm$.state.page,
       pageCount: vm$.state.page_count,
@@ -427,9 +420,7 @@ function BrowseHistoryPageBody(props) {
     renderSkeletonRow: BrowseHistorySkeletonRow,
     onRow(history) {
       return {
-        class: browse_history_cover_url(history)
-          ? ""
-          : "content-row-no-cover",
+        class: browse_history_cover_url(history) ? "" : "cover-placeholder",
       };
     },
     errorTitle: "浏览记录加载失败",
@@ -437,9 +428,7 @@ function BrowseHistoryPageBody(props) {
       store: vm$.ui.btn_retry$,
     },
     emptyTitle: computed(vm$.state.keyword, (keyword) =>
-      String(keyword || "").trim()
-        ? "没有匹配的浏览记录"
-        : "暂无浏览记录",
+      String(keyword || "").trim() ? "没有匹配的浏览记录" : "暂无浏览记录",
     ),
     emptyDescription: computed(vm$.state.keyword, (keyword) =>
       String(keyword || "").trim()

@@ -1,0 +1,58 @@
+{
+  "post": {
+    "tags": [
+      "视频号"
+    ],
+    "summary": "解密本地视频号文件",
+    "description": "filepath 和 key 都从 query 读取，即使方法为 POST。key 为非零 uint64 十进制字符串，避免 JavaScript 大整数精度损失；会原地解密指定文件。",
+    "responses": {
+      "200": {
+        "description": "HTTP 200；code=0 成功，非零为业务失败，以 msg 判断错误。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "filepath": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "parameters": [
+      {
+        "name": "filepath",
+        "in": "query",
+        "required": true,
+        "description": "filepath",
+        "schema": {
+          "type": "string"
+        }
+      },
+      {
+        "name": "key",
+        "in": "query",
+        "required": true,
+        "description": "key",
+        "schema": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        }
+      }
+    ]
+  }
+}

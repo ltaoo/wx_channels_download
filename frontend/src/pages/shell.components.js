@@ -1,9 +1,5 @@
-import { Tag } from "../dmui.js";
-const Timeless = window.Timeless;
-
-if (!Timeless) {
-  throw new Error("应用无法启动：Timeless 运行时未加载");
-}
+import { ErrorMessage } from "@/dmui.js";
+import { format_time } from "@/utils.js";
 
 function certificate_source_label(source) {
   var labels = {
@@ -16,7 +12,7 @@ function certificate_source_label(source) {
 }
 
 function certificate_date_label(value) {
-  return window.format_time(value, value ? String(value) : "未提供", {
+  return format_time(value, value ? String(value) : "未提供", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -50,13 +46,13 @@ function certificate_status(data) {
 }
 
 function CertificateDetailItem(props) {
-  return View({ class: "settings-certificate-detail" }, [
-    View({ class: "settings-certificate-detail__label" }, [props.label]),
+  return View({ class: "min-w-0" }, [
+    View({ class: "mb-1 text-caption leading-snug text-color-text-secondary" }, [props.label]),
     View(
       {
         class: Timeless.classNames([
-          "settings-certificate-detail__value",
-          props.mono ? "settings-certificate-detail__value--mono" : null,
+          "min-w-0 text-sm font-medium leading-base overflow-wrap-anywhere text-color-text-primary",
+          props.mono ? "font-mono text-xs font-regular" : null,
         ]),
       },
       [props.value],
@@ -74,19 +70,19 @@ function CertificateSettingsDetails(props) {
   });
   var status_ = Timeless.computed(certificate_, certificate_status);
 
-  return View({ class: "settings-certificate" }, [
-    View({ class: "settings-certificate-hero" }, [
-      View({ class: "settings-certificate-hero__mark" }, [
+  return View({ class: "flex min-w-0 flex-col gap-4" }, [
+    View({ class: "grid relative min-w-0 grid-cols-auto-content-auto max-520:grid-cols-label-content items-center p-4.5 gap-4 overflow-hidden border-default border-solid border-color-primary-border rounded-card bg-gradient-primary-soft accent-rail" }, [
+      View({ class: "grid w-50px h-50px place-items-center border-default border-solid border-color-primary-border-strong rounded-content bg-color-primary-soft text-color-primary" }, [
         Timeless.Icon({ name: "file-lock", size: 25 }),
       ]),
-      View({ class: "settings-certificate-hero__identity" }, [
-        View({ class: "settings-certificate-hero__eyebrow" }, ["当前实际使用"]),
-        View({ class: "settings-certificate-hero__name" }, [
+      View({ class: "min-w-0" }, [
+        View({ class: "text-caption font-semibold tracking-wide text-color-text-secondary" }, ["当前实际使用"]),
+        View({ class: "mt-1 overflow-hidden font-display text-lg font-bold leading-tight whitespace-nowrap text-ellipsis text-color-text-primary" }, [
           Timeless.computed(certificate_, function (data) {
             return (data && data.name) || "未命名证书";
           }),
         ]),
-        View({ class: "settings-certificate-hero__source" }, [
+        View({ class: "mt-1 text-sm text-color-text-secondary" }, [
           Timeless.computed(certificate_, function (data) {
             return certificate_source_label(data && data.source);
           }),
@@ -94,16 +90,16 @@ function CertificateSettingsDetails(props) {
       ]),
       View(
         {
-          class: "settings-certificate-hero__actions",
+          class: "flex max-520:col-span-full items-center max-520:justify-self-start max-520:ml-icon-label-indent gap-2",
           attributes: { n: "settings-certificate-actions" },
         },
         [
           Tag(
             {
               class: Timeless.classNames([
-                "settings-certificate-status",
+                "border-default border-solid border-current",
                 Timeless.computed(status_, function (status) {
-                  return "settings-certificate-status--" + status.tone;
+                  return "dm-tag--" + status.tone + " settings-certificate-status--" + status.tone;
                 }),
               ]),
               attributes: { n: "settings-certificate-status" },
@@ -171,25 +167,7 @@ function CertificateSettingsDetails(props) {
         ],
       ),
     ]),
-    Show({
-      when: Timeless.computed(certificate_, function (data) {
-        return Boolean(data && data.install_status_error);
-      }),
-      ok() {
-        return View(
-          {
-            class:
-              "settings-certificate-notice settings-certificate-notice--danger",
-          },
-          [
-            Timeless.Icon({ name: "circle-alert", size: 16 }),
-            Timeless.computed(certificate_, function (data) {
-              return data.install_status_error;
-            }),
-          ],
-        );
-      },
-    }),
+
     Show({
       when: Timeless.computed(certificate_, function (data) {
         return (
@@ -198,7 +176,7 @@ function CertificateSettingsDetails(props) {
         );
       }),
       ok() {
-        return View({ class: "settings-certificate-notices" }, [
+        return View({ class: "flex flex-col gap-2" }, [
           For({
             each: Timeless.computed(certificate_, function (data) {
               return data.risk_warnings;
@@ -207,7 +185,7 @@ function CertificateSettingsDetails(props) {
               return View(
                 {
                   class:
-                    "settings-certificate-notice settings-certificate-notice--warning",
+                    "flex items-start p-3 gap-2 text-sm leading-base border-default border-solid border-transparent rounded-content border-warning/32 bg-color-warning-soft text-color-warning icon-notice",
                 },
                 [Timeless.Icon({ name: "circle-alert", size: 16 }), warning],
               );
@@ -216,9 +194,9 @@ function CertificateSettingsDetails(props) {
         ]);
       },
     }),
-    View({ class: "settings-certificate-section" }, [
-      View({ class: "settings-certificate-section__title" }, ["证书身份"]),
-      View({ class: "settings-certificate-grid" }, [
+    View({ class: "p-4 border-default border-solid border-color-default rounded-card bg-color-bg-surface" }, [
+      View({ class: "mb-3 text-sm font-semibold text-color-text-primary" }, ["证书身份"]),
+      View({ class: "grid grid-cols-2 max-520:grid-cols-1 gap-y-4 gap-x-5" }, [
         CertificateDetailItem({
           label: "使用名称",
           value: Timeless.computed(certificate_, function (data) {
@@ -258,9 +236,9 @@ function CertificateSettingsDetails(props) {
         }),
       ]),
     ]),
-    View({ class: "settings-certificate-section" }, [
-      View({ class: "settings-certificate-section__title" }, ["有效期与信任"]),
-      View({ class: "settings-certificate-grid" }, [
+    View({ class: "p-4 border-default border-solid border-color-default rounded-card bg-color-bg-surface" }, [
+      View({ class: "mb-3 text-sm font-semibold text-color-text-primary" }, ["有效期与信任"]),
+      View({ class: "grid grid-cols-2 max-520:grid-cols-1 gap-y-4 gap-x-5" }, [
         CertificateDetailItem({
           label: "生效时间",
           value: Timeless.computed(detail_, function (detail) {
@@ -299,19 +277,19 @@ function CertificateSettingsDetails(props) {
         }),
       ]),
     ]),
-    View({ class: "settings-certificate-fingerprint" }, [
-      View({ class: "settings-certificate-fingerprint__label" }, [
+    View({ class: "relative py-4 pr-4 pl-5 overflow-hidden border-default border-solid border-color-media rounded-content bg-color-media-canvas text-color-media-text accent-rail-thin " }, [
+      View({ class: "mb-2 text-caption font-semibold tracking-wide text-color-media-muted" }, [
         "SHA-256 指纹",
       ]),
-      View({ as: "code", class: "settings-certificate-fingerprint__value" }, [
+      View({ as: "code", class: "block font-mono text-xs leading-relaxed overflow-wrap-anywhere text-inherit" }, [
         Timeless.computed(detail_, function (detail) {
           return detail.fingerprint_sha256 || "未提供";
         }),
       ]),
     ]),
-    View({ class: "settings-certificate-section" }, [
-      View({ class: "settings-certificate-section__title" }, ["配置来源"]),
-      View({ class: "settings-certificate-config" }, [
+    View({ class: "p-4 border-default border-solid border-color-default rounded-card bg-color-bg-surface" }, [
+      View({ class: "mb-3 text-sm font-semibold text-color-text-primary" }, ["配置来源"]),
+      View({ class: "grid gap-3" }, [
         CertificateDetailItem({
           label: "配置名称",
           value: Timeless.computed(configured_, function (configured) {
@@ -334,35 +312,17 @@ function CertificateSettingsDetails(props) {
         }),
       ]),
     ]),
-    Show({
-      when: Timeless.computed(certificate_, function (data) {
-        return Boolean(data && data.parse_error);
-      }),
-      ok() {
-        return View(
-          {
-            class:
-              "settings-certificate-notice settings-certificate-notice--danger",
-          },
-          [
-            Timeless.Icon({ name: "circle-alert", size: 16 }),
-            Timeless.computed(certificate_, function (data) {
-              return "证书内容解析失败：" + data.parse_error;
-            }),
-          ],
-        );
-      },
-    }),
+
     Show({
       when: Timeless.computed(certificate_, function (data) {
         return Boolean(data && data.pem);
       }),
       ok() {
-        return View({ as: "details", class: "settings-certificate-pem" }, [
-          View({ as: "summary", class: "settings-certificate-pem__summary" }, [
+        return View({ as: "details", class: "overflow-hidden border-default border-solid border-color-default rounded-card bg-color-bg-subtle" }, [
+          View({ as: "summary", class: "py-3 px-4 text-sm font-medium hover:bg-color-bg-interactive text-color-text-secondary hover:text-color-text-primary cursor-pointer user-select-none" }, [
             "查看 PEM 原文",
           ]),
-          View({ as: "pre", class: "settings-certificate-pem__content" }, [
+          View({ as: "pre", class: "max-h-260px m-0 p-4 overflow-auto font-mono text-xs leading-relaxed whitespace-pre-wrap overflow-wrap-anywhere border-t-default border-t-solid border-t-color-media bg-color-media-canvas text-color-media-text" }, [
             Timeless.computed(certificate_, function (data) {
               return data.pem;
             }),
@@ -374,34 +334,39 @@ function CertificateSettingsDetails(props) {
 }
 
 function AboutSettingsDetails(props) {
-  return View({ class: "settings-about" }, [
-    View({ class: "settings-about__hero" }, [
-      View({ class: "settings-about__logo-wrap" }, [
+  return View({ class: "flex min-w-0 flex-col gap-4" }, [
+    View({ class: "grid min-w-0 grid-cols-auto-content-auto max-520:grid-cols-label-content items-center p-5 max-520:p-4 gap-4 border-default border-solid border-color-primary-border rounded-card bg-gradient-primary-sweep" }, [
+      View({ class: "grid w-72px h-72px place-items-center overflow-hidden border-default border-solid border-color-default rounded-content bg-brand-sidebar shadow-sm" }, [
         Img({
-          class: "settings-about__logo",
+          class: "block w-56px h-56px object-contain user-select-none",
           src: "public/logo.png?v=logo-only-v4",
           alt: "D&M",
           attributes: { draggable: "false" },
         }),
       ]),
-      View({ class: "settings-about__identity" }, [
-        View({ class: "settings-about__eyebrow" }, ["微信视频号下载工具"]),
-        View({ class: "settings-about__name" }, ["wx_channels_download"]),
-        View({ class: "settings-about__summary" }, [
+      View({ class: "min-w-0" }, [
+        View({ class: "text-caption font-semibold tracking-wide text-color-primary" }, ["微信视频号下载工具"]),
+        View({ class: "mt-1 overflow-hidden font-display text-xl font-bold leading-tight whitespace-nowrap text-ellipsis text-color-text-primary" }, ["wx_channels_download"]),
+        View({ class: "mt-1.5 text-sm leading-base text-color-text-secondary" }, [
           "在本机抓取、下载和管理内容。",
         ]),
       ]),
-      Tag({ name: "settings-about__version", class: "settings-about__version" }, [
-        View({ as: "span", class: "settings-about__version-label" }, ["版本"]),
-        View({ as: "code", class: "settings-about__version-value" }, [
-          props.version,
-        ]),
-      ]),
+      Tag(
+        { name: "settings-about__version", class: "max-520:col-span-full max-520:justify-self-start border-default border-solid border-color-strong bg-surface/88 text-color-text-primary" },
+        [
+          View({ as: "span", class: "text-caption font-medium text-color-text-secondary" }, [
+            "版本",
+          ]),
+          View({ as: "code", class: "font-mono text-sm font-semibold text-inherit" }, [
+            props.version,
+          ]),
+        ],
+      ),
     ]),
-    View({ class: "settings-about__resources" }, [
+    View({ class: "grid gap-3" }, [
       Link(
         {
-          class: "settings-about__resource dm-focus-ring",
+          class: "grid min-w-0 grid-cols-auto-content-auto items-center p-4 gap-3 text-decoration-none border-default border-solid border-color-default rounded-card hover:border-color-color-primary-border-strong bg-color-bg-surface hover:bg-color-bg-interactive text-color-text-primary hover:-translate-y-px motion-reduce:hover:transform-none transition-interactive-fast motion-reduce:transition-none link-card dm-focus-ring",
           href: "https://github.com/ltaoo/wx_channels_download",
           target: "_blank",
           attributes: {
@@ -410,12 +375,12 @@ function AboutSettingsDetails(props) {
           },
         },
         [
-          View({ class: "settings-about__resource-icon" }, [
+          View({ class: "grid w-control-height-base h-control-height-base place-items-center border-default border-solid border-color-primary-border rounded-content bg-color-primary-soft text-color-primary" }, [
             Timeless.Icon({ name: "git-fork", size: 20 }),
           ]),
-          View({ class: "settings-about__resource-copy" }, [
-            View({ class: "settings-about__resource-title" }, ["GitHub 仓库"]),
-            View({ class: "settings-about__resource-url" }, [
+          View({ class: "min-w-0" }, [
+            View({ class: "text-sm font-semibold leading-snug" }, ["GitHub 仓库"]),
+            View({ class: "mt-1 overflow-hidden font-mono text-xs leading-base whitespace-nowrap text-ellipsis text-color-text-secondary" }, [
               "github.com/ltaoo/wx_channels_download",
             ]),
           ]),
@@ -424,7 +389,7 @@ function AboutSettingsDetails(props) {
       ),
       Link(
         {
-          class: "settings-about__resource dm-focus-ring",
+          class: "grid min-w-0 grid-cols-auto-content-auto items-center p-4 gap-3 text-decoration-none border-default border-solid border-color-default rounded-card hover:border-color-color-primary-border-strong bg-color-bg-surface hover:bg-color-bg-interactive text-color-text-primary hover:-translate-y-px motion-reduce:hover:transform-none transition-interactive-fast motion-reduce:transition-none link-card dm-focus-ring",
           href: "https://ltaoo.github.io/wx_channels_download/guide/start.html",
           target: "_blank",
           attributes: {
@@ -433,12 +398,12 @@ function AboutSettingsDetails(props) {
           },
         },
         [
-          View({ class: "settings-about__resource-icon" }, [
+          View({ class: "grid w-control-height-base h-control-height-base place-items-center border-default border-solid border-color-primary-border rounded-content bg-color-primary-soft text-color-primary" }, [
             Timeless.Icon({ name: "file-text", size: 20 }),
           ]),
-          View({ class: "settings-about__resource-copy" }, [
-            View({ class: "settings-about__resource-title" }, ["使用文档"]),
-            View({ class: "settings-about__resource-url" }, [
+          View({ class: "min-w-0" }, [
+            View({ class: "text-sm font-semibold leading-snug" }, ["使用文档"]),
+            View({ class: "mt-1 overflow-hidden font-mono text-xs leading-base whitespace-nowrap text-ellipsis text-color-text-secondary" }, [
               "ltaoo.github.io/wx_channels_download/guide/start.html",
             ]),
           ]),
@@ -450,27 +415,27 @@ function AboutSettingsDetails(props) {
 }
 
 function MCPUsageGuide(props) {
-  return View({ class: "settings-mcp__guide" }, [
-    View({ class: "settings-mcp__guide-header" }, [
-      View({ class: "settings-mcp__guide-icon" }, [
+  return View({ class: "min-w-0 overflow-hidden border-default border-solid border-color-default rounded-card bg-color-bg-surface" }, [
+    View({ class: "flex items-center p-4 gap-3 border-b-default border-b-solid border-b-color-default bg-color-bg-subtle" }, [
+      View({ class: "grid w-control-height-base h-control-height-base flex-none place-items-center border-default border-solid border-color-primary-border rounded-content bg-color-primary-soft text-color-primary" }, [
         Timeless.Icon({ name: "file-code", size: 18 }),
       ]),
       View({}, [
-        View({ class: "settings-mcp__guide-title" }, ["让 Agent 创建下载任务"]),
-        View({ class: "settings-mcp__guide-description" }, [
+        View({ class: "text-sm font-semibold text-color-text-primary" }, ["让 Agent 创建下载任务"]),
+        View({ class: "mt-1 text-sm leading-base text-color-text-secondary" }, [
           "完成连接后，Agent 会按以下顺序调用工具。",
         ]),
       ]),
     ]),
-    View({ as: "ol", class: "settings-mcp__steps" }, [
-      View({ as: "li", class: "settings-mcp__step" }, [
-        View({ class: "settings-mcp__step-number" }, ["1"]),
-        View({ class: "settings-mcp__step-body" }, [
-          View({ class: "settings-mcp__step-title" }, ["添加 MCP Server"]),
-          View({ class: "settings-mcp__step-description" }, [
+    View({ as: "ol", class: "flex flex-col m-0 p-4 gap-4 list-style-none" }, [
+      View({ as: "li", class: "grid min-w-0 grid-cols-icon-content gap-3" }, [
+        View({ class: "grid w-28px h-28px place-items-center text-caption font-bold border-default border-solid border-color-primary-border rounded-badge bg-color-primary-soft text-color-primary" }, ["1"]),
+        View({ class: "min-w-0" }, [
+          View({ class: "text-sm font-semibold leading-28px text-color-text-primary" }, ["添加 MCP Server"]),
+          View({ class: "mt-1 text-sm leading-base text-color-text-secondary" }, [
             "在 Agent 的 MCP Servers 或工具集成设置中新增 Streamable HTTP 服务。",
           ]),
-          View({ as: "pre", class: "settings-mcp__example" }, [
+          View({ as: "pre", class: "mt-3 mb-0 mx-0 p-3 overflow-x-auto font-mono text-xs leading-relaxed whitespace-pre border-default border-solid border-color-media rounded-content bg-color-media-canvas text-color-media-text" }, [
             View({ as: "code" }, [
               "名称: dm\n传输: Streamable HTTP\nURL: ",
               props.endpoint,
@@ -478,52 +443,52 @@ function MCPUsageGuide(props) {
           ]),
         ]),
       ]),
-      View({ as: "li", class: "settings-mcp__step" }, [
-        View({ class: "settings-mcp__step-number" }, ["2"]),
-        View({ class: "settings-mcp__step-body" }, [
-          View({ class: "settings-mcp__step-title" }, ["让 Agent 解析链接"]),
-          View({ class: "settings-mcp__step-description" }, [
+      View({ as: "li", class: "grid min-w-0 grid-cols-icon-content gap-3" }, [
+        View({ class: "grid w-28px h-28px place-items-center text-caption font-bold border-default border-solid border-color-primary-border rounded-badge bg-color-primary-soft text-color-primary" }, ["2"]),
+        View({ class: "min-w-0" }, [
+          View({ class: "text-sm font-semibold leading-28px text-color-text-primary" }, ["让 Agent 解析链接"]),
+          View({ class: "mt-1 text-sm leading-base text-color-text-secondary" }, [
             "连接成功后，Agent 先检查平台状态，再解析链接并保留返回的 job_id。",
           ]),
-          View({ class: "settings-mcp__tool-flow" }, [
+          View({ class: "flex min-w-0 items-center mt-3 gap-2 overflow-x-auto scrollbar-width-thin text-color-text-secondary code-strip " }, [
             View({ as: "code" }, ["get_platform_status"]),
             Timeless.Icon({ name: "arrow-right", size: 14 }),
             View({ as: "code" }, ['fetch_content({ "url": "<内容链接>" })']),
           ]),
         ]),
       ]),
-      View({ as: "li", class: "settings-mcp__step" }, [
-        View({ class: "settings-mcp__step-number" }, ["3"]),
-        View({ class: "settings-mcp__step-body" }, [
-          View({ class: "settings-mcp__step-title" }, ["确认并创建下载任务"]),
-          View({ class: "settings-mcp__step-description" }, [
+      View({ as: "li", class: "grid min-w-0 grid-cols-icon-content gap-3" }, [
+        View({ class: "grid w-28px h-28px place-items-center text-caption font-bold border-default border-solid border-color-primary-border rounded-badge bg-color-primary-soft text-color-primary" }, ["3"]),
+        View({ class: "min-w-0" }, [
+          View({ class: "text-sm font-semibold leading-28px text-color-text-primary" }, ["确认并创建下载任务"]),
+          View({ class: "mt-1 text-sm leading-base text-color-text-secondary" }, [
             "查看解析结果并确认下载后，让 Agent 使用 job_id 创建任务；等待模式会在完成后返回任务和文件信息。",
           ]),
-          View({ as: "pre", class: "settings-mcp__example" }, [
+          View({ as: "pre", class: "mt-3 mb-0 mx-0 p-3 overflow-x-auto font-mono text-xs leading-relaxed whitespace-pre border-default border-solid border-color-media rounded-content bg-color-media-canvas text-color-media-text" }, [
             View({ as: "code" }, [
-              'download_content({\n  "job_id": "<job_id>",\n  "wait_for_completion": true\n})',
+              "download_content({\n \"job_id\": \"<job_id>\",\n \"wait_for_completion\": true\n})",
             ]),
           ]),
         ]),
       ]),
-      View({ as: "li", class: "settings-mcp__step" }, [
-        View({ class: "settings-mcp__step-number" }, ["4"]),
-        View({ class: "settings-mcp__step-body" }, [
-          View({ class: "settings-mcp__step-title" }, ["视频号外部下载与解密"]),
-          View({ class: "settings-mcp__step-description" }, [
+      View({ as: "li", class: "grid min-w-0 grid-cols-icon-content gap-3" }, [
+        View({ class: "grid w-28px h-28px place-items-center text-caption font-bold border-default border-solid border-color-primary-border rounded-badge bg-color-primary-soft text-color-primary" }, ["4"]),
+        View({ class: "min-w-0" }, [
+          View({ class: "text-sm font-semibold leading-28px text-color-text-primary" }, ["视频号外部下载与解密"]),
+          View({ class: "mt-1 text-sm leading-base text-color-text-secondary" }, [
             "fetch_content 的 download_resources 提供下载地址和可选 key。可交给 aria2 等工具下载到运行本服务的机器；仅 requires_decryption 为 true 时，使用绝对路径原地解密。",
           ]),
-          View({ as: "pre", class: "settings-mcp__example" }, [
+          View({ as: "pre", class: "mt-3 mb-0 mx-0 p-3 overflow-x-auto font-mono text-xs leading-relaxed whitespace-pre border-default border-solid border-color-media rounded-content bg-color-media-canvas text-color-media-text" }, [
             View({ as: "code" }, [
-              'decrypt_wxchannels_video({\n  "file_path": "<已下载文件的绝对路径>",\n  "key": "<decode_key>"\n})',
+              "decrypt_wxchannels_video({\n \"file_path\": \"<已下载文件的绝对路径>\",\n \"key\": \"<decode_key>\"\n})",
             ]),
           ]),
         ]),
       ]),
     ]),
-    View({ class: "settings-mcp__prompt" }, [
-      View({ class: "settings-mcp__prompt-label" }, ["可以直接对 Agent 说"]),
-      View({ as: "blockquote", class: "settings-mcp__prompt-content" }, [
+    View({ class: "mt-0 mb-4 mr-4 max-520:mr-4 max-520:ml-4 ml-annotation-indent py-3 px-4 border-default border-solid border-color-primary-border rounded-card bg-primary-tint" }, [
+      View({ class: "text-caption font-semibold text-color-primary" }, ["可以直接对 Agent 说"]),
+      View({ as: "blockquote", class: "mt-2 mb-0 mx-0 text-sm leading-relaxed text-color-text-primary" }, [
         "使用 dm MCP 处理这个链接：<内容链接>。先检查平台状态并解析内容，向我展示标题和下载项；得到我的确认后创建下载任务。若微信视频号改用 aria2 等外部下载器，请使用 download_resources 的地址下载到服务所在机器，并仅在存在 decode_key 时调用解密工具。",
       ]),
     ]),
@@ -541,12 +506,12 @@ function MCPSettingsDetails(props) {
       },
     ),
     ok() {
-      return View({ class: "settings-dialog__state" }, [
-        View({ class: "settings-dialog__state-spinner" }, [
+      return View({ class: "flex min-h-360px flex-col items-center justify-center p-7 gap-3 text-center border-default border-dashed border-color-strong rounded-content bg-color-bg-subtle text-color-text-secondary" }, [
+        View({ class: "grid w-control-height-lg h-control-height-lg place-items-center rounded-round bg-color-primary-soft text-color-primary motion-reduce:animation-none animate-spin-slow" }, [
           Timeless.Icon({ name: "refresh-cw", size: 22 }),
         ]),
-        View({ class: "settings-dialog__state-title" }, ["正在读取 MCP 状态"]),
-        View({ class: "settings-dialog__state-text" }, [
+        View({ class: "text-md font-semibold text-color-text-primary" }, ["正在读取 MCP 状态"]),
+        View({ class: "max-w-440px text-sm leading-relaxed" }, [
           "正在检查 Agent 工具入口和当前配置。",
         ]),
       ]);
@@ -561,15 +526,13 @@ function MCPSettingsDetails(props) {
         ),
         ok() {
           return View(
-            { class: "settings-dialog__state settings-dialog__state--error" },
+            { class: "flex min-h-360px flex-col items-center justify-center p-7 gap-3 text-center border-default border-dashed border-color-strong rounded-content bg-color-bg-subtle text-color-text-secondary empty-state-danger" },
             [
               Timeless.Icon({ name: "circle-alert", size: 28 }),
-              View({ class: "settings-dialog__state-title" }, [
+              View({ class: "text-md font-semibold text-color-text-primary" }, [
                 "MCP 状态读取失败",
               ]),
-              View({ class: "settings-dialog__state-text" }, [
-                model.state.error,
-              ]),
+              ErrorMessage({ tip: model.methods.tip, error: model.state.error }),
               Button(
                 {
                   store: model.ui.retry_button$,
@@ -581,16 +544,16 @@ function MCPSettingsDetails(props) {
           );
         },
         else() {
-          return View({ class: "settings-mcp" }, [
-            View({ class: "settings-mcp__service" }, [
-              View({ class: "settings-mcp__service-icon" }, [
+          return View({ class: "flex min-w-0 flex-col gap-4" }, [
+            View({ class: "grid min-w-0 grid-cols-auto-content-auto max-520:grid-cols-label-content items-center p-4.5 gap-4 border-default border-solid border-color-primary-border rounded-card bg-gradient-primary-fade" }, [
+              View({ class: "grid w-50px h-50px place-items-center border-default border-solid border-color-primary-border-strong rounded-content bg-color-primary-soft text-color-primary" }, [
                 Timeless.Icon({ name: "braces", size: 24 }),
               ]),
-              View({ class: "settings-mcp__service-copy" }, [
-                View({ class: "settings-mcp__service-title" }, [
+              View({ class: "min-w-0" }, [
+                View({ class: "font-display text-lg font-bold leading-tight text-color-text-primary" }, [
                   "Streamable HTTP",
                 ]),
-                View({ class: "settings-mcp__service-description" }, [
+                View({ class: "mt-1 text-sm leading-base text-color-text-secondary" }, [
                   "允许兼容 MCP 的 Agent 查询平台、解析链接并创建下载任务。",
                 ]),
               ]),
@@ -598,43 +561,29 @@ function MCPSettingsDetails(props) {
                 {
                   name: "settings-mcp__status",
                   class: Timeless.classNames([
-                    "settings-mcp__status",
+                    "max-520:col-span-full max-520:justify-self-start max-520:ml-icon-label-indent border-default border-solid border-current",
                     Timeless.computed(model.state.enabled, function (enabled) {
                       return enabled
-                        ? "settings-mcp__status--running"
-                        : "settings-mcp__status--stopped";
+                        ? "bg-color-success-soft text-color-success"
+                        : "bg-color-bg-subtle text-color-text-secondary";
                     }),
                   ]),
                 },
                 [
-                  View({ class: "settings-mcp__status-dot" }),
+                  View({ class: "w-7px h-7px rounded-round bg-currentColor" }),
                   Timeless.computed(model.state.enabled, function (enabled) {
                     return enabled ? "运行中" : "已停用";
                   }),
                 ],
               ),
             ]),
-            Show({
-              when: Timeless.computed(model.state.error, Boolean),
-              ok() {
-                return View(
-                  {
-                    class:
-                      "settings-certificate-notice settings-certificate-notice--danger",
-                  },
-                  [
-                    Timeless.Icon({ name: "circle-alert", size: 16 }),
-                    model.state.error,
-                  ],
-                );
-              },
-            }),
-            View({ class: "settings-mcp__control" }, [
-              View({ class: "settings-mcp__control-copy" }, [
-                View({ class: "settings-mcp__control-title" }, [
+
+            View({ class: "flex max-520:flex-col items-center justify-between max-520:items-stretch p-4 gap-4 border-default border-solid border-color-default rounded-card bg-color-bg-surface" }, [
+              View({ class: "min-w-0" }, [
+                View({ class: "text-sm font-semibold text-color-text-primary" }, [
                   "允许 Agent 连接",
                 ]),
-                View({ class: "settings-mcp__control-description" }, [
+                View({ class: "mt-1 text-sm leading-base text-color-text-secondary" }, [
                   "更改仅在当前运行期间生效；应用重启后默认关闭。",
                 ]),
               ]),
@@ -658,24 +607,31 @@ function MCPSettingsDetails(props) {
               ),
             ]),
             MCPUsageGuide({ endpoint: model.state.endpoint }),
-            View({ class: "settings-mcp__section" }, [
-              View({ class: "settings-mcp__section-label" }, ["连接地址"]),
-              View({ as: "code", class: "settings-mcp__endpoint" }, [
+            View({ class: "min-w-0 p-4 border-default border-solid border-color-default rounded-card bg-color-bg-subtle" }, [
+              View({ class: "mb-2 text-caption font-semibold tracking-wide text-color-text-secondary" }, ["连接地址"]),
+              View({ as: "code", class: "block p-3 overflow-x-auto font-mono text-sm leading-base whitespace-nowrap border-default border-solid border-color-media rounded-content bg-color-media-canvas text-color-media-text" }, [
                 model.state.endpoint,
               ]),
-              View({ class: "settings-mcp__hint" }, [
+              View({ class: "mt-1 text-sm leading-base text-color-text-secondary" }, [
                 "将此 URL 填入支持 Streamable HTTP 的 MCP 客户端。服务默认只监听 API 配置的地址。",
               ]),
             ]),
-            View({ class: "settings-mcp__section" }, [
-              View({ class: "settings-mcp__section-label" }, ["可用工具"]),
-              View({ class: "settings-mcp__tools" }, [
+            View({ class: "min-w-0 p-4 border-default border-solid border-color-default rounded-card bg-color-bg-subtle" }, [
+              View({ class: "mb-2 text-caption font-semibold tracking-wide text-color-text-secondary" }, ["可用工具"]),
+              View({ class: "flex flex-wrap gap-2 code-meta" }, [
                 For({
                   each: Timeless.computed(model.state.data, function (data) {
                     return (data && data.tools) || [];
                   }),
                   render(tool) {
-                    return Tag({ as: "code", variant: "info", name: "settings-mcp-tool" }, [tool]);
+                    return Tag(
+                      {
+                        as: "code",
+                        variant: "info",
+                        name: "settings-mcp-tool",
+                      },
+                      [tool],
+                    );
                   },
                 }),
               ]),
@@ -683,7 +639,7 @@ function MCPSettingsDetails(props) {
             View(
               {
                 class:
-                  "settings-certificate-notice settings-certificate-notice--warning",
+                  "flex items-start p-3 gap-2 text-sm leading-base border-default border-solid border-transparent rounded-content border-warning/32 bg-color-warning-soft text-color-warning icon-notice",
               },
               [
                 Timeless.Icon({ name: "circle-alert", size: 16 }),
@@ -706,24 +662,24 @@ export function SettingsDialog(props) {
       attributes: { n: "settings-dialog" },
     },
     [
-      DialogTitle({ class: "settings-dialog__heading" }, [
-        View({ class: "settings-dialog__heading-icon" }, [
+      DialogTitle({ class: "flex flex-none items-center py-4 px-6 max-520:py-3 max-520:px-4 gap-3 border-b-default border-b-solid border-b-color-default" }, [
+        View({ class: "grid w-control-height-base h-control-height-base flex-none place-items-center border-default border-solid border-color-primary-border rounded-content bg-color-primary-soft text-color-primary" }, [
           Timeless.Icon({ name: "settings", size: 18 }),
         ]),
-        View({ class: "settings-dialog__heading-copy" }, [
-          View({ as: "span", class: "settings-dialog__heading-title" }, [
+        View({ class: "flex min-w-0 flex-col gap-0.5" }, [
+          View({ as: "span", class: "font-display text-lg font-bold leading-tight text-color-text-primary" }, [
             "设置",
           ]),
-          View({ as: "span", class: "settings-dialog__heading-description" }, [
+          View({ as: "span", class: "max-520:hidden font-sans text-sm font-regular leading-base text-color-text-secondary" }, [
             "查看当前运行环境和安全配置",
           ]),
         ]),
       ]),
-      DialogBody({ class: "settings-dialog__body" }, [
+      DialogBody({ class: "dialog-sidebar-body " }, [
         View(
           {
             as: "nav",
-            class: "settings-dialog__menus",
+            class: "flex min-w-0 flex-col max-760:flex-row py-4 px-3 max-760:py-2 max-760:px-3 gap-1 max-760:overflow-x-auto border-r-default border-r-solid border-r-color-default max-760:border-right-0 max-760:border-b-default max-760:border-b-solid max-760:border-b-color-default bg-color-bg-subtle",
             ariaLabel: "设置菜单",
           },
           [
@@ -801,17 +757,17 @@ export function SettingsDialog(props) {
             ),
           ],
         ),
-        View({ class: "settings-dialog__panel" }, [
+        View({ class: "min-w-0 min-h-0 overflow-auto scrollbar-gutter-stable" }, [
           Show({
             when: Timeless.computed(props.section, function (section) {
               return section === "certificate";
             }),
             ok() {
-              return View({ class: "settings-dialog__panel-inner" }, [
-                View({ class: "settings-dialog__panel-header" }, [
+              return View({ class: "w-full pt-5 pb-7 px-6 max-760:pt-4 max-760:pb-6 max-760:px-4" }, [
+                View({ class: "flex items-start justify-between max-520:items-center mb-5 gap-4" }, [
                   View({}, [
-                    View({ class: "settings-dialog__panel-title" }, ["证书"]),
-                    View({ class: "settings-dialog__panel-description" }, [
+                    View({ class: "font-display text-lg font-bold leading-tight text-color-text-primary" }, ["证书"]),
+                    View({ class: "mt-1 text-sm leading-base text-color-text-secondary" }, [
                       "代理服务当前加载并用于 HTTPS 解密的根证书。",
                     ]),
                   ]),
@@ -827,14 +783,14 @@ export function SettingsDialog(props) {
                 Show({
                   when: props.loading,
                   ok() {
-                    return View({ class: "settings-dialog__state" }, [
-                      View({ class: "settings-dialog__state-spinner" }, [
+                    return View({ class: "flex min-h-360px flex-col items-center justify-center p-7 gap-3 text-center border-default border-dashed border-color-strong rounded-content bg-color-bg-subtle text-color-text-secondary" }, [
+                      View({ class: "grid w-control-height-lg h-control-height-lg place-items-center rounded-round bg-color-primary-soft text-color-primary motion-reduce:animation-none animate-spin-slow" }, [
                         Timeless.Icon({ name: "refresh-cw", size: 22 }),
                       ]),
-                      View({ class: "settings-dialog__state-title" }, [
+                      View({ class: "text-md font-semibold text-color-text-primary" }, [
                         "正在读取证书",
                       ]),
-                      View({ class: "settings-dialog__state-text" }, [
+                      View({ class: "max-w-440px text-sm leading-relaxed" }, [
                         "正在检查证书来源、系统信任和有效期。",
                       ]),
                     ]);
@@ -848,16 +804,14 @@ export function SettingsDialog(props) {
                         return View(
                           {
                             class:
-                              "settings-dialog__state settings-dialog__state--error",
+                              "flex min-h-360px flex-col items-center justify-center p-7 gap-3 text-center border-default border-dashed border-color-strong rounded-content bg-color-bg-subtle text-color-text-secondary empty-state-danger",
                           },
                           [
                             Timeless.Icon({ name: "circle-alert", size: 28 }),
-                            View({ class: "settings-dialog__state-title" }, [
+                            View({ class: "text-md font-semibold text-color-text-primary" }, [
                               "证书信息读取失败",
                             ]),
-                            View({ class: "settings-dialog__state-text" }, [
-                              props.error,
-                            ]),
+                            ErrorMessage({ tip: props.tip, error: props.error }),
                             Button(
                               {
                                 store: props.retry_button,
@@ -898,11 +852,11 @@ export function SettingsDialog(props) {
               return section === "mcp";
             }),
             ok() {
-              return View({ class: "settings-dialog__panel-inner" }, [
-                View({ class: "settings-dialog__panel-header" }, [
+              return View({ class: "w-full pt-5 pb-7 px-6 max-760:pt-4 max-760:pb-6 max-760:px-4" }, [
+                View({ class: "flex items-start justify-between max-520:items-center mb-5 gap-4" }, [
                   View({}, [
-                    View({ class: "settings-dialog__panel-title" }, ["MCP"]),
-                    View({ class: "settings-dialog__panel-description" }, [
+                    View({ class: "font-display text-lg font-bold leading-tight text-color-text-primary" }, ["MCP"]),
+                    View({ class: "mt-1 text-sm leading-base text-color-text-secondary" }, [
                       "管理供本机或局域网 Agent 使用的工具服务。",
                     ]),
                   ]),
@@ -924,11 +878,11 @@ export function SettingsDialog(props) {
               return section === "about";
             }),
             ok() {
-              return View({ class: "settings-dialog__panel-inner" }, [
-                View({ class: "settings-dialog__panel-header" }, [
+              return View({ class: "w-full pt-5 pb-7 px-6 max-760:pt-4 max-760:pb-6 max-760:px-4" }, [
+                View({ class: "flex items-start justify-between max-520:items-center mb-5 gap-4" }, [
                   View({}, [
-                    View({ class: "settings-dialog__panel-title" }, ["关于"]),
-                    View({ class: "settings-dialog__panel-description" }, [
+                    View({ class: "font-display text-lg font-bold leading-tight text-color-text-primary" }, ["关于"]),
+                    View({ class: "mt-1 text-sm leading-base text-color-text-secondary" }, [
                       "查看当前版本，以及项目的代码和使用文档。",
                     ]),
                   ]),
@@ -956,22 +910,25 @@ export function UpdateDialog(props) {
       attributes: { "aria-labelledby": "update-dialog-title" },
     },
     [
-      DialogHeader({ class: "update-dialog__header" }, [
-        View({ class: "update-dialog__mark" }, [
+      DialogHeader({ class: "dialog-header-spacious " }, [
+        View({ class: "grid max-520:hidden w-control-height-lg h-control-height-lg flex-none place-items-center border-default border-solid border-color-primary-border rounded-content bg-color-primary-soft text-color-primary" }, [
           Timeless.Icon({ name: "cloud-download", size: 23 }),
         ]),
-        View({ class: "update-dialog__heading" }, [
+        View({ class: "grid min-w-0 gap-1" }, [
           DialogTitle({ attributes: { id: "update-dialog-title" } }, [
             model.state.phase_title,
           ]),
-          DialogDescription({}, [model.state.phase_message]),
+          DialogDescription({}, [Timeless.combine(
+            { status: model.state.status, message: model.state.phase_message }, (state) =>
+            state.status === "error" ? "更新未完成，请重新尝试。" : state.message,
+          )]),
         ]),
       ]),
-      DialogBody({ class: "update-dialog__body" }, [
-        View({ class: "update-dialog__versions" }, [
-          View({ class: "update-dialog__version" }, [
-            View({ class: "update-dialog__version-label" }, ["当前版本"]),
-            View({ as: "code", class: "update-dialog__version-value" }, [
+      DialogBody({ class: "dialog-body-spacious " }, [
+        View({ class: "grid grid-cols-balanced items-center p-4 max-520:p-3 gap-3 border-default border-solid border-color-default rounded-card bg-color-bg-subtle" }, [
+          View({ class: "grid min-w-0 gap-1 value-pair-item " }, [
+            View({ class: "text-xs leading-base text-color-text-secondary" }, ["当前版本"]),
+            View({ as: "code", class: "overflow-hidden font-mono text-base font-bold whitespace-nowrap text-ellipsis text-color-text-primary value-pair-value" }, [
               Timeless.computed(snapshot_, function (snapshot) {
                 return snapshot.current_version || "未知";
               }),
@@ -979,14 +936,14 @@ export function UpdateDialog(props) {
           ]),
           View(
             {
-              class: "update-dialog__version-arrow",
+              class: "text-xl text-color-text-disabled",
               attributes: { "aria-hidden": "true" },
             },
             ["→"],
           ),
-          View({ class: "update-dialog__version" }, [
-            View({ class: "update-dialog__version-label" }, ["最新版本"]),
-            View({ as: "code", class: "update-dialog__version-value" }, [
+          View({ class: "grid min-w-0 gap-1 value-pair-item " }, [
+            View({ class: "text-xs leading-base text-color-text-secondary" }, ["最新版本"]),
+            View({ as: "code", class: "overflow-hidden font-mono text-base font-bold whitespace-nowrap text-ellipsis text-color-text-primary value-pair-value" }, [
               Show({
                 when: model.state.has_latest_version,
                 ok() {
@@ -1004,7 +961,7 @@ export function UpdateDialog(props) {
             return Boolean(snapshot.published_at || snapshot.asset_name);
           }),
           ok() {
-            return View({ class: "update-dialog__meta" }, [
+            return View({ class: "flex flex-wrap gap-y-2 gap-x-4 text-xs text-color-text-secondary inline-meta-list " }, [
               Show({
                 when: Timeless.computed(model.state.published_text, Boolean),
                 ok() {
@@ -1037,7 +994,7 @@ export function UpdateDialog(props) {
           ok() {
             return View(
               {
-                class: "update-dialog__progress",
+                class: "grid p-4 gap-2 border-default border-solid border-color-info rounded-card bg-color-info-soft",
                 attributes: {
                   role: "progressbar",
                   "aria-valuemin": "0",
@@ -1046,7 +1003,7 @@ export function UpdateDialog(props) {
                 },
               },
               [
-                View({ class: "update-dialog__progress-head" }, [
+                View({ class: "flex items-center justify-between gap-3 text-sm font-semibold text-color-text-primary" }, [
                   View({ as: "span" }, [model.state.phase_title]),
                   View({ as: "span" }, [
                     Show({
@@ -1065,10 +1022,10 @@ export function UpdateDialog(props) {
                     }),
                   ]),
                 ]),
-                View({ class: "update-dialog__progress-track" }, [
+                View({ class: "h-2 overflow-hidden rounded-round bg-info/15" }, [
                   View({
                     class: Timeless.classNames([
-                      "update-dialog__progress-value",
+                      "h-full rounded-inherit bg-color-info transition-width-slow motion-reduce:transition-none progress-bar-pulse ",
                       Timeless.computed(
                         model.state.has_total,
                         function (has_total) {
@@ -1089,38 +1046,22 @@ export function UpdateDialog(props) {
                     ),
                   }),
                 ]),
-                View({ class: "update-dialog__progress-detail" }, [
+                View({ class: "font-mono text-caption text-color-text-secondary" }, [
                   model.state.progress_text,
                 ]),
               ],
             );
           },
         }),
-        Show({
-          when: Timeless.computed(model.state.status, function (status) {
-            return status === "error";
-          }),
-          ok() {
-            return View(
-              {
-                class: "update-dialog__error",
-                attributes: { role: "alert" },
-              },
-              [
-                Timeless.Icon({ name: "circle-alert", size: 17 }),
-                model.state.phase_message,
-              ],
-            );
-          },
-        }),
+
         Show({
           when: Timeless.computed(snapshot_, function (snapshot) {
             return Boolean(snapshot.body);
           }),
           ok() {
-            return View({ class: "update-dialog__notes" }, [
-              View({ class: "update-dialog__notes-title" }, ["版本说明"]),
-              View({ as: "pre", class: "update-dialog__notes-content" }, [
+            return View({ class: "grid min-h-0 gap-2" }, [
+              View({ class: "text-sm font-semibold text-color-text-primary" }, ["版本说明"]),
+              View({ as: "pre", class: "max-h-180px m-0 p-3 overflow-auto font-sans text-xs leading-relaxed whitespace-pre-wrap overflow-wrap-anywhere border-default border-solid border-color-default rounded-content bg-color-bg-subtle text-color-text-secondary" }, [
                 Timeless.computed(snapshot_, function (snapshot) {
                   return snapshot.body;
                 }),
@@ -1134,7 +1075,7 @@ export function UpdateDialog(props) {
           return !busy;
         }),
         ok() {
-          return DialogFooter({ class: "update-dialog__footer" }, [
+          return DialogFooter({ class: "dialog-footer-spacious " }, [
             Button({ store: model.ui.cancel_button$ }, ["稍后"]),
             Show({
               when: model.state.can_download,

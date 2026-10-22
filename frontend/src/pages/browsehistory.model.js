@@ -1,3 +1,7 @@
+import { track_error } from "@/utils.js";
+import { fetchBrowseHistoryList } from "@/biz/request.js";
+import { format_time } from "@/utils.js";
+
 function number_or_default(value, fallback) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -92,10 +96,7 @@ function normalize_browse_history_item(raw) {
       source.content_url,
       source.ContentURL,
     ),
-    source_url: first_non_empty(
-      source.source_url,
-      source.SourceURL,
-    ),
+    source_url: first_non_empty(source.source_url, source.SourceURL),
     visited_times: number_or_default(
       first_non_empty(
         source.visited_times,
@@ -179,7 +180,7 @@ function BrowseHistoryViewModel(props) {
   const platform_id_ = ref("");
   const initial_ = ref(true);
   const loading_ = ref(false);
-  const error_ = ref("");
+  const error_ = track_error(ref(""), props.tip);
   let request_sequence = 0;
 
   const ui = {
@@ -205,10 +206,7 @@ function BrowseHistoryViewModel(props) {
         autocomplete: false,
       }),
       position: "popper",
-      options: [
-        ["", "全部平台"],
-        ...Object.entries(window.PLATFORM_NAMES),
-      ].map(
+      options: [["", "全部平台"], ...Object.entries(window.PLATFORM_NAMES)].map(
         ([value, label]) => new Timeless.vm.SelectItemCore({ label, value }),
       ),
       onChange(value) {
@@ -261,8 +259,7 @@ function BrowseHistoryViewModel(props) {
   });
 
   const list_request = new Timeless.kit.RequestCore(
-    (params) =>
-      window.request.post("/api/browse_history/list", params),
+    fetchBrowseHistoryList,
     {
       client: props.client,
       process(response) {
@@ -343,7 +340,9 @@ function BrowseHistoryViewModel(props) {
 
     const data = result.data;
     error_.as("");
-    histories_.as(data.list.map(normalize_browse_history_item), { reset: true });
+    histories_.as(data.list.map(normalize_browse_history_item), {
+      reset: true,
+    });
     total_.as(data.total);
     page_.as(data.page || requestedPage);
     page_size_.as(data.page_size);
@@ -366,6 +365,7 @@ function BrowseHistoryViewModel(props) {
   }
 
   const methods = {
+    tip: props.tip,
     ready() {
       return load(1);
     },
@@ -392,7 +392,7 @@ function BrowseHistoryViewModel(props) {
     platformFavicon: browse_history_platform_favicon,
     platformName: browse_history_platform_name,
     typeLabel: browse_history_type_label,
-    formatTime: window.format_time,
+    formatTime: format_time,
     authorName: normalize_author_name,
   };
 
