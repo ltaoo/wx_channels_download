@@ -41,7 +41,7 @@ func main() {
 	_ = log_writer.Close()
 	if run_err != nil {
 		fmt.Printf("Failed to run: %v\n", run_err.Error())
-		return
+		os.Exit(1)
 	}
 	if err := application.RestartIfRequested(); err != nil {
 		fmt.Printf("Failed to restart: %v\n", err.Error())

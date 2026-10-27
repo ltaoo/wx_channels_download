@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,6 +15,7 @@ import (
 
 	"wx_channel/internal/application"
 	"wx_channel/internal/config"
+	"wx_channel/internal/services"
 )
 
 var (
@@ -45,7 +47,7 @@ var root_cmd = &cobra.Command{
 		if err := application.PrepareConfig(Cfg, config_filepath); err != nil {
 			return err
 		}
-		should_exit, err := application.PrepareStartPrivileges(is_root_start_command)
+		should_exit, err := application.PrepareStartPrivileges(Cfg, is_root_start_command)
 		if err != nil {
 			return err
 		}
@@ -91,7 +93,7 @@ func Execute(cfg *config.Config) error {
 		report_mcp_startup_error(err)
 		return nil
 	}
-	if err != nil && start_command_invoked {
+	if err != nil && start_command_invoked && !errors.Is(err, services.ErrCertificateInitialization) {
 		fmt.Fprintf(root_cmd.ErrOrStderr(), "%s %v\n", error_prefix, err)
 		wait_for_start_failure(root_cmd.InOrStdin(), root_cmd.OutOrStdout())
 		// The startup error has already been displayed and acknowledged. Keep the

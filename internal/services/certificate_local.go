@@ -2,6 +2,7 @@ package services
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,12 +13,17 @@ import (
 	"wx_channel/pkg/certificate"
 )
 
-// EnsureLocalCertificate keeps configured or trusted certificates before preparing a local CA.
+var ErrCertificateInitialization = errors.New("证书初始化失败")
+
+// EnsureLocalCertificate requires trusted configured roots and installs new local roots.
 func EnsureLocalCertificate(cfg *config.Config) error {
-	return ensure_local_certificate(cfg, check_certificate_trusted)
+	if err := ensure_local_certificate(cfg, check_certificate_trusted, certificate.InstallCertificate); err != nil {
+		return fmt.Errorf("%w: %w", ErrCertificateInitialization, err)
+	}
+	return nil
 }
 
-func ensure_local_certificate(cfg *config.Config, check_certificate func([]byte, string) (bool, error)) error {
+func ensure_local_certificate(cfg *config.Config, check_certificate func([]byte, string) (bool, error), install_certificate func([]byte) error) error {
 	if cfg.GetString("cert.file") != "" || cfg.GetString("cert.key") != "" {
 		cert, ok := load_configured_cert_files()
 		if !ok {
@@ -25,6 +31,13 @@ func ensure_local_certificate(cfg *config.Config, check_certificate func([]byte,
 		}
 		if _, err := tls.X509KeyPair(cert.Cert, cert.PrivateKey); err != nil {
 			return fmt.Errorf("配置的证书与私钥无效: %w", err)
+		}
+		trusted, err := check_certificate(cert.Cert, cert.Name)
+		if err != nil {
+			return fmt.Errorf("检查配置证书 %s 的安装和信任状态失败: %w", cert.Name, err)
+		}
+		if !trusted {
+			return fmt.Errorf("配置证书 %s 未安装或未受信任，请手动安装并信任后重新启动", cert.Name)
 		}
 		return nil
 	}
@@ -46,6 +59,16 @@ func ensure_local_certificate(cfg *config.Config, check_certificate func([]byte,
 	if err != nil {
 		return fmt.Errorf("保存本机根证书失败: %w", err)
 	}
+	if err := install_certificate(cert_pem); err != nil {
+		return fmt.Errorf("安装本机根证书失败: %w", err)
+	}
+	trusted, err := check_certificate(cert_pem, name)
+	if err != nil {
+		return fmt.Errorf("验证本机根证书安装和信任状态失败: %w", err)
+	}
+	if !trusted {
+		return fmt.Errorf("本机根证书 %s 安装后仍未受信任，请检查系统证书库", name)
+	}
 	if err := cfg.UpdateAndSave(map[string]interface{}{
 		"cert.file": cert_path,
 		"cert.key":  key_path,
@@ -53,7 +76,7 @@ func ensure_local_certificate(cfg *config.Config, check_certificate func([]byte,
 	}); err != nil {
 		return fmt.Errorf("保存本机证书配置失败: %w", err)
 	}
-	fmt.Printf("已生成本机专属根证书: %s\n", name)
+	fmt.Printf("已生成并安装信任本机专属根证书: %s\n", name)
 	return nil
 }
 

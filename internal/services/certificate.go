@@ -193,7 +193,7 @@ func check_certificate_trusted(cert_data []byte, cert_name string) (bool, error)
 }
 
 func load_trusted_default_cert_files(check_certificate func([]byte, string) (bool, error)) (CertFilesInfo, error) {
-	for _, cert := range []*certificate.CertFileAndKeyFile{try_load_mitmproxy_cert(), certificate.DefaultCertFiles} {
+	for _, cert := range []*certificate.CertFileAndKeyFile{certificate.DefaultCertFiles, try_load_mitmproxy_cert()} {
 		if cert == nil {
 			continue
 		}

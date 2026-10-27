@@ -246,6 +246,7 @@ export default function SiderLayoutView(props) {
         refresh_button: model.ui.refresh_certificate_button$,
         retry_button: model.ui.retry_certificate_button$,
         delete_button: model.ui.delete_certificate_button$,
+        certificate_restart_tooltip: model.ui.certificate_restart_tooltip$,
       }),
       UpdateDialog({ store: model.models.update }),
     ],

@@ -1,4 +1,4 @@
-import { ErrorMessage } from "@/dmui.js";
+import { ErrorMessage, Tooltip } from "@/dmui.js";
 import { format_time } from "@/utils.js";
 
 function certificate_source_label(source) {
@@ -149,6 +149,42 @@ function CertificateSettingsDetails(props) {
               }),
             ],
           ),
+          Show({
+            when: Timeless.computed(certificate_, function (data) {
+              return certificate_status(data).tone === "danger" ||
+                (Array.isArray(data && data.risk_warnings) && data.risk_warnings.length > 0);
+            }),
+            ok() {
+              return Tooltip(
+                {
+                  store: props.restart_tooltip,
+                  content: "删除证书后重启下载器，在未指定证书且没有其他受信任证书可复用时，会为本机生成专属证书并自动安装、信任。",
+                  attributes: {
+                    n: "settings-certificate-restart-hint",
+                    "aria-label": "证书修复说明",
+                  },
+                },
+                [SVG.SVG(
+                  {
+                    class: "block shrink-0 text-color-warning",
+                    attributes: {
+                      n: "settings-certificate-info-icon",
+                      width: "16", height: "16", viewBox: "0 0 24 24",
+                      fill: "none", stroke: "currentColor", "stroke-width": "2",
+                      "stroke-linecap": "round", "stroke-linejoin": "round",
+                      "aria-hidden": "true",
+                    },
+                  },
+                  [SVG.Path({
+                    attributes: {
+                      n: "settings-certificate-info-icon-path",
+                      d: "M12 16v-4m0-4h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0",
+                    },
+                  })],
+                )],
+              );
+            },
+          }),
           Button(
             {
               store: props.delete_button,
@@ -837,6 +873,7 @@ export function SettingsDialog(props) {
                             return CertificateSettingsDetails({
                               certificate: props.certificate,
                               delete_button: props.delete_button,
+                              restart_tooltip: props.certificate_restart_tooltip,
                             });
                           },
                         });

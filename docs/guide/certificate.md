@@ -16,7 +16,7 @@ title: 手动安装根证书
 curl -o ~/Downloads/root-ca.pem http://127.0.0.1:2022/api/proxy/certificate/pem
 ```
 
-如需手动安装，可设置 `proxy.skipInstallRootCert: true` 跳过自动安装。请使用本机生成的证书，勿下载或安装旧版共享 SunnyNet 根证书。
+如果配置了自定义证书，必须在启用代理启动前手动安装并信任；否则程序会报错退出。`proxy.skipInstallRootCert: true` 不会绕过启动时的安装和信任校验。首次启动且未配置证书、没有可复用的受信任证书时，程序会自动生成、安装并验证本机证书。请使用本机生成的证书，勿下载或安装旧版共享 SunnyNet 根证书。
 
 
 ## Windows
