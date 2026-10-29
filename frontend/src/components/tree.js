@@ -137,7 +137,7 @@ export function build_resource_tree(input, opts) {
           resource.title),
       `资源 ${index + 1}`,
     );
-    const parts = name.split("/").filter(Boolean);
+    const parts = name.includes("://") ? [name] : name.split("/").filter(Boolean);
     const file_name = parts.pop() || name;
     let parent = root;
 
