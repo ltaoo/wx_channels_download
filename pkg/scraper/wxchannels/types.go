@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"strconv"
 	"strings"
 
 	utilpkg "wx_channel/pkg/util"
@@ -96,15 +97,44 @@ type ChannelsMediaItem struct {
 func (m *ChannelsMediaItem) UnmarshalJSON(data []byte) error {
 	type alias ChannelsMediaItem
 	aux := &struct {
-		DecodeKey flexibleString `json:"decodeKey"`
+		DecodeKey    flexible_string `json:"decodeKey"`
+		MediaType    flexible_int    `json:"mediaType"`
+		VideoPlayLen flexible_int    `json:"videoPlayLen"`
+		FileSize     flexible_int    `json:"fileSize"`
 		*alias
 	}{
-		alias: (*alias)(m),
+		alias:        (*alias)(m),
+		MediaType:    flexible_int(m.MediaType),
+		VideoPlayLen: flexible_int(m.VideoPlayLen),
+		FileSize:     flexible_int(m.FileSize),
 	}
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
 	m.DecodeKey = string(aux.DecodeKey)
+	m.MediaType = int(aux.MediaType)
+	m.VideoPlayLen = int(aux.VideoPlayLen)
+	m.FileSize = int(aux.FileSize)
+	return nil
+}
+
+// flexible_int accepts JSON integers and their quoted representation without
+// passing through float64, which would lose precision for large file sizes.
+type flexible_int int
+
+func (n *flexible_int) UnmarshalJSON(data []byte) error {
+	var value json.Number
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	if value == "" { // JSON null leaves the current value unchanged.
+		return nil
+	}
+	parsed, err := strconv.Atoi(string(value))
+	if err != nil {
+		return err
+	}
+	*n = flexible_int(parsed)
 	return nil
 }
 
@@ -119,7 +149,7 @@ type ChannelsMusicInfo struct {
 func (m *ChannelsMusicInfo) UnmarshalJSON(data []byte) error {
 	type alias ChannelsMusicInfo
 	aux := &struct {
-		DocId flexibleString `json:"docId"`
+		DocId flexible_string `json:"docId"`
 		*alias
 	}{
 		alias: (*alias)(m),
@@ -172,7 +202,7 @@ type ChannelsLiveInfo struct {
 func (i *ChannelsLiveInfo) UnmarshalJSON(data []byte) error {
 	type alias ChannelsLiveInfo
 	aux := &struct {
-		AnchorStatusFlag flexibleString `json:"anchorStatusFlag"`
+		AnchorStatusFlag flexible_string `json:"anchorStatusFlag"`
 		*alias
 	}{
 		alias: (*alias)(i),
@@ -209,6 +239,7 @@ type ChannelsObjectDesc struct {
 	Media          []ChannelsMediaItem    `json:"media"`
 	MediaType      int                    `json:"mediaType"`
 	FollowPostInfo ChannelsFollowPostInfo `json:"followPostInfo"`
+	ShortTitle     []ShortTitle           `json:"shortTitle"`
 }
 
 type InfoListItem struct {
@@ -255,7 +286,7 @@ type ChannelsObject struct {
 func (o *ChannelsObject) UnmarshalJSON(data []byte) error {
 	type alias ChannelsObject
 	aux := &struct {
-		ID flexibleString `json:"id"`
+		ID flexible_string `json:"id"`
 		*alias
 	}{
 		alias: (*alias)(o),
@@ -267,9 +298,9 @@ func (o *ChannelsObject) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-type flexibleString string
+type flexible_string string
 
-func (s *flexibleString) UnmarshalJSON(data []byte) error {
+func (s *flexible_string) UnmarshalJSON(data []byte) error {
 	raw := strings.TrimSpace(string(data))
 	if raw == "" || raw == "null" {
 		*s = ""
@@ -280,10 +311,10 @@ func (s *flexibleString) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &value); err != nil {
 			return err
 		}
-		*s = flexibleString(value)
+		*s = flexible_string(value)
 		return nil
 	}
-	*s = flexibleString(raw)
+	*s = flexible_string(raw)
 	return nil
 }
 
@@ -648,7 +679,7 @@ type ChannelsFollowLiveInfo struct {
 func (i *ChannelsFollowLiveInfo) UnmarshalJSON(data []byte) error {
 	type alias ChannelsFollowLiveInfo
 	aux := &struct {
-		AnchorStatusFlag flexibleString `json:"anchorStatusFlag"`
+		AnchorStatusFlag flexible_string `json:"anchorStatusFlag"`
 		*alias
 	}{
 		alias: (*alias)(i),
@@ -753,7 +784,7 @@ type JoinLiveInfo struct {
 func (i *JoinLiveInfo) UnmarshalJSON(data []byte) error {
 	type alias JoinLiveInfo
 	aux := &struct {
-		LiveId flexibleString `json:"liveId"`
+		LiveId flexible_string `json:"liveId"`
 		*alias
 	}{
 		alias: (*alias)(i),
@@ -778,8 +809,8 @@ type JoinLivePayload struct {
 	Contact         *ChannelsContact `json:"contact"`
 }
 
-func ParseFeedURL(rawURL string) (*FeedURLParts, error) {
-	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+func ParseFeedURL(raw_url string) (*FeedURLParts, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw_url))
 	if err != nil {
 		return nil, err
 	}
@@ -800,7 +831,7 @@ func ParseFeedURL(rawURL string) (*FeedURLParts, error) {
 		}
 	}
 	return &FeedURLParts{
-		URL: rawURL,
+		URL: raw_url,
 		Oid: oid,
 		Nid: nid,
 		Eid: q.Get("eid"),
@@ -857,9 +888,9 @@ type ChannelPicture = InterceptorPicture
 type ChannelContact = InterceptorContact
 type ChannelMediaProfile = MediaProfile
 
-func ParseSphShareURL(rawURL string) (*SphURLParts, error) {
-	rawURL = strings.TrimSpace(rawURL)
-	parsed, err := url.Parse(rawURL)
+func ParseSphShareURL(raw_url string) (*SphURLParts, error) {
+	raw_url = strings.TrimSpace(raw_url)
+	parsed, err := url.Parse(raw_url)
 	if err != nil {
 		return nil, err
 	}
@@ -877,5 +908,5 @@ func ParseSphShareURL(rawURL string) (*SphURLParts, error) {
 	if id == "" {
 		return nil, ErrUnsupportedURL
 	}
-	return &SphURLParts{URL: rawURL, ID: id}, nil
+	return &SphURLParts{URL: raw_url, ID: id}, nil
 }

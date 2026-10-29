@@ -1,0 +1,126 @@
+{
+  "post": {
+    "tags": [
+      "抓取"
+    ],
+    "summary": "创建异步抓取任务",
+    "description": "立即返回抓取任务快照，不等待抓取完成。使用返回的 id 查询 /api/scraper/job 或订阅 /ws/scraper；任务状态为 pending、running、completed、failed、interrupted。id 可自定义，省略时自动生成；request_id 是 id 的兼容字段，id 优先。任务仅存于内存，默认保留最近 20 个终态任务，重启后丢失。force_refresh 控制是否强制刷新缓存。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/services_ScraperFetchJob"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_scraper_fetch",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "../components.json#/schemas/api_scraper_fetch_create_body"
+          },
+          "example": {
+            "url": "https://www.bilibili.com/video/BV1xx411c7mD",
+            "id": "fetch-demo",
+            "force_refresh": false
+          }
+        }
+      }
+    }
+  },
+  "get": {
+    "tags": [
+      "抓取"
+    ],
+    "summary": "创建异步抓取任务",
+    "description": "立即返回抓取任务快照，不等待抓取完成。使用返回的 id 查询 /api/scraper/job 或订阅 /ws/scraper；任务状态为 pending、running、completed、failed、interrupted。id 可自定义，省略时自动生成；request_id 是 id 的兼容字段，id 优先。任务仅存于内存，默认保留最近 20 个终态任务，重启后丢失。force_refresh 控制是否强制刷新缓存。 GET 为旧调用方兼容入口，同样创建异步任务；新调用方建议使用 POST。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/services_ScraperFetchJob"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "get_api_scraper_fetch",
+    "parameters": [
+      {
+        "name": "url",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "要抓取的 URL"
+      },
+      {
+        "name": "id",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "可选自定义任务 ID，省略自动生成"
+      },
+      {
+        "name": "request_id",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "id 的兼容别名，同时提供时 id 优先"
+      },
+      {
+        "name": "force_refresh",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "boolean",
+          "default": false
+        },
+        "description": "是否强制刷新抓取缓存"
+      }
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "get": {
+    "tags": [
+      "视频号"
+    ],
+    "summary": "解析视频号短分享链接",
+    "description": "url 为 https://weixin.qq.com/sph/... 分享地址；返回解析后的详情，依赖平台连接和凭据。",
+    "responses": {
+      "200": {
+        "description": "HTTP 200；code=0 成功，非零为业务失败，以 msg 判断错误。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "parameters": [
+      {
+        "name": "url",
+        "in": "query",
+        "required": true,
+        "description": "url",
+        "schema": {
+          "type": "string"
+        }
+      }
+    ]
+  }
+}

@@ -884,7 +884,7 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 				}},
 			})
 		}
-		if a.config_bool("channels.download.cover") && !is_download_feed_cover && cover_url != "" {
+		if a.config_download_cover() && !is_download_feed_cover && cover_url != "" {
 			resources = append(resources, build_cover_resource_info(content_id, build_sidecar_cover_unique_id(task_unique_id), title, cover_url, base_extra_json))
 		}
 
@@ -962,7 +962,7 @@ func (a *ChannelsAdapter) BuildDownloadTask(content_json json.RawMessage, config
 			Relation: model.DownloadResourceAssetRelationSource,
 		}},
 	}}
-	if a.config_bool("channels.download.cover") && !is_download_feed_cover && cover_url != "" {
+	if a.config_download_cover() && !is_download_feed_cover && cover_url != "" {
 		resources = append(resources, build_cover_resource_info(content_id, build_sidecar_cover_unique_id(task_unique_id), title, cover_url, base_extra_json))
 	}
 

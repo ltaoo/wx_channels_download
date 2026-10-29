@@ -1,24 +1,33 @@
+
+
+const third_party_downloader_notice_classes = {
+  __proto__: null,
+  "success": "border-color-success-soft bg-color-success-soft text-color-success",
+  "danger": "border-color-color-danger-border bg-color-danger-soft text-color-danger",
+  "progress": "border-color-color-info-border bg-color-info-soft text-color-info",
+};
+
 function ThirdPartyDownloaderField(props) {
   return View(
     {
       class: Timeless.classNames([
-        "third-party-downloader-field",
-        props.wide ? "third-party-downloader-field--wide" : "",
+        "grid min-w-0 content-start gap-1-5",
+        props.wide ? "col-span-full max-620:grid-column-auto" : "",
       ]),
     },
     [
-      View({ as: "label", class: "third-party-downloader-field__label" }, [
+      View({ as: "label", class: "flex items-center gap-1-5 text-sm font-semibold leading-snug text-color-text-secondary" }, [
         props.label,
         props.optional
           ? View(
-              { as: "span", class: "third-party-downloader-field__optional" },
+              { as: "span", class: "text-caption font-regular text-color-text-disabled" },
               ["选填"],
             )
           : null,
       ].filter(Boolean)),
       props.control,
       props.hint
-        ? View({ class: "third-party-downloader-field__hint" }, [props.hint])
+        ? View({ class: "text-caption leading-base text-color-text-secondary" }, [props.hint])
         : null,
     ].filter(Boolean),
   );
@@ -26,15 +35,15 @@ function ThirdPartyDownloaderField(props) {
 
 function ThirdPartyDownloaderIdentity(props) {
   const option_ = props.store.state.option;
-  return View({ class: "third-party-downloader-identity" }, [
-    View({ class: "third-party-downloader-identity__icon" }, [
+  return View({ class: "flex min-w-0 items-center gap-3" }, [
+    View({ class: "grid w-38px h-38px flex-none place-items-center rounded-content bg-color-bg-inverse text-color-text-inverse" }, [
       Timeless.Icon({ name: "hard-drive", size: 21 }),
     ]),
-    View({ class: "third-party-downloader-identity__copy" }, [
-      View({ class: "third-party-downloader-identity__name" }, [
+    View({ class: "grid min-w-0 gap-0-5" }, [
+      View({ class: "text-base font-bold leading-snug text-color-text-primary" }, [
         computed(option_, (option) => option.label),
       ]),
-      View({ class: "third-party-downloader-identity__description" }, [
+      View({ class: "text-xs leading-base text-color-text-secondary" }, [
         computed(option_, (option) => option.description),
       ]),
     ]),
@@ -46,10 +55,10 @@ function ThirdPartyDownloaderNotice(props) {
   return View(
     {
       class: Timeless.classNames([
-        "third-party-downloader-notice",
+        "flex min-w-0 items-start py-2.5 px-3 gap-2-5 border-default border-solid border-color-default rounded-content bg-color-bg-subtle text-color-text-secondary",
         computed(
           notice_,
-          (notice) => `third-party-downloader-notice--${notice.tone || "neutral"}`,
+          (notice) => `${third_party_downloader_notice_classes[notice.tone || "neutral"] || ""}`,
         ),
       ]),
       attributes: {
@@ -58,7 +67,7 @@ function ThirdPartyDownloaderNotice(props) {
       },
     },
     [
-      View({ class: "third-party-downloader-notice__icon" }, [
+      View({ class: "grid w-18px h-20px flex-none place-items-center" }, [
         Show({
           when: computed(notice_, (notice) => notice.tone === "success"),
           ok() {
@@ -80,7 +89,7 @@ function ThirdPartyDownloaderNotice(props) {
                     return Timeless.Icon({
                       name: "refresh-cw",
                       size: 16,
-                      class: "third-party-downloader-spin",
+                      class: "animate-spin motion-reduce:animation-none",
                     });
                   },
                   else() {
@@ -92,11 +101,11 @@ function ThirdPartyDownloaderNotice(props) {
           },
         }),
       ]),
-      View({ class: "third-party-downloader-notice__copy" }, [
-        View({ class: "third-party-downloader-notice__title" }, [
+      View({ class: "grid min-w-0 gap-0-5" }, [
+        View({ class: "text-sm font-bold leading-snug text-currentcolor" }, [
           computed(notice_, (notice) => notice.title),
         ]),
-        View({ class: "third-party-downloader-notice__message" }, [
+        View({ class: "font-mono text-caption leading-base overflow-wrap-anywhere text-currentcolor" }, [
           computed(notice_, (notice) => notice.message),
         ]),
       ]),
@@ -112,7 +121,7 @@ function ThirdPartyDownloaderProgress(props) {
     ok() {
       return View(
         {
-          class: "third-party-downloader-progress",
+          class: "grid min-w-0 p-3 gap-2 border-default border-solid border-color-info rounded-content bg-color-info-soft",
           attributes: {
             role: "progressbar",
             "aria-label": "三方下载进度",
@@ -124,23 +133,23 @@ function ThirdPartyDownloaderProgress(props) {
           },
         },
         [
-          View({ class: "third-party-downloader-progress__head" }, [
-            View({ class: "third-party-downloader-progress__status" }, [
+          View({ class: "flex min-w-0 items-center justify-between gap-3" }, [
+            View({ class: "text-sm font-bold text-color-text-primary" }, [
               computed(progress_, (progress) => progress.status_text),
             ]),
-            View({ class: "third-party-downloader-progress__percent" }, [
+            View({ class: "font-mono text-sm font-variant-numeric-tabular-nums font-bold text-color-info" }, [
               computed(progress_, (progress) => progress.percent_text),
             ]),
           ]),
-          View({ class: "third-party-downloader-progress__track" }, [
+          View({ class: "h-7px overflow-hidden rounded-round bg-info/14" }, [
             View({
-              class: "third-party-downloader-progress__bar",
+              class: "w-0 h-full rounded-inherit bg-color-info transition-width",
               style: computed(progress_, (progress) => ({
                 width: `${progress.percent || 0}%`,
               })),
             }),
           ]),
-          View({ class: "third-party-downloader-progress__metrics" }, [
+          View({ class: "flex min-w-0 items-center justify-start gap-3 font-mono text-caption text-color-text-secondary progress-meta " }, [
             View({}, [
               Timeless.Icon({ name: "hard-drive", size: 13 }),
               computed(progress_, (progress) => progress.bytes_text),
@@ -155,7 +164,7 @@ function ThirdPartyDownloaderProgress(props) {
             ok() {
               return View(
                 {
-                  class: "third-party-downloader-progress__path",
+                  class: "inline-flex min-w-0 items-center gap-1-5 overflow-hidden font-mono text-caption whitespace-nowrap text-ellipsis text-color-text-secondary",
                   attributes: {
                     title: computed(
                       progress_,
@@ -180,12 +189,13 @@ function ThirdPartyDownloaderProgress(props) {
                   class: computed(
                     progress_,
                     (progress) =>
-                      `third-party-downloader-progress__decrypt is-${progress.decryption_status || "pending"}`,
+                      `inline-flex min-w-0 items-center gap-1-5 text-caption font-semibold text-color-info progress-status-label is-${progress.decryption_status || "pending"}`,
                   ),
                 },
                 [
                   Timeless.Icon({ name: "refresh-cw", size: 13 }),
-                  computed(progress_, (progress) => progress.decryption_text),
+                  computed(progress_, (progress) => progress.decryption_status === "failed"
+                    ? "微信解密失败" : progress.decryption_text),
                 ],
               );
             },
@@ -198,7 +208,7 @@ function ThirdPartyDownloaderProgress(props) {
 
 function ThirdPartyDownloaderAdvancedFields(props) {
   const vm$ = props.store;
-  return View({ class: "third-party-downloader-advanced" }, [
+  return View({ class: "grid min-w-0 grid-cols-2 max-620:grid-cols-1 pt-3 gap-y-3 gap-x-4 border-t-default border-t-solid border-t-color-default" }, [
     ThirdPartyDownloaderField({
       label: "Referer",
       optional: true,
@@ -249,34 +259,34 @@ export function ThirdPartyDownloaderPanel(props) {
   return Dialog(
     {
       store: vm$.ui.dialog$,
-      class: ["third-party-downloader-panel dm-dialog--wide", props.class]
+      class: ["dm-dialog--wide ", props.class]
         .filter(Boolean)
         .join(" "),
       closeLabel: "关闭三方下载器面板",
     },
     [
-      DialogHeader({ class: "third-party-downloader-heading" }, [
-        View({ class: "third-party-downloader-heading__mark" }, [
+      DialogHeader({ class: "dialog-header-leading-icon " }, [
+        View({ class: "grid max-620:hidden w-40px h-40px flex-none place-items-center border-default border-solid border-color-primary-border rounded-content bg-color-primary-soft text-color-primary" }, [
           Timeless.Icon({ name: "download", size: 22 }),
         ]),
-        View({ class: "third-party-downloader-heading__copy" }, [
+        View({ class: "grid min-w-0 gap-1-5" }, [
           DialogTitle({}, ["发送到三方下载器"]),
           DialogDescription({}, [
             "连接本机 aria2、Motrix 或 Gopeed，直接创建下载任务。",
           ]),
         ]),
       ]),
-      DialogBody({ class: "third-party-downloader-body" }, [
-        View({ class: "third-party-downloader-connection" }, [
-          View({ class: "third-party-downloader-connection__top" }, [
+      DialogBody({ class: "dialog-body-grid " }, [
+        View({ class: "grid p-4 max-620:p-3 gap-4 border-default border-solid border-color-default rounded-card bg-surface-tinted" }, [
+          View({ class: "flex min-w-0 max-620:flex-col items-center justify-between max-620:items-stretch gap-4" }, [
             ThirdPartyDownloaderIdentity({ store: vm$ }),
             Select({
               store: vm$.ui.select_kind$,
-              class: "third-party-downloader-kind-select",
+              class: "w-132px max-620:w-full grow-0 shrink-0 basis-33 max-620:basis-auto bg-color-bg-surface",
               attributes: { "aria-label": "选择三方下载器" },
             }),
           ]),
-          View({ class: "third-party-downloader-grid" }, [
+          View({ class: "grid min-w-0 grid-cols-2 max-620:grid-cols-1 gap-y-3 gap-x-4" }, [
             ThirdPartyDownloaderField({
               label: "本机连接地址",
               control: Input({
@@ -308,24 +318,27 @@ export function ThirdPartyDownloaderPanel(props) {
               hint: "连接配置只保存在当前浏览器的本机存储中。",
             }),
           ]),
-          View({ class: "third-party-downloader-setup-hint" }, [
+          View({ class: "flex items-start gap-2 text-caption leading-base text-color-text-secondary notice-icon " }, [
             Timeless.Icon({ name: "circle-alert", size: 14 }),
             computed(option_, (option) => option.setup),
           ]),
         ]),
-        ThirdPartyDownloaderNotice({ store: vm$ }),
+        Show({
+          when: computed(vm$.state.notice, (notice) => notice.tone !== "danger"),
+          ok() { return ThirdPartyDownloaderNotice({ store: vm$ }); },
+        }),
         ThirdPartyDownloaderProgress({ store: vm$ }),
-        View({ class: "third-party-downloader-task" }, [
-          View({ class: "third-party-downloader-section-heading" }, [
-            View({ class: "third-party-downloader-section-heading__title" }, [
+        View({ class: "grid p-4 max-620:p-3 gap-4 border-default border-solid border-color-default rounded-card bg-color-bg-surface" }, [
+          View({ class: "grid gap-1" }, [
+            View({ class: "text-base font-bold leading-snug text-color-text-primary" }, [
               "下载任务",
             ]),
             View(
-              { class: "third-party-downloader-section-heading__description" },
+              { class: "text-xs leading-base text-color-text-secondary" },
               [computed(option_, (option) => option.protocols)],
             ),
           ]),
-          View({ class: "third-party-downloader-grid" }, [
+          View({ class: "grid min-w-0 grid-cols-2 max-620:grid-cols-1 gap-y-3 gap-x-4" }, [
             ThirdPartyDownloaderField({
               label: "下载地址",
               wide: true,
@@ -370,12 +383,12 @@ export function ThirdPartyDownloaderPanel(props) {
           Button(
             {
               store: vm$.ui.advanced_button$,
-              class: "third-party-downloader-advanced-toggle",
+              class: "w-max-content justify-self-start px-0 text-color-text-secondary",
               prefix: Timeless.Icon({
                 name: "chevron-down",
                 size: 15,
                 class: Timeless.classNames([
-                  "third-party-downloader-advanced-toggle__icon",
+                  "transition-transform motion-reduce:transition-none icon-disclosure",
                   computed(vm$.state.advanced_open, (open) =>
                     open ? "is-open" : "",
                   ),
@@ -397,12 +410,12 @@ export function ThirdPartyDownloaderPanel(props) {
           }),
         ]),
       ]),
-      DialogFooter({ class: "third-party-downloader-footer" }, [
-        View({ class: "third-party-downloader-footer__hint" }, [
+      DialogFooter({ class: "dialog-footer-actions " }, [
+        View({ class: "inline-flex min-w-0 items-center gap-2 text-xs leading-base text-color-text-secondary" }, [
           Timeless.Icon({ name: "hard-drive", size: 15 }),
           "任务由三方下载器管理，不会加入本页任务列表。",
         ]),
-        View({ class: "third-party-downloader-footer__actions" }, [
+        View({ class: "inline-flex flex-none items-center max-620:justify-end gap-2" }, [
           Button(
             {
               store: vm$.ui.refresh_button$,

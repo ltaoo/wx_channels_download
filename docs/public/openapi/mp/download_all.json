@@ -4,7 +4,7 @@
       "公众号"
     ],
     "summary": "批量下载公众号所有消息中的媒体",
-    "description": "遍历指定公众号的所有消息，提取媒体链接并创建下载任务",
+    "description": "当前版本未注册此 HTTP 接口；本文件仅保留历史定义，不在公开接口入口中收录。\n\n遍历指定公众号的所有消息，提取媒体链接并创建下载任务",
     "requestBody": {
       "required": true,
       "content": {
@@ -69,6 +69,7 @@
           }
         }
       }
-    }
+    },
+    "deprecated": true
   }
 }

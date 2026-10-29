@@ -1,12 +1,19 @@
 import { LogsPageViewModel } from "./logs.model.js";
-import { FilePicker, Tag } from "../dmui.js";
+
+const logs_level_classes = {
+  __proto__: null,
+  "debug": "bg-content-panel-soft text-content-muted",
+  "info": "bg-color-info-soft text-color-info",
+  "warn": "bg-color-warning-soft text-color-warning",
+  "error": "bg-color-danger-soft text-content-danger",
+};
 
 function LogsPageView(props) {
   const vm$ = LogsPageViewModel(props);
 
   return View(
     {
-      class: "content-page logs-page page",
+      class: "flex h-full min-h-0 min-w-0 flex-col overflow-hidden font-sans bg-content-bg text-content-text group-content-page bounded-list-page",
       attributes: { n: "logs-page" },
       onMounted() {
         vm$.methods.ready();
@@ -18,18 +25,12 @@ function LogsPageView(props) {
     [
       View(
         {
-          class: "content-toolbar-wrap container",
+          class: "pt-4 pb-0 px-4 group-content-toolbar-wrap ",
           attributes: { n: "logs-toolbar-container" },
         },
         [LogsPageToolbar({ store: vm$ })],
       ),
-      View(
-        {
-          class: "content-main container",
-          attributes: { n: "logs-content" },
-        },
-        [LogsPageList({ store: vm$ })],
-      ),
+      LogsPageList({ store: vm$ }),
       LogsPageClearConfirm({ store: vm$ }),
       LogsPageImportDialog({ store: vm$ }),
       LogsPageJsonPreviewDialog({ store: vm$ }),
@@ -44,8 +45,7 @@ function LogsPageClearConfirm(props) {
     class: "dm-dialog--sm",
     name: "logs-clear-confirm",
     title: "清空日志",
-    description:
-      "这会同时清空当前页面记录和日志文件内容，此操作不可恢复。",
+    description: "这会同时清空当前页面记录和日志文件内容，此操作不可恢复。",
     cancelText: "取消",
     okText: "清空",
   });
@@ -90,14 +90,8 @@ function LogsPageFormatTime(value) {
 
 function LogsPageLevelClass(level) {
   const normalized = String(level || "info").toLowerCase();
-  if (
-    normalized === "debug" ||
-    normalized === "warn" ||
-    normalized === "error"
-  ) {
-    return `logs-level logs-level-${normalized}`;
-  }
-  return "logs-level logs-level-info";
+  const tone = logs_level_classes[normalized] || logs_level_classes.info;
+  return `w-fit-content min-w-46px font-sans text-center text-transform-uppercase ${tone}`;
 }
 
 function LogsPageToolbar(props) {
@@ -105,7 +99,7 @@ function LogsPageToolbar(props) {
   return View(
     {
       type: "form",
-      class: "content-toolbar logs-toolbar",
+      class: "flex min-w-0 max-760:flex-wrap items-center justify-between gap-3 group-content-toolbar",
       attributes: { n: "logs-toolbar", role: "search" },
       onSubmit(event) {
         event.preventDefault();
@@ -115,7 +109,7 @@ function LogsPageToolbar(props) {
     [
       View(
         {
-          class: "logs-toolbar-row",
+          class: "flex min-w-0 flex-auto max-760:flex-wrap items-center gap-2",
           attributes: { n: "logs-toolbar-primary-row" },
         },
         [
@@ -126,7 +120,7 @@ function LogsPageToolbar(props) {
           // }),
           View(
             {
-              class: "logs-level-select",
+              class: "w-120px grow-0 shrink-0 basis-30",
               attributes: { n: "logs-level-filter" },
             },
             [
@@ -141,7 +135,7 @@ function LogsPageToolbar(props) {
           ),
           View(
             {
-              class: "logs-search",
+              class: "min-w-220px min-h-control-height-md grow shrink basis-80",
               attributes: { n: "logs-search-field" },
             },
             [
@@ -165,8 +159,7 @@ function LogsPageToolbar(props) {
           ),
           View(
             {
-              class:
-                "content-filter-actions dm-flex dm-items-center dm-gap-2",
+              class: "max-520:w-full flex-none dm-items-center max-760:ml-auto max-520:ml-0 dm-gap-2 dm-flex group-content-filter-actions toolbar-actions",
               attributes: { n: "logs-primary-actions" },
             },
             [
@@ -189,7 +182,7 @@ function LogsPageToolbar(props) {
               }),
               View(
                 {
-                  class: "logs-optional-action-container",
+                  class: "max-1280:!hidden contents",
                   attributes: { n: "logs-import-action-container" },
                 },
                 [
@@ -206,7 +199,7 @@ function LogsPageToolbar(props) {
               ),
               View(
                 {
-                  class: "logs-optional-action-container",
+                  class: "max-1280:!hidden contents",
                   attributes: { n: "logs-export-action-container" },
                 },
                 [
@@ -223,7 +216,7 @@ function LogsPageToolbar(props) {
               ),
               View(
                 {
-                  class: "logs-optional-action-container",
+                  class: "max-1280:!hidden contents",
                   attributes: { n: "logs-clear-action-container" },
                 },
                 [
@@ -246,7 +239,7 @@ function LogsPageToolbar(props) {
       ),
       View(
         {
-          class: "logs-toolbar-extra",
+          class: "flex max-760:w-full flex-none max-760:flex-wrap items-center max-760:justify-between gap-2",
           attributes: { n: "logs-toolbar-secondary-row" },
         },
         [
@@ -255,7 +248,7 @@ function LogsPageToolbar(props) {
             ok() {
               return View(
                 {
-                  class: "logs-import-status",
+                  class: "flex min-w-0 items-center gap-2 text-sm text-content-muted status-icon-primary ",
                   attributes: {
                     n: "logs-import-status",
                     role: "status",
@@ -271,7 +264,7 @@ function LogsPageToolbar(props) {
                   View(
                     {
                       as: "span",
-                      class: "logs-import-status-text",
+                      class: "max-w-220px overflow-hidden whitespace-nowrap text-ellipsis",
                       attributes: { n: "logs-import-status-text" },
                     },
                     [vm$.state.imported_label],
@@ -291,7 +284,7 @@ function LogsPageToolbar(props) {
           }),
           View(
             {
-              class: "logs-toggle logs-optional-action",
+              class: "flex max-1280:!hidden min-h-control-height-md items-center py-0 px-2.5 gap-2 text-sm whitespace-nowrap text-content-muted",
               attributes: { n: "logs-auto-refresh-control" },
             },
             [
@@ -306,7 +299,7 @@ function LogsPageToolbar(props) {
           ),
           View(
             {
-              class: "logs-optional-action-container",
+              class: "max-1280:!hidden contents",
               attributes: { n: "logs-refresh-action-container" },
             },
             [
@@ -323,7 +316,7 @@ function LogsPageToolbar(props) {
           ),
           View(
             {
-              class: "logs-optional-action-container",
+              class: "max-1280:!hidden contents",
               attributes: { n: "logs-copy-file-path-action-container" },
             },
             [
@@ -359,13 +352,13 @@ function LogsPageImportDialog(props) {
     () => [
       DialogTitle(
         {
-          class: "logs-import-dialog-header",
+          class: "flex flex-none items-center py-4 pr-12 pl-5 gap-3 border-b-default border-b-solid border-b-color-content",
           attributes: { n: "logs-import-dialog-header" },
         },
         [
           View(
             {
-              class: "logs-import-dialog-heading-icon",
+              class: "grid w-control-height-base h-control-height-base flex-none place-items-center border-default border-solid border-color-primary-border rounded-content bg-color-primary-soft text-color-primary",
               attributes: { n: "logs-import-dialog-heading-icon" },
             },
             [
@@ -378,14 +371,14 @@ function LogsPageImportDialog(props) {
           ),
           View(
             {
-              class: "logs-import-dialog-heading",
+              class: "flex min-w-0 flex-col gap-0.5",
               attributes: { n: "logs-import-dialog-heading" },
             },
             [
               View(
                 {
                   as: "span",
-                  class: "logs-import-dialog-title",
+                  class: "text-lg font-bold text-content-text",
                   attributes: { n: "logs-import-dialog-title" },
                 },
                 ["导入外部日志"],
@@ -393,7 +386,7 @@ function LogsPageImportDialog(props) {
               View(
                 {
                   as: "span",
-                  class: "logs-import-dialog-subtitle",
+                  class: "text-sm font-regular text-content-muted",
                   attributes: { n: "logs-import-dialog-subtitle" },
                 },
                 ["导入成功后将替换当前显示的日志记录"],
@@ -404,7 +397,7 @@ function LogsPageImportDialog(props) {
       ),
       DialogBody(
         {
-          class: "logs-import-dialog-body",
+          class: "p-5",
           attributes: { n: "logs-import-dialog-body" },
         },
         [
@@ -420,7 +413,6 @@ function LogsPageImportDialog(props) {
             ),
             hint: "或点击此区域选择文件",
             formats: "支持 .log、.txt、.json、.jsonl、.ndjson",
-            error: vm$.state.import_file_error,
             inputLabel: "选择要导入的日志文件",
             dropZoneLabel: "点击选择或拖拽上传日志文件",
             onChange(event) {
@@ -443,7 +435,7 @@ function LogsPageTableColumns(props) {
       name: "level",
       title: "level",
       width: 76,
-      cellClass: "logs-level-cell",
+      cellClass: "min-w-0",
       render(entry) {
         return Tag(
           {
@@ -458,7 +450,7 @@ function LogsPageTableColumns(props) {
       name: "time",
       title: "time",
       width: 166,
-      cellClass: "logs-time-cell",
+      cellClass: "text-content-muted",
       render(entry) {
         return LogsPageFormatTime(entry.time);
       },
@@ -467,7 +459,7 @@ function LogsPageTableColumns(props) {
       name: "file",
       title: "file",
       width: 120,
-      cellClass: "logs-file-cell",
+      cellClass: "text-content-muted",
       cellAttributes(entry) {
         return { title: entry.file || entry.File || "" };
       },
@@ -479,7 +471,7 @@ function LogsPageTableColumns(props) {
       name: "component",
       title: "component",
       width: 132,
-      cellClass: "logs-component-cell",
+      cellClass: "text-content-muted",
       cellAttributes(entry) {
         return { title: entry.component || entry.Component || "" };
       },
@@ -491,7 +483,7 @@ function LogsPageTableColumns(props) {
       name: "message",
       title: "msg",
       width: "minmax(260px, 1.2fr)",
-      cellClass: "logs-msg-cell",
+      cellClass: "min-w-0 overflow-hidden whitespace-nowrap text-ellipsis",
       render(entry) {
         return entry.message || entry.raw || "";
       },
@@ -500,7 +492,7 @@ function LogsPageTableColumns(props) {
       name: "fields",
       title: "fields",
       width: "minmax(280px, 1fr)",
-      cellClass: "logs-fields-cell",
+      cellClass: "min-w-0",
       render(entry) {
         return LogsPageFieldsCell({ entry, store: vm$ });
       },
@@ -514,7 +506,7 @@ function LogsPageFieldsCell(props) {
   if (fields.length === 0) {
     return View(
       {
-        class: "logs-fields-empty",
+        class: "text-content-muted",
         attributes: { n: "logs-fields-empty" },
       },
       ["-"],
@@ -522,7 +514,7 @@ function LogsPageFieldsCell(props) {
   }
   return View(
     {
-      class: "logs-fields",
+      class: "flex flex-wrap gap-1",
       attributes: { n: "logs-fields" },
     },
     [
@@ -533,13 +525,13 @@ function LogsPageFieldsCell(props) {
           const is_json = vm$.methods.isJsonFieldValue(row[1]);
           return View(
             {
-              class: "logs-field",
+              class: "inline-flex min-w-0 grow-0 shrink basis-auto items-center overflow-hidden border-default border-solid border-color-content rounded-content bg-content-panel-soft text-content-muted",
               attributes: { n: "logs-field", title: text },
             },
             [
               View(
                 {
-                  class: "logs-field-key",
+                  class: "py-1 px-1.5 bg-color-primary-soft text-color-primary",
                   attributes: { n: "logs-field-key" },
                 },
                 [row[0]],
@@ -547,15 +539,14 @@ function LogsPageFieldsCell(props) {
               is_json
                 ? View(
                     {
-                      class: "logs-field-json-actions",
+                      class: "flex min-w-0",
                       attributes: { n: "logs-json-field-actions" },
                     },
                     [
                       View(
                         {
                           type: "button",
-                          class:
-                            "logs-field-value logs-field-value-preview",
+                          class: "min-w-0 max-w-180px py-1 px-1.5 overflow-hidden whitespace-nowrap text-ellipsis border-0 bg-transparent hover:bg-color-primary-soft text-content-muted hover:text-color-primary",
                           attributes: {
                             n: "logs-json-field-preview-action",
                             type: "button",
@@ -569,7 +560,7 @@ function LogsPageFieldsCell(props) {
                         [
                           View(
                             {
-                              class: "logs-field-value-text",
+                              class: "overflow-hidden whitespace-nowrap text-ellipsis",
                               attributes: { n: "logs-json-field-value" },
                             },
                             [row[1]],
@@ -579,7 +570,7 @@ function LogsPageFieldsCell(props) {
                       View(
                         {
                           type: "button",
-                          class: "logs-field-copy-button",
+                          class: "grid place-items-center p-1 border-0 border-l-default border-l-solid border-l-color-content bg-transparent hover:bg-color-primary-soft text-content-muted hover:text-color-primary cursor-pointer",
                           attributes: {
                             n: "logs-json-field-copy-action",
                             type: "button",
@@ -593,7 +584,7 @@ function LogsPageFieldsCell(props) {
                         [
                           View(
                             {
-                              class: "logs-field-copy-icon",
+                              class: "grid place-items-center",
                               attributes: { n: "logs-json-field-copy-icon" },
                             },
                             [
@@ -610,7 +601,7 @@ function LogsPageFieldsCell(props) {
                   )
                 : View(
                     {
-                      class: "logs-field-value",
+                      class: "min-w-0 max-w-180px py-1 px-1.5 overflow-hidden whitespace-nowrap text-ellipsis border-0 bg-transparent text-content-muted",
                       attributes: { n: "logs-field-value" },
                     },
                     [row[1]],
@@ -634,13 +625,13 @@ function LogsPageJsonPreviewDialog(props) {
     () => [
       DialogTitle(
         {
-          class: "logs-json-dialog-header",
+          class: "flex flex-none items-center py-4 pr-12 pl-5 gap-3 border-b-default border-b-solid border-b-color-content",
           attributes: { n: "logs-json-preview-header" },
         },
         [
           View(
             {
-              class: "logs-json-dialog-heading-icon",
+              class: "grid w-control-height-base h-control-height-base flex-none place-items-center border-default border-solid border-color-primary-border rounded-content bg-color-primary-soft text-color-primary",
               attributes: { n: "logs-json-preview-heading-icon" },
             },
             [
@@ -653,14 +644,14 @@ function LogsPageJsonPreviewDialog(props) {
           ),
           View(
             {
-              class: "logs-json-dialog-heading",
+              class: "flex min-w-0 flex-col gap-0.5",
               attributes: { n: "logs-json-preview-heading" },
             },
             [
               View(
                 {
                   as: "span",
-                  class: "logs-json-dialog-title",
+                  class: "text-lg font-bold",
                   attributes: { n: "logs-json-preview-title" },
                 },
                 [vm$.state.json_preview_title],
@@ -668,7 +659,7 @@ function LogsPageJsonPreviewDialog(props) {
               View(
                 {
                   as: "span",
-                  class: "logs-json-dialog-subtitle",
+                  class: "text-sm font-regular text-content-muted",
                   attributes: { n: "logs-json-preview-subtitle" },
                 },
                 ["格式化 JSON 内容"],
@@ -679,14 +670,14 @@ function LogsPageJsonPreviewDialog(props) {
       ),
       DialogBody(
         {
-          class: "logs-json-dialog-body",
+          class: "max-h-code-pane p-4 overflow-auto bg-color-media-canvas",
           attributes: { n: "logs-json-preview-body" },
         },
         [
           View(
             {
               type: "pre",
-              class: "logs-json-dialog-content",
+              class: "m-0 font-mono text-sm leading-relaxed whitespace-pre-wrap overflow-wrap-anywhere text-color-media-text",
               attributes: { n: "logs-json-preview-content" },
             },
             [vm$.state.json_preview_text],
@@ -701,19 +692,19 @@ function LogsPageSkeletonRow() {
   return View(
     {
       class:
-        "dm-table-row dm-grid dm-items-center logs-table-row content-skeleton-row",
+        "dm-grid grid min-h-48px dm-items-center items-center border-b-default border-b-solid border-b-color-content bg-content-panel hover:bg-content-panel-soft pointer-events-none dm-table-row table-row-ellipsis",
       attributes: { n: "logs-skeleton-row", role: "row" },
     },
     [
       View(
         {
-          class: "dm-table-cell logs-level-cell",
+          class: "min-w-0 dm-table-cell",
           attributes: { n: "logs-skeleton-level-cell", role: "cell" },
         },
         [
           View(
             {
-              class: "logs-level logs-level-info",
+              class: "w-fit-content min-w-46px font-sans text-center text-transform-uppercase bg-color-info-soft text-color-info",
               attributes: { n: "logs-skeleton-level-badge" },
             },
             ["info"],
@@ -722,60 +713,60 @@ function LogsPageSkeletonRow() {
       ),
       View(
         {
-          class: "dm-table-cell logs-time-cell",
+          class: "text-content-muted dm-table-cell",
           attributes: { n: "logs-skeleton-time-cell", role: "cell" },
         },
         [
           View({
-            class: "logs-skeleton-cell logs-skeleton-cell-time",
+            class: "relative w-150px overflow-hidden rounded-content bg-skeleton-bg skeleton-shimmer",
             attributes: { n: "logs-skeleton-time-value" },
           }),
         ],
       ),
       View(
         {
-          class: "dm-table-cell logs-file-cell",
+          class: "text-content-muted dm-table-cell",
           attributes: { n: "logs-skeleton-file-cell", role: "cell" },
         },
         [
           View({
-            class: "logs-skeleton-cell logs-skeleton-cell-file",
+            class: "relative w-80px overflow-hidden rounded-content bg-skeleton-bg skeleton-shimmer",
             attributes: { n: "logs-skeleton-file-value" },
           }),
         ],
       ),
       View(
         {
-          class: "dm-table-cell logs-component-cell",
+          class: "text-content-muted dm-table-cell",
           attributes: { n: "logs-skeleton-component-cell", role: "cell" },
         },
         [
           View({
-            class: "logs-skeleton-cell logs-skeleton-cell-component",
+            class: "relative w-100px overflow-hidden rounded-content bg-skeleton-bg skeleton-shimmer",
             attributes: { n: "logs-skeleton-component-value" },
           }),
         ],
       ),
       View(
         {
-          class: "dm-table-cell logs-msg-cell",
+          class: "min-w-0 overflow-hidden whitespace-nowrap text-ellipsis dm-table-cell",
           attributes: { n: "logs-skeleton-message-cell", role: "cell" },
         },
         [
           View({
-            class: "logs-skeleton-cell logs-skeleton-cell-message",
+            class: "relative w-full overflow-hidden rounded-content bg-skeleton-bg skeleton-shimmer",
             attributes: { n: "logs-skeleton-message-value" },
           }),
         ],
       ),
       View(
         {
-          class: "dm-table-cell logs-fields-cell",
+          class: "min-w-0 dm-table-cell",
           attributes: { n: "logs-skeleton-fields-cell", role: "cell" },
         },
         [
           View({
-            class: "logs-skeleton-cell logs-skeleton-cell-fields",
+            class: "relative w-4/5 overflow-hidden rounded-content bg-skeleton-bg skeleton-shimmer",
             attributes: { n: "logs-skeleton-fields-value" },
           }),
         ],
@@ -788,13 +779,13 @@ function LogsPageList(props) {
   const vm$ = props.store;
   return TableWithVirtualList({
     name: "logs-table",
-    containerClass: "logs-scroll",
+    containerClass: "min-w-0 min-h-0 flex-auto p-4 overflow-x-auto overflow-y-hidden group-content-main",
     containerAttributes: { n: "logs-table-container" },
-    panelClass: "logs-list logs-table",
+    panelClass: "flex min-h-0 max-h-full flex-auto flex-col overflow-hidden font-mono text-xs text-content-text",
     panelAttributes: { n: "logs-list-panel" },
-    headerClass: "logs-table-head",
-    headerCellClass: "logs-table-head-cell",
-    listClass: "logs-virtual-list",
+    headerClass: "grid sticky top-0 z-raised min-h-control-height-base flex-none items-center font-sans text-caption font-semibold tracking-0.06em text-transform-uppercase border-b-default border-b-solid border-b-color-content bg-content-panel-soft text-content-muted",
+    headerCellClass: "min-w-0 overflow-hidden whitespace-nowrap text-ellipsis",
+    listClass: "min-h-0 h-auto flex-auto overflow-y-auto",
     listStyle: { "overflow-x": "hidden" },
     columns: LogsPageTableColumns({ store: vm$ }),
     rows: vm$.state.entries,
@@ -804,7 +795,7 @@ function LogsPageList(props) {
     status: vm$.state.status,
     loading: vm$.state.loading,
     error: vm$.state.error,
-    rowClass: "logs-table-row",
+    rowClass: "grid min-h-48px items-center border-b-default border-b-solid border-b-color-content bg-content-panel hover:bg-content-panel-soft table-row-ellipsis ",
     skeletonCount: 6,
     renderSkeletonRow: LogsPageSkeletonRow,
     size: 18,

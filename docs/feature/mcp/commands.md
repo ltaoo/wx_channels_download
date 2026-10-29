@@ -18,7 +18,22 @@ MCP 中的“命令”以工具（tool）的形式提供。调用时由 AI 客�
 
 `update_config` 的键必须来自 `get_config`。值必须符合字段类型和 `options` 枚举约束。配置文件使用原子替换方式保存；成功响应中的 `restart_scheduled: true` 只表示重启已经安排，不能据此宣称重启完成。调用方必须保存 `restart_token`，在连接恢复后调用 `get_restart_status`。只有响应同时满足 `status: "completed"`、`restart_completed: true` 和 `config_applied: true`，才能确认新进程已经运行且保存后的配置已经加载。`pending` 需要继续重试，`failed` 表示重启请求失败，`config_mismatch` 表示进程已更换但配置摘要不一致。
 
-重启期间 HTTP、WebSocket 和 MCP 连接可能短暂断开，客户端应重新连接。若修改了 `api.hostname` 或 `api.port`，应改用新地址连接；stdio 客户端也需要更新 API 地址或重新启动。提交的值与当前值完全相同时不会写盘或重启。
+重启期间 HTTP、WebSocket 和 MCP 连接可能短暂断开，客户端应重新连接。若修改了 `api.hostname` 或 `api.port`，应改用新地址连接；stdio 客户端只在启动时读取一次配置，需要重新启动才能生效。提交的值与当前值完全相同时不会写盘或重启。
+
+## Pipeline 实时编辑
+
+| 工具 | 主要参数 | 用途 |
+| --- | --- | --- |
+| `get_pipeline_editor` | 可选 `editor_id`、`flow_id` | 从打开的编辑页面读取当前草稿、版本号、选中节点和节点目录，包括尚未保存的改动。 |
+| `update_pipeline_editor` | `editor_id`、`revision`、`draft` | 校验草稿并通过 WebSocket 更新指定页面，等待页面应用后返回最新快照。 |
+
+先在下载器中打开 `/automation/edit?id=<Pipeline ID>`，并在设置中启用 MCP。HTTP MCP 和连接同一下载器 API 的 stdio MCP 都支持这两个工具，无需额外配置模型或内置 Agent。
+
+先调用 `get_pipeline_editor`。仅有一个编辑页面时直接返回 `editor_id`、`snapshot` 和 `catalog`；多个页面时返回 `selection_required: true` 和 `editors`，选择明确的 `editor_id` 后再次读取。同一个 Pipeline 的多个标签页也需要明确选择。
+
+修改时使用最新 `snapshot.revision` 和 `snapshot.draft`，保留无关节点及其 ID、配置、位置和输入定义。`nodes` 为完整节点列表，`next_ids` 表示连线；条件分支需同步 `config.rules[].target_id`。`context_schema` 保留原输入定义。`triggers` 省略或为 `null` 时保留触发器表单，`[]` 清空额外触发器。`snapshot.node_config_text` 返回正在输入的节点配置；尚未应用时，先在页面应用或还原该文本，再提交 MCP 修改。
+
+用户继续编辑后旧 `revision` 会被拒绝，必须重新读取并合并。成功返回 `applied: true`、`saved: false`：画布已更新并标记未保存，点击页面的「保存 Pipeline」后持久化。超时、断线或页面关闭时无法确认结果，应先重新读取核对，避免直接重放修改。
 
 ## Worker 部署
 
@@ -51,6 +66,7 @@ MCP 中的“命令”以工具（tool）的形式提供。调用时由 AI 客�
 | `search_wxchannels_accounts` | `keyword`，可选 `next_marker` | 搜索视频号账号。 |
 | `get_wxchannels_account_videos` | `username`，可选 `next_marker` | 获取账号发布的视频列表。 |
 | `get_wxchannels_live_replays` | `username`，可选 `next_marker` | 获取账号的直播回放。 |
+| `get_wxchannels_live_profile` | `username` + `oid` + `nid` + `id` | 获取直播详情和直播流信息，`id` 对应 `liveId`。 |
 | `get_wxchannels_interacted_videos` | 可选 `flag`、`next_marker` | 获取当前用户赞过或收藏的视频，`flag` 默认值为 `7`。 |
 | `get_wxchannels_followed_accounts` | 可选 `next_marker` | 获取当前用户关注的视频号账号。 |
 | `get_wxchannels_play_history` | 可选 `next_marker` | 获取当前用户最近的视频号播放记录。 |
@@ -59,6 +75,12 @@ MCP 中的“命令”以工具（tool）的形式提供。调用时由 AI 客�
 | `get_wxchannels_video_share_url` | `oid` | 获取视频的 H5 分享链接。 |
 
 列表工具会保留微信接口的分页字段。继续翻页时，将上一页 `data.lastBuffer` 原样传给 `next_marker`；只有账号搜索使用 `data.lastBuff`。游标不需要解码或修改。
+
+## 微信公众号
+
+| 工具 | 主要参数 | 用途 |
+| --- | --- | --- |
+| `get_wxmp_biz_msg_list` | `username`，可选 `offset` | 获取指定微信公众号的历史消息列表；继续翻页时把上一页响应中的分页游标传给 `offset`。 |
 
 ## 本地数据
 

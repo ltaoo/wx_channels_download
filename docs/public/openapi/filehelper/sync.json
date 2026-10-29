@@ -1,0 +1,66 @@
+{
+  "get": {
+    "tags": [
+      "文件助手"
+    ],
+    "summary": "拉取文件助手消息",
+    "description": "需要先扫码登录；成功响应直接返回微信 SyncResponse（BaseResponse、AddMsgCount、AddMsgList 等），不包装 code/msg/data。启用 filehelper.enabled 时可能自动创建视频号下载任务。",
+    "responses": {
+      "200": {
+        "description": "微信原始 SyncResponse，不含统一包装",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "../components.json#/schemas/filehelper_SyncResponse"
+            }
+          }
+        }
+      },
+      "401": {
+        "description": "未登录",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      },
+      "500": {
+        "description": "微信请求失败",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "get_api_filehelper_sync"
+  }
+}

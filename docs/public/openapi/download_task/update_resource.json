@@ -1,0 +1,113 @@
+{
+  "post": {
+    "tags": [
+      "下载任务"
+    ],
+    "summary": "重新解析视频的目标规格",
+    "description": "重新从平台解析并返回 target 对应资源，不直接修改已保存的下载任务。current 与 target 必须具有非空 variant_key 且 video_id 相同；服务端强制 build_from_fetch=true，并忽略 resource_indexes。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/adapter_ResourceInfo"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_download_task_update_resource",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "platform": {
+                "type": "string",
+                "minLength": 1
+              },
+              "content": {},
+              "build_from_fetch": {
+                "type": "boolean"
+              },
+              "resource_indexes": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "download_dir": {
+                "type": "string"
+              },
+              "filename": {
+                "type": "string"
+              },
+              "config": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "auto_start": {
+                "type": "boolean",
+                "nullable": true
+              },
+              "parent_task_id": {
+                "type": "integer",
+                "nullable": true
+              },
+              "relation_type": {
+                "type": "string"
+              },
+              "current": {
+                "$ref": "../components.json#/schemas/model_ContentVideoVariant"
+              },
+              "target": {
+                "$ref": "../components.json#/schemas/model_ContentVideoVariant"
+              }
+            },
+            "required": [
+              "platform",
+              "content",
+              "current",
+              "target"
+            ]
+          },
+          "example": {
+            "platform": "wxchannels",
+            "content": {
+              "id": "14545102784038246591",
+              "objectNonceId": "nonce"
+            },
+            "current": {
+              "video_id": "14545102784038246591",
+              "variant_key": "original",
+              "spec": "original"
+            },
+            "target": {
+              "video_id": "14545102784038246591",
+              "variant_key": "high",
+              "spec": "high"
+            }
+          }
+        }
+      }
+    }
+  }
+}

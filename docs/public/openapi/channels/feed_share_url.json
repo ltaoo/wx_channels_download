@@ -18,7 +18,7 @@
     ],
     "responses": {
       "200": {
-        "description": "成功响应",
+        "description": "HTTP 200：code=0 成功；页面未连接等业务失败也返回 HTTP 200。",
         "content": {
           "application/json": {
             "examples": {
@@ -50,19 +50,14 @@
                     }
                   }
                 }
+              },
+              "client_not_ready": {
+                "summary": "微信页面未连接",
+                "value": {
+                  "code": 400,
+                  "msg": "请先初始化客户端 socket 连接"
+                }
               }
-            }
-          }
-        }
-      },
-      "未初始化": {
-        "description": "未初始化",
-        "content": {
-          "application/json": {
-            "example": {
-              "code": 400,
-              "msg": "请先初始化客户端 socket 连接",
-              "data": {}
             }
           }
         }

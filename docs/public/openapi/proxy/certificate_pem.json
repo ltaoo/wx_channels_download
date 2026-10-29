@@ -1,0 +1,22 @@
+{
+  "get": {
+    "tags": [
+      "代理与证书"
+    ],
+    "summary": "下载当前根证书 PEM",
+    "description": "下载当前根证书 PEM。",
+    "responses": {
+      "200": {
+        "description": "根证书 PEM，附件名 root-ca.pem",
+        "content": {
+          "application/x-pem-file": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "operationId": "get_api_proxy_certificate_pem"
+  }
+}

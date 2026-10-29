@@ -3,10 +3,13 @@ package minib
 import (
 	"encoding/base64"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/dop251/goja"
+
+	"wx_channel/pkg/clawreq"
 )
 
 type worker_cloned_value struct {
@@ -167,6 +170,26 @@ func (worker *dedicated_worker) run(message *worker_cloned_value) ([]*worker_clo
 		return nil, fmt.Errorf("initialize Worker WebAssembly: %w", err)
 	}
 	defer worker_runtime.close_webassembly()
+	_ = vm.Set("importScripts", func(call goja.FunctionCall) goja.Value {
+		for _, script_url := range call.Arguments {
+			raw_url := script_url.String()
+			if parsed_url, parse_err := url.Parse(raw_url); parse_err == nil && !parsed_url.IsAbs() {
+				raw_url = worker.runtime.page_url.ResolveReference(parsed_url).String()
+			}
+			response, request_err := worker.runtime.browser.Request(worker.runtime.ctx, http.MethodGet, raw_url, nil, nil)
+			if request_err != nil {
+				panic(vm.NewGoError(request_err))
+			}
+			source, decode_err := clawreq.DecodeText(response.Body, response.Header.Get("Content-Type"))
+			if decode_err != nil {
+				panic(vm.NewGoError(decode_err))
+			}
+			if _, run_err := vm.RunString(source); run_err != nil {
+				panic(run_err)
+			}
+		}
+		return goja.Undefined()
+	})
 	if _, err := vm.RunString(worker.source); err != nil {
 		return nil, fmt.Errorf("evaluate Worker: %w", err)
 	}

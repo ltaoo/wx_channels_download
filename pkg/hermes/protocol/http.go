@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -208,8 +207,11 @@ func (d *HTTPDriver) do_stream(req *http.Request, endpoint hermes.Endpoint) (*ht
 		return nil, err
 	}
 	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode != http.StatusForbidden {
-		return resp, err
+	if err != nil {
+		return d.retry_over_ipv4(req, proxy_url, err)
+	}
+	if resp.StatusCode != http.StatusForbidden {
+		return resp, nil
 	}
 
 	// A CDN may bind a rejected redirect or challenge to the current transport.
@@ -239,21 +241,56 @@ func (d *HTTPDriver) do_stream(req *http.Request, endpoint hermes.Endpoint) (*ht
 }
 
 func (d *HTTPDriver) standard_http_client(raw_proxy_url string) (*http.Client, error) {
+	return d.standard_http_client_for_family(raw_proxy_url, "")
+}
+
+// standard_http_client_for_family returns a cached client. family restricts
+// dialing to one address family ("tcp4" for IPv4-only, "" for both) and forms
+// part of the cache key.
+func (d *HTTPDriver) standard_http_client_for_family(raw_proxy_url, family string) (*http.Client, error) {
 	proxy_url, parsed_proxy_url, err := normalize_proxy_url(raw_proxy_url)
 	if err != nil {
 		return nil, err
 	}
+	cache_key := proxy_url
+	if family != "" {
+		cache_key += "|" + family
+	}
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if client := d.std_https[proxy_url]; client != nil {
+	if client := d.std_https[cache_key]; client != nil {
 		return client, nil
 	}
 
 	transport := new_standard_http_transport(parsed_proxy_url)
+	if family != "" {
+		transport.DialContext = hermes.HTTPDialContext(family)
+	}
 	client := &http.Client{Transport: transport}
-	d.std_https[proxy_url] = client
+	d.std_https[cache_key] = client
 	return client, nil
+}
+
+// retry_over_ipv4 replays a direct request through an IPv4-only transport when
+// the connection failed certificate verification. Go dials IPv6 first (RFC
+// 6724) and a TLS handshake failure never falls back to the next address, so a
+// CDN edge that mis-serves its certificate over IPv6 fails the whole request
+// even though the IPv4 address of the same host is healthy.
+func (d *HTTPDriver) retry_over_ipv4(req *http.Request, proxy_url string, cause error) (*http.Response, error) {
+	if proxy_url != "" || !hermes.IsCertificateVerifyError(cause) {
+		return nil, cause
+	}
+	client, err := d.standard_http_client_for_family(proxy_url, "tcp4")
+	if err != nil {
+		return nil, cause
+	}
+	// The request was already sent, so replay a clone rather than the original.
+	resp, err := client.Do(req.Clone(req.Context()))
+	if err != nil {
+		return nil, fmt.Errorf("%w (IPv4 retry failed: %v)", cause, err)
+	}
+	return resp, nil
 }
 
 func new_isolated_http_client(raw_proxy_url string) (*http.Client, *http.Transport, error) {
@@ -267,11 +304,8 @@ func new_isolated_http_client(raw_proxy_url string) (*http.Client, *http.Transpo
 
 func new_standard_http_transport(parsed_proxy_url *url.URL) *http.Transport {
 	transport := &http.Transport{
-		ForceAttemptHTTP2: true,
-		DialContext: (&net.Dialer{
-			Timeout:   5 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		DialContext:           hermes.HTTPDialContext(""),
 		MaxIdleConns:          100,
 		MaxIdleConnsPerHost:   32,
 		MaxConnsPerHost:       0, // no limit, let MaxIdleConnsPerHost govern reuse

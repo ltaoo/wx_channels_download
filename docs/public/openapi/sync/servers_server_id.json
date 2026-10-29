@@ -1,0 +1,49 @@
+{
+  "post": {
+    "tags": [
+      "同步"
+    ],
+    "summary": "向目标服务同步数据与文件",
+    "description": "把内容、下载任务、资源及已有本地文件以 tar 流发送到配置中的目标服务；无需 JSON 请求体。目标 URL 和令牌来自 sync.servers，返回接收端导入计数。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/api_sync_import_result"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_sync_servers_server_id",
+    "parameters": [
+      {
+        "name": "server_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "description": "sync.servers 的数组下标，从 0 开始"
+      }
+    ]
+  }
+}
