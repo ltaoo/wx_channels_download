@@ -8,6 +8,7 @@ package x
 // which is what this file implements.
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"strconv"
 	"strings"
@@ -58,7 +59,8 @@ func new_tsr_reader(source string) *tsr_reader {
 		for digit_end < len(source) && source[digit_end] >= '0' && source[digit_end] <= '9' {
 			digit_end++
 		}
-		if digit_end == digit_start || digit_end+1 >= len(source) || source[digit_end] != ']' || source[digit_end+1] != '=' || (digit_end+2 < len(source) && source[digit_end+2] == '=') {
+		assignment := reader.skip_space(digit_end + 1)
+		if digit_end == digit_start || digit_end >= len(source) || source[digit_end] != ']' || assignment >= len(source) || source[assignment] != '=' || (assignment+1 < len(source) && source[assignment+1] == '=') {
 			search_index = digit_start
 			continue
 		}
@@ -68,8 +70,8 @@ func new_tsr_reader(source string) *tsr_reader {
 			continue
 		}
 		// The stream re-sends a slot when it updates it; the last binding wins.
-		reader.slots[index] = digit_end + 2
-		search_index = digit_end + 2
+		reader.slots[index] = assignment + 1
+		search_index = assignment + 1
 	}
 	return reader
 }
@@ -98,7 +100,9 @@ func tsr_find_tweet(source string, status_id string) map[string]any {
 		}
 		score := tsr_tweet_score(record)
 		if score > best_score || (score == best_score && index < best_index) {
-			best, best_score, best_index = record, score, index
+			best, best_score, best_index = tsr_merge_tweets(record, best), score, index
+		} else {
+			best = tsr_merge_tweets(best, record)
 		}
 	}
 	return best
@@ -108,20 +112,52 @@ func tsr_find_json_tweet(value any, status_id string) map[string]any {
 	var best map[string]any
 	switch record := value.(type) {
 	case map[string]any:
-		if tsr_string(record["__typename"]) == "Tweet" && tsr_string(record["rest_id"]) == status_id {
-			best = record
+		if tsr_string(record["__typename"]) == "Tweet" {
+			rest_id := tsr_string(record["rest_id"])
+			if rest_id == status_id || (rest_id == "" && tsr_string(record["id"]) == base64.StdEncoding.EncodeToString([]byte("Tweet:"+status_id))) {
+				best = record
+				best["rest_id"] = status_id
+			}
 		}
 		for _, child := range record {
-			if candidate := tsr_find_json_tweet(child, status_id); candidate != nil && (best == nil || tsr_tweet_score(candidate) > tsr_tweet_score(best)) {
-				best = candidate
-			}
+			best = tsr_merge_tweets(best, tsr_find_json_tweet(child, status_id))
 		}
 	case []any:
 		for _, child := range record {
-			if candidate := tsr_find_json_tweet(child, status_id); candidate != nil && (best == nil || tsr_tweet_score(candidate) > tsr_tweet_score(best)) {
-				best = candidate
-			}
+			best = tsr_merge_tweets(best, tsr_find_json_tweet(child, status_id))
 		}
+	}
+	return best
+}
+
+// The article-body query omits most tweet fields; preserve it alongside the
+// richer tweet copy returned by the focal-post or conversation query.
+func tsr_merge_tweets(best map[string]any, candidate map[string]any) map[string]any {
+	if candidate == nil {
+		return best
+	}
+	if best == nil {
+		return candidate
+	}
+	if tsr_tweet_score(candidate) > tsr_tweet_score(best) {
+		best, candidate = candidate, best
+	}
+	best_article := tsr_object(tsr_object(tsr_object(best["article"])["article_results"])["result"])
+	candidate_article := tsr_object(tsr_object(tsr_object(candidate["article"])["article_results"])["result"])
+	if len(tsr_object(candidate_article["content_state"])) > len(tsr_object(best_article["content_state"])) || (tsr_string(candidate_article["plain_text"]) != "" && tsr_string(best_article["plain_text"]) == "") {
+		merged := make(map[string]any, len(best))
+		for key, value := range best {
+			merged[key] = value
+		}
+		article := make(map[string]any, len(candidate_article))
+		for key, value := range best_article {
+			article[key] = value
+		}
+		for key, value := range candidate_article {
+			article[key] = value
+		}
+		merged["article"] = map[string]any{"article_results": map[string]any{"result": article}}
+		return merged
 	}
 	return best
 }
@@ -158,9 +194,11 @@ func tsr_extract_post(source string, metadata map[string]string, status_id strin
 		LikeCount:    tsr_int64(counts["favorite_count"]),
 		CommentCount: tsr_int64(counts["reply_count"]),
 		ShareCount:   tsr_int64(counts["retweet_count"]),
+		Article:      article_from_object(tsr_object(tsr_object(tsr_object(record["article"])["article_results"])["result"])),
 	}
 	tsr_populate_author(record, result)
 	tsr_populate_media(record, result)
+	fill_result_from_metadata(result, metadata)
 	return result, true
 }
 

@@ -100,6 +100,10 @@ func (h *handler) ToContent(data any) (*model.Content, error) {
 		"videos":          result.Videos,
 	})
 	now := util.NowMillis()
+	title := post_title(result.BodyText, result.AuthorName)
+	if result.Article != nil {
+		title = first_non_empty(result.Article.Title, title)
+	}
 	return &model.Content{
 		Id:           PlatformID + ":" + result.ExternalID,
 		PlatformId:   PlatformID,
@@ -107,7 +111,7 @@ func (h *handler) ToContent(data any) (*model.Content, error) {
 		Subtype:      model.ContentSubtypeMicroblog,
 		ExternalId:   result.ExternalID,
 		ExternalId2:  result.AuthorID,
-		Title:        post_title(result.BodyText, result.AuthorName),
+		Title:        title,
 		Description:  result.BodyText,
 		URL:          result.SourceURL,
 		SourceURL:    result.SourceURL,
@@ -272,13 +276,18 @@ func (h *handler) build_download_task(result *x_scraper.FetchResult, config_json
 	task_name = first_non_empty(task_name, content.Title)
 	content_id := content.Id
 	resources := make([]*adapter.ResourceInfo, 0, 2+len(result.Images))
-	body_text := post_text(result)
-	if body_text != "" {
+	body := post_text(result)
+	body_kind, body_key, body_id := "text/plain", "body:text", result.ExternalID+"_body"
+	if result.Article != nil && strings.TrimSpace(result.Article.HTML) != "" {
+		body = strings.TrimSpace(result.Article.HTML)
+		body_kind, body_key, body_id = "text/html", "body:html", result.ExternalID+"_html"
+	}
+	if body != "" {
 		resources = append(resources, &adapter.ResourceInfo{
-			Resource:  model.DownloadResource{ContentId: &content_id, Name: task_name, Kind: "text/plain", UniqueID: result.ExternalID + "_body", Size: int64(len(body_text))},
-			Endpoints: []model.DownloadEndpoint{{Protocol: "inline", URL: body_text, Enabled: 1}},
+			Resource:  model.DownloadResource{ContentId: &content_id, Name: task_name, Kind: body_kind, UniqueID: body_id, Size: int64(len(body))},
+			Endpoints: []model.DownloadEndpoint{{Protocol: "inline", URL: body, Enabled: 1}},
 			ContentAssets: []adapter.ContentAssetReference{{
-				Kind: model.ContentAssetKindText, Role: model.ContentAssetRoleArticleBody, AssetKey: "body:text", Relation: model.DownloadResourceAssetRelationSource,
+				Kind: model.ContentAssetKindText, Role: model.ContentAssetRoleArticleBody, AssetKey: body_key, Relation: model.DownloadResourceAssetRelationSource,
 			}},
 		})
 	}
@@ -361,8 +370,11 @@ func post_text(result *x_scraper.FetchResult) string {
 }
 
 func content_article(result *x_scraper.FetchResult) *model.ContentArticle {
+	if result == nil {
+		return nil
+	}
 	text := post_text(result)
-	if text == "" {
+	if text == "" && (result.Article == nil || strings.TrimSpace(result.Article.HTML) == "") {
 		return nil
 	}
 	article := &model.ContentArticle{
@@ -371,10 +383,11 @@ func content_article(result *x_scraper.FetchResult) *model.ContentArticle {
 		WordCount: utf8.RuneCountInString(text),
 		Text:      text,
 	}
-	// A long-form post keeps its headings, links, images and code blocks in
-	// markdown, which the flattened text above cannot represent.
 	if result.Article != nil {
-		if markdown := strings.TrimSpace(result.Article.Markdown); markdown != "" {
+		if body_html := strings.TrimSpace(result.Article.HTML); body_html != "" {
+			article.Type = model.ContentArticleTypeHTML
+			article.HTML = body_html
+		} else if markdown := strings.TrimSpace(result.Article.Markdown); markdown != "" {
 			article.Type = model.ContentArticleTypeMarkdown
 			article.Markdown = markdown
 		}

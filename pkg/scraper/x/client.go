@@ -54,6 +54,7 @@ type Article struct {
 	ID       string `json:"id"`
 	Title    string `json:"title"`
 	Text     string `json:"text"`
+	HTML     string `json:"html,omitempty"`
 	Markdown string `json:"markdown,omitempty"`
 	CoverURL string `json:"cover_url,omitempty"`
 }
@@ -286,23 +287,12 @@ func extract_article(source string, tweet_key string) *Article {
 	}
 	results_record := extract_record(source, extract_js_ref_field(article_record, "article_results"))
 	entity_record := extract_record(source, extract_js_ref_field(results_record, "result"))
-	title := strings.TrimSpace(extract_js_string_field(entity_record, "title"))
-	text := first_non_empty(
-		extract_js_string_field(entity_record, "plain_text"),
-		extract_js_string_field(entity_record, "preview_text"),
-	)
-	markdown := article_markdown(source, entity_record)
-	cover_url := article_cover_url(source, entity_record)
-	if title == "" && text == "" && markdown == "" {
+	if entity_record == "" {
 		return nil
 	}
-	return &Article{
-		ID:       extract_js_string_field(entity_record, "rest_id"),
-		Title:    title,
-		Text:     text,
-		Markdown: markdown,
-		CoverURL: cover_url,
-	}
+	reader := new_tsr_reader(source)
+	value, _ := reader.value_at(strings.Index(source, entity_record))
+	return article_from_object(tsr_object(reader.article_value(value, 0)))
 }
 
 func populate_author(source string, tweet_core_record string, result *FetchResult) {
@@ -558,9 +548,10 @@ func normalize_article(article *Article) *Article {
 	article.ID = strings.TrimSpace(article.ID)
 	article.Title = strings.TrimSpace(article.Title)
 	article.Text = strings.TrimSpace(article.Text)
+	article.HTML = strings.TrimSpace(article.HTML)
 	article.Markdown = strings.TrimSpace(article.Markdown)
 	article.CoverURL = normalize_media_url(article.CoverURL, "pbs.twimg.com")
-	if article.Title == "" && article.Text == "" && article.Markdown == "" {
+	if article.Title == "" && article.Text == "" && article.HTML == "" && article.Markdown == "" {
 		return nil
 	}
 	return article
