@@ -834,6 +834,11 @@ var WXBase64 = (() => {
   var WXAPI3 = {};
   var WXAPI4 = {};
   var WXLiveAPI = {};
+  const api4_events = {
+    finderGetInteractionedFeedList: "channels:InteractionedFeedsLoaded",
+    finderGetFeedH5Url: "channels:GetFeedH5Url",
+  };
+  const api4_wrapped_methods = new WeakSet();
 
   WXU.onAPILoaded((variables) => {
     const keys = Object.keys(variables);
@@ -841,12 +846,36 @@ var WXBase64 = (() => {
       (() => {
         const variable = keys[i];
         const methods = variables[variable];
+        if (methods == null) {
+          return;
+        }
         if (typeof methods.joinLive === "function") {
           WXLiveAPI = methods;
         }
-        if (typeof methods.finderGetFollowList === "function") {
-          WXAPI4 = methods;
-          return;
+        // These APIs may be split across multiple exported service instances.
+        // Bind each method to its service so prototype methods keep their receiver.
+        for (const name of [
+          "finderGetFollowList",
+          "finderGetPlayHistory",
+          "finderGetInteractionedFeedList",
+          "finderGetFeedH5Url",
+        ]) {
+          if (typeof methods[name] === "function") {
+            const original = methods[name];
+            const event = api4_events[name];
+            if (event && !api4_wrapped_methods.has(original)) {
+              // Wrap the actual function instead of rewriting its source body.
+              // This preserves nested blocks, literals, and the service receiver.
+              const wrapped = async function (...args) {
+                const result = await original.apply(this, args);
+                WXU.emit(event, result.data.object);
+                return result;
+              };
+              api4_wrapped_methods.add(wrapped);
+              methods[name] = wrapped;
+            }
+            WXAPI4[name] = methods[name].bind(methods);
+          }
         }
         if (typeof methods.finderGetCommentDetail === "function") {
           // console.log("WXU.onAPILoaded", methods);

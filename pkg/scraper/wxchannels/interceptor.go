@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/evanw/esbuild/pkg/api"
 	"github.com/ltaoo/echo"
 	"github.com/rs/zerolog"
 
@@ -43,29 +44,25 @@ var (
 	js_export_block_reg = regexp.MustCompile(`exports?\s*\{([^}]*)\}`)
 
 	// Regex patterns for specific paths
-	js_source_buffer_reg                      = regexp.MustCompile(`this.sourceBuffer.appendBuffer\(([a-zA-Z]{1,})\),`)
-	js_init_reg                               = regexp.MustCompile(`async finderInit\(\)\{(.*?)\}async`)
-	js_feed_profile_reg                       = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
-	js_comment_list_reg                       = regexp.MustCompile(`async finderGetCommentList\((\w+)\)\{(.*?)\}async`)
-	js_pc_flow_reg                            = regexp.MustCompile(`async finderPcFlow\((\w+)\)\{(.*?)\}async`)
-	js_get_recommend_tabs_from_service_reg    = regexp.MustCompile(`async getRecommendTabsFromService\(\)\{(.*?)\}async`)
-	js_live_info_reg                          = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
-	js_live_feed_list_reg                     = regexp.MustCompile(`async finderLiveUserPage\((\w+)\)\{(.*?)\}async`)
-	js_join_live_reg                          = regexp.MustCompile(`async joinLive\((\w+)\)\{(.*?)\}async`)
-	js_recommend_feeds_reg                    = regexp.MustCompile(`async finderGetRecommend\((\w+)\)\{(.*?)\}async`)
-	js_user_feeds_reg                         = regexp.MustCompile(`async finderUserPage\((\w+)\)\{(.*?)\}async`)
-	js_finder_pc_search_reg                   = regexp.MustCompile(`async finderPCSearch\((\w+)\)\{(.*?)\}async`)
-	js_finder_search_reg                      = regexp.MustCompile(`async finderSearch\((\w+)\)\{(.*?)\}async`)
-	js_finder_get_follow_list_reg             = regexp.MustCompile(`async finderGetFollowList\((\w+)\)\{(.*?)\}async`)
-	js_finder_get_play_history_reg            = regexp.MustCompile(`async finderGetPlayHistory\((\w+)\)\{(.*?)\}async`)
-	js_finder_get_interactioned_feed_list_reg = regexp.MustCompile(`async finderGetInteractionedFeedList\((\w+)\)\{(.*?)\}\}const`)
-	js_finder_get_feed_h5_url                 = regexp.MustCompile(`async finderGetFeedH5Url\((\w+)\)\{(.*?)\}\}const`)
-	js_preload_feed_reg                       = regexp.MustCompile(` ([a-zA-Z_$][a-zA-Z0-9_$]*\.invoke\([a-zA-Z_$][a-zA-Z0-9_$]*\));\(`)
-	js_go_to_prev_flow_reg                    = regexp.MustCompile(`goToPrevFlowFeed:([a-zA-Z_$]{1,})`)
-	js_go_to_next_flow_reg                    = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z_$]{1,})`)
-	js_flow_tab_reg                           = regexp.MustCompile(`flowTab:([a-zA-Z_$]{1,})`)
-	js_local_flow_tab_reg                     = regexp.MustCompile(`localFlowTab:([a-zA-Z]{1,})`)
-	js_load_local_playlist_reg                = regexp.MustCompile(`loadLocalPlaylist:([a-zA-Z]{1,})`)
+	js_source_buffer_reg                   = regexp.MustCompile(`this.sourceBuffer.appendBuffer\(([a-zA-Z]{1,})\),`)
+	js_init_reg                            = regexp.MustCompile(`async finderInit\(\)\{(.*?)\}async`)
+	js_feed_profile_reg                    = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
+	js_comment_list_reg                    = regexp.MustCompile(`async finderGetCommentList\((\w+)\)\{(.*?)\}async`)
+	js_pc_flow_reg                         = regexp.MustCompile(`async finderPcFlow\((\w+)\)\{(.*?)\}async`)
+	js_get_recommend_tabs_from_service_reg = regexp.MustCompile(`async getRecommendTabsFromService\(\)\{(.*?)\}async`)
+	js_live_info_reg                       = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
+	js_live_feed_list_reg                  = regexp.MustCompile(`async finderLiveUserPage\((\w+)\)\{(.*?)\}async`)
+	js_join_live_reg                       = regexp.MustCompile(`async joinLive\((\w+)\)\{(.*?)\}async`)
+	js_recommend_feeds_reg                 = regexp.MustCompile(`async finderGetRecommend\((\w+)\)\{(.*?)\}async`)
+	js_user_feeds_reg                      = regexp.MustCompile(`async finderUserPage\((\w+)\)\{(.*?)\}async`)
+	js_finder_pc_search_reg                = regexp.MustCompile(`async finderPCSearch\((\w+)\)\{(.*?)\}async`)
+	js_finder_search_reg                   = regexp.MustCompile(`async finderSearch\((\w+)\)\{(.*?)\}async`)
+	js_preload_feed_reg                    = regexp.MustCompile(` ([a-zA-Z_$][a-zA-Z0-9_$]*\.invoke\([a-zA-Z_$][a-zA-Z0-9_$]*\));\(`)
+	js_go_to_prev_flow_reg                 = regexp.MustCompile(`goToPrevFlowFeed:([a-zA-Z_$]{1,})`)
+	js_go_to_next_flow_reg                 = regexp.MustCompile(`goToNextFlowFeed:([a-zA-Z_$]{1,})`)
+	js_flow_tab_reg                        = regexp.MustCompile(`flowTab:([a-zA-Z_$]{1,})`)
+	js_local_flow_tab_reg                  = regexp.MustCompile(`localFlowTab:([a-zA-Z]{1,})`)
+	js_load_local_playlist_reg             = regexp.MustCompile(`loadLocalPlaylist:([a-zA-Z]{1,})`)
 )
 
 // NewInterceptorPlugins builds the Echo interception and rewrite rules owned by
@@ -292,6 +289,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 				js_script = js_dep_reg.ReplaceAllString(js_script, `"js/$1.js`+v+`"`)
 				js_script = js_lazy_import_reg.ReplaceAllString(js_script, `import("$1.js`+v+`")`)
 				js_script = js_import_reg.ReplaceAllString(js_script, `import"$1.js`+v+`"`)
+				original_js_script := js_script
 
 				if strings.Contains(pathname, "virtual_svg-icons-register.publish") {
 					js_script = js_preload_feed_reg.ReplaceAllString(js_script, ` (async()=>{const _r = await $1; typeof WXU !== "undefined" && WXU.emit("channels:PreloadFeeds", _r.data.object); return _r;})();(`)
@@ -418,51 +416,6 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 					}
 
 					{
-						js_finder_get_follow_list := `async finderGetFollowList($1) {
-						var result = await (async () => {
-							$2;
-						})();
-						console.log("finderGetFollowList result", result, $1);
-						return result;
-					}async`
-						js_script = js_finder_get_follow_list_reg.ReplaceAllString(js_script, js_finder_get_follow_list)
-					}
-					{
-						js_finder_get_play_history := `async finderGetPlayHistory($1) {
-						console.log("finderGetPlayHistory payload", $1);
-						var result = await (async () => {
-							$2;
-						})();
-						console.log("finderGetPlayHistory result", result, $1);
-						return result;
-					}async`
-						js_script = js_finder_get_play_history_reg.ReplaceAllString(js_script, js_finder_get_play_history)
-					}
-					{
-						js_finder_interactioned := `async finderGetInteractionedFeedList($1) {
-						var result = await (async () => {
-							$2;
-						})();
-						var feeds = result.data.object;
-						console.log("finderGetInteractionedFeedList result", result, $1);
-						typeof WXU !== "undefined" && WXU.emit("channels:InteractionedFeedsLoaded", feeds);
-						return result;
-					}}const`
-						js_script = js_finder_get_interactioned_feed_list_reg.ReplaceAllString(js_script, js_finder_interactioned)
-					}
-					{
-						js_finder_feed_h5_url := `async finderGetFeedH5Url($1) {
-						var result = await (async () => {
-							$2;
-						})();
-						var data = result.data.object;
-						console.log("finderGetFeedH5Url result", result, $1);
-						typeof WXU !== "undefined" && WXU.emit("channels:GetFeedH5Url", data);
-						return result;
-					}}const`
-						js_script = js_finder_get_feed_h5_url.ReplaceAllString(js_script, js_finder_feed_h5_url)
-					}
-					{
 						js_user_feed := `async finderUserPage($1) {
 					var result = await (async () => {
 						$2;
@@ -538,7 +491,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 						js_wxapi := `;typeof WXU !== "undefined" && WXU.emit("channels:APILoaded",` + api_methods_escaped + `);export{`
 						js_script = js_export_reg.ReplaceAllString(js_script, js_wxapi)
 					}
-					ctx.SetResponseBody(js_script)
+					ctx.SetResponseBody(check_rewritten_javascript(js_script, original_js_script, pathname, logger))
 					return
 				}
 				if strings.Contains(pathname, "connect.publish") || strings.Contains(pathname, "applyMic.publish") {
@@ -593,7 +546,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 					}`, local_feed_list_variable_name)
 						js_script = js_load_local_playlist_reg.ReplaceAllString(js_script, js_load_local)
 					}
-					ctx.SetResponseBody(js_script)
+					ctx.SetResponseBody(check_rewritten_javascript(js_script, original_js_script, pathname, logger))
 					return
 				}
 				ctx.SetResponseBody(js_script)
@@ -602,4 +555,27 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 	}
 	plugins = append(plugins, plugin_1, plugin_2)
 	return plugins
+}
+
+// Keep a failed rewrite from preventing the upstream module from loading.
+func check_rewritten_javascript(source, original, pathname string, logger *zerolog.Logger) string {
+	if source == original {
+		return source
+	}
+	result := api.Transform(source, api.TransformOptions{
+		Loader:     api.LoaderJS,
+		Sourcefile: pathname,
+		LogLevel:   api.LogLevelSilent,
+	})
+	if len(result.Errors) == 0 {
+		return source
+	}
+	for _, js_error := range result.Errors {
+		event := logger.Error().Str("pathname", pathname).Str("error", js_error.Text)
+		if location := js_error.Location; location != nil {
+			event = event.Int("line", location.Line).Int("column", location.Column)
+		}
+		event.Msg("wxchannels JavaScript rewrite failed syntax check; serving original script")
+	}
+	return original
 }
