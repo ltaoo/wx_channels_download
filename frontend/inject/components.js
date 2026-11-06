@@ -77,9 +77,11 @@ const Icons = {
    * @returns {HTMLDivElement}
    */
   download_btn2() {
-    var icon_download_html = `<div data-v-311f5750 class="op-icon download-icon" style="font-size: 28px;">${this.download_icon2}</div>`;
+    // Match the native feed action scope so icon/text spacing stays consistent.
+    // Native icons use a colored background with a mask; this icon is an SVG.
+    var icon_download_html = `<div data-v-a5c58293 class="op-icon download-icon" style="font-size: 28px; background: none;">${this.download_icon2}</div>`;
     var $icon = document.createElement("div");
-    $icon.innerHTML = `<div data-v-6548f11a data-v-1fe2ed37 class="click-box op-item" role="button" aria-label="下载" style="padding: 4px 4px 4px 4px; --border-radius: 4px; --left: 0; --top: 0; --right: 0; --bottom: 0;">${icon_download_html}<div data-v-311f5750 class="op-text">下载</div></div>`;
+    $icon.innerHTML = `<div data-v-6548f11a data-v-a5c58293 class="click-box op-item" role="button" aria-label="下载" style="padding: 4px 0; --border-radius: 4px; --left: 0; --top: 0; --right: 0; --bottom: 0;">${icon_download_html}<div data-v-a5c58293 class="op-text">下载</div></div>`;
     return $icon.firstChild;
   },
   /**
