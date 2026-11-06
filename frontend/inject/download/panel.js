@@ -47,20 +47,36 @@ function DownloaderEntry(props) {
       [
         View(
           {
-            class:
-              "mr-2 relative h-5 w-5 flex-initial flex-shrink-0 cursor-pointer",
-            onMounted() {
-              vm$.methods.connect().catch(() => {});
-              if (typeof props.onMounted === "function") {
-                props.onMounted(vm$);
-              }
-            },
+            class: "flex items-center",
+            attributes: { "data-n": "download-panel-entry" },
           },
           [
-            Timeless.Icon({ name: "download", size: 20 }),
-            DownloaderConnectionStatusDot({
-              connected: vm$.state.websocket_connected,
-            }),
+            View(
+              {
+                class:
+                  "relative h-5 w-5 flex-initial flex-shrink-0 text-white/60 cursor-pointer",
+                attributes: {
+                  "data-n": "download-panel-trigger",
+                  "aria-label": "下载面板",
+                },
+                onMounted() {
+                  vm$.methods.connect().catch(() => {});
+                  if (typeof props.onMounted === "function") {
+                    props.onMounted(vm$);
+                  }
+                },
+              },
+              [
+                Timeless.Icon({
+                  name: "download",
+                  size: 20,
+                  class: "h-full w-full",
+                }),
+                DownloaderConnectionStatusDot({
+                  connected: vm$.state.websocket_connected,
+                }),
+              ],
+            ),
           ],
         ),
       ],
@@ -97,8 +113,8 @@ function DownloaderEntry(props) {
   WXU.downloader.toggle = function () {
     popover$.toggle();
   };
-  function insert_downloader($wrap, $trigger) {
-    $wrap.insertBefore($trigger, $wrap.firstChild);
+  function insert_downloader($wrap, $trigger, $before = $wrap.firstChild) {
+    $wrap.insertBefore($trigger, $before);
     Timeless.DOM.render(
       DownloaderEntry({
         popover$,
@@ -153,18 +169,23 @@ function DownloaderEntry(props) {
       if (mounted || !$header) {
         return;
       }
-      var $box = $header.children[$header.children.length - 1];
+      var $search_bar = $header.querySelector(".search-bar");
+      var $box = $search_bar
+        ? $search_bar.parentElement
+        : $header.querySelector(".min-w-6.justify-end") || $header.lastElementChild;
       if (!$box) return;
-      var $btn_wrap = $box.children[0];
-      if (!$btn_wrap) {
-        $btn_wrap = $box;
-      }
       var $download_panel_button = Icons.download_btn7();
       WXU.log
         .Info()
         .Str("file", "/download/panel.js:124")
         .Msg("before insert_downloader");
-      insert_downloader($btn_wrap, $download_panel_button);
+      // Search and user can share the same action container. Anchor to search
+      // so the order stays search, download, user in both header layouts.
+      insert_downloader(
+        $box,
+        $download_panel_button,
+        $search_bar ? $search_bar.nextSibling : $box.firstChild,
+      );
       mounted = true;
     },
   });
