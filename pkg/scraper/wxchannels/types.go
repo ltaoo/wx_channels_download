@@ -51,11 +51,12 @@ type ChannelsMediaSpec struct {
 	// CodingFormat     string `json:"codingFormat"`
 	// DynamicRangeType int    `json:"dynamicRangeType"`
 	// Vfps             int    `json:"vfps"`
-	Width      float32 `json:"width"`
-	Height     float32 `json:"height"`
-	DurationMs int     `json:"durationMs"`
+	Width        float32 `json:"width"`
+	Height       float32 `json:"height"`
+	DurationMs   int     `json:"durationMs"`
+	VideoBitrate int     `json:"videoBitrate"`
+	LevelOrder   int     `json:"levelOrder"`
 	// QualityScore     int    `json:"qualityScore"`
-	// VideoBitrate     int    `json:"videoBitrate"`
 	// AudioBitrate     int    `json:"audioBitrate"`
 	// LevelOrder       int    `json:"levelOrder"`
 	// Bypass           string `json:"bypass"`

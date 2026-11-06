@@ -192,6 +192,9 @@ func resolve_video_download_spec(obj *wxchannels.ChannelsObject, config map[stri
 			return ""
 		}
 		if default_highest {
+			if spec := PickHighestSpec(obj); spec != "" {
+				return spec
+			}
 			return ""
 		}
 		return PickSpec(obj)
