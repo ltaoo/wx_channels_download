@@ -47,25 +47,36 @@ function DownloaderEntry(props) {
       [
         View(
           {
-            class:
-              "relative flex items-center justify-center h-5 w-5 flex-initial flex-shrink-0 text-white/60 cursor-pointer",
-            attributes: { n: "download-panel-trigger", "aria-label": "下载面板" },
-            onMounted() {
-              vm$.methods.connect().catch(() => {});
-              if (typeof props.onMounted === "function") {
-                props.onMounted(vm$);
-              }
-            },
+            class: "download-panel-entry",
+            attributes: { n: "download-panel-entry" },
           },
           [
-            Timeless.Icon({
-              name: "download",
-              size: 20,
-              attributes: { n: "download-panel-trigger-icon" },
-            }),
-            DownloaderConnectionStatusDot({
-              connected: vm$.state.websocket_connected,
-            }),
+            View(
+              {
+                class: "download-panel-trigger",
+                attributes: {
+                  n: "download-panel-trigger",
+                  "aria-label": "下载面板",
+                },
+                onMounted() {
+                  vm$.methods.connect().catch(() => {});
+                  if (typeof props.onMounted === "function") {
+                    props.onMounted(vm$);
+                  }
+                },
+              },
+              [
+                Timeless.Icon({
+                  name: "download",
+                  size: 20,
+                  class: "h-full w-full",
+                  attributes: { n: "download-panel-trigger-icon" },
+                }),
+                DownloaderConnectionStatusDot({
+                  connected: vm$.state.websocket_connected,
+                }),
+              ],
+            ),
           ],
         ),
       ],
@@ -131,6 +142,7 @@ function DownloaderEntry(props) {
         }
         var $box = $page;
         var $btn_wrap = document.createElement("div");
+        $btn_wrap.className = "download-panel-trigger-container";
         $btn_wrap.setAttribute("data-n", "download-panel-trigger-container");
         $btn_wrap.style.cssText =
           "z-index: 999; position: fixed; right: 40px; top: 36px;";
@@ -161,13 +173,15 @@ function DownloaderEntry(props) {
       var $search_bar = $header.querySelector(".search-bar");
       var $box = $search_bar
         ? $search_bar.parentElement
-        : $header.children[$header.children.length - 1];
+        : $header.querySelector(".min-w-6.justify-end") || $header.lastElementChild;
       if (!$box) return;
       var $download_panel_button = Icons.download_btn7();
       WXU.log
         .Info()
         .Str("file", "/download/panel.js:124")
         .Msg("before insert_downloader");
+      // Search and user can share the same action container. Anchor to search
+      // so the order stays search, download, user in both header layouts.
       insert_downloader(
         $box,
         $download_panel_button,

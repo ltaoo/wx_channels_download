@@ -2,14 +2,42 @@
  * @file 首页推荐
  */
 
+function __wx_update_home_download_btn($btn) {
+  var disabled = !__wx_channels_store__.feed;
+  $btn.setAttribute("aria-disabled", String(disabled));
+  $btn.style.opacity = disabled ? "0.4" : "";
+  $btn.style.cursor = disabled ? "not-allowed" : "";
+  $btn.style.pointerEvents = disabled ? "none" : "";
+  if (disabled && $btn.__attacheddropdown) {
+    $btn.__attacheddropdown.hide({ reason: "feed unavailable" });
+  }
+}
+
+function __wx_init_home_download_btn($btn) {
+  $btn.classList.add("wx-home-download-btn");
+  $btn.onclick = function (event) {
+    if (!__wx_channels_store__.feed) {
+      return;
+    }
+    return WXU.downloadBtnHandler.call(this, event);
+  };
+  __wx_update_home_download_btn($btn);
+  WXU.attach_download_dropdown_menu($btn);
+}
+
+WXU.onFeed(function () {
+  document.querySelectorAll(".wx-home-download-btn").forEach(function ($btn) {
+    __wx_update_home_download_btn($btn);
+  });
+});
+
 /**
  * 创建下载按钮并插入到指定父节点
  * @param {HTMLElement} $parent
  */
 function __wx_insert_download_btn($parent) {
   var $btn = Icons.download_btn2();
-  WXU.attach_download_dropdown_menu($btn);
-  $btn.onclick = WXU.downloadBtnHandler;
+  __wx_init_home_download_btn($btn);
   $parent.appendChild($btn);
 }
 
@@ -26,8 +54,7 @@ function __wx_render_sider_tools() {
   const $btn = document.createElement("div");
   $btn.className = "wx-sider-tools-btn";
   $btn.innerHTML = Icons.download_icon1;
-  $btn.onclick = WXU.downloadBtnHandler;
-  WXU.attach_download_dropdown_menu($btn);
+  __wx_init_home_download_btn($btn);
   document.body.appendChild($fixed_sider);
   $fixed_sider.appendChild($sider_bg);
   $fixed_sider.appendChild($tools);
@@ -132,7 +159,7 @@ WXU.onDOMContentLoaded(function () {
       .Str("file", "channels.home.js")
       .Bool("mounted", home_page_mounted)
       .Msg("onFetchFeedProfile callback");
-    if (home_page_mounted) {
+    if (home_page_mounted || !feed) {
       return;
     }
     home_page_mounted = true;
@@ -147,7 +174,7 @@ WXU.onDOMContentLoaded(function () {
       .Str("file", "channels.home.js:147")
       .JSON("feeds", feeds)
       .Msg("PreloadFeeds callback");
-    if (home_page_mounted) {
+    if (home_page_mounted || !feeds || !feeds[0]) {
       return;
     }
     home_page_mounted = true;
@@ -157,6 +184,9 @@ WXU.onDOMContentLoaded(function () {
     clear_tip_timer();
   });
   WXU.onPCFlowLoaded((feeds) => {
+    if (!feeds || !feeds[0]) {
+      return;
+    }
     WXU.log
       .Info()
       .Str("file", "channels.home.js:157")

@@ -95,6 +95,35 @@ body[data-weui-theme=dark] {
     --dm-skeleton-highlight: rgba(255, 255, 255, 0.16);
   }
 }
+/* Match the native header controls without relying on the host's scoped
+   utility classes or changing the popover's content styles. */
+.download-panel-trigger-container {
+  pointer-events: auto;
+  flex: 0 0 auto;
+  padding-left: 16px;
+}
+.download-panel-entry {
+  display: flex;
+  align-items: center;
+}
+.download-panel-trigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  color: rgb(255 255 255 / 60%);
+  cursor: pointer;
+}
+.download-panel-trigger > svg {
+  display: block;
+  flex: 0 0 auto;
+  width: 100%;
+  height: 100%;
+  stroke-width: 1.5;
+}
 .flex {
   display: flex;
 }

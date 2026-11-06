@@ -841,12 +841,23 @@ var WXBase64 = (() => {
       (() => {
         const variable = keys[i];
         const methods = variables[variable];
+        if (methods == null) {
+          return;
+        }
         if (typeof methods.joinLive === "function") {
           WXLiveAPI = methods;
         }
-        if (typeof methods.finderGetFollowList === "function") {
-          WXAPI4 = methods;
-          return;
+        // These APIs may be split across multiple exported service instances.
+        // Bind each method to its service so prototype methods keep their receiver.
+        for (const name of [
+          "finderGetFollowList",
+          "finderGetPlayHistory",
+          "finderGetInteractionedFeedList",
+          "finderGetFeedH5Url",
+        ]) {
+          if (typeof methods[name] === "function") {
+            WXAPI4[name] = methods[name].bind(methods);
+          }
         }
         if (typeof methods.finderGetCommentDetail === "function") {
           // console.log("WXU.onAPILoaded", methods);
