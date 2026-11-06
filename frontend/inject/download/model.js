@@ -499,8 +499,8 @@ function number_or_fallback(value, fallback) {
 }
 
 function DownloaderPanelViewModel(props = {}) {
-  const WEBSOCKET_RETRY_INTERVAL = 5000;
-  const WEBSOCKET_PROBE_INTERVAL = 10000;
+  const WEBSOCKET_RETRY_INTERVAL = 10000;
+  const WEBSOCKET_PROBE_INTERVAL = 60000;
   const WEBSOCKET_PROBE_TIMEOUT = 5000;
   const ITEM_HEIGHT = Number(props.itemHeight) || 82;
   const ITEM_TITLE_LINE_HEIGHT = 20;
@@ -526,6 +526,15 @@ function DownloaderPanelViewModel(props = {}) {
   const initial_status = undefined;
 
   const reqs = {
+    status: new Timeless.kit.RequestCore(
+      () =>
+        request.get(
+          "/api/status",
+          { download_service_probe: String(Date.now()) },
+          { headers: { Accept: "application/json", "Cache-Control": "no-cache" } },
+        ),
+      { client: http_client },
+    ),
     task: {
       list: new Timeless.kit.RequestCore(
         (params) => {
@@ -744,15 +753,25 @@ function DownloaderPanelViewModel(props = {}) {
     }
     websocket_retry_timer_ = setTimeout(() => {
       websocket_retry_timer_ = null;
-      methods.retryWebsocketConnection().then(
-        (connected) => {
-          if (!connected && !websocket_connected_.value) {
+      schedule_websocket_probe(
+        null,
+        (result) => {
+          if (!result.available) {
             schedule_websocket_retry();
+            return;
           }
+          methods.retryWebsocketConnection().then(
+            (connected) => {
+              if (!connected && !websocket_connected_.value) {
+                schedule_websocket_retry();
+              }
+            },
+            () => {
+              schedule_websocket_retry();
+            },
+          );
         },
-        () => {
-          schedule_websocket_retry();
-        },
+        0,
       );
     }, WEBSOCKET_RETRY_INTERVAL);
   }
@@ -768,39 +787,21 @@ function DownloaderPanelViewModel(props = {}) {
     }
   }
 
-  function download_service_probe_url() {
-    const url = new URL("/api/status", APIOrigin);
-    url.searchParams.set("download_service_probe", String(Date.now()));
-    return url.href;
-  }
-
   async function probe_download_service(signal) {
+    const cancel_request = () => reqs.status.cancel();
+    signal.addEventListener("abort", cancel_request, { once: true });
     try {
-      const response = await fetch(download_service_probe_url(), {
-        method: "GET",
-        cache: "no-store",
-        credentials: "same-origin",
-        headers: { Accept: "application/json" },
-        signal,
-      });
-      if (!response.ok) {
-        return {
-          available: false,
-          error: new Error(
-            `download service probe failed with HTTP ${response.status}`,
-          ),
-          status: response.status,
-        };
+      const result = await reqs.status.run();
+      if (result.error) {
+        return { available: false, error: result.error };
       }
-      const payload = await response.json();
-      if (!payload || Number(payload.code) !== 0 || !payload.data) {
+      if (!result.data) {
         return {
           available: false,
           error: new Error("download service probe returned invalid data"),
-          status: response.status,
         };
       }
-      return { available: true, status: response.status };
+      return { available: true };
     } catch (error) {
       return {
         available: false,
@@ -808,20 +809,25 @@ function DownloaderPanelViewModel(props = {}) {
           error instanceof Error
             ? error
             : new Error("download service probe failed"),
-        status: 0,
       };
+    } finally {
+      signal.removeEventListener("abort", cancel_request);
     }
   }
 
   function schedule_websocket_probe(ws, on_result, delay) {
-    cancel_websocket_probe();
-    if (websocket_ !== ws || ws.readyState !== WebSocket.OPEN) {
+    const can_probe = () =>
+      ws === null
+        ? !websocket_connected_.value
+        : websocket_ === ws && ws.readyState === WebSocket.OPEN;
+    if (!can_probe()) {
       return;
     }
+    cancel_websocket_probe();
     websocket_probe_timer_ = setTimeout(
       async () => {
         websocket_probe_timer_ = null;
-        if (websocket_ !== ws || ws.readyState !== WebSocket.OPEN) {
+        if (!can_probe()) {
           return;
         }
         const controller = new AbortController();
@@ -836,7 +842,7 @@ function DownloaderPanelViewModel(props = {}) {
           return;
         }
         websocket_probe_controller_ = null;
-        if (websocket_ !== ws || ws.readyState !== WebSocket.OPEN) {
+        if (!can_probe()) {
           return;
         }
         on_result(result);
@@ -2707,7 +2713,6 @@ function DownloaderPanelViewModel(props = {}) {
           add_connection_log_context(WXU.log.Error(probe_error))
             .Int("ready_state", ws.readyState)
             .Int("elapsed_ms", Date.now() - connection_started_at)
-            .Int("probe_status", Number(probe_result && probe_result.status))
             .Int("probe_timeout_ms", WEBSOCKET_PROBE_TIMEOUT)
             .Bool("retry_scheduled", websocket_retry_timer_ !== null)
             .Msg("download service probe failed");

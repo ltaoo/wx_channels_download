@@ -48,7 +48,7 @@ var (
 	js_feed_profile_reg                       = regexp.MustCompile(`async finderGetCommentDetail\((\w+)\)\{(.*?)\}async`)
 	js_comment_list_reg                       = regexp.MustCompile(`async finderGetCommentList\((\w+)\)\{(.*?)\}async`)
 	js_pc_flow_reg                            = regexp.MustCompile(`async finderPcFlow\((\w+)\)\{(.*?)\}async`)
-	js_get_recommend_tabs_from_service_reg    = regexp.MustCompile(`async getRecommendTabsFromService\(\)\{(.*?)\}async`)
+	js_get_recommend_tabs_from_service_reg    = regexp.MustCompile(`async getRecommendTabsFromService\(\)\{(.*?)\}(async\b|\}const\b)`)
 	js_live_info_reg                          = regexp.MustCompile(`async finderGetLiveInfo\((\w+)\)\{(.*?)\}async`)
 	js_live_feed_list_reg                     = regexp.MustCompile(`async finderLiveUserPage\((\w+)\)\{(.*?)\}async`)
 	js_join_live_reg                          = regexp.MustCompile(`async joinLive\((\w+)\)\{(.*?)\}async`)
@@ -350,15 +350,18 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 						js_script = js_pc_flow_reg.ReplaceAllString(js_script, js_pc_flow)
 					}
 					{
+						// This may be the last method in the class. Preserve the matched
+						// boundary instead of consuming the next class's async method.
 						js_get_recommend_tabs_from_service := `async getRecommendTabsFromService() {
 					var result = await (async () => {
 						$1;
 					})();
-					var feeds = result.data ? result.data.object : [];
+					var response = result.resp || result;
+					var feeds = response.data ? response.data.object : [];
 					console.log("getRecommendTabsFromService", result);
 					typeof WXU !== "undefined" && WXU.emit("channels:RecommendFeedsLoaded", feeds);
 					return result;
-				}async`
+					}${2}`
 						js_script = js_get_recommend_tabs_from_service_reg.ReplaceAllString(js_script, js_get_recommend_tabs_from_service)
 					}
 					{
