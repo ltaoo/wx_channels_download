@@ -18,6 +18,7 @@ function DownloaderConnectionStatusDot(props) {
         "box-sizing": "border-box",
       })),
       attributes: {
+        "data-n": "download-panel-connection-status",
         title: computed(props.connected, (connected) =>
           connected ? "WebSocket 已连接" : "WebSocket 已断开",
         ),
@@ -125,6 +126,7 @@ function DownloaderEntry(props) {
         }
         var $box = $page;
         var $btn_wrap = document.createElement("div");
+        $btn_wrap.setAttribute("data-n", "download-panel-trigger-container");
         $btn_wrap.style.cssText =
           "z-index: 999; position: fixed; right: 40px; top: 36px;";
         insert_downloader($box, $btn_wrap);
