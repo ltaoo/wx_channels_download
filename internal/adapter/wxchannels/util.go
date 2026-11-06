@@ -22,6 +22,32 @@ func PickSpec(obj *wxchannels.ChannelsObject) string {
 	return ""
 }
 
+// PickHighestSpec selects the highest quality ranked video spec. WeChat uses a
+// lower positive levelOrder for a higher grade; bitrate is only a tie-breaker.
+func PickHighestSpec(obj *wxchannels.ChannelsObject) string {
+	if obj == nil {
+		return ""
+	}
+	specs := obj.Spec
+	if len(obj.ObjectDesc.Media) > 0 && len(obj.ObjectDesc.Media[0].Spec) > 0 {
+		specs = obj.ObjectDesc.Media[0].Spec
+	}
+	best := -1
+	for i, spec := range specs {
+		if spec.LevelOrder <= 0 {
+			continue
+		}
+		if best < 0 || spec.LevelOrder < specs[best].LevelOrder ||
+			(spec.LevelOrder == specs[best].LevelOrder && spec.VideoBitrate > specs[best].VideoBitrate) {
+			best = i
+		}
+	}
+	if best < 0 {
+		return ""
+	}
+	return specs[best].FileFormat
+}
+
 // BuildDownloadURLWithSpec returns the download URL for the given spec.
 //
 //   - If spec is a codec name (e.g. "xWT111"), appends &X-snsvideoflag= to the base URL.
