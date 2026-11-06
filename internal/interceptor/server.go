@@ -1,14 +1,12 @@
 package interceptor
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/rs/zerolog"
 
@@ -178,7 +176,7 @@ func (s *InterceptorServer) Start() error {
 		if err != nil {
 			return err
 		}
-		listener = l
+		listener = new_proxy_listener(l)
 	}
 	if err := s.Interceptor.Start(); err != nil {
 		if listener != nil {
@@ -209,25 +207,27 @@ func (s *InterceptorServer) Stop() error {
 	s.lifecycleMu.Lock()
 	defer s.lifecycleMu.Unlock()
 
-	// Disable the system proxy before waiting for active HTTP connections.
+	// Disable the system proxy before closing active HTTP connections.
 	// Console-close cleanup on Windows may be forcibly terminated after a
 	// short timeout, and leaving the proxy enabled breaks the user's network.
-	interceptorErr := s.Interceptor.Stop()
+	interceptor_err := s.Interceptor.Stop()
 
-	var shutdownErr error
+	var shutdown_err error
 	if s.server != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		shutdownErr = s.server.Shutdown(ctx)
+		// Proxy connections may be long-lived or opened speculatively without
+		// sending a request. Waiting for them to become idle can time out on
+		// every exit. The listener also closes hijacked CONNECT/WebSocket
+		// connections, which http.Server.Close does not manage itself.
+		shutdown_err = s.server.Close()
 		s.server = nil
 	}
 	s.running = false
 	s.publishStatus("stopped")
-	if interceptorErr != nil {
-		return fmt.Errorf("failed to stop interceptor: %v", interceptorErr)
+	if interceptor_err != nil {
+		return fmt.Errorf("failed to stop interceptor: %v", interceptor_err)
 	}
-	if shutdownErr != nil {
-		return shutdownErr
+	if shutdown_err != nil {
+		return shutdown_err
 	}
 	return nil
 }
