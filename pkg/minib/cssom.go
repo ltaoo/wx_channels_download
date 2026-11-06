@@ -684,7 +684,16 @@ func (runtime *page_runtime) css_style_sheet_object(sheet *css_style_sheet) *goj
 		temporary := runtime.new_css_style_sheet(nil, "", "", "")
 		runtime.append_parsed_css_rules(temporary, parsed.Rules, true)
 		if len(temporary.rules) != 1 {
-			panic(runtime.vm.NewGoError(fmt.Errorf("SyntaxError: unsupported CSS rule")))
+			// ponytail: keep rule indexes stable with a never-matching placeholder; model at-rules if a site needs their cascade
+			placeholder_selector, selector_err := cascadia.Parse("#__minib_unsupported_rule__")
+			if selector_err != nil {
+				panic(runtime.vm.NewGoError(fmt.Errorf("SyntaxError: unsupported CSS rule")))
+			}
+			temporary.rules = []*css_style_rule{{
+				selector_text: "#__minib_unsupported_rule__",
+				selectors:     []css_compiled_selector{{selector: placeholder_selector, specificity: placeholder_selector.Specificity()}},
+				declarations:  runtime.new_css_declaration_block("", false, func() { runtime.styles_dirty = true }),
+			}}
 		}
 		rule := temporary.rules[0]
 		rule.parent_sheet = sheet
@@ -1137,38 +1146,100 @@ func (runtime *page_runtime) css_media_matches(media string) bool {
 		if strings.Contains(query, "print") && !strings.Contains(query, "not print") {
 			continue
 		}
-		if strings.Contains(query, "screen") || strings.HasPrefix(query, "(") || strings.HasPrefix(query, "not print") {
-			if media_width_matches(query, 1440) {
-				return true
-			}
+		if !strings.Contains(query, "screen") && !strings.HasPrefix(query, "(") && !strings.HasPrefix(query, "not print") {
+			continue
+		}
+		if media_query_conditions_match(query, float64(runtime.device.viewport_width), float64(runtime.device.viewport_height), runtime.device.coarse_pointer, true) {
+			return true
 		}
 	}
 	return false
 }
 
-func media_width_matches(query string, viewport_width float64) bool {
-	for _, condition := range []struct {
-		name string
-		min  bool
-	}{{"min-width", true}, {"max-width", false}} {
-		position := strings.Index(query, condition.name)
-		if position < 0 {
+// media_query_matches reports whether a media query list matches the simulated
+// device viewport. It backs window.matchMedia: every condition must be
+// recognized, so prefers-* queries keep returning false like the previous stub.
+func (runtime *page_runtime) media_query_matches(media string) bool {
+	media = strings.TrimSpace(strings.ToLower(media))
+	for _, query := range split_css_top_level(media, ',') {
+		query = strings.TrimSpace(query)
+		if strings.Contains(query, "print") {
 			continue
 		}
-		remainder := query[position+len(condition.name):]
-		colon := strings.IndexByte(remainder, ':')
-		if colon < 0 {
+		if media_query_conditions_match(query, float64(runtime.device.viewport_width), float64(runtime.device.viewport_height), runtime.device.coarse_pointer, false) {
+			return true
+		}
+	}
+	return false
+}
+
+// media_query_conditions_match evaluates the " and "-separated conditions of a
+// single media query. Recognized conditions must all pass. unknown_matches
+// decides queries without any recognized condition: the CSS cascade keeps its
+// historical permissive default while matchMedia keeps its strict one.
+func media_query_conditions_match(query string, viewport_width, viewport_height float64, coarse_pointer bool, unknown_matches bool) bool {
+	recognized_any := false
+	for _, condition := range strings.Split(query, " and ") {
+		result := evaluate_media_condition(condition, viewport_width, viewport_height, coarse_pointer)
+		if !result.recognized {
 			continue
 		}
-		value_text := strings.TrimSpace(strings.TrimRight(strings.TrimSpace(remainder[colon+1:]), ")"))
-		value_text = strings.TrimSuffix(value_text, "px")
-		width, err := strconv.ParseFloat(strings.TrimSpace(value_text), 64)
-		if err != nil {
-			continue
-		}
-		if condition.min && viewport_width < width || !condition.min && viewport_width > width {
+		recognized_any = true
+		if !result.matches {
 			return false
 		}
 	}
-	return true
+	if recognized_any {
+		return true
+	}
+	return unknown_matches
+}
+
+type media_condition_result struct {
+	recognized bool
+	matches    bool
+}
+
+// evaluate_media_condition parses one media query condition such as
+// "(min-width: 768px)", "(orientation: portrait)", "screen", or "(hover: hover)".
+func evaluate_media_condition(condition string, viewport_width, viewport_height float64, coarse_pointer bool) media_condition_result {
+	condition = strings.TrimSpace(condition)
+	condition = strings.TrimPrefix(condition, "only ")
+	condition = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(condition), ")"))
+	condition = strings.TrimSpace(strings.TrimPrefix(condition, "("))
+	name, value, has_colon := strings.Cut(condition, ":")
+	if !has_colon {
+		switch strings.TrimSpace(name) {
+		case "screen", "all":
+			return media_condition_result{recognized: true, matches: true}
+		default:
+			return media_condition_result{}
+		}
+	}
+	feature := strings.TrimSpace(name)
+	value = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(value), ")"))
+	switch feature {
+	case "min-width", "max-width", "min-height", "max-height":
+		value = strings.TrimSuffix(strings.TrimSpace(value), "px")
+		number, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil {
+			return media_condition_result{}
+		}
+		dimension := viewport_width
+		if strings.HasSuffix(feature, "height") {
+			dimension = viewport_height
+		}
+		if strings.HasPrefix(feature, "min-") {
+			return media_condition_result{recognized: true, matches: dimension >= number}
+		}
+		return media_condition_result{recognized: true, matches: dimension <= number}
+	case "orientation":
+		return media_condition_result{recognized: true, matches: (value == "portrait") == (viewport_height >= viewport_width)}
+	case "hover":
+		return media_condition_result{recognized: true, matches: (value == "hover") != coarse_pointer}
+	case "pointer":
+		return media_condition_result{recognized: true, matches: (value == "fine") != coarse_pointer}
+	default:
+		return media_condition_result{}
+	}
 }

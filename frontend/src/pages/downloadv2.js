@@ -1,3 +1,4 @@
+import { format_time } from "@/utils.js";
 import {
   BatchOverwriteConfirmDialog,
   ClearTasksConfirmDialog,
@@ -22,17 +23,17 @@ function DownloadV2TaskTable(props) {
 
   return Table({
     name: "download-task-table",
-    containerClass: "content-main container",
+    containerClass: "min-w-0 flex-auto p-4 group-content-main ",
     containerAttributes: { n: "download-page-main" },
-    panelClass: "dl-page-task-table",
+    panelClass: "w-full",
     panelAttributes: { n: "download-task-list-panel" },
-    headerClass: "dl-page-table-head",
-    headerCellClass: "dl-page-table-head-cell",
-    listClass: "dl-page-list",
+    headerClass: "max-760:grid-cols-32px-main-136px-92px max-520:grid-cols-32px-main-124px-78px",
+    headerCellClass: "overflow-hidden whitespace-nowrap text-ellipsis",
+    listClass: "flex relative min-h-0 flex-1 flex-col virtual-list-stretch ",
     columns: props.columns,
     rows: vm$.state.tasks,
     pagination: {
-      class: "container dm-px-4",
+      class: " dm-px-4",
       summary: vm$.state.range_text,
       page: vm$.state.page,
       pageCount: vm$.state.page_count,
@@ -48,7 +49,7 @@ function DownloadV2TaskTable(props) {
     status: vm$.state.status,
     loading: vm$.state.loading,
     error: vm$.state.error,
-    rowClass: "dl-page-task-row",
+    rowClass: "w-full max-w-none max-760:grid-cols-32px-main-136px-92px max-520:grid-cols-32px-main-124px-78px hover:bg-color-bg-subtle",
     skeletonCount: 8,
     renderSkeletonRow: DownloadV2TaskSkeletonRow,
     rowSelection: {
@@ -86,6 +87,7 @@ function DownloadV2TaskPreviewDrawer(props) {
     },
     () => [
       PreviewPageView({
+        tip: vm$.methods.tip,
         app: props.app,
         client: props.client,
         embedded: true,
@@ -107,7 +109,7 @@ function DownloadV2Page(props) {
     {
       name: "task",
       title: "下载任务",
-      cellClass: "dl-page-task-main-cell",
+      cellClass: "flex min-w-0 items-center",
       render(task$) {
         return DownloadV2TaskMain({
           store: vm$,
@@ -119,17 +121,17 @@ function DownloadV2Page(props) {
       name: "created-at",
       title: "下载时间",
       width: 160,
-      cellClass: "dl-page-task-time-cell",
+      cellClass: "overflow-hidden text-sm font-variant-numeric-tabular-nums whitespace-nowrap text-ellipsis text-color-text-secondary",
       cellAttributes(task$) {
         return {
           title: computed(task$.state.raw, (raw) =>
-            window.format_time(raw && raw.created_at),
+            format_time(raw && raw.created_at),
           ),
         };
       },
       render(task$) {
         return computed(task$.state.raw, (raw) =>
-          window.format_time(raw && raw.created_at),
+          format_time(raw && raw.created_at),
         );
       },
     },
@@ -137,7 +139,7 @@ function DownloadV2Page(props) {
       name: "actions",
       title: "操作",
       width: 132,
-      cellClass: "dl-page-task-actions-cell",
+      cellClass: "flex items-center justify-end gap-1.5 max-760:gap-1",
       render(task$) {
         return DownloadV2TaskActions({
           store: vm$,
@@ -149,8 +151,7 @@ function DownloadV2Page(props) {
 
   return View(
     {
-      class:
-        "content-page content-library-page dl-page-root page",
+      class: "flex relative h-100vh min-h-0 min-w-0 flex-col overflow-hidden font-sans bg-color-bg-canvas text-color-text-primary group-content-page paginated-page",
       attributes: { n: "download-page" },
       onMounted() {
         vm$.methods.ready();

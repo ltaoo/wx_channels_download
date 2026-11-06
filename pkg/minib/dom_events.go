@@ -70,10 +70,16 @@ func (runtime *page_runtime) install_host_event_target_methods(object *goja.Obje
 	}
 	for _, method_name := range []string{"addEventListener", "removeEventListener", "dispatchEvent"} {
 		name := method_name
-		define_getter(runtime.vm, object, name, func() any {
-			constructor := runtime.vm.Get("EventTarget").ToObject(runtime.vm)
-			return constructor.Get("prototype").ToObject(runtime.vm).Get(name)
-		})
+		override_name := "__minib_event_method_override_" + name
+		define_accessor(runtime.vm, object, name,
+			func() any {
+				if override := object.Get(override_name); override != nil && !goja.IsUndefined(override) && !goja.IsNull(override) {
+					return override
+				}
+				constructor := runtime.vm.Get("EventTarget").ToObject(runtime.vm)
+				return constructor.Get("prototype").ToObject(runtime.vm).Get(name)
+			},
+			func(value goja.Value) { _ = object.Set(override_name, value) })
 	}
 }
 
@@ -288,4 +294,17 @@ func (runtime *page_runtime) call_event_listener(callback goja.Value, current_ta
 	}
 	_, err := runtime.call_javascript(runtime.ctx, handle_event, object, event)
 	return err
+}
+
+// dispatch_submit_event dispatches a trusted "submit" event on the given node.
+// Returns true if the default was NOT prevented (i.e. the form should proceed).
+func (runtime *page_runtime) dispatch_submit_event(node *html.Node) bool {
+	event_init := runtime.vm.NewObject()
+	_ = event_init.Set("bubbles", true)
+	_ = event_init.Set("cancelable", true)
+	event, err := runtime.vm.New(runtime.vm.Get("Event"), runtime.vm.ToValue("submit"), event_init)
+	if err != nil {
+		return true
+	}
+	return runtime.dispatch_node_event_with_trust(node, event, "submit", true)
 }

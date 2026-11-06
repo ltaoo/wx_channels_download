@@ -4,7 +4,7 @@
       "公众号"
     ],
     "summary": "更新凭证",
-    "description": "更新指定公众号的凭证，需提交有效的凭证内容",
+    "description": "更新指定公众号的凭证，需提交有效的凭证内容 仅 biz 和 key 必填；token 使用公众号刷新令牌（mp.refreshToken）。",
     "parameters": [
       {
         "name": "token",
@@ -50,10 +50,7 @@
             },
             "required": [
               "biz",
-              "key",
-              "pass_ticket",
-              "appmsg_token",
-              "uin"
+              "key"
             ]
           }
         }
@@ -69,16 +66,14 @@
                 "summary": "成功",
                 "value": {
                   "code": 0,
-                  "msg": "成功",
-                  "data": {}
+                  "msg": "成功"
                 }
               },
               "fail": {
                 "summary": "失败",
                 "value": {
                   "code": 400,
-                  "msg": "参数错误",
-                  "data": {}
+                  "msg": "参数错误"
                 }
               }
             }

@@ -32,6 +32,33 @@
           "default": 0
         },
         "description": "偏移量，默认 0"
+      },
+      {
+        "name": "uin",
+        "in": "query",
+        "required": false,
+        "description": "可选临时凭据，按微信接口要求提供",
+        "schema": {
+          "type": "string"
+        }
+      },
+      {
+        "name": "key",
+        "in": "query",
+        "required": false,
+        "description": "可选临时凭据，按微信接口要求提供",
+        "schema": {
+          "type": "string"
+        }
+      },
+      {
+        "name": "pass_ticket",
+        "in": "query",
+        "required": false,
+        "description": "可选临时凭据，按微信接口要求提供",
+        "schema": {
+          "type": "string"
+        }
       }
     ],
     "responses": {

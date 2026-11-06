@@ -1,0 +1,4149 @@
+{
+  "schemas": {
+    "api_scraper_fetch_create_body": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "可选自定义任务 ID；id 优先，缺省自动生成。"
+        },
+        "request_id": {
+          "type": "string",
+          "description": "可选自定义任务 ID；id 优先，缺省自动生成。"
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "force_refresh": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "events_ScraperFetchProgress": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "book_id": {
+          "type": "string"
+        },
+        "book_title": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "current": {
+          "type": "integer"
+        },
+        "total": {
+          "type": "integer"
+        },
+        "percent": {
+          "type": "number"
+        },
+        "volume_title": {
+          "type": "string"
+        },
+        "chapter_id": {
+          "type": "string"
+        },
+        "chapter_title": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "cached": {
+          "type": "boolean"
+        },
+        "cache_hits": {
+          "type": "integer"
+        }
+      }
+    },
+    "model_Timestamps": {
+      "type": "object",
+      "properties": {
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "deleted_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        }
+      }
+    },
+    "model_DownloadResource": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "task_id": {
+          "type": "integer",
+          "nullable": true
+        },
+        "content_id": {
+          "type": "string",
+          "nullable": true
+        },
+        "download_dir": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "unique_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "downloaded": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "speed": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "status": {
+          "type": "integer"
+        },
+        "merge_order": {
+          "type": "integer"
+        },
+        "extra": {
+          "type": "string"
+        },
+        "stream_url": {
+          "type": "string"
+        },
+        "record_start": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "record_end": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "duration": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "rotate_minutes": {
+          "type": "integer"
+        },
+        "rotate_size": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "start_time": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "finish_time": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "deleted_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        }
+      }
+    },
+    "model_ContentAsset": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "content_id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "asset_key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "language_code": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "sort_order": {
+          "type": "integer"
+        },
+        "metadata": {
+          "type": "string"
+        },
+        "download_resources": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/model_DownloadResource"
+          }
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "deleted_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        }
+      }
+    },
+    "model_ContentTextTrackSource": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "type": "integer"
+        },
+        "track_id": {
+          "type": "integer"
+        },
+        "source_key": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "url_expires_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "encoding": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "string"
+        },
+        "asset": {
+          "$ref": "./components.json#/schemas/model_ContentAsset"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "deleted_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        }
+      }
+    },
+    "model_ContentTextTrack": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "content_id": {
+          "type": "string"
+        },
+        "track_key": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "language_code": {
+          "type": "string"
+        },
+        "language_name": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "is_default": {
+          "type": "boolean"
+        },
+        "is_forced": {
+          "type": "boolean"
+        },
+        "is_auto_generated": {
+          "type": "boolean"
+        },
+        "is_hearing_impaired": {
+          "type": "boolean"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/model_ContentTextTrackSource"
+          }
+        },
+        "metadata": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "deleted_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        }
+      }
+    },
+    "model_Content": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "platform_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "subtype": {
+          "type": "string"
+        },
+        "external_id": {
+          "type": "string"
+        },
+        "external_id2": {
+          "type": "string"
+        },
+        "external_id3": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "source_url": {
+          "type": "string"
+        },
+        "cover_url": {
+          "type": "string"
+        },
+        "cover_width": {
+          "type": "string"
+        },
+        "cover_height": {
+          "type": "string"
+        },
+        "publish_time": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "update_time": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "is_private": {
+          "type": "integer"
+        },
+        "view_count": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "like_count": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "comment_count": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "share_count": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "collect_count": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "unread": {
+          "type": "integer"
+        },
+        "source_deleted": {
+          "type": "integer"
+        },
+        "validated": {
+          "type": "integer"
+        },
+        "tags": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "string"
+        },
+        "assets": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/model_ContentAsset"
+          }
+        },
+        "text_tracks": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/model_ContentTextTrack"
+          }
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "deleted_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        }
+      }
+    },
+    "model_Account": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "platform_id": {
+          "type": "string"
+        },
+        "influencer_id": {
+          "type": "integer",
+          "nullable": true
+        },
+        "external_id": {
+          "type": "string"
+        },
+        "alias": {
+          "type": "string"
+        },
+        "nickname": {
+          "type": "string"
+        },
+        "signature": {
+          "type": "string"
+        },
+        "avatar_url": {
+          "type": "string"
+        },
+        "profile_url": {
+          "type": "string"
+        },
+        "is_listen": {
+          "type": "integer"
+        },
+        "follower_count": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "past_names": {
+          "type": "string"
+        },
+        "past_avatars": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "deleted_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        }
+      }
+    },
+    "model_ContentRelation": {
+      "type": "object",
+      "properties": {
+        "source_content_id": {
+          "type": "string"
+        },
+        "target_content_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "sort_order": {
+          "type": "integer"
+        },
+        "metadata": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "adapter_ContentAccountReference": {
+      "type": "object",
+      "properties": {
+        "account": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/model_Account"
+            }
+          ],
+          "nullable": true
+        },
+        "role": {
+          "type": "string"
+        }
+      }
+    },
+    "model_Influencer": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "alias": {
+          "type": "string"
+        },
+        "avatar_url": {
+          "type": "string"
+        },
+        "sex": {
+          "type": "integer"
+        },
+        "description": {
+          "type": "string"
+        },
+        "biography": {
+          "type": "string"
+        },
+        "profile_path": {
+          "type": "string"
+        },
+        "birthday": {
+          "type": "string"
+        },
+        "place_of_birth": {
+          "type": "string"
+        },
+        "known_for_department": {
+          "type": "string"
+        },
+        "profile": {
+          "type": "string"
+        },
+        "tmdb_id": {
+          "type": "string",
+          "nullable": true
+        },
+        "douban_id": {
+          "type": "string",
+          "nullable": true
+        },
+        "imdb_id": {
+          "type": "string",
+          "nullable": true
+        },
+        "metadata_json": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "deleted_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        }
+      }
+    },
+    "adapter_ContentInfluencerRole": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string"
+        },
+        "sort_order": {
+          "type": "integer"
+        },
+        "metadata_json": {
+          "type": "string"
+        }
+      }
+    },
+    "adapter_ContentInfluencerReference": {
+      "type": "object",
+      "properties": {
+        "influencer": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/model_Influencer"
+            }
+          ],
+          "nullable": true
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/adapter_ContentInfluencerRole"
+          }
+        }
+      }
+    },
+    "adapter_ContentDetail": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "data": {},
+        "content": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/model_Content"
+            }
+          ],
+          "nullable": true
+        },
+        "relation": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/model_ContentRelation"
+            }
+          ],
+          "nullable": true
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/model_ContentRelation"
+          }
+        },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/adapter_ContentAccountReference"
+          }
+        },
+        "influencers": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/adapter_ContentInfluencerReference"
+          }
+        }
+      }
+    },
+    "adapter_FetchCacheEntry": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "services_ScraperFetchOutput": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "result": {},
+        "content": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/model_Content"
+            }
+          ],
+          "nullable": true
+        },
+        "account": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/model_Account"
+            }
+          ],
+          "nullable": true
+        },
+        "content_details": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/adapter_ContentDetail"
+          }
+        },
+        "cache_entries": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/adapter_FetchCacheEntry"
+          }
+        },
+        "download_info": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/adapter_DownloadTaskResult"
+            }
+          ],
+          "nullable": true
+        }
+      }
+    },
+    "services_ScraperFetchJob": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "force_refresh": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "running",
+            "completed",
+            "failed",
+            "interrupted"
+          ]
+        },
+        "progress": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/events_ScraperFetchProgress"
+            }
+          ],
+          "nullable": true
+        },
+        "raw_result": {},
+        "content": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/model_Content"
+            }
+          ],
+          "nullable": true
+        },
+        "account": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/model_Account"
+            }
+          ],
+          "nullable": true
+        },
+        "content_details": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/adapter_ContentDetail"
+          }
+        },
+        "cache_entries": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/adapter_FetchCacheEntry"
+          }
+        },
+        "output": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/services_ScraperFetchOutput"
+            }
+          ],
+          "nullable": true
+        },
+        "error": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "started_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "finished_at": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "description": "仅存于内存的异步抓取任务；所有 *_at 时间为 Unix 毫秒。"
+    },
+    "events_PlatformStatusChanged": {
+      "type": "object",
+      "properties": {
+        "platform": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "api_scraper_fetch_interrupt_body": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "id"
+          ]
+        },
+        {
+          "required": [
+            "request_id"
+          ]
+        }
+      ]
+    },
+    "api_scraper_cache_clear_body": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "filehelper_LoginStatusDetail": {
+      "type": "object",
+      "properties": {
+        "logged_in": {
+          "type": "boolean"
+        },
+        "code": {
+          "type": "integer"
+        },
+        "status": {
+          "type": "string"
+        },
+        "has_uuid": {
+          "type": "boolean"
+        },
+        "uuid": {
+          "type": "string"
+        },
+        "uuid_age_seconds": {
+          "type": "integer"
+        }
+      }
+    },
+    "filehelper_SyncResponse": {
+      "type": "object",
+      "properties": {
+        "BaseResponse": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "AddMsgCount": {
+          "type": "integer"
+        },
+        "AddMsgList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "ModContactCount": {
+          "type": "integer"
+        },
+        "ModContactList": {
+          "type": "array",
+          "items": {}
+        },
+        "DelContactCount": {
+          "type": "integer"
+        },
+        "DelContactList": {
+          "type": "array",
+          "items": {}
+        },
+        "ModChatRoomMemberCount": {
+          "type": "integer"
+        },
+        "ModChatRoomMemberList": {
+          "type": "array",
+          "items": {}
+        },
+        "Profile": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "ContinueFlag": {
+          "type": "integer"
+        },
+        "SyncKey": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "SKey": {
+          "type": "string"
+        },
+        "SyncCheckKey": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "api_FinderFeedData": {
+      "type": "object",
+      "properties": {
+        "username": {
+          "type": "string"
+        },
+        "nickname": {
+          "type": "string"
+        },
+        "desc": {
+          "type": "string"
+        },
+        "avatar": {
+          "type": "string"
+        },
+        "thumb_url": {
+          "type": "string"
+        },
+        "object_id": {
+          "type": "string"
+        },
+        "object_nonce_id": {
+          "type": "string"
+        }
+      }
+    },
+    "api_ShowFileBody": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "services_FileSortOption": {
+      "type": "object",
+      "properties": {
+        "by": {
+          "type": "string"
+        },
+        "ascending": {
+          "type": "boolean"
+        }
+      }
+    },
+    "services_ListFilesOptions": {
+      "type": "object",
+      "properties": {
+        "dir": {
+          "type": "string"
+        },
+        "ignore": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "accept": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recursive": {
+          "type": "boolean"
+        },
+        "depth": {
+          "type": "integer"
+        },
+        "sort": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/services_FileSortOption"
+            }
+          ],
+          "nullable": true
+        },
+        "offset": {
+          "type": "integer"
+        },
+        "limit": {
+          "type": "integer"
+        }
+      }
+    },
+    "services_FileInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "modTime": {
+          "type": "string"
+        },
+        "isDir": {
+          "type": "boolean"
+        },
+        "ext": {
+          "type": "string"
+        }
+      }
+    },
+    "services_FileResult": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_FileInfo"
+          }
+        },
+        "total": {
+          "type": "integer"
+        }
+      }
+    },
+    "services_ScraperFetchJobEvent": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "type": "string"
+        },
+        "sequence": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "raw_result": {},
+        "content": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/model_Content"
+            }
+          ],
+          "nullable": true
+        },
+        "account": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/model_Account"
+            }
+          ],
+          "nullable": true
+        },
+        "content_detail": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/adapter_ContentDetail"
+            }
+          ],
+          "nullable": true
+        },
+        "cache_entry": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/adapter_FetchCacheEntry"
+            }
+          ],
+          "nullable": true
+        },
+        "progress": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/events_ScraperFetchProgress"
+            }
+          ],
+          "nullable": true
+        },
+        "current": {
+          "type": "integer"
+        },
+        "total": {
+          "type": "integer"
+        },
+        "error": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "api_scraper_ws_message": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "job": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/services_ScraperFetchJob"
+            }
+          ],
+          "nullable": true
+        },
+        "event": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/services_ScraperFetchJobEvent"
+            }
+          ],
+          "nullable": true
+        },
+        "platform_status": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/events_PlatformStatusChanged"
+            }
+          ],
+          "nullable": true
+        }
+      }
+    },
+    "services_CreateBrowseHistoryBody": {
+      "type": "object",
+      "properties": {
+        "platform": {
+          "type": "string"
+        },
+        "content": {}
+      }
+    },
+    "api_browseHistoryCreateRequest": {
+      "type": "object",
+      "properties": {
+        "objects": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_CreateBrowseHistoryBody"
+          }
+        }
+      }
+    },
+    "services_CreateDownloadTaskBody": {
+      "type": "object",
+      "properties": {
+        "platform": {
+          "type": "string"
+        },
+        "content": {},
+        "build_from_fetch": {
+          "type": "boolean"
+        },
+        "resource_indexes": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "download_dir": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "auto_start": {
+          "type": "boolean",
+          "nullable": true
+        },
+        "parent_task_id": {
+          "type": "integer",
+          "nullable": true
+        },
+        "relation_type": {
+          "type": "string"
+        }
+      }
+    },
+    "model_ContentVideoVariant": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "type": "integer"
+        },
+        "video_id": {
+          "type": "string"
+        },
+        "variant_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "spec": {
+          "type": "string"
+        },
+        "quality": {
+          "type": "string"
+        },
+        "width": {
+          "type": "integer",
+          "nullable": true
+        },
+        "height": {
+          "type": "integer",
+          "nullable": true
+        },
+        "fps": {
+          "type": "integer",
+          "nullable": true
+        },
+        "bitrate": {
+          "type": "integer",
+          "nullable": true
+        },
+        "size": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "codec": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        },
+        "stream_type": {
+          "type": "string"
+        },
+        "has_video": {
+          "type": "integer"
+        },
+        "has_audio": {
+          "type": "integer"
+        },
+        "is_default": {
+          "type": "integer"
+        },
+        "url": {
+          "type": "string"
+        },
+        "url_expires_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "metadata": {
+          "type": "string"
+        },
+        "asset": {
+          "$ref": "./components.json#/schemas/model_ContentAsset"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "deleted_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        }
+      },
+      "required": [
+        "video_id",
+        "variant_key"
+      ]
+    },
+    "api_third_party_downloader_request": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "aria2",
+            "aria",
+            "ariang",
+            "motrix",
+            "gopeed"
+          ]
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "directory": {
+          "type": "string"
+        },
+        "referer": {
+          "type": "string"
+        },
+        "cookie": {
+          "type": "string"
+        },
+        "user_agent": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        }
+      }
+    },
+    "api_third_party_downloader_result": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        }
+      }
+    },
+    "api_third_party_downloader_status_result": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "completed": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "total": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "speed": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "percent": {
+          "type": "number"
+        },
+        "file_path": {
+          "type": "string"
+        },
+        "error_message": {
+          "type": "string"
+        }
+      }
+    },
+    "services_ContentAccountRecord": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "platform_id": {
+          "type": "string"
+        },
+        "influencer_id": {
+          "type": "integer",
+          "nullable": true
+        },
+        "external_id": {
+          "type": "string"
+        },
+        "alias": {
+          "type": "string"
+        },
+        "nickname": {
+          "type": "string"
+        },
+        "signature": {
+          "type": "string"
+        },
+        "avatar_url": {
+          "type": "string"
+        },
+        "profile_url": {
+          "type": "string"
+        },
+        "is_listen": {
+          "type": "integer"
+        },
+        "follower_count": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "past_names": {
+          "type": "string"
+        },
+        "past_avatars": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "services_ContentInfluencerRecord": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "alias": {
+          "type": "string"
+        },
+        "avatar_url": {
+          "type": "string"
+        },
+        "sex": {
+          "type": "integer"
+        },
+        "description": {
+          "type": "string"
+        },
+        "biography": {
+          "type": "string"
+        },
+        "profile_path": {
+          "type": "string"
+        },
+        "birthday": {
+          "type": "string"
+        },
+        "place_of_birth": {
+          "type": "string"
+        },
+        "known_for_department": {
+          "type": "string"
+        },
+        "profile": {
+          "type": "string"
+        },
+        "tmdb_id": {
+          "type": "string",
+          "nullable": true
+        },
+        "douban_id": {
+          "type": "string",
+          "nullable": true
+        },
+        "imdb_id": {
+          "type": "string",
+          "nullable": true
+        },
+        "role": {
+          "type": "string"
+        },
+        "sort_order": {
+          "type": "integer"
+        },
+        "role_metadata_json": {
+          "type": "string"
+        },
+        "metadata_json": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "services_ContentDownloadTaskRecord": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "content_id": {
+          "type": "string",
+          "nullable": true
+        },
+        "parent_task_id": {
+          "type": "integer",
+          "nullable": true
+        },
+        "root_task_id": {
+          "type": "integer"
+        },
+        "relation_type": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "platform_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "integer"
+        },
+        "source_url": {
+          "type": "string"
+        },
+        "cover_url": {
+          "type": "string"
+        },
+        "cover_width": {
+          "type": "string"
+        },
+        "cover_height": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "services_ContentTagRecord": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "services_ContentListItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "platform_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "subtype": {
+          "type": "string"
+        },
+        "external_id": {
+          "type": "string"
+        },
+        "external_id2": {
+          "type": "string"
+        },
+        "external_id3": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "source_url": {
+          "type": "string"
+        },
+        "cover_url": {
+          "type": "string"
+        },
+        "cover_width": {
+          "type": "string"
+        },
+        "cover_height": {
+          "type": "string"
+        },
+        "publish_time": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_ContentAccountRecord"
+          }
+        },
+        "influencers": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_ContentInfluencerRecord"
+          }
+        },
+        "download_tasks": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_ContentDownloadTaskRecord"
+          }
+        },
+        "file_count": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_ContentTagRecord"
+          }
+        }
+      }
+    },
+    "services_ContentListResult": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_ContentListItem"
+          }
+        },
+        "total": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "page": {
+          "type": "integer"
+        },
+        "page_size": {
+          "type": "integer"
+        }
+      }
+    },
+    "services_ContentResourceRecord": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "task_id": {
+          "type": "integer",
+          "nullable": true
+        },
+        "content_id": {
+          "type": "string",
+          "nullable": true
+        },
+        "download_dir": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "unique_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "downloaded": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "speed": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "status": {
+          "type": "integer"
+        },
+        "merge_order": {
+          "type": "integer"
+        },
+        "extra": {
+          "type": "string"
+        },
+        "stream_url": {
+          "type": "string"
+        },
+        "record_start": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "record_end": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "duration": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "rotate_minutes": {
+          "type": "integer"
+        },
+        "rotate_size": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "start_time": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "finish_time": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "services_ContentEmbeddedDetailItem": {
+      "type": "object",
+      "properties": {
+        "relation_type": {
+          "type": "string"
+        },
+        "sort_order": {
+          "type": "integer"
+        },
+        "content": {
+          "$ref": "./components.json#/schemas/model_Content"
+        },
+        "detail_type": {
+          "type": "string"
+        },
+        "detail": {}
+      }
+    },
+    "services_ContentRelationContentRecord": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "platform_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "subtype": {
+          "type": "string"
+        },
+        "external_id": {
+          "type": "string"
+        },
+        "external_id2": {
+          "type": "string"
+        },
+        "external_id3": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "source_url": {
+          "type": "string"
+        },
+        "cover_url": {
+          "type": "string"
+        },
+        "publish_time": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "update_time": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "services_ContentRelationRecord": {
+      "type": "object",
+      "properties": {
+        "source_content_id": {
+          "type": "string"
+        },
+        "target_content_id": {
+          "type": "string"
+        },
+        "relation_type": {
+          "type": "string"
+        },
+        "direction": {
+          "type": "string"
+        },
+        "sort_order": {
+          "type": "integer"
+        },
+        "metadata": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "content": {
+          "$ref": "./components.json#/schemas/services_ContentRelationContentRecord"
+        }
+      }
+    },
+    "services_ContentRelationListResult": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_ContentRelationRecord"
+          }
+        },
+        "total": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "page": {
+          "type": "integer"
+        },
+        "page_size": {
+          "type": "integer"
+        }
+      }
+    },
+    "services_ContentDetailItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "platform_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "subtype": {
+          "type": "string"
+        },
+        "external_id": {
+          "type": "string"
+        },
+        "external_id2": {
+          "type": "string"
+        },
+        "external_id3": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "source_url": {
+          "type": "string"
+        },
+        "cover_url": {
+          "type": "string"
+        },
+        "cover_width": {
+          "type": "string"
+        },
+        "cover_height": {
+          "type": "string"
+        },
+        "publish_time": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_ContentAccountRecord"
+          }
+        },
+        "influencers": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_ContentInfluencerRecord"
+          }
+        },
+        "download_tasks": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_ContentDownloadTaskRecord"
+          }
+        },
+        "file_count": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_ContentTagRecord"
+          }
+        },
+        "content": {
+          "$ref": "./components.json#/schemas/model_Content"
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_ContentResourceRecord"
+          }
+        },
+        "detail_type": {
+          "type": "string"
+        },
+        "detail": {},
+        "embedded_contents": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_ContentEmbeddedDetailItem"
+          }
+        },
+        "relations": {
+          "$ref": "./components.json#/schemas/services_ContentRelationListResult"
+        }
+      }
+    },
+    "model_Tag": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "deleted_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        }
+      }
+    },
+    "api_tag_create_body": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "api_tag_delete_body": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      }
+    },
+    "api_tag_rename_body": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "api_tag_content_set_body": {
+      "type": "object",
+      "properties": {
+        "content_id": {
+          "type": "string"
+        },
+        "tag_ids": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "api_tag_account_set_body": {
+      "type": "object",
+      "properties": {
+        "account_id": {
+          "type": "string"
+        },
+        "tag_ids": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "api_api_log_entry": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer"
+        },
+        "file": {
+          "type": "string"
+        },
+        "component": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "time": {
+          "type": "string"
+        },
+        "level": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "raw": {
+          "type": "string"
+        }
+      }
+    },
+    "api_api_log_file_info": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "config_ConfigField": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "boolean",
+            "number",
+            "select",
+            "file",
+            "textarea"
+          ]
+        },
+        "default": {},
+        "description": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "group": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "application",
+            "plugin"
+          ]
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deprecated": {
+          "type": "boolean"
+        },
+        "readonly": {
+          "type": "boolean"
+        },
+        "sensitive": {
+          "type": "boolean"
+        },
+        "accept": {
+          "type": "string"
+        },
+        "hotReload": {
+          "type": "boolean"
+        }
+      }
+    },
+    "api_application_config_field": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "boolean",
+            "number",
+            "select",
+            "file",
+            "textarea"
+          ]
+        },
+        "default": {},
+        "description": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "group": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "application",
+            "plugin"
+          ]
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deprecated": {
+          "type": "boolean"
+        },
+        "readonly": {
+          "type": "boolean"
+        },
+        "sensitive": {
+          "type": "boolean"
+        },
+        "accept": {
+          "type": "string"
+        },
+        "hotReload": {
+          "type": "boolean"
+        },
+        "value": {},
+        "effective_value": {},
+        "configured": {
+          "type": "boolean"
+        }
+      }
+    },
+    "api_application_config_update_body": {
+      "type": "object",
+      "properties": {
+        "values": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "api_sync_server_record": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "api_sync_import_result": {
+      "type": "object",
+      "properties": {
+        "contents": {
+          "type": "integer"
+        },
+        "tasks": {
+          "type": "integer"
+        },
+        "resources": {
+          "type": "integer"
+        },
+        "files": {
+          "type": "integer"
+        },
+        "bytes": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "services_RestartConfirmation": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "restart_completed": {
+          "type": "boolean"
+        },
+        "config_applied": {
+          "type": "boolean"
+        },
+        "current_instance_id": {
+          "type": "string"
+        },
+        "current_config_revision": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "services_UpdateStatus": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "current_version": {
+          "type": "string"
+        },
+        "latest_version": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "published_at": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "asset_name": {
+          "type": "string"
+        },
+        "downloaded": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "total_size": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "speed": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "percent": {
+          "type": "number"
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "api_service_action_body": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "api_service_config_body": {
+      "type": "object",
+      "properties": {
+        "values": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "api_proxyConfigUpdateBody": {
+      "type": "object",
+      "properties": {
+        "values": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "restart": {
+          "type": "boolean"
+        }
+      }
+    },
+    "api_proxyCertificateGenerateBody": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "install": {
+          "type": "boolean"
+        },
+        "restart": {
+          "type": "boolean"
+        },
+        "valid_years": {
+          "type": "integer"
+        }
+      }
+    },
+    "api_uninstallCertByNameBody": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "services_cookie_update_request": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string"
+        },
+        "encrypted": {
+          "type": "string",
+          "description": "兼容密文字段；提供 data 时优先使用 data。"
+        },
+        "crypto_type": {
+          "type": "string",
+          "enum": [
+            "none",
+            "aes-128-cbc-fixed",
+            "aes-256-cbc",
+            "legacy"
+          ],
+          "description": "明文 cookies 或 data 未指定时使用 none；加密请求需显式指定算法及 uuid。"
+        },
+        "cookies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              },
+              "domain": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "secure": {
+                "type": "boolean"
+              },
+              "httpOnly": {
+                "type": "boolean"
+              },
+              "sameSite": {
+                "type": "string"
+              },
+              "session": {
+                "type": "boolean"
+              },
+              "expirationDate": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "data": {
+          "type": "string",
+          "description": "Cookie 数组或 {cookies:[...]} 的 JSON 字符串；使用加密时为密文字符串。"
+        }
+      }
+    },
+    "engine_RetryPolicy": {
+      "type": "object",
+      "properties": {
+        "max_attempts": {
+          "type": "integer"
+        },
+        "delay_ms": {
+          "type": "integer"
+        },
+        "backoff_multiplier": {
+          "type": "number"
+        }
+      }
+    },
+    "engine_FieldSchema": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "engine_NodePosition": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      }
+    },
+    "services_UserFlowNodeInput": {
+      "type": "object",
+      "properties": {
+        "retry": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/engine_RetryPolicy"
+            }
+          ],
+          "nullable": true
+        },
+        "error_next_node": {
+          "type": "string",
+          "nullable": true
+        },
+        "output_schema": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/engine_FieldSchema"
+          }
+        },
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "position": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/engine_NodePosition"
+            }
+          ],
+          "nullable": true
+        },
+        "input_schema": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/engine_FieldSchema"
+          }
+        },
+        "next_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "services_UserFlowTriggerInput": {
+      "type": "object",
+      "properties": {
+        "active": {
+          "type": "boolean",
+          "nullable": true
+        },
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "cron_expr": {
+          "type": "string"
+        },
+        "event_key": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "initial_data": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "timeout_sec": {
+          "type": "integer",
+          "nullable": true
+        }
+      }
+    },
+    "services_PipelineEditorDraft": {
+      "type": "object",
+      "properties": {
+        "start_node_id": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_UserFlowNodeInput"
+          },
+          "minItems": 1,
+          "maxItems": 500
+        },
+        "triggers": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_UserFlowTriggerInput"
+          }
+        },
+        "context_schema": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/engine_FieldSchema"
+          }
+        }
+      },
+      "required": [
+        "start_node_id",
+        "nodes"
+      ],
+      "description": "完整页面草稿；start_node_id 必须指向 StartNode，节点数为 1–500。"
+    },
+    "api_automation_ws_message": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "flow_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "schedule_id": {
+          "type": "string"
+        },
+        "trigger": {
+          "type": "string"
+        },
+        "run_status": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "node_status": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/engine_NodeExecutionStatus"
+            }
+          ],
+          "nullable": true
+        },
+        "execution_log": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/engine_NodeExecutionLog"
+            }
+          ],
+          "nullable": true
+        }
+      }
+    },
+    "api_automation_schedule_list_body": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer"
+        },
+        "page_size": {
+          "type": "integer"
+        },
+        "flow_id": {
+          "type": "string"
+        },
+        "keyword": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean",
+          "nullable": true
+        }
+      }
+    },
+    "model_FlowSchedule": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "cron_expr": {
+          "type": "string"
+        },
+        "flow_id": {
+          "type": "string"
+        },
+        "initial_data": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "timeout_sec": {
+          "type": "integer"
+        },
+        "next_run_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "last_run_id": {
+          "type": "string"
+        },
+        "last_run_status": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "deleted_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        }
+      }
+    },
+    "api_automation_schedule_create_body": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "cron_expr": {
+          "type": "string"
+        },
+        "flow_id": {
+          "type": "string"
+        },
+        "initial_data": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "enabled": {
+          "type": "boolean",
+          "nullable": true
+        },
+        "timeout_sec": {
+          "type": "integer"
+        }
+      }
+    },
+    "api_automation_id_body": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      }
+    },
+    "api_automation_schedule_update_body": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "nullable": true
+        },
+        "description": {
+          "type": "string",
+          "nullable": true
+        },
+        "cron_expr": {
+          "type": "string",
+          "nullable": true
+        },
+        "flow_id": {
+          "type": "string",
+          "nullable": true
+        },
+        "initial_data": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "enabled": {
+          "type": "boolean",
+          "nullable": true
+        },
+        "timeout_sec": {
+          "type": "integer",
+          "nullable": true
+        }
+      }
+    },
+    "api_automation_schedule_trigger_body": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "trigger_type": {
+          "type": "string"
+        },
+        "event_key": {
+          "type": "string"
+        }
+      }
+    },
+    "model_FlowRunRecord": {
+      "type": "object",
+      "properties": {
+        "definition": {
+          "type": "string"
+        },
+        "initial_data": {
+          "type": "string"
+        },
+        "node_logs": {
+          "type": "string"
+        },
+        "timeout_sec": {
+          "type": "integer"
+        },
+        "deadline_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "retry_of": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "schedule_id": {
+          "type": "string"
+        },
+        "flow_id": {
+          "type": "string"
+        },
+        "trigger_type": {
+          "type": "string"
+        },
+        "trigger_key": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "current_node": {
+          "type": "string"
+        },
+        "node_attempts": {
+          "type": "string"
+        },
+        "node_outputs": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "started_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "completed_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "deleted_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        }
+      }
+    },
+    "api_automation_run_list_body": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer"
+        },
+        "page_size": {
+          "type": "integer"
+        },
+        "schedule_id": {
+          "type": "string"
+        },
+        "flow_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      }
+    },
+    "model_UserFlow": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "trigger_type": {
+          "type": "string"
+        },
+        "event_key": {
+          "type": "string"
+        },
+        "definition": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "deleted_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        }
+      }
+    },
+    "api_user_flow_create_body": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "trigger_type": {
+          "type": "string"
+        },
+        "event_key": {
+          "type": "string"
+        },
+        "context_schema": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/engine_FieldSchema"
+          }
+        }
+      }
+    },
+    "api_user_flow_import_body": {
+      "type": "object",
+      "properties": {
+        "definition": {
+          "type": "string"
+        }
+      }
+    },
+    "api_user_flow_id_body": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      }
+    },
+    "api_user_flow_update_body": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "nullable": true
+        },
+        "description": {
+          "type": "string",
+          "nullable": true
+        },
+        "context_schema": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/engine_FieldSchema"
+          }
+        },
+        "start_node_id": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_UserFlowNodeInput"
+          }
+        },
+        "triggers": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_UserFlowTriggerInput"
+          }
+        }
+      }
+    },
+    "services_UserFlowConfigKey": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "services_UserFlowNodeCatalogItem": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "config_keys": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_UserFlowConfigKey"
+          }
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "api_user_flow_graph_body": {
+      "type": "object",
+      "properties": {
+        "flow_id": {
+          "type": "string"
+        }
+      }
+    },
+    "api_user_flow_trigger_body": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "initial_data": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "api_FrontendReport": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "msg": {
+          "type": "string"
+        },
+        "time": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        },
+        "end": {
+          "type": "integer"
+        },
+        "replace": {
+          "type": "integer"
+        },
+        "ignore_prefix": {
+          "type": "integer"
+        },
+        "prefix": {
+          "type": "string",
+          "nullable": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "model_DownloadTask": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "content_id": {
+          "type": "string",
+          "nullable": true
+        },
+        "parent_task_id": {
+          "type": "integer",
+          "nullable": true
+        },
+        "root_task_id": {
+          "type": "integer"
+        },
+        "relation_type": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "platform_id": {
+          "type": "string"
+        },
+        "unique_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "integer"
+        },
+        "source_url": {
+          "type": "string"
+        },
+        "cover_url": {
+          "type": "string"
+        },
+        "cover_width": {
+          "type": "string"
+        },
+        "cover_height": {
+          "type": "string"
+        },
+        "config_json": {
+          "type": "string"
+        },
+        "metadata_json": {
+          "type": "string"
+        },
+        "error_message": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "deleted_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        }
+      }
+    },
+    "adapter_DownloadTaskResult": {
+      "type": "object",
+      "properties": {
+        "Task": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/model_DownloadTask"
+            }
+          ],
+          "nullable": true
+        },
+        "Resources": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "./components.json#/schemas/adapter_ResourceInfo"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "Account": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/model_Account"
+            }
+          ],
+          "nullable": true
+        },
+        "Content": {
+          "allOf": [
+            {
+              "$ref": "./components.json#/schemas/model_Content"
+            }
+          ],
+          "nullable": true
+        },
+        "ContentDetail": {},
+        "ContentDetails": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/adapter_ContentDetail"
+          }
+        }
+      },
+      "description": "预览/抓取返回的下载描述，Task、Resources、Account、Content、ContentDetail、ContentDetails 使用首字母大写字段名。"
+    },
+    "model_DownloadEndpoint": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "resource_id": {
+          "type": "integer"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "enabled": {
+          "type": "integer"
+        },
+        "headers": {
+          "type": "string"
+        },
+        "cookies": {
+          "type": "string"
+        },
+        "status": {
+          "type": "integer"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "deleted_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        }
+      }
+    },
+    "adapter_ContentAssetReference": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "asset_key": {
+          "type": "string"
+        },
+        "relation": {
+          "type": "string"
+        },
+        "subject_type": {
+          "type": "string"
+        },
+        "subject_key": {
+          "type": "string"
+        },
+        "subject_relation": {
+          "type": "string"
+        }
+      }
+    },
+    "adapter_ResourceInfo": {
+      "type": "object",
+      "properties": {
+        "Resource": {
+          "$ref": "./components.json#/schemas/model_DownloadResource"
+        },
+        "Endpoints": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/model_DownloadEndpoint"
+          }
+        },
+        "ContentAssets": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/adapter_ContentAssetReference"
+          }
+        }
+      },
+      "description": "字段名保持 Go 导出名：Resource、Endpoints、ContentAssets（首字母大写）。"
+    },
+    "flowengine_FlowVisualizationLayout": {
+      "type": "object",
+      "properties": {
+        "layer": {
+          "type": "integer"
+        },
+        "order": {
+          "type": "integer"
+        },
+        "x": {
+          "type": "integer"
+        },
+        "y": {
+          "type": "integer"
+        }
+      }
+    },
+    "flowengine_FlowVisualizationRule": {
+      "type": "object",
+      "properties": {
+        "condition": {
+          "type": "string"
+        },
+        "target_id": {
+          "type": "string"
+        }
+      }
+    },
+    "flowengine_FlowVisualizationNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "layout": {
+          "$ref": "./components.json#/schemas/flowengine_FlowVisualizationLayout"
+        },
+        "input_schema": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/engine_FieldSchema"
+          }
+        },
+        "output_schema": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/engine_FieldSchema"
+          }
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/flowengine_FlowVisualizationRule"
+          }
+        },
+        "next_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "flowengine_FlowVisualizationEdge": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "flowengine_FlowVisualization": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "start_node_id": {
+          "type": "string"
+        },
+        "context_schema": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/engine_FieldSchema"
+          }
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/flowengine_FlowVisualizationNode"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/flowengine_FlowVisualizationEdge"
+          }
+        }
+      }
+    },
+    "flowengine_FlowVisualizationPayload": {
+      "type": "object",
+      "properties": {
+        "platform": {
+          "type": "string"
+        },
+        "purpose": {
+          "type": "string"
+        },
+        "editable": {
+          "type": "boolean"
+        },
+        "flows": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/flowengine_FlowVisualization"
+          }
+        }
+      }
+    },
+    "engine_NodeExecutionStatus": {
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "flow_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "node_id": {
+          "type": "string"
+        },
+        "node_name": {
+          "type": "string"
+        },
+        "node_type": {
+          "type": "string"
+        },
+        "attempt": {
+          "type": "integer"
+        },
+        "status": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "engine_NodeExecutionLog": {
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "flow_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "node_id": {
+          "type": "string"
+        },
+        "node_name": {
+          "type": "string"
+        },
+        "node_type": {
+          "type": "string"
+        },
+        "attempt": {
+          "type": "integer"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "input": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "behavior": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "removed_output_keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "success": {
+          "type": "boolean"
+        },
+        "next_node_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "model_BrowseHistory": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "platform_id": {
+          "type": "string"
+        },
+        "visited_times": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "type": {
+          "type": "string"
+        },
+        "external_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "source_url": {
+          "type": "string"
+        },
+        "cover_url": {
+          "type": "string"
+        },
+        "cover_width": {
+          "type": "string"
+        },
+        "cover_height": {
+          "type": "string"
+        },
+        "publish_time": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "extra_data": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "deleted_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        }
+      }
+    },
+    "services_AccountBrief": {
+      "type": "object",
+      "properties": {
+        "external_id": {
+          "type": "string"
+        },
+        "nickname": {
+          "type": "string"
+        },
+        "avatar_url": {
+          "type": "string"
+        }
+      }
+    },
+    "services_BrowseHistoryItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "platform_id": {
+          "type": "string"
+        },
+        "visited_times": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "type": {
+          "type": "string"
+        },
+        "external_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "source_url": {
+          "type": "string"
+        },
+        "cover_url": {
+          "type": "string"
+        },
+        "cover_width": {
+          "type": "string"
+        },
+        "cover_height": {
+          "type": "string"
+        },
+        "publish_time": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "extra_data": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "updated_at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "deleted_at": {
+          "type": "integer",
+          "format": "int64",
+          "nullable": true
+        },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_AccountBrief"
+          }
+        }
+      }
+    },
+    "services_BrowseHistoryListResult": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/services_BrowseHistoryItem"
+          }
+        },
+        "total": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "page": {
+          "type": "integer"
+        },
+        "page_size": {
+          "type": "integer"
+        }
+      }
+    },
+    "adapter_HomeDetailsScope": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "adapter_HomeDetails": {
+      "type": "object",
+      "properties": {
+        "scopes": {
+          "type": "array",
+          "items": {
+            "$ref": "./components.json#/schemas/adapter_HomeDetailsScope"
+          }
+        },
+        "scope": {
+          "type": "string"
+        },
+        "contents": {},
+        "next_marker": {
+          "type": "string"
+        }
+      }
+    },
+    "adapter_HomeContentTab": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "content_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "CertificateStatus": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "is_legacy": {
+          "type": "boolean"
+        },
+        "risk_warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "installed": {
+          "type": "boolean"
+        },
+        "trusted": {
+          "type": "boolean"
+        },
+        "pem": {
+          "type": "string"
+        },
+        "install_status_error": {
+          "type": "string"
+        },
+        "parse_error": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "configured": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "file": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "all_certificates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "ProxyStatus": {
+      "type": "object",
+      "properties": {
+        "os": {
+          "type": "string"
+        },
+        "config": {
+          "type": "object",
+          "properties": {
+            "hostname": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer"
+            },
+            "addr": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "system": {
+              "type": "boolean"
+            },
+            "tun": {
+              "type": "boolean"
+            },
+            "default_interface": {
+              "type": "string"
+            },
+            "network_service": {
+              "type": "string"
+            },
+            "skip_install_root_cert": {
+              "type": "boolean"
+            },
+            "upstream_proxy": {
+              "type": "string"
+            },
+            "tcp_relay": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "hostname": {
+                  "type": "string"
+                },
+                "port": {
+                  "type": "integer"
+                }
+              }
+            },
+            "cert": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "file": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "service": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "addr": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "listening": {
+              "type": "boolean"
+            }
+          }
+        },
+        "system_proxy": {
+          "type": "object",
+          "properties": {
+            "configured": {
+              "type": "boolean"
+            },
+            "expected": {
+              "type": "object",
+              "properties": {
+                "hostname": {
+                  "type": "string"
+                },
+                "port": {
+                  "type": "string"
+                },
+                "device": {
+                  "type": "string"
+                }
+              }
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "matched": {
+              "type": "boolean"
+            },
+            "current": {
+              "type": "object",
+              "properties": {
+                "hostname": {
+                  "type": "string"
+                },
+                "port": {
+                  "type": "string"
+                },
+                "device": {
+                  "type": "string"
+                }
+              }
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        },
+        "certificate": {
+          "$ref": "./components.json#/schemas/CertificateStatus"
+        }
+      }
+    }
+  }
+}

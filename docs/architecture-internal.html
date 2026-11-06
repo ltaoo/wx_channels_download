@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>wx_channel · internal 架构总览</title>
+<style>
+  :root{
+    --bg:#f4f6f8;
+    --panel:#ffffff;
+    --panel-2:#fafbfc;
+    --line:#e2e6ea;
+    --line-strong:#cfd6dd;
+    --ink:#161a1d;
+    --ink-2:#414b54;
+    --ink-3:#6d7883;
+    --ink-4:#96a0aa;
+
+    --c-entry:#0e7490;
+    --c-entry-bg:#ecfeff;
+    --c-entry-bd:#a5e8f2;
+
+    --c-transport:#4338ca;
+    --c-transport-bg:#eef0ff;
+    --c-transport-bd:#c3c8fb;
+
+    --c-tool:#b45309;
+    --c-tool-bg:#fff8ea;
+    --c-tool-bd:#f6d9a4;
+
+    --c-adapter:#7e22ce;
+    --c-adapter-bg:#faf3ff;
+    --c-adapter-bd:#e3caf7;
+
+    --c-svc:#047857;
+    --c-svc-bg:#effaf5;
+    --c-svc-bd:#a8e3cd;
+
+    --c-infra:#475569;
+    --c-infra-bg:#f4f6f8;
+    --c-infra-bd:#d3dae1;
+
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+
+  *{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:14px;
+    line-height:1.6;
+    background-image:
+      radial-gradient(circle at 12% 0%,rgba(67,56,202,.05),transparent 42%),
+      radial-gradient(circle at 88% 4%,rgba(4,120,87,.05),transparent 40%);
+    background-repeat:no-repeat;
+  }
+  .wrap{max-width:1340px;margin:0 auto;padding:44px 28px 90px;}
+
+  /* ---------- header ---------- */
+  header.top{border-bottom:1px solid var(--line);padding-bottom:24px;margin-bottom:34px;}
+  .kicker{
+    font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--ink-4);margin:0 0 10px;
+  }
+  h1{font-size:27px;line-height:1.25;margin:0 0 10px;letter-spacing:-.015em;font-weight:650;}
+  h1 .mod{font-family:var(--mono);color:var(--c-transport);font-weight:600;font-size:24px;}
+  .sub{color:var(--ink-3);margin:0;max-width:78ch;}
+  .stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px;}
+  .chip{
+    font-family:var(--mono);font-size:11.5px;color:var(--ink-2);
+    background:var(--panel);border:1px solid var(--line);border-radius:100px;
+    padding:4px 11px;white-space:nowrap;
+  }
+  .chip b{color:var(--ink);font-weight:650;}
+
+  /* ---------- section ---------- */
+  section{margin-bottom:34px;}
+  h2{
+    font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);
+    margin:0 0 14px;font-weight:600;display:flex;align-items:center;gap:10px;
+  }
+  h2::after{content:"";flex:1;height:1px;background:var(--line);}
+
+  /* ---------- layer ---------- */
+  .layer{
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px 18px;position:relative;
+  }
+  .layer::before{
+    content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:3px;
+    background:var(--accent,var(--line-strong));
+  }
+  .layer{padding-left:22px;}
+  .layer > .label{
+    font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--accent,var(--ink-3));font-weight:600;margin-bottom:4px;
+  }
+  .layer > .note{color:var(--ink-3);font-size:12.5px;margin:0 0 14px;}
+
+  .layer.entry{--accent:var(--c-entry);}
+  .layer.transport{--accent:var(--c-transport);}
+  .layer.tool{--accent:var(--c-tool);}
+  .layer.adapter{--accent:var(--c-adapter);}
+  .layer.svc{--accent:var(--c-svc);}
+  .layer.infra{--accent:var(--c-infra);}
+
+  /* ---------- cards ---------- */
+  .grid{display:grid;gap:12px;}
+  .g2{grid-template-columns:repeat(2,1fr);}
+  .g3{grid-template-columns:repeat(3,1fr);}
+  .g4{grid-template-columns:repeat(4,1fr);}
+  .g5{grid-template-columns:repeat(5,1fr);}
+
+  .card{
+    background:var(--panel-2);border:1px solid var(--line);border-radius:9px;
+    padding:12px 13px;min-width:0;
+  }
+  .card.entry{border-color:var(--c-entry-bd);background:var(--c-entry-bg);}
+  .card.transport{border-color:var(--c-transport-bd);background:var(--c-transport-bg);}
+  .card.tool{border-color:var(--c-tool-bd);background:var(--c-tool-bg);}
+  .card.adapter{border-color:var(--c-adapter-bd);background:var(--c-adapter-bg);}
+  .card.svc{border-color:var(--c-svc-bd);background:var(--c-svc-bg);}
+
+  .card .name{
+    font-family:var(--mono);font-size:12.5px;font-weight:650;color:var(--ink);
+    display:block;margin-bottom:2px;word-break:break-word;
+  }
+  .card .name.sm{font-size:11.5px;}
+  .card .desc{font-size:12.5px;color:var(--ink-2);margin:6px 0 0;}
+  .card .path{
+    font-family:var(--mono);font-size:10.5px;color:var(--ink-4);
+    margin-top:7px;display:block;word-break:break-all;
+  }
+  .card ul{margin:7px 0 0;padding-left:15px;font-size:12px;color:var(--ink-2);}
+  .card ul li{margin:2px 0;}
+  .card ul li::marker{color:var(--ink-4);}
+
+  code{
+    font-family:var(--mono);font-size:.92em;background:rgba(22,26,29,.055);
+    border-radius:4px;padding:.5px 4px;color:var(--ink);
+  }
+
+  /* ---------- arrows ---------- */
+  .arrow{
+    display:flex;align-items:center;justify-content:center;gap:26px;
+    padding:11px 0 9px;flex-wrap:wrap;
+  }
+  .arrow span{
+    font-family:var(--mono);font-size:11px;color:var(--ink-3);
+    display:inline-flex;align-items:center;gap:7px;
+  }
+  .arrow span::before{
+    content:"";width:16px;height:1px;background:var(--line-strong);
+    box-shadow:0 -0 transparent;
+  }
+  .arrow span::after{
+    content:"▾";font-size:9px;color:var(--line-strong);margin-left:-6px;
+  }
+
+  /* ---------- table ---------- */
+  table{
+    width:100%;border-collapse:collapse;font-size:12.5px;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    overflow:hidden;
+  }
+  thead th{
+    text-align:left;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-3);font-weight:600;background:var(--panel-2);
+    border-bottom:1px solid var(--line);padding:9px 12px;white-space:nowrap;
+  }
+  tbody td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink-2);}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover td{background:#fafbfc;}
+  td.g{font-family:var(--mono);font-weight:650;color:var(--ink);white-space:nowrap;}
+  td.n{font-family:var(--mono);text-align:right;color:var(--ink);font-weight:650;width:1%;}
+  td .if{font-family:var(--mono);font-size:11.5px;color:var(--c-adapter);}
+  td .svc{font-family:var(--mono);font-size:11.5px;color:var(--c-svc);}
+  td.file{font-family:var(--mono);font-size:11px;color:var(--ink-4);white-space:nowrap;}
+
+  /* ---------- notes ---------- */
+  .notes{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+  .note-card{
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;
+  }
+  .note-card h3{
+    font-size:12px;margin:0 0 7px;font-weight:650;color:var(--ink);
+    display:flex;align-items:center;gap:8px;
+  }
+  .note-card h3 i{
+    font-style:normal;font-family:var(--mono);font-size:10px;color:#fff;background:var(--c-infra);
+    border-radius:4px;padding:1px 5px;
+  }
+  .note-card p{margin:0;font-size:12.5px;color:var(--ink-2);}
+  .note-card p + p{margin-top:7px;}
+
+  footer{
+    margin-top:46px;padding-top:18px;border-top:1px solid var(--line);
+    color:var(--ink-4);font-size:11.5px;font-family:var(--mono);
+    display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  }
+
+  @media (max-width:1080px){
+    .g5,.g4{grid-template-columns:repeat(2,1fr);}
+    .notes{grid-template-columns:1fr;}
+  }
+  @media (max-width:720px){
+    .wrap{padding:28px 16px 60px;}
+    .g2,.g3,.g4,.g5{grid-template-columns:1fr;}
+    h1{font-size:22px;}
+    table{display:block;overflow-x:auto;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <p class="kicker">internal/ · architecture map</p>
+  <h1><span class="mod">wx_channel</span> 内部架构总览 — API Server / MCP Server / Tools / Services</h1>
+  <p class="sub">
+    单一 Go 进程内，<b>三个入口</b>（Gin HTTP、MCP 多传输、Cloudflare Bridge 出站 WebSocket）
+    共享同一套 <b>transport-agnostic services</b>。所有装配集中在
+    <code>internal/application/start.go</code>，无 wire/DI 代码生成，全部手写构造函数注入。
+  </p>
+  <div class="stats">
+    <span class="chip"><b>45</b> tools / <b>9</b> 分组</span>
+    <span class="chip"><b>16</b> services 类型</span>
+    <span class="chip"><b>2</b> MCP 传输</span>
+    <span class="chip"><b>26</b> handler_*.go</span>
+    <span class="chip"><b>~20</b> 平台 adapter</span>
+    <span class="chip">Gin + GORM(SQLite/velo) + hermes</span>
+  </div>
+</header>
+
+<!-- ============ 调用方 ============ -->
+<section>
+  <h2>调用入口 · Clients</h2>
+  <div class="layer entry">
+    <div class="label">Entry points</div>
+    <p class="note">外部触发源。HTTP 与 Streamable HTTP MCP 走进程内服务；stdio MCP 只是经 HTTP 转发到 <code>server</code> 的薄壳；Bridge 走出站 WSS 无需公网可达。</p>
+    <div class="grid g4">
+      <div class="card entry">
+        <span class="name">Web UI / 浏览器</span>
+        <p class="desc">内嵌 SPA（<code>frontend/</code> 经 webassets 提供）+ REST API 调用方。</p>
+        <span class="path">/  ·  /api/**</span>
+      </div>
+      <div class="card entry">
+        <span class="name">MCP Client</span>
+        <p class="desc">Claude / 任意 MCP Host。Streamable HTTP 或 stdio。</p>
+        <span class="path">POST|GET|DELETE /mcp</span>
+      </div>
+      <div class="card entry">
+        <span class="name">CLI</span>
+        <p class="desc">Cobra 子命令：<code>server</code> / <code>mcp</code> / <code>download</code> / <code>deploy</code> / <code>update</code> / <code>version</code> / <code>uninstall</code>。</p>
+        <span class="path">cmd/root.go · cmd/mcp.go</span>
+      </div>
+      <div class="card entry">
+        <span class="name">Cloudflare DO</span>
+        <p class="desc">任务桥接 Durable Object，设备侧主动外连。</p>
+        <span class="path">wss:// · bridge.enabled</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="arrow">
+  <span>HTTP</span><span>Streamable HTTP</span><span>stdio JSON-RPC</span><span>outbound WSS</span>
+</div>
+
+<!-- ============ 传输层 ============ -->
+<section>
+  <h2>服务器与传输层 · Servers</h2>
+  <div class="layer transport">
+    <div class="label">Transport</div>
+    <p class="note">三个并列的 server 对象，互不感知，各自向下只依赖 services 与适配接口。</p>
+    <div class="grid g3">
+
+      <div class="card transport">
+        <span class="name">APIServer</span>
+        <p class="desc">
+          Gin engine 包在标准 <code>net/http</code> Server 内；负责监听、生命周期、状态事件发布。
+        </p>
+        <ul>
+          <li><code>NewAPIServer(...)</code> 18 个依赖</li>
+          <li><code>Start()</code> / <code>Stop()</code> / <code>publish_status()</code></li>
+        </ul>
+        <span class="path">internal/api/server.go:19</span>
+      </div>
+
+      <div class="card transport">
+        <span class="name">APIClient <span style="font-weight:400;color:var(--ink-3)">(路由核心)</span></span>
+        <p class="desc">
+          持有 <code>*gin.Engine</code> 与全部 service 引用；<code>SetupRoutes()</code> 是唯一的路由注册点。
+        </p>
+        <ul>
+          <li>中间件：gin.Logger(skip <code>/report</code>) + Recovery + CORS</li>
+          <li><code>RegisterGET/POST</code> 供 adapter 注册路由而不反向依赖 APIClient</li>
+          <li>静态资源：SPA、<code>/__assets/{public,src,inject,platform,user}/*</code></li>
+        </ul>
+        <span class="path">internal/api/client.go:19 · routes.go:16</span>
+      </div>
+
+      <div class="card transport">
+        <span class="name">MCP Server</span>
+        <p class="desc">
+          自研 MCP 实现（非第三方 SDK），JSON-RPC 2.0。
+        </p>
+        <ul>
+          <li><code>Server.AddTool</code> / <code>CallTool</code> / <code>tool_definitions</code></li>
+          <li>HTTP transport：<code>NewHTTPHandler</code>（Streamable HTTP）</li>
+          <li>stdio transport：<code>Serve(ctx)</code> 换行分隔 JSON-RPC</li>
+        </ul>
+        <span class="path">pkg/mcp/server.go:27 · http.go:23</span>
+      </div>
+    </div>
+
+    <div class="grid g2" style="margin-top:12px;">
+      <div class="card transport">
+        <span class="name sm">① HTTP-in-process</span>
+        <p class="desc">经 <code>/api/mcp/*</code> 暴露，<code>MCPService</code> 持有 runtime，懒加载构建。宿主进程内 adapter 直接注入，视频号工具零 HTTP 回环。</p>
+        <span class="path">handler_mcp.go:44 → MCPService.ServeHTTP</span>
+      </div>
+      <div class="card transport">
+        <span class="name sm">② stdio · remote</span>
+        <p class="desc">轻量 stdio 壳，不建 DB / downloader / adapter，全部调用经 <code>pkg/dm</code> SDK（<code>mcpserver.api_client</code> shim）转发给已运行的下载器 HTTP API。地址取自 <code>api.protocol</code>/<code>api.hostname</code>/<code>api.port</code>，无命令行开关。开始服务前经 <code>dm.Client.Status</code> 探测一次 <code>/api/status</code>，连不上只向 stderr 告警、不终止进程。</p>
+        <span class="path">cmd/mcp.go:27 → mcpserver/client.go:43</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="arrow">
+  <span>handler → service 方法直调</span>
+  <span>ToolSet.ExecuteTool</span>
+</div>
+
+<!-- ============ 工具层 ============ -->
+<section>
+  <h2>工具层 · Tools (internal/mcpserver)</h2>
+  <div class="layer tool">
+    <div class="label">Tool registry</div>
+    <p class="note">
+      每个 tool 与它的 handler 在同一个文件中声明一次；可用性由 <code>supports</code> 谓词在注册期求值，
+      后端缺失时该 tool 完全不出现在 <code>tools/list</code> 中。两种 MCP 传输与自动化流程节点共用这一个注册表。
+    </p>
+
+    <div class="grid g4">
+      <div class="card tool">
+        <span class="name">ToolSet</span>
+        <p class="desc">运行时载体，字段即后端依赖；每个 handler 是 <code>*ToolSet</code> 的方法。</p>
+        <span class="path">mcpserver/tools.go:42</span>
+      </div>
+      <div class="card tool">
+        <span class="name">NewRuntime(config)</span>
+        <p class="desc">所有传输的唯一组合点：建 <code>mcp.Server</code> → <code>toolset.Register(server)</code>。</p>
+        <span class="path">mcpserver/tools.go:94</span>
+      </div>
+      <div class="card tool">
+        <span class="name">tool_declarations</span>
+        <p class="desc">9 个 <code>tools_*.go</code> 切片按固定顺序 concat，注册顺序 = 列表顺序。</p>
+        <span class="path">registry.go:112</span>
+      </div>
+      <div class="card tool">
+        <span class="name">call / execute_tool</span>
+        <p class="desc">dispatch gate：查注册表 → 校验 supports → 调用 handler → 归一化返回。</p>
+        <span class="path">registry.go:218</span>
+      </div>
+    </div>
+
+    <div class="grid g4" style="margin-top:12px;">
+      <div class="card tool">
+        <span class="name sm">Definition / form_schema</span>
+        <p class="desc">JSON Schema → UI 表单元数据，供前端与工具目录展示。</p>
+        <span class="path">definition.go:15, 46</span>
+      </div>
+      <div class="card tool">
+        <span class="name sm">tools_wxchannels.go</span>
+        <p class="desc">capability 叠加参数归一化与校验（<code>wxchannels_capability</code>，包内私有，12 个调用点共用）；<code>wxchannels_backend()</code> 解析后端，优先注入的进程内实现。runtime / backend 接缝与 HTTP 回退实现同文件。单方法的 wxmp 已无此层，校验与 <code>WXMPRuntime</code> 接缝都内联在 <code>tools_wxmp.go</code>。</p>
+        <span class="path">tools_wxchannels.go:18 · tools_wxchannels.go:30</span>
+      </div>
+      <div class="card tool">
+        <span class="name sm">api_client · pkg/dm</span>
+        <p class="desc">下载器 REST API 的公开 SDK（<code>pkg/dm</code>，纯 stdlib，每个端点一个具名方法）被 stdio MCP 与 CLI 共用；<code>mcpserver.api_client</code> 只是薄 shim，负责把 <code>*dm.APIError</code> / <code>*dm.TaskFailedError</code> 映射成 MCP tool error。<code>download_task</code> 类工具始终走它。</p>
+        <span class="path">pkg/dm/client.go · mcpserver/client.go</span>
+      </div>
+      <div class="card tool">
+        <span class="name sm">server_instructions</span>
+        <p class="desc">注入 MCP initialize 的中文工具使用约定与路由规则。</p>
+        <span class="path">tools.go:154</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="arrow"><span>声明式依赖：DataReader / DownloadTaskCreator / ScraperJobBackend / WXChannelsBackend …</span></div>
+
+<!-- ============ 适配层 ============ -->
+<section>
+  <h2>后端适配层 · Backends</h2>
+  <div class="layer adapter">
+    <div class="label">Service → mcpserver interface</div>
+    <p class="note">
+      services 包不知道 mcpserver 的存在。适配器把 service 方法收敛成 mcpserver 需要的小接口，
+      同时承担 model → tool 返回结构的映射。
+    </p>
+    <div class="grid g4">
+      <div class="card adapter"><span class="name sm">mcp_data_reader</span><span class="path">application/mcp_backends.go:276</span></div>
+      <div class="card adapter"><span class="name sm">mcp_download_task_creator</span><span class="path">:355</span></div>
+      <div class="card adapter"><span class="name sm">mcp_download_task_deleter</span><span class="path">:351</span></div>
+      <div class="card adapter"><span class="name sm">mcp_scraper_job_backend</span><span class="path">:434</span></div>
+      <div class="card adapter"><span class="name sm">mcp_automation_backend</span><span class="path">:487</span></div>
+      <div class="card adapter"><span class="name sm">mcp_wxmp_runtime</span><span class="path">:64</span></div>
+      <div class="card adapter">
+        <span class="name sm">mcp_wxchannels_backend</span>
+        <p class="desc">直调进程内 wxchannels adapter，不再 HTTP 回环；每次调用重新 <code>adapter.Get("wxchannels")</code>（adapter 注册晚于 MCP runtime 构建，且 <code>Stop()</code> 会换掉 client），并前置 <code>ctx.Err()</code> 短路。</p>
+        <span class="path">:123 · 窄接口 mcp_wxchannels_adapter:100</span>
+      </div>
+      <div class="card adapter"><span class="name sm">mcp_sph_deployer</span><span class="path">:23</span></div>
+      <div class="card adapter">
+        <span class="name sm">bridge_wxchannels_adapter · bridge_wxmp_adapter</span>
+        <p class="desc">Bridge 自有的窄接口，直接对进程内 adapter 断言后调用。Bridge 不复用 <code>mcpserver</code> 的 capability，因此完全不 import MCP 包。</p>
+        <span class="path">services/bridge.go:356, 365</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="arrow"><span>构造函数注入</span></div>
+
+<!-- ============ 服务层 ============ -->
+<section>
+  <h2>服务层 · Services (internal/services)</h2>
+  <div class="layer svc">
+    <div class="label">Transport-agnostic business layer</div>
+    <p class="note">
+      单一扁平包，无子包。除 <code>MCPService</code> / <code>BridgeService</code> 外均不感知传输协议。
+      <code>DataQueryService</code> 是面向 MCP 的只读组合门面。
+    </p>
+
+    <div class="grid g4">
+      <div class="card svc">
+        <span class="name sm">DownloadTaskService</span>
+        <p class="desc">下载编排核心：Prepare / Create / Start / Pause / Resume / Retry / Cancel / Delete / Clear。</p>
+        <span class="path">download_task.go:32 · 依赖 hermes + DBTaskStore + event_bus</span>
+      </div>
+      <div class="card svc">
+        <span class="name sm">DataQueryService</span>
+        <p class="desc">只读组合门面，MCP tools 的统一读出口。</p>
+        <span class="path">data_query.go:94 · ListDownloadTasks / ListAccounts / ListLogs / GetCertificateStatus</span>
+      </div>
+      <div class="card svc">
+        <span class="name sm">ScraperJobService</span>
+        <p class="desc">进程内抓取任务状态机与执行、平台/URL 解析。</p>
+        <span class="path">scraper_job.go:117 · scraper_platform.go</span>
+      </div>
+      <div class="card svc">
+        <span class="name sm">AutomationService</span>
+        <p class="desc">定时调度 + user flow，cron ticker，复用 flowengine。</p>
+        <span class="path">automation.go:43 · user_flow.go</span>
+      </div>
+
+      <div class="card svc">
+        <span class="name sm">AccountService</span>
+        <span class="path">account.go:15</span>
+      </div>
+      <div class="card svc">
+        <span class="name sm">ContentService</span>
+        <span class="path">content.go:15</span>
+      </div>
+      <div class="card svc">
+        <span class="name sm">TagService</span>
+        <span class="path">tag.go:16</span>
+      </div>
+      <div class="card svc">
+        <span class="name sm">BrowseService</span>
+        <span class="path">browse_history.go:17</span>
+      </div>
+
+      <div class="card svc">
+        <span class="name sm">CertificateService</span>
+        <span class="path">certificate.go:39 · cookies.go</span>
+      </div>
+      <div class="card svc">
+        <span class="name sm">FSService</span>
+        <span class="path">fs.go:14 · 只读文件发现</span>
+      </div>
+      <div class="card svc">
+        <span class="name sm">RuntimeStatusService</span>
+        <span class="path">runtime_status.go:11 · 进程内状态存储</span>
+      </div>
+      <div class="card svc">
+        <span class="name sm">AppService / Restart / Update</span>
+        <span class="path">app.go:23, 32, 231 · 自更新与重启调度</span>
+      </div>
+
+      <div class="card svc" style="grid-column:span 2;">
+        <span class="name sm">MCPService</span>
+        <p class="desc">
+          持有 MCP 协议 handler + 启用状态；<code>Enable / Disable / Status / ExecuteTool / ServeHTTP</code>。
+          <code>NewLazyMCPService</code> 用于 <code>mcp.enabled=false</code> 时首次调用再构建。
+        </p>
+        <span class="path">mcp.go:42 · transport = streamable_http</span>
+      </div>
+      <div class="card svc" style="grid-column:span 2;">
+        <span class="name sm">BridgeService</span>
+        <p class="desc">
+          出站 WSS 客户端 + 方法路由（<code>wxchannels.*</code> / <code>wxmp.biz.msg.list</code> / <code>download.create</code>），
+          直接断言进程内 adapter 并调用 —— 与 MCP 并行的第二条能力通道，互不依赖。
+        </p>
+        <span class="path">bridge.go:412 · bridge/client.go:28</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="arrow"><span>依赖</span></div>
+
+<!-- ============ 基础设施 ============ -->
+<section>
+  <h2>基础设施 · Infrastructure</h2>
+  <div class="layer infra">
+    <div class="label">Shared runtime &amp; pkg</div>
+    <div class="grid g4">
+      <div class="card">
+        <span class="name sm">hermes 下载引擎</span>
+        <p class="desc">协议驱动 + 后处理器 <code>adapter.NewPlatformPostprocessor</code>，落地由 <code>DBTaskStore</code> 持久化。</p>
+        <span class="path">pkg/hermes · database/store.go:20</span>
+      </div>
+      <div class="card">
+        <span class="name sm">adapter 平台插件</span>
+        <p class="desc">注册表 + <code>RegisterRuntime(AdapterOptions)</code>；约 20 个平台（wxchannels / wxmp / douyin / bilibili / youtube / zhihu …）。</p>
+        <span class="path">internal/adapter · builtin_adapters.go</span>
+      </div>
+      <div class="card">
+        <span class="name sm">events.Bus</span>
+        <p class="desc">同步发布订阅。事件驱动 RuntimeStatus / broadcaster / automation，以及 <code>ServiceCommand</code> 控制面。</p>
+        <span class="path">internal/events/events.go:26</span>
+      </div>
+      <div class="card">
+        <span class="name sm">database</span>
+        <p class="desc">velo + GORM/SQLite，内嵌迁移；<code>model/*</code> 约 20 个模型族。</p>
+        <span class="path">database/embed.go · sqlite.go:39</span>
+      </div>
+      <div class="card">
+        <span class="name sm">config</span>
+        <p class="desc">Viper 封装 + <code>schema.go</code> 字段注册表（<code>get_config</code> / <code>update_config</code> 的数据源）。</p>
+        <span class="path">config/config.go:22 · api/config.go:10</span>
+      </div>
+      <div class="card">
+        <span class="name sm">flowengine</span>
+        <p class="desc">工作流引擎；<code>RegisterServiceNode</code> 让 workflow 节点直接调用 MCP tools。</p>
+        <span class="path">pkg/flowengine</span>
+      </div>
+      <div class="card">
+        <span class="name sm">interceptor 代理</span>
+        <p class="desc">MITM 代理服务器，供证书安装与流量拦截。</p>
+        <span class="path">internal/interceptor/proxy</span>
+      </div>
+      <div class="card">
+        <span class="name sm">webassets · workers</span>
+        <p class="desc">前端资源注册表；Cloudflare Worker 部署器（<code>workers/mp</code>、<code>workers/sph</code>）。</p>
+        <span class="path">internal/webassets · internal/workers</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 工具目录 ============ -->
+<section style="margin-top:44px;">
+  <h2>工具目录 · 45 tools / 9 分组</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>分组</th><th>文件</th><th style="text-align:right">数量</th>
+        <th>可用性谓词</th><th>后端接口 → 落地服务</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="g">app</td><td class="file">tools_app.go</td><td class="n">3</td>
+        <td><code>supports_api_client</code></td>
+        <td><span class="if">api_client</span> → REST API（配置读写 / 重启状态）</td>
+      </tr>
+      <tr>
+        <td class="g">scraper</td><td class="file">tools_scraper.go</td><td class="n">4</td>
+        <td><code>supports_scraper</code>（<code>get_platform_status</code> 走 <code>supports_api_client</code>）</td>
+        <td><span class="if">ScraperJobBackend</span> → <span class="svc">ScraperJobService</span></td>
+      </tr>
+      <tr>
+        <td class="g">download_task</td><td class="file">tools_download_task.go</td><td class="n">5</td>
+        <td><code>supports_task_create</code> · <code>_delete</code> · <code>_data</code> · <code>_download_content</code></td>
+        <td><span class="if">DownloadTaskCreator / Deleter</span> → <span class="svc">DownloadTaskService</span><br>
+            <span class="if">DataReader</span> → <span class="svc">DataQueryService</span></td>
+      </tr>
+      <tr>
+        <td class="g">wxchannels</td><td class="file">tools_wxchannels.go</td><td class="n">14</td>
+        <td><code>supports_wxchannels</code>（下载类：<code>supports_wxchannels_download</code>）</td>
+        <td><span class="if">WXChannelsBackend</span> → <span class="svc">mcp_wxchannels_backend</span>（HTTP host，进程内 adapter）<br>
+            或 <span class="svc">api_wxchannels_backend</span>（无 adapter 进程：stdio）<br>
+            Bridge 走它自己的 <span class="svc">bridge_wxchannels_adapter</span>，不经本层</td>
+      </tr>
+      <tr>
+        <td class="g">wxmp</td><td class="file">tools_wxmp.go</td><td class="n">1</td>
+        <td><code>supports_wxmp</code></td>
+        <td><span class="if">WXMPRuntime</span> → wxmp adapter</td>
+      </tr>
+      <tr>
+        <td class="g">sph</td><td class="file">tools_sph.go</td><td class="n">1</td>
+        <td><code>supports_sph</code></td>
+        <td><span class="if">SphDeployer</span> → <code>workers/sph.Deploy</code>（Cloudflare）</td>
+      </tr>
+      <tr>
+        <td class="g">zhihu</td><td class="file">tools_zhihu.go</td><td class="n">7</td>
+        <td><code>supports_zhihu</code></td>
+        <td><span class="if">ZhihuCollectionReader / ZhihuCredentialReader</span><br>
+            → <span class="svc">pkg/scraper/zhihu</span></td>
+      </tr>
+      <tr>
+        <td class="g">automation</td><td class="file">tools_automation.go</td><td class="n">6</td>
+        <td><code>supports_automation</code></td>
+        <td><span class="if">AutomationBackend</span> → <span class="svc">AutomationService</span></td>
+      </tr>
+      <tr>
+        <td class="g">data</td><td class="file">tools_data.go</td><td class="n">4</td>
+        <td><code>supports_data</code></td>
+        <td><span class="if">DataReader</span> → <span class="svc">DataQueryService</span></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 关键约束 ============ -->
+<section style="margin-top:44px;">
+  <h2>关键约束 · Invariants</h2>
+  <div class="notes">
+    <div class="note-card">
+      <h3><i>01</i> 注册即声明</h3>
+      <p>tool 定义与 handler 同文件、同一次声明（<code>tool_declarations</code>）。不存在「已定义未接线」的 tool。</p>
+      <p>可用性由 <code>supports</code> 谓词在注册期求值，后端缺失 → tool 从 <code>tools/list</code> 中消失，而非运行时抛错。</p>
+    </div>
+    <div class="note-card">
+      <h3><i>02</i> 服务层几乎不感知 MCP</h3>
+      <p>业务服务不 import <code>internal/mcpserver</code>；方向是
+        <code>mcpserver → application/mcp_backends → services</code>。仅两处例外：
+        <code>mcp.go</code>（<code>MCPService</code> 本身就是 MCP 传输）与
+        <code>user_flow.go</code>（自动化编辑器要枚举工具定义）。</p>
+      <p>Bridge 不在例外之列 —— 它直连自有的 <code>bridge_wxchannels_adapter</code> /
+        <code>bridge_wxmp_adapter</code>，不再借 <code>mcpserver</code> 的 capability 做参数校验。</p>
+    </div>
+    <div class="note-card">
+      <h3><i>03</i> 一套注册表，两种传输</h3>
+      <p>Streamable HTTP、stdio remote、以及自动化流程节点共用
+        <code>ToolSet</code> 与 <code>ExecuteTool</code>，行为一致。</p>
+      <p>差异只在后端注入：HTTP host 注入进程内 adapter 后端（<code>mcp_wxchannels_backend</code>），
+        stdio 没有进程内 adapter，回退到经 <code>api_client</code> 转发的
+        <code>api_wxchannels_backend</code>。stdio 不自带 DB / downloader / adapter，
+        全部调用都打到已运行的 <code>server</code> 上。</p>
+    </div>
+    <div class="note-card">
+      <h3><i>04</i> 手工装配</h3>
+      <p>无 wire/DI 生成。<code>application/start.go:Start()</code> 是唯一组合根：DB → services → MCP → APIServer → events 订阅 → adapters → 启动。</p>
+    </div>
+    <div class="note-card">
+      <h3><i>05</i> 双向能力通道</h3>
+      <p>同一份 <code>WXChannelsBackend</code>（内嵌 <code>WXChannelsRuntime</code>）/ <code>WXMPRuntime</code> 抽象有两个实现：MCP 的 HTTP host 走进程内 <code>mcp_wxchannels_backend</code>，无 adapter 的 stdio 走 <code>api_wxchannels_backend</code>（HTTP 转发）。Bridge 不参与这层抽象，它断言进程内 adapter 后直接调用。视频号工具已不再经本进程自己的 REST API 自回环 —— <code>127.0.0.1:2022/api/channels/*</code> 由 <code>WebsocketRoutes</code> 单例服务，而 <code>ChannelsAdapter</code> 包的正是同一对象，那一跳 HTTP 只带来开销与对 <code>api.hostname</code>/<code>api.port</code> 的硬绑定。</p>
+      <p>Bridge 为出站 WSS，设备无需公网可达；由 <code>bridge.enabled</code> 控制启停。</p>
+    </div>
+    <div class="note-card">
+      <h3><i>06</i> 事件驱动的状态面</h3>
+      <p><code>events.Bus</code> 同步分发：proxy / service / platform 状态 → <code>RuntimeStatusService</code>；task 增删 → broadcaster；automation → WebSocket 推送。</p>
+      <p><code>flowengine.RegisterServiceNode(...ExecuteTool)</code> 让自动化工作流节点可直接调 MCP 工具。</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <span>source: internal/{api,mcpserver,services,application,adapter,bridge,events,database,config,interceptor} · pkg/{mcp,dm,hermes,flowengine}</span>
+  <span>generated for branch feat/tag</span>
+</footer>
+
+</div>
+</body>
+</html>

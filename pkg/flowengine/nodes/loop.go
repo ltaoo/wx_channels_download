@@ -22,6 +22,9 @@ func (n *LoopNode) ID() string   { return n.Id }
 func (n *LoopNode) Type() string { return "LoopNode" }
 
 func (n *LoopNode) Execute(ctx *engine.ProcessContext) (bool, []string, error) {
+	if _, configured := n.Config["items"]; configured {
+		return n.execute_iteration(ctx)
+	}
 	iterableKey, _ := n.Config["iterable_key"].(string)
 	if iterableKey == "" {
 		return false, nil, errors.New("missing iterable_key")
@@ -36,9 +39,9 @@ func (n *LoopNode) Execute(ctx *engine.ProcessContext) (bool, []string, error) {
 		return false, nil, err
 	}
 
-	workflow, ok := n.Config["workflow"].(engine.FlowDefinition)
-	if !ok {
-		return false, nil, errors.New("missing workflow")
+	workflow, err := configured_workflow(n.Config, ctx)
+	if err != nil {
+		return false, nil, err
 	}
 
 	itemKey, _ := n.Config["item_key"].(string)
@@ -55,6 +58,9 @@ func (n *LoopNode) Execute(ctx *engine.ProcessContext) (bool, []string, error) {
 	workflowNode := NewWorkflowNode(map[string]interface{}{"workflow": workflow})
 
 	for index, item := range items {
+		if err := ctx.ExecutionContext().Err(); err != nil {
+			return false, nil, err
+		}
 		snapshot := map[string]struct {
 			exists bool
 			value  interface{}
@@ -225,6 +231,9 @@ func toInterfaceSlice(values interface{}) ([]interface{}, error) {
 }
 
 func toStringSlice(value interface{}) []string {
+	if strings_value, ok := value.([]string); ok {
+		return strings_value
+	}
 	raw, ok := value.([]interface{})
 	if !ok {
 		return nil
@@ -237,4 +246,3 @@ func toStringSlice(value interface{}) []string {
 	}
 	return out
 }
-

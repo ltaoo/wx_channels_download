@@ -1,0 +1,50 @@
+#!/usr/bin/with-contenv bash
+set -uo pipefail
+
+# The downloader's stdout/stderr is redirected into wx_video_download.out.log by
+# wx-start-downloader / wx-run-downloader. Those launchers append with O_APPEND,
+# so the file can grow without bound and can never be capped by the process
+# itself (it holds the fd). This supervised s6 service trims the file in place
+# when it grows past the cap, keeping the most recent bytes.
+#
+# Trimming rewrites the same inode (cat > file), so the launcher's append fd
+# keeps working and `tail -F` just reports a truncation. A copytruncate-style
+# trim is deliberately used instead of logrotate: logrotate refuses to touch
+# files whose parent directory is group/world writable and has to be told the
+# owner, which silently skips the file on the /config volume.
+
+LOG_DIR="${WX_LOG_DIR:-/config/logs}"
+MAX_BYTES="${WX_OUT_LOG_MAX_BYTES:-52428800}"    # 50 MiB, trim when above
+KEEP_BYTES="${WX_OUT_LOG_KEEP_BYTES:-5242880}"   # keep the last 5 MiB
+INTERVAL="${WX_OUT_LOG_CHECK_INTERVAL:-15}"
+
+LOG_FILES=(
+    "${LOG_DIR}/wx_video_download.out.log"
+    "${LOG_DIR}/wx_video_download_terminal.log"
+)
+
+trim_log_file() {
+    local file="$1"
+    [ -f "$file" ] || return 0
+
+    local size
+    size="$(stat -c%s "$file" 2>/dev/null || echo 0)"
+    [ "$size" -gt "$MAX_BYTES" ] || return 0
+
+    local tmp="${file}.trim"
+    if tail -c "$KEEP_BYTES" "$file" >"$tmp" 2>/dev/null; then
+        cat "$tmp" >"$file" 2>/dev/null || true
+    fi
+    rm -f "$tmp"
+
+    echo "[wx-log-rotate] trimmed $(basename "$file"): ${size} -> $(stat -c%s "$file" 2>/dev/null || echo 0) bytes"
+}
+
+mkdir -p "$LOG_DIR"
+
+while true; do
+    sleep "$INTERVAL"
+    for file in "${LOG_FILES[@]}"; do
+        trim_log_file "$file"
+    done
+done

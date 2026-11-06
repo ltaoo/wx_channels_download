@@ -300,8 +300,9 @@ type ContentArticle struct {
 func (ContentArticle) TableName() string { return "content_article" }
 
 const (
-	ContentArticleTypeHTML = "html"
-	ContentArticleTypeText = "text"
+	ContentArticleTypeHTML     = "html"
+	ContentArticleTypeText     = "text"
+	ContentArticleTypeMarkdown = "markdown"
 )
 
 type ContentAccount struct {

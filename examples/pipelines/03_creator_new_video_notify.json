@@ -1,0 +1,501 @@
+{
+  "id": "03_creator_new_video_notify",
+  "name": "监控创作者新视频并发送企业微信通知",
+  "start_node": "start",
+  "context_schema": [],
+  "nodes": {
+    "start": {
+      "type": "StartNode",
+      "name": "开始",
+      "config": {},
+      "next_node_ids": [
+        "config"
+      ],
+      "id": "start",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    "config": {
+      "type": "SetVariableNode",
+      "name": "配置创作者和当前定时规则 ID",
+      "config": {
+        "variables": {
+          "creator_username": "REPLACE_CREATOR_USERNAME@finder",
+          "max_pages": 1000,
+          "max_videos": 100000,
+          "monitor_schedule_id": "REPLACE_MONITOR_SCHEDULE_ID"
+        }
+      },
+      "next_node_ids": [
+        "validate"
+      ],
+      "id": "config",
+      "position": {
+        "x": 340,
+        "y": 0
+      }
+    },
+    "validate": {
+      "type": "JSCodeNode",
+      "name": "校验监控参数",
+      "config": {
+        "code": "(function () {\nvar username = String(global.creator_username || '').trim().replace(/^wxchannels:/, '');\nif (!username || username.indexOf('REPLACE_') >= 0) throw new Error('请先配置创作者 username');\nif (!/@finder$/.test(username)) username += '@finder';\nif (!(global.max_pages > 0) || !(global.max_videos > 0)) throw new Error('max_pages 和 max_videos 必须大于 0');\nif (!global.monitor_schedule_id || String(global.monitor_schedule_id).indexOf('REPLACE_') >= 0) throw new Error('请先配置本 Pipeline 的定时规则 ID');\nreturn {username: username};\n})()",
+        "output_key": "creator"
+      },
+      "next_node_ids": [
+        "load_schedule"
+      ],
+      "id": "validate",
+      "position": {
+        "x": 680,
+        "y": 0
+      }
+    },
+    "load_schedule": {
+      "type": "APICallNode",
+      "name": "读取持久化监控基线",
+      "config": {
+        "url": "http://127.0.0.1:2022/api/v1/automation/get_schedule",
+        "method": "POST",
+        "keys": {
+          "id": "global.monitor_schedule_id"
+        },
+        "output_key": "schedule_response"
+      },
+      "next_node_ids": [
+        "load_baseline"
+      ],
+      "id": "load_schedule",
+      "position": {
+        "x": 1020,
+        "y": 0
+      }
+    },
+    "load_baseline": {
+      "type": "JSCodeNode",
+      "name": "保留触发器参数并读取已知视频",
+      "config": {
+        "code": "(function () {\nvar response = output.load_schedule.schedule_response;\nif (output.load_schedule.schedule_response_status !== 200 || !response || response.code !== 0 || !response.data) throw new Error('读取定时规则失败');\nvar schedule = response.data;\nif (schedule.id !== global.monitor_schedule_id) throw new Error('定时规则 ID 不匹配');\nvar initial_data = schedule.initial_data || {};\nif (typeof initial_data === 'string') initial_data = JSON.parse(initial_data || '{}');\nvar previous = initial_data.creator_video_monitor;\nif (previous && previous.username === output.validate.creator.username && (!Array.isArray(previous.known_ids) || previous.initialized !== true)) throw new Error('监控基线损坏，请检查定时规则 initial_data');\nif (!previous || previous.username !== output.validate.creator.username) previous = {username:output.validate.creator.username,initialized:false,known_ids:[]};\nreturn {initial_data:initial_data,previous:previous};\n})()",
+        "output_key": "baseline"
+      },
+      "next_node_ids": [
+        "init_scan"
+      ],
+      "id": "load_baseline",
+      "position": {
+        "x": 0,
+        "y": 180
+      }
+    },
+    "init_scan": {
+      "type": "SetVariableNode",
+      "name": "初始化分页与去重状态",
+      "config": {
+        "variables": {
+          "scan_state": {
+            "cursor": "",
+            "page": 0,
+            "items": [],
+            "index": 0,
+            "next_cursor": "",
+            "has_more": false,
+            "visited_cursors": [],
+            "seen_ids": {},
+            "videos": [],
+            "submitted": 0,
+            "skipped": 0
+          }
+        }
+      },
+      "next_node_ids": [
+        "fetch_page"
+      ],
+      "id": "init_scan",
+      "position": {
+        "x": 340,
+        "y": 180
+      }
+    },
+    "fetch_page": {
+      "type": "ServiceNode",
+      "name": "获取创作者一页视频",
+      "config": {
+        "tool_name": "get_wxchannels_account_videos",
+        "arguments": {
+          "username": "{{output.validate.creator.username}}",
+          "next_marker": "{{global.scan_state.cursor}}"
+        },
+        "output_key": "page_result",
+        "timeout_seconds": 120
+      },
+      "next_node_ids": [
+        "parse_page"
+      ],
+      "id": "fetch_page",
+      "position": {
+        "x": 680,
+        "y": 180
+      }
+    },
+    "parse_page": {
+      "type": "JSCodeNode",
+      "name": "校验分页并筛选视频",
+      "config": {
+        "code": "(function () {\nvar response = output.fetch_page.page_result;\nif (!response || (response.errCode !== undefined && Number(response.errCode) !== 0) || (response.code !== undefined && Number(response.code) !== 0)) throw new Error('获取视频列表失败');\nvar data = response.data;\nif (!data || !Array.isArray(data.object)) throw new Error('视频列表响应缺少 data.object');\nif (data.BaseResponse && Number(data.BaseResponse.ret || 0) !== 0) throw new Error('视频列表 BaseResponse 返回错误');\nif (data.continueFlag === undefined) throw new Error('视频列表缺少 continueFlag，无法确认是否已获取全部视频');\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nstate.page += 1;\nif (state.page > global.max_pages) throw new Error('超过 max_pages，本次同步未完成，请调大限制');\nstate.items = []; state.index = 0;\nfunction id_string(value) {\n  if (typeof value === 'number' && (!isFinite(value) || Math.floor(value) !== value || Math.abs(value) > 9007199254740991)) throw new Error('平台返回不安全的数字 ID，需要字符串 ID');\n  return value === undefined || value === null ? '' : String(value);\n}\nfor (var i = 0; i < data.object.length; i++) {\n  var item = data.object[i], desc = item.objectDesc || {}, media = desc.media || [];\n  if (Number(desc.mediaType) !== 4 && !media.some(function (m) { return Number(m.mediaType) === 4; })) continue;\n  var oid = id_string(item.id), nid = id_string(item.objectNonceId);\n  if (!oid || !nid) throw new Error('视频缺少 id 或 objectNonceId');\n  if (state.seen_ids[oid]) continue;\n  state.seen_ids[oid] = true;\n  if (Object.keys(state.seen_ids).length > global.max_videos) throw new Error('超过 max_videos，本次扫描未完成');\n  state.items.push({oid:oid,nid:nid,title:String(desc.description || ''),published_at:item.createtime || item.createTime || 0});\n}\nstate.has_more = Number(data.continueFlag) !== 0;\nstate.next_cursor = data.lastBuffer || '';\nif (state.has_more) {\n  if (typeof state.next_cursor !== 'string' || !state.next_cursor || state.next_cursor === state.cursor || state.visited_cursors.indexOf(state.next_cursor) >= 0) throw new Error('分页游标缺失或重复，停止以避免漏数据或无限循环');\n  if (state.page >= global.max_pages) throw new Error('达到 max_pages 但仍有下一页，本次扫描未完成');\n}\nreturn state;\n})()",
+        "output_key": "page_state"
+      },
+      "next_node_ids": [
+        "store_page"
+      ],
+      "id": "parse_page",
+      "position": {
+        "x": 1020,
+        "y": 180
+      }
+    },
+    "store_page": {
+      "type": "SetVariableNode",
+      "name": "保存当前页状态",
+      "config": {
+        "variables": {
+          "scan_state": "{{output.parse_page.page_state}}"
+        }
+      },
+      "next_node_ids": [
+        "collect_page"
+      ],
+      "id": "store_page",
+      "position": {
+        "x": 0,
+        "y": 360
+      }
+    },
+    "collect_page": {
+      "type": "JSCodeNode",
+      "name": "收集本页视频",
+      "config": {
+        "code": "(function () {\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nstate.videos = state.videos.concat(state.items);\nreturn state;\n})()",
+        "output_key": "collected_state"
+      },
+      "next_node_ids": [
+        "store_collected"
+      ],
+      "id": "collect_page",
+      "position": {
+        "x": 340,
+        "y": 360
+      }
+    },
+    "store_collected": {
+      "type": "SetVariableNode",
+      "name": "保存扫描结果",
+      "config": {
+        "variables": {
+          "scan_state": "{{output.collect_page.collected_state}}"
+        }
+      },
+      "next_node_ids": [
+        "page_gate"
+      ],
+      "id": "store_collected",
+      "position": {
+        "x": 680,
+        "y": 360
+      }
+    },
+    "page_gate": {
+      "type": "GatewayNode",
+      "name": "是否需要继续翻页",
+      "config": {
+        "gateway_type": "Exclusive",
+        "condition_language": "js",
+        "rules": [
+          {
+            "condition": "global.scan_state.has_more",
+            "target_id": "advance_page"
+          },
+          {
+            "condition": "true",
+            "target_id": "plan_notifications"
+          }
+        ]
+      },
+      "next_node_ids": [
+        "advance_page",
+        "plan_notifications"
+      ],
+      "id": "page_gate",
+      "position": {
+        "x": 1020,
+        "y": 360
+      }
+    },
+    "advance_page": {
+      "type": "JSCodeNode",
+      "name": "移到下一页",
+      "config": {
+        "code": "(function () {\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nstate.visited_cursors.push(state.next_cursor); state.cursor = state.next_cursor;\nreturn state;\n})()",
+        "output_key": "next_page_state"
+      },
+      "next_node_ids": [
+        "store_cursor"
+      ],
+      "id": "advance_page",
+      "position": {
+        "x": 0,
+        "y": 540
+      }
+    },
+    "store_cursor": {
+      "type": "SetVariableNode",
+      "name": "保存分页游标",
+      "config": {
+        "variables": {
+          "scan_state": "{{output.advance_page.next_page_state}}"
+        }
+      },
+      "next_node_ids": [
+        "fetch_page"
+      ],
+      "id": "store_cursor",
+      "position": {
+        "x": 340,
+        "y": 540
+      }
+    },
+    "plan_notifications": {
+      "type": "JSCodeNode",
+      "name": "首次建立基线，后续仅通知新增视频",
+      "config": {
+        "code": "(function () {\nvar baseline = output.load_baseline.baseline, previous = baseline.previous;\nvar known = {}; previous.known_ids.forEach(function (id) { known[String(id)] = true; });\nvar pending = global.scan_state.videos.filter(function (video) { return !known[video.oid]; });\nif (!previous.initialized) {\n  global.scan_state.videos.forEach(function (video) { known[video.oid] = true; }); pending = [];\n}\nreturn {initial_data:baseline.initial_data,known_ids:Object.keys(known),pending:pending,index:0,checkpoint_saved:false,baseline_created:!previous.initialized};\n})()",
+        "output_key": "notification_plan"
+      },
+      "next_node_ids": [
+        "store_plan"
+      ],
+      "id": "plan_notifications",
+      "position": {
+        "x": 680,
+        "y": 540
+      }
+    },
+    "store_plan": {
+      "type": "SetVariableNode",
+      "name": "保存待通知列表",
+      "config": {
+        "variables": {
+          "notification_state": "{{output.plan_notifications.notification_plan}}"
+        }
+      },
+      "next_node_ids": [
+        "notification_gate"
+      ],
+      "id": "store_plan",
+      "position": {
+        "x": 1020,
+        "y": 540
+      }
+    },
+    "notification_gate": {
+      "type": "GatewayNode",
+      "name": "逐条通知并持久化确认",
+      "config": {
+        "gateway_type": "Exclusive",
+        "condition_language": "js",
+        "rules": [
+          {
+            "condition": "global.notification_state.index < global.notification_state.pending.length",
+            "target_id": "build_message"
+          },
+          {
+            "condition": "!global.notification_state.checkpoint_saved",
+            "target_id": "prepare_checkpoint"
+          },
+          {
+            "condition": "true",
+            "target_id": "summary"
+          }
+        ]
+      },
+      "next_node_ids": [
+        "build_message",
+        "prepare_checkpoint",
+        "summary"
+      ],
+      "id": "notification_gate",
+      "position": {
+        "x": 0,
+        "y": 720
+      }
+    },
+    "build_message": {
+      "type": "JSCodeNode",
+      "name": "构建企业微信文本通知",
+      "config": {
+        "code": "(function () {\nvar video = global.notification_state.pending[global.notification_state.index];\nreturn {msgtype:'text',text:{content:'创作者发布了新视频\\n账号：' + output.validate.creator.username + '\\n标题：' + video.title.slice(0, 1500) + '\\n视频 ID：' + video.oid + '\\n发布时间：' + String(video.published_at)}};\n})()",
+        "output_key": "message"
+      },
+      "next_node_ids": [
+        "notify"
+      ],
+      "id": "build_message",
+      "position": {
+        "x": 340,
+        "y": 720
+      }
+    },
+    "notify": {
+      "type": "APICallNode",
+      "name": "发送企业微信机器人通知（请替换 URL 中的 key）",
+      "config": {
+        "url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=REPLACE_WEBHOOK_KEY",
+        "method": "POST",
+        "keys": {
+          "msgtype": "output.build_message.message.msgtype",
+          "text": "output.build_message.message.text"
+        },
+        "output_key": "webhook_response"
+      },
+      "next_node_ids": [
+        "ack_notification"
+      ],
+      "id": "notify",
+      "position": {
+        "x": 680,
+        "y": 720
+      }
+    },
+    "ack_notification": {
+      "type": "JSCodeNode",
+      "name": "仅成功发送后确认当前视频",
+      "config": {
+        "code": "(function () {\nvar response = output.notify.webhook_response;\nif (output.notify.webhook_response_status !== 200 || !response || Number(response.errcode) !== 0) throw new Error('企业微信通知失败，保留未通知状态以便下次重试');\nvar state = JSON.parse(JSON.stringify(global.notification_state));\nstate.known_ids.push(state.pending[state.index].oid); state.index += 1; state.checkpoint_saved = false;\nreturn state;\n})()",
+        "output_key": "ack_state"
+      },
+      "next_node_ids": [
+        "store_ack"
+      ],
+      "id": "ack_notification",
+      "position": {
+        "x": 1020,
+        "y": 720
+      }
+    },
+    "store_ack": {
+      "type": "SetVariableNode",
+      "name": "保存本次发送结果",
+      "config": {
+        "variables": {
+          "notification_state": "{{output.ack_notification.ack_state}}"
+        }
+      },
+      "next_node_ids": [
+        "prepare_checkpoint"
+      ],
+      "id": "store_ack",
+      "position": {
+        "x": 0,
+        "y": 900
+      }
+    },
+    "prepare_checkpoint": {
+      "type": "JSCodeNode",
+      "name": "合并监控进度并保留触发器元数据",
+      "config": {
+        "code": "(function () {\nvar state = global.notification_state;\nvar initial_data = JSON.parse(JSON.stringify(state.initial_data));\ninitial_data.creator_video_monitor = {username:output.validate.creator.username,initialized:true,known_ids:state.known_ids};\nreturn {id:global.monitor_schedule_id,initial_data:initial_data};\n})()",
+        "output_key": "checkpoint"
+      },
+      "next_node_ids": [
+        "save_checkpoint"
+      ],
+      "id": "prepare_checkpoint",
+      "position": {
+        "x": 340,
+        "y": 900
+      }
+    },
+    "save_checkpoint": {
+      "type": "APICallNode",
+      "name": "持久化基线或已通知视频",
+      "config": {
+        "url": "http://127.0.0.1:2022/api/v1/automation/update_schedule",
+        "method": "POST",
+        "keys": {
+          "id": "output.prepare_checkpoint.checkpoint.id",
+          "initial_data": "output.prepare_checkpoint.checkpoint.initial_data"
+        },
+        "output_key": "checkpoint_response"
+      },
+      "next_node_ids": [
+        "check_checkpoint"
+      ],
+      "id": "save_checkpoint",
+      "position": {
+        "x": 680,
+        "y": 900
+      }
+    },
+    "check_checkpoint": {
+      "type": "JSCodeNode",
+      "name": "确认状态已保存",
+      "config": {
+        "code": "(function () {\nvar response = output.save_checkpoint.checkpoint_response;\nif (output.save_checkpoint.checkpoint_response_status !== 200 || !response || response.code !== 0) throw new Error('通知进度保存失败，下次可能重复通知');\nvar state = JSON.parse(JSON.stringify(global.notification_state)); state.checkpoint_saved = true;\nreturn state;\n})()",
+        "output_key": "saved_state"
+      },
+      "next_node_ids": [
+        "store_checkpoint"
+      ],
+      "id": "check_checkpoint",
+      "position": {
+        "x": 1020,
+        "y": 900
+      }
+    },
+    "store_checkpoint": {
+      "type": "SetVariableNode",
+      "name": "更新持久化结果",
+      "config": {
+        "variables": {
+          "notification_state": "{{output.check_checkpoint.saved_state}}"
+        }
+      },
+      "next_node_ids": [
+        "notification_gate"
+      ],
+      "id": "store_checkpoint",
+      "position": {
+        "x": 0,
+        "y": 1080
+      }
+    },
+    "summary": {
+      "type": "JSCodeNode",
+      "name": "输出本次监控结果",
+      "config": {
+        "code": "(function () {\nreturn {username:output.validate.creator.username,pages:global.scan_state.page,baseline_created:global.notification_state.baseline_created,notified:global.notification_state.index,known_videos:global.notification_state.known_ids.length};\n})()",
+        "output_key": "monitor_summary"
+      },
+      "next_node_ids": [
+        "end"
+      ],
+      "id": "summary",
+      "position": {
+        "x": 340,
+        "y": 1080
+      }
+    },
+    "end": {
+      "type": "EndNode",
+      "name": "结束",
+      "config": {},
+      "next_node_ids": [],
+      "id": "end",
+      "position": {
+        "x": 680,
+        "y": 1080
+      }
+    }
+  }
+}

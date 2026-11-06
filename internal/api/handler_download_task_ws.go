@@ -454,7 +454,7 @@ func (c *APIClient) handle_download_task_ws(ctx *gin.Context) {
 	go client.write_pump()
 
 	if client.task_id != 0 {
-		if record, record_err := c.download_task_service.BuildTaskRecord(client.task_id); record_err == nil && record != nil {
+		if record, record_err := c.service_download_task.BuildTaskRecord(client.task_id); record_err == nil && record != nil {
 			client.enqueue(DownloadTaskWSMessage{Type: download_task_ws_upsert, Tasks: []services.DownloadTaskRecord{*record}})
 		}
 		// Populate the progress cache so subsequent progress broadcasts are instant.

@@ -61,6 +61,14 @@
                     "relation_type": {
                       "type": "string",
                       "description": "预览接口不写入任务关系"
+                    },
+                    "resource_indexes": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "description": "从预览资源数组选择要下载的资源，索引从 0 开始；省略或空数组保留全部资源。"
                     }
                   }
                 }
@@ -90,17 +98,9 @@
           "application/json": {
             "schema": {
               "type": "object",
-              "required": [
-                "code",
-                "msg"
-              ],
               "properties": {
                 "code": {
-                  "type": "integer",
-                  "enum": [
-                    0,
-                    400
-                  ]
+                  "type": "integer"
                 },
                 "msg": {
                   "type": "string"
@@ -112,26 +112,26 @@
                       "type": "array",
                       "items": {
                         "type": "object",
-                        "required": [
-                          "success"
-                        ],
                         "properties": {
                           "success": {
                             "type": "boolean"
                           },
-                          "data": {
-                            "type": "object",
-                            "description": "adapter.DownloadTaskResult。顶层字段为 Task、Resources、Account、Content、ContentDetail、ContentDetails，内容随平台变化"
-                          },
                           "error": {
                             "type": "string"
+                          },
+                          "data": {
+                            "$ref": "../components.json#/schemas/adapter_DownloadTaskResult"
                           }
                         }
                       }
                     }
                   }
                 }
-              }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
             },
             "examples": {
               "success": {

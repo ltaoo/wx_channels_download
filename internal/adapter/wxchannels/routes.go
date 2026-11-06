@@ -5,7 +5,6 @@ import (
 	"encoding/xml"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -394,16 +393,8 @@ func (r *WebsocketRoutes) HandleDecryptVideo(ctx *gin.Context) {
 		return
 	}
 
-	data, err := os.ReadFile(filepath)
-	if err != nil {
-		result.Err(ctx, 400, "failed to read file: "+err.Error())
-		return
-	}
-
-	wxchannels.DecryptData(data, 131072, key)
-
-	if err := os.WriteFile(filepath, data, 0644); err != nil {
-		result.Err(ctx, 400, "failed to write file: "+err.Error())
+	if err := wxchannels.DecryptFileInPlace(filepath, key); err != nil {
+		result.Err(ctx, 400, err.Error())
 		return
 	}
 

@@ -1,21 +1,20 @@
-import { Tag, PlatformTag } from "../dmui.js";
 import { FileHelperViewModel } from "./filehelper.model.js";
 
 function FileHelperHeaderView(props) {
   const vm$ = props.store;
-  return View({ class: "filehelper-header page-header" }, [
-    View({ class: "filehelper-header-brand" }, [
-      View({ class: "filehelper-header-icon" }, [
+  return View({ class: "grid min-h-72px flex-none grid-cols-content-auto items-center py-3 px-5 max-520:px-3 gap-4 border-b border-b-solid border-b-color-default bg-color-bg-surface text-color-text-primary shadow-divider backdrop-blur-14px" }, [
+    View({ class: "flex min-w-0 items-center gap-3" }, [
+      View({ class: "grid w-control-height-base h-control-height-base flex-none place-items-center rounded-content bg-color-primary-fill text-color-on-primary shadow-signal" }, [
         Timeless.Icon({ name: "upload", size: 18 }),
       ]),
       View({}, [
-        View({ class: "filehelper-header-title" }, ["文件传输助手"]),
-        View({ class: "filehelper-header-subtitle" }, [
+        View({ class: "text-base font-semibold whitespace-nowrap text-color-text-primary" }, ["文件传输助手"]),
+        View({ class: "max-520:hidden mt-0.5 text-xs text-color-text-secondary" }, [
           "连接微信，跨设备传送内容",
         ]),
       ]),
     ]),
-    View({ class: "filehelper-header-actions" }, [
+    View({ class: "flex min-w-0 items-center justify-end gap-2 text-sm" }, [
       Show({
         when: computed(
           vm$.state.channels_status,
@@ -23,18 +22,22 @@ function FileHelperHeaderView(props) {
         ),
         ok() {
           return Tag(
-            { name: "filehelper-channels-status", variant: "info", class: "filehelper-channels-status" },
+            {
+              name: "filehelper-channels-status",
+              variant: "info",
+              class: "max-520:hidden whitespace-nowrap text-color-text-secondary status-summary",
+            },
             [
-            "视频号API: ",
-            View(
-              {
-                class: computed(
-                  vm$.state.channels_status,
-                  (status) => `is-${status}`,
-                ),
-              },
-              [vm$.state.channels_status_text],
-            ),
+              "视频号API: ",
+              View(
+                {
+                  class: computed(
+                    vm$.state.channels_status,
+                    (status) => `is-${status}`,
+                  ),
+                },
+                [vm$.state.channels_status_text],
+              ),
             ],
           );
         },
@@ -43,9 +46,7 @@ function FileHelperHeaderView(props) {
         {
           name: "filehelper-status",
           class: computed(vm$.state.logged_in, (logged_in) =>
-            logged_in
-              ? "filehelper-status is-online"
-              : "filehelper-status",
+            logged_in ? "whitespace-nowrap text-color-primary" : "whitespace-nowrap text-color-text-secondary",
           ),
         },
         [vm$.state.connection_text],
@@ -75,41 +76,33 @@ function FileHelperQRCodeView(props) {
   return Show({
     when: computed(vm$.state.login_stage, (stage) => stage === "scanned"),
     ok() {
-      return View({ class: "filehelper-scanned-user" }, [
+      return View({ class: "flex min-h-200px flex-col items-center justify-center mb-5 gap-3" }, [
         Show({
           when: computed(vm$.state.scanned_avatar, (avatar) => Boolean(avatar)),
           ok() {
             return Timeless.Img({
-              class: "filehelper-scanned-avatar",
+              class: "w-80px h-80px object-cover rounded-avatar",
               src: vm$.state.scanned_avatar,
               alt: "用户头像",
             });
           },
         }),
-        View({ class: "filehelper-scanned-tip" }, [
-          "请在手机上确认登录",
-        ]),
+        View({ class: "text-base text-color-text-primary" }, ["请在手机上确认登录"]),
       ]);
     },
     else() {
-      return View({ class: "filehelper-qrcode" }, [
+      return View({ class: "flex relative w-220px h-220px max-520:w-200px max-520:h-200px flex-none items-center justify-center mt-5 mb-4 mx-auto overflow-hidden border border-solid rounded-content border-color-default bg-color-bg-surface shadow-sm" }, [
         Show({
-          when: computed(
-            vm$.state.login_stage,
-            (stage) => stage === "loading",
-          ),
+          when: computed(vm$.state.login_stage, (stage) => stage === "loading"),
           ok() {
-            return View({ class: "filehelper-loading-spinner" });
+            return View({ class: "w-40px h-40px border-3 border-solid rounded-round border-color-default border-t-color-primary animate-spin-fast" });
           },
         }),
         Show({
-          when: computed(
-            vm$.state.qrcode_url,
-            (url) => Boolean(url),
-          ),
+          when: computed(vm$.state.qrcode_url, (url) => Boolean(url)),
           ok() {
             return Timeless.Img({
-              class: "filehelper-qrcode-image",
+              class: "w-full h-full object-contain",
               src: vm$.state.qrcode_url,
               alt: "登录二维码",
             });
@@ -121,8 +114,8 @@ function FileHelperQRCodeView(props) {
             (stage) => stage === "expired" || stage === "error",
           ),
           ok() {
-            return View({ class: "filehelper-qrcode-expired" }, [
-              View({ class: "filehelper-qrcode-expired-text" }, [
+            return View({ class: "flex absolute inset-0 flex-col items-center justify-center gap-2.5 bg-surface/90" }, [
+              View({ class: "text-base text-color-text-secondary" }, [
                 computed(vm$.state.login_stage, (stage) =>
                   stage === "expired" ? "二维码已过期" : "二维码加载失败",
                 ),
@@ -144,47 +137,50 @@ function FileHelperQRCodeView(props) {
 
 function FileHelperLoginView(props) {
   const vm$ = props.store;
-  return View({ class: "filehelper-login" }, [
-    View({ class: "filehelper-login-copy" }, [
-      Tag({ name: "filehelper-login-eyebrow", class: "filehelper-login-eyebrow" }, ["微信连接"]),
-      View({ as: "h1", class: "filehelper-login-title" }, [
+  return View({ class: "grid min-h-0 flex-1 max-820:grid-cols-1 grid-cols-main-90 items-center max-820:items-start p-responsive max-520:py-8 max-520:px-4 gap-responsive max-820:gap-8 bg-color-bg-surface" }, [
+    View({ class: "min-w-0 max-820:text-center" }, [
+      Tag(
+        { name: "filehelper-login-eyebrow", class: "w-fit-content mb-4 max-820:mr-auto max-820:ml-auto tracking-wide text-transform-uppercase border-default border-solid border-color-primary-border bg-color-primary-soft text-color-primary" },
+        ["微信连接"],
+      ),
+      View({ as: "h1", class: "max-w-520px m-0 max-820:mr-auto max-820:ml-auto font-display font-semibold leading-1.12 max-520:text-3xl text-fluid-display tracking-tight text-color-text-primary" }, [
         "把手机里的内容，直接送到工作台",
       ]),
-      View({ class: "filehelper-login-description" }, [
+      View({ class: "max-w-520px mt-5 max-820:mr-auto max-820:ml-auto text-base leading-relaxed text-color-text-secondary" }, [
         "扫码连接文件传输助手后，可在电脑与微信之间同步消息、图片、文件和视频号内容。",
       ]),
-      View({ class: "filehelper-login-features" }, [
-        View({ class: "filehelper-login-feature" }, [
-          View({ class: "filehelper-login-feature-icon" }, [
+      View({ class: "grid max-820:max-w-460px mt-8 max-820:mr-auto max-820:ml-auto gap-3 max-820:text-left" }, [
+        View({ class: "flex items-start gap-3" }, [
+          View({ class: "grid w-control-height-sm h-control-height-sm flex-none place-items-center rounded-content bg-color-primary-soft text-color-primary" }, [
             Timeless.Icon({ name: "upload", size: 17 }),
           ]),
           View({}, [
-            View({ class: "filehelper-login-feature-title" }, ["双向传输"]),
-            View({ class: "filehelper-login-feature-text" }, [
+            View({ class: "text-md font-semibold text-color-text-primary" }, ["双向传输"]),
+            View({ class: "mt-1 text-sm text-color-text-secondary" }, [
               "发送和接收内容，无需额外中转。",
             ]),
           ]),
         ]),
-        View({ class: "filehelper-login-feature" }, [
-          View({ class: "filehelper-login-feature-icon" }, [
+        View({ class: "flex items-start gap-3" }, [
+          View({ class: "grid w-control-height-sm h-control-height-sm flex-none place-items-center rounded-content bg-color-primary-soft text-color-primary" }, [
             Timeless.Icon({ name: "file", size: 17 }),
           ]),
           View({}, [
-            View({ class: "filehelper-login-feature-title" }, ["统一归档"]),
-            View({ class: "filehelper-login-feature-text" }, [
+            View({ class: "text-md font-semibold text-color-text-primary" }, ["统一归档"]),
+            View({ class: "mt-1 text-sm text-color-text-secondary" }, [
               "文件与媒体资源继续进入下载工作流。",
             ]),
           ]),
         ]),
       ]),
     ]),
-    View({ class: "filehelper-login-panel" }, [
-      View({ class: "filehelper-login-panel-title" }, ["微信扫码登录"]),
-      View({ class: "filehelper-login-panel-caption" }, [
+    View({ class: "w-full max-820:max-w-380px max-820:my-0 max-820:mx-auto p-6 max-520:p-4 text-center border-default border-solid rounded-card border-color-default bg-color-bg-subtle shadow-md" }, [
+      View({ class: "text-lg font-semibold text-color-text-primary" }, ["微信扫码登录"]),
+      View({ class: "mt-1 text-sm text-color-text-secondary" }, [
         "使用手机微信扫描下方二维码",
       ]),
       FileHelperQRCodeView({ store: vm$ }),
-      View({ class: "filehelper-login-tip" }, [vm$.state.login_tip]),
+      View({ class: "m-0 text-base leading-relaxed text-center whitespace-pre-line text-color-text-secondary" }, [vm$.state.login_tip]),
     ]),
   ]);
 }
@@ -192,31 +188,40 @@ function FileHelperLoginView(props) {
 function FileHelperFinderMessageView(props) {
   const data = props.message.finder_data;
   const cover_url = data.cover_url || data.thumb_url || "";
-  return View({ class: "filehelper-finder-card" }, [
-    cover_url
-      ? LazyImg({
-          class: "filehelper-finder-cover",
-          src: cover_url,
-          alt: "封面",
-        })
-      : null,
-    View({ class: "filehelper-finder-content" }, [
-      View({ class: "filehelper-finder-desc" }, [
-        data.desc || "[视频号]",
+  return View(
+    { class: "w-240px max-w-full overflow-hidden rounded-card bg-color-bg-surface shadow-sm" },
+    [
+      cover_url
+        ? LazyImg({
+            class: "block w-full h-135px object-cover bg-color-bg-interactive",
+            src: cover_url,
+            alt: "封面",
+          })
+        : null,
+      View({ class: "p-2.5" }, [
+        View({ class: "-webkit-box mb-2 overflow-hidden text-base leading-1.4 -webkit-box-orient-vertical -webkit-line-clamp-2 text-color-text-primary" }, [data.desc || "[视频号]"]),
+        View(
+          { class: "flex items-center gap-1.5" },
+          [
+            data.avatar
+              ? LazyImg({
+                  class: "w-20px h-20px flex-none object-cover rounded-avatar",
+                  src: data.avatar,
+                  alt: "头像",
+                })
+              : null,
+            View({ class: "min-w-0 overflow-hidden text-sm whitespace-nowrap text-ellipsis text-color-text-secondary" }, [data.nickname]),
+            PlatformTag({
+              class: "ml-auto bg-color-signal-soft text-color-primary",
+              name: "filehelper-finder-platform",
+              label: "视频号",
+              favicon: (window.PLATFORM_FAVICONS || {}).wxchannels,
+            }),
+          ].filter(Boolean),
+        ),
       ]),
-      View({ class: "filehelper-finder-author" }, [
-        data.avatar
-          ? LazyImg({
-              class: "filehelper-finder-avatar",
-              src: data.avatar,
-              alt: "头像",
-            })
-          : null,
-        View({ class: "filehelper-finder-nickname" }, [data.nickname]),
-        PlatformTag({ class: "filehelper-finder-badge", name: "filehelper-finder-platform", label: "视频号", favicon: (window.PLATFORM_FAVICONS || {}).wxchannels }),
-      ].filter(Boolean)),
-    ]),
-  ].filter(Boolean));
+    ].filter(Boolean),
+  );
 }
 
 function FileHelperMessageView(props) {
@@ -226,27 +231,28 @@ function FileHelperMessageView(props) {
   return View(
     {
       class: message.is_mine
-        ? "filehelper-message is-self"
-        : "filehelper-message",
+        ? "flex max-w-4/5 align-self-flex-start gap-2 message-row is-self"
+        : "flex max-w-4/5 align-self-flex-start gap-2 message-row ",
     },
     [
-      View({ class: "filehelper-message-avatar" }, [
+      View({ class: "flex w-40px h-40px flex-none items-center justify-center text-base rounded-avatar bg-color-primary text-color-on-primary" }, [
         message.is_mine ? "我" : "文",
       ]),
-      View({ class: "filehelper-message-content" }, [
-        message.type === "finder" && message.finder_data
-          ? FileHelperFinderMessageView({ message })
-          : View({ class: "filehelper-message-bubble" }, [message.text]),
-        time
-          ? View({ class: "filehelper-message-time" }, [time])
-          : null,
-      ].filter(Boolean)),
+      View(
+        { class: "min-w-0" },
+        [
+          message.type === "finder" && message.finder_data
+            ? FileHelperFinderMessageView({ message })
+            : View({ class: "py-2.5 px-3 text-ui leading-1.5 overflow-wrap-anywhere whitespace-pre-wrap rounded-content bg-color-bg-surface shadow-sm message-bubble" }, [message.text]),
+          time ? View({ class: "mt-1 text-xs text-right text-color-text-secondary message-time" }, [time]) : null,
+        ].filter(Boolean),
+      ),
     ],
   );
 }
 
 function FileHelperEmptyMessagesView() {
-  return View({ class: "filehelper-empty" }, [
+  return View({ class: "flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-base text-color-text-secondary empty-icon-muted" }, [
     Timeless.Icon({ name: "upload", size: 48 }),
     View({}, ["暂无消息"]),
     View({}, ["发送的文件将同步到手机微信"]),
@@ -257,7 +263,7 @@ function FileHelperMessageListView(props) {
   const vm$ = props.store;
   return View(
     {
-      class: "filehelper-message-list",
+      class: "flex min-h-0 flex-1 flex-col p-4 gap-3 overflow-y-auto",
       onMounted(event) {
         vm$.methods.setMessageListElement(event);
       },
@@ -290,9 +296,9 @@ function FileHelperMessageListView(props) {
 
 function FileHelperComposerView(props) {
   const vm$ = props.store;
-  return View({ class: "filehelper-input-area" }, [
-    View({ class: "filehelper-composer" }, [
-      View({ class: "filehelper-toolbar" }, [
+  return View({ class: "flex flex-none items-end py-2.5 px-4 gap-2.5 border-t border-t-solid border-t-color-default bg-color-bg-surface" }, [
+    View({ class: "w-full" }, [
+      View({ class: "flex mb-2.5 gap-4" }, [
         Button(
           {
             store: vm$.ui.btn_open_image_picker$,
@@ -316,8 +322,8 @@ function FileHelperComposerView(props) {
           [Timeless.Icon({ name: "file", size: 18 })],
         ),
       ]),
-      View({ class: "filehelper-compose-row" }, [
-        View({ class: "filehelper-input-wrapper" }, [
+      View({ class: "flex items-end gap-2.5" }, [
+        View({ class: "min-w-0 flex-1" }, [
           Textarea({
             store: vm$.ui.input_message$,
             class: "dm-textarea--compact",
@@ -342,7 +348,7 @@ function FileHelperComposerView(props) {
 
 function FileHelperChatView(props) {
   const vm$ = props.store;
-  return View({ class: "filehelper-chat" }, [
+  return View({ class: "flex min-h-0 flex-1 flex-col" }, [
     FileHelperMessageListView({ store: vm$ }),
     FileHelperComposerView({ store: vm$ }),
   ]);
@@ -394,7 +400,7 @@ function FileHelperPageView(props) {
   const vm$ = FileHelperViewModel(props);
   return View(
     {
-      class: "filehelper-page page",
+      class: "flex w-full min-w-0 h-full min-h-0 items-center justify-center overflow-hidden max-820:overflow-auto font-sans bg-image-page-grid bg-size-grid bg-color-bg-canvas bg-color-canvas text-color-text-primary",
       onMounted() {
         vm$.methods.ready();
       },
@@ -403,7 +409,7 @@ function FileHelperPageView(props) {
       },
     },
     [
-      View({ class: "filehelper-container dm-panel" }, [
+      View({ class: "flex min-w-0 h-parent-inset max-h-205 min-h-0 max-820:h-auto max-820:min-h-parent-inset max-520:h-full flex-1 flex-col m-4 max-520:m-0 overflow-hidden rounded-card max-520:rounded-0 bg-color-bg-surface shadow-lg dm-panel" }, [
         FileHelperHeaderView({ store: vm$ }),
         Show({
           when: vm$.state.logged_in,
@@ -416,18 +422,6 @@ function FileHelperPageView(props) {
         }),
         ...FileHelperHiddenInputsView({ store: vm$ }),
       ]),
-      Show({
-        when: vm$.state.toast_visible,
-        ok() {
-          return View(
-            {
-              class: "filehelper-toast dm-panel dm-shadow-popover",
-              attributes: { role: "status", "aria-live": "polite" },
-            },
-            [vm$.state.toast_message],
-          );
-        },
-      }),
     ],
   );
 }

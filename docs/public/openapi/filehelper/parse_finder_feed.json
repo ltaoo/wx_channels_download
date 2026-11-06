@@ -1,0 +1,86 @@
+{
+  "post": {
+    "tags": [
+      "文件助手"
+    ],
+    "summary": "解析视频号分享消息",
+    "description": "content 为包含 finderFeed 节点的 XML 或 HTML 转义文本。没有 finderFeed 节点时成功返回 data=null；XML 解析失败为 HTTP 200、code=1。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "allOf": [
+                    {
+                      "$ref": "../components.json#/schemas/api_FinderFeedData"
+                    }
+                  ],
+                  "nullable": true
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      },
+      "400": {
+        "description": "请求格式错误",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_filehelper_parse_finder_feed",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "content": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "content"
+            ]
+          },
+          "example": {
+            "content": "<finderFeed><username>example</username><objectId>12345678901234567890</objectId><objectNonceId>nonce</objectNonceId></finderFeed>"
+          }
+        }
+      }
+    }
+  }
+}

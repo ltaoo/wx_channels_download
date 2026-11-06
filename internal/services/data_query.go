@@ -47,6 +47,7 @@ type DownloadTaskListQuery struct {
 	Statuses     []int
 	ParentTaskID int
 	RootTaskID   int
+	ContentID    string
 }
 
 // AccountListQuery describes a read-only account query.
@@ -555,6 +556,9 @@ func data_download_task_base_query(db *gorm.DB, input DownloadTaskListQuery) *go
 	}
 	if input.RootTaskID > 0 {
 		query = query.Where("root_task_id = ?", input.RootTaskID)
+	}
+	if content_id := strings.TrimSpace(input.ContentID); content_id != "" {
+		query = query.Where("content_id = ?", content_id)
 	}
 	return query
 }

@@ -1,6 +1,28 @@
-import { ContentDetailViewModel, ContentDetailDescriptionModel } from "./content_detail.model.js";
+import { ErrorMessage } from "@/dmui.js";
+import { TagSelect, ContentTagBadge } from "@/components/index.js";
+
+import {
+  ContentDetailViewModel,
+  ContentDetailDescriptionModel,
+  ContentDetailExtensionModel,
+} from "./content_detail.model.js";
 import { PreviewGalleryMediaView } from "./preview.js";
-import { BrandError, Tag, PlatformTag } from "../dmui.js";
+
+const content_detail_media_stage_classes = {
+  __proto__: null,
+  "list": "min-w-0",
+  "video": "media-pane-video",
+};
+
+const content_detail_status_classes = {
+  __proto__: null,
+  "running": "text-color-warning",
+  "paused": "text-color-warning",
+  "finished": "text-color-success",
+  "failed": "text-content-danger",
+  "deleted": "text-content-danger",
+  "waiting": "text-content-muted",
+};
 
 function ContentDetailAction(props) {
   const semantic_name = props.name || "content-detail-action";
@@ -8,7 +30,7 @@ function ContentDetailAction(props) {
     {
       type: "button",
       class: [
-        "dm-button dm-button--surface dm-focus-ring",
+        "dm-button--surface dm-button dm-focus-ring",
         props.compact ? "dm-button--sm" : "dm-button--md",
       ]
         .filter(Boolean)
@@ -38,9 +60,9 @@ function ContentDetailCover(props) {
   const content = props.content;
   const cover_url = props.coverURL || props.store.methods.coverURL(content);
   if (!cover_url) return null;
-  return View({ class: "content-cover-wrap" }, [
+  return View({ class: "relative min-w-0 w-full aspect-4/3 overflow-hidden rounded-content bg-content-panel-soft" }, [
     LazyImg({
-      class: "content-cover",
+      class: "block absolute inset-0 w-full h-full object-cover cover-error-state ",
       src: cover_url,
       alt: content.title,
       loading: "eager",
@@ -61,8 +83,8 @@ function ContentDetailAccount(props) {
     {
       type: clickable ? "button" : "div",
       class: [
-        "content-account-item dm-focus-ring",
-        clickable ? "content-account-item-clickable" : "",
+        "flex max-w-240px min-h-control-height-sm items-center p-0 gap-2 font-inherit text-decoration-none border-0 rounded-control bg-transparent text-content-text appearance-none dm-focus-ring",
+        clickable ? "hover:text-content-primary cursor-pointer" : "",
       ]
         .filter(Boolean)
         .join(" "),
@@ -80,20 +102,19 @@ function ContentDetailAccount(props) {
         when: account.avatar_url,
         ok() {
           return LazyImg({
-            class: "content-avatar",
+            class: "grid w-26px h-26px flex-none place-items-center object-cover rounded-avatar bg-content-primary-soft text-content-primary",
             src: account.avatar_url,
             alt: name,
             attributes: { loading: "lazy", referrerpolicy: "no-referrer" },
           });
         },
         else() {
-          return View(
-            { class: "content-avatar content-avatar-fallback" },
-            [String(name).slice(0, 1)],
-          );
+          return View({ class: "grid w-26px h-26px flex-none place-items-center object-cover rounded-avatar bg-content-primary-soft text-content-primary content-avatar-fallback" }, [
+            String(name).slice(0, 1),
+          ]);
         },
       }),
-      View({ class: "content-account-name", attributes: { title: name } }, [
+      View({ class: "min-w-0 overflow-hidden text-sm font-semibold whitespace-nowrap text-ellipsis", attributes: { title: name } }, [
         name,
       ]),
     ].filter(Boolean),
@@ -105,7 +126,7 @@ function ContentDetailAccounts(props) {
   if (accounts.length === 0) {
     return null;
   }
-  return View({ class: "content-account-list" }, [
+  return View({ class: "flex flex-wrap gap-3" }, [
     For({
       each: accounts,
       render(account) {
@@ -116,6 +137,32 @@ function ContentDetailAccounts(props) {
       },
     }),
   ]);
+}
+
+function ContentDetailTags(props) {
+  const vm$ = props.store;
+  return View(
+    {
+      class: "flex min-w-0 flex-wrap items-center gap-1.5",
+      attributes: { n: "content-detail-tags", "aria-label": "内容标签" },
+    },
+    [
+      TagSelect({
+        contentId: props.content.id,
+        tagsRef: vm$.state.tags,
+        client: props.client,
+        onChange(next_tags) {
+          vm$.methods.setTags(next_tags);
+        },
+      }),
+      For({
+        each: vm$.state.tags,
+        render(tag) {
+          return ContentTagBadge({ tag });
+        },
+      }),
+    ],
+  );
 }
 
 function ContentDetailPlatform(props) {
@@ -131,16 +178,23 @@ function ContentDetailPlatform(props) {
 }
 
 function ContentDetailSection(props) {
-  return View({ class: "content-detail-section" }, [
-    View({ class: "content-detail-section-head" }, [
-      View({ class: "content-detail-section-title" }, [props.title]),
-      props.count !== undefined
-        ? Tag({ name: "content-detail-section-count", class: "content-detail-section-count" }, [
-            String(props.count),
-          ])
-        : null,
-    ].filter(Boolean)),
-    View({ class: "content-detail-section-body" }, props.children || []),
+  return View({ class: "overflow-hidden border-default border-solid border-color-content rounded-card bg-content-panel shadow-sm" }, [
+    View(
+      { class: "flex min-h-control-height-lg items-center justify-between py-3 px-4 gap-3 border-b-default border-b-solid border-b-color-content bg-content-panel-soft" },
+      [
+        View({ class: "text-base font-semibold text-content-text" }, [props.title]),
+        props.count !== undefined
+          ? Tag(
+              {
+                name: "content-detail-section-count",
+                class: "bg-content-primary-soft text-content-primary",
+              },
+              [String(props.count)],
+            )
+          : null,
+      ].filter(Boolean),
+    ),
+    View({ class: "p-4" }, props.children || []),
   ]);
 }
 
@@ -264,15 +318,16 @@ function content_asset_resources(asset, content_resources) {
   );
   if (!Array.isArray(linked_resources)) return [];
   return linked_resources.map((resource) => {
-    const resource_id = String(
-      detail_object_value(resource, "id", "ID") || "",
-    );
+    const resource_id = String(detail_object_value(resource, "id", "ID") || "");
     return resources_by_id.get(resource_id) || resource;
   });
 }
 
 function content_media_type(resource, asset) {
-  const normalize = (value) => String(value || "").trim().toLowerCase();
+  const normalize = (value) =>
+    String(value || "")
+      .trim()
+      .toLowerCase();
   const asset_kind = normalize(detail_object_value(asset, "kind", "Kind"));
   const resource_type = normalize(
     detail_object_value(resource, "file_type", "FileType"),
@@ -440,10 +495,7 @@ function content_asset_previews(content, vm$) {
     content_detail_assets(content),
   );
   for (const asset of content_assets) {
-    const linked_resources = content_asset_resources(
-      asset,
-      content.resources,
-    );
+    const linked_resources = content_asset_resources(asset, content.resources);
     if (linked_resources.length) {
       linked_resources.forEach((resource) => append_resource(resource, asset));
     }
@@ -476,39 +528,48 @@ function ContentDetailMediaStage(props) {
     .join(" · ");
   return View(
     {
-      class: `preview-page content-detail-media-stage content-detail-media-stage-${media.type}`,
+      class: `flex relative w-full min-w-0 h-full min-h-0 flex-col overflow-hidden font-sans border-default border-solid border-color-content rounded-content bg-image-page-grid bg-size-grid bg-color-canvas text-color-text-primary shadow-sm media-pane ${content_detail_media_stage_classes[media.type] || ""}`,
       attributes: { n: "content-detail-media-stage" },
     },
     [
-      View({
-        class: "content-detail-media-viewport preview-gallery-viewport",
-        attributes: { n: "content-detail-media-viewport" },
-      }, [player]),
-      View({ class: "content-detail-media-caption" }, [
-        View({ class: "content-detail-media-caption-icon" }, [
-          Timeless.Icon({ name: content_media_type_icon(media.type), size: 16 }),
-        ]),
-        View({ class: "content-detail-media-caption-main" }, [
-          View(
-            {
-              class: "content-detail-media-name",
-              attributes: { title: media.name },
-            },
-            [media.name],
-          ),
-          View({ class: "content-detail-media-meta" }, [meta]),
-        ]),
-        media.available
-          ? ContentDetailAction({
-              name: "content-detail-open-media-action",
-              icon: "external-link",
-              label: "打开原文件",
-              onClick() {
-                vm$.methods.openResource(media.resource);
+      View(
+        {
+          class: "grid relative min-h-360px max-900:min-h-320px max-680:min-h-240px h-full min-w-0 flex-1 place-items-center items-center justify-center overflow-hidden bg-content-panel-soft media-viewport-root gallery-viewport media-viewport ",
+          attributes: { n: "content-detail-media-viewport" },
+        },
+        [player],
+      ),
+      View(
+        { class: "grid grid-cols-auto-content-auto max-680:grid-cols-label-content max-480:grid-cols-1 items-center py-3 px-4 gap-3 border-t-default border-t-solid border-t-color-content bg-content-panel-soft text-content-text media-toolbar " },
+        [
+          View({ class: "grid max-480:hidden w-control-height-sm h-control-height-sm place-items-center rounded-content bg-content-primary/18 text-content-primary" }, [
+            Timeless.Icon({
+              name: content_media_type_icon(media.type),
+              size: 16,
+            }),
+          ]),
+          View({ class: "min-w-0" }, [
+            View(
+              {
+                class: "overflow-hidden text-sm font-semibold whitespace-nowrap text-ellipsis",
+                attributes: { title: media.name },
               },
-            })
-          : null,
-      ].filter(Boolean)),
+              [media.name],
+            ),
+            View({ class: "mt-0.5 overflow-hidden text-xs whitespace-nowrap text-ellipsis text-content-muted" }, [meta]),
+          ]),
+          media.available
+            ? ContentDetailAction({
+                name: "content-detail-open-media-action",
+                icon: "external-link",
+                label: "打开原文件",
+                onClick() {
+                  vm$.methods.openResource(media.resource);
+                },
+              })
+            : null,
+        ].filter(Boolean),
+      ),
     ],
   );
 }
@@ -516,33 +577,32 @@ function ContentDetailMediaStage(props) {
 function ContentDetailMediaPicker(props) {
   const vm$ = props.store;
   const media = props.media;
-  const selected_ = props.selected;
   return View(
     {
       type: "button",
-      class: computed(selected_, (selected) =>
+      class: computed(props.selected, (selected) =>
         selected && selected.key === media.key
-          ? "content-detail-media-choice dm-focus-ring is-selected"
-          : "content-detail-media-choice dm-focus-ring",
+          ? "grid min-w-0 grid-cols-auto-content-auto items-center p-3 gap-3 text-left border-default border-solid border-color-content rounded-card hover:border-color-content-primary-mixed bg-content-panel-soft hover:bg-content-primary-soft text-content-text cursor-pointer appearance-none media-list-item dm-focus-ring is-selected"
+          : "grid min-w-0 grid-cols-auto-content-auto items-center p-3 gap-3 text-left border-default border-solid border-color-content rounded-card hover:border-color-content-primary-mixed bg-content-panel-soft hover:bg-content-primary-soft text-content-text cursor-pointer appearance-none media-list-item dm-focus-ring",
       ),
       attributes: {
         type: "button",
-        "aria-pressed": computed(selected_, (selected) =>
+        "aria-pressed": computed(props.selected, (selected) =>
           selected && selected.key === media.key ? "true" : "false",
         ),
         title: `查看 ${media.name}`,
       },
       onClick() {
-        selected_.as(media);
+        props.onSelect(media);
       },
     },
     [
-      View({ class: "content-detail-media-choice-icon" }, [
+      View({ class: "grid w-control-height-sm h-control-height-sm place-items-center rounded-content bg-content-panel text-content-primary" }, [
         Timeless.Icon({ name: content_media_type_icon(media.type), size: 16 }),
       ]),
-      View({ class: "content-detail-media-choice-main" }, [
-        View({ class: "content-detail-media-choice-name" }, [media.name]),
-        View({ class: "content-detail-media-choice-meta" }, [
+      View({ class: "min-w-0" }, [
+        View({ class: "overflow-hidden text-sm font-semibold whitespace-nowrap text-ellipsis" }, [media.name]),
+        View({ class: "mt-0.5 overflow-hidden text-xs whitespace-nowrap text-ellipsis text-content-muted" }, [
           [
             content_media_type_label(media.type),
             media.asset_label,
@@ -569,54 +629,93 @@ function ContentDetailExtension(props) {
   const content = props.content;
   const media = content_asset_previews(content, vm$);
   if (!media.length) {
-    return View({ class: "content-detail-media-empty" }, [
-      View({ class: "content-detail-media-empty-icon" }, [
+    return View({ class: "grid min-h-260px place-items-center content-center p-6 gap-3 text-center border-default border-dashed border-color-content rounded-content bg-content-panel-soft text-content-muted" }, [
+      View({ class: "grid w-12 h-12 place-items-center rounded-round bg-content-primary-soft text-content-primary" }, [
         Timeless.Icon({ name: "play", size: 24 }),
       ]),
-      View({ class: "content-detail-media-empty-title" }, [
-        "还没有内容资产",
-      ]),
-      View({ class: "content-detail-media-empty-text" }, [
+      View({ class: "text-base font-semibold text-content-text" }, ["还没有内容资产"]),
+      View({ class: "max-w-42ch text-sm leading-relaxed" }, [
         "视频、音频、图片、HTML、PDF 及其他下载文件会显示在这里。",
       ]),
     ]);
   }
-  const selected_ = ref(media.find((item) => item.available) || media[0]);
-  return View({ class: "content-detail-extension" }, [
-    View({ class: "content-detail-media-stage-list" }, [
-      For({
-        each: media,
-        render(item) {
-          return Show({
-            when: computed(selected_, (selected) =>
-              Boolean(selected && selected.key === item.key),
-            ),
-            ok() {
-              return ContentDetailMediaStage({
-                store: vm$,
-                content,
-                media: item,
-              });
-            },
-          });
+  const extension_vm$ = ContentDetailExtensionModel(media);
+  return View(
+    {
+      class: "relative min-w-0",
+      attributes: { n: "content-detail-content-block" },
+    },
+    [
+      View(
+        {
+          class: "grid gap-4",
+          attributes: { n: "content-detail-extension" },
         },
-      }),
-    ]),
-    media.length > 1
-      ? View({ class: "content-detail-media-choices" }, [
-          For({
-            each: media,
-            render(item) {
-              return ContentDetailMediaPicker({
-                store: vm$,
-                media: item,
-                selected: selected_,
-              });
+        [
+          View(
+            {
+              class: "min-w-0",
+              attributes: { n: "content-detail-media-stage-list" },
             },
-          }),
-        ])
-      : null,
-  ].filter(Boolean));
+            [
+              For({
+                each: media,
+                render(item) {
+                  return Show({
+                    when: computed(extension_vm$.state.selected, (selected) =>
+                      Boolean(selected && selected.key === item.key),
+                    ),
+                    ok() {
+                      return ContentDetailMediaStage({
+                        store: vm$,
+                        content,
+                        media: item,
+                      });
+                    },
+                  });
+                },
+              }),
+            ],
+          ),
+          media.length > 1
+            ? View(
+                {
+                  class: "grid grid-cols-fit-60 max-480:grid-cols-1 gap-2",
+                  attributes: { n: "content-detail-media-choices" },
+                },
+                [
+                  For({
+                    each: media,
+                    render(item) {
+                      return ContentDetailMediaPicker({
+                        store: vm$,
+                        media: item,
+                        selected: extension_vm$.state.selected,
+                        onSelect: extension_vm$.methods.select,
+                      });
+                    },
+                  }),
+                ],
+              )
+            : null,
+        ].filter(Boolean),
+      ),
+      media.length > 1
+        ? ContentDetailFileNavigationButton({
+            store: extension_vm$,
+            direction: "left",
+            title: "上一个文件",
+          })
+        : null,
+      media.length > 1
+        ? ContentDetailFileNavigationButton({
+            store: extension_vm$,
+            direction: "right",
+            title: "下一个文件",
+          })
+        : null,
+    ],
+  );
 }
 
 function ContentDetailResource(props) {
@@ -637,40 +736,40 @@ function ContentDetailResource(props) {
     .filter(Boolean)
     .join(" · ");
   return View(
-    { class: "content-detail-resource" },
+    { class: "grid min-w-0 grid-cols-auto-content-auto max-680:grid-cols-auto-content-auto items-center py-3 px-0 gap-3 list-row-actions-root list-row-actions " },
     [
-      View({ class: "content-detail-resource-icon" }, [
+      View({ class: "grid w-control-height-sm h-control-height-sm place-items-center rounded-content bg-content-primary-soft text-content-primary" }, [
         Timeless.Icon({ name: vm$.methods.fileTypeIcon(resource), size: 18 }),
       ]),
-      View({ class: "content-detail-resource-main" }, [
-        View(
-          {
-            class: deleted
-              ? "content-detail-resource-name is-deleted"
-              : "content-detail-resource-name",
-            attributes: { title: name },
-          },
-          [name],
-        ),
-        meta
-          ? View({ class: "content-detail-resource-meta" }, [meta])
-          : null,
-        resource.local_path
-          ? View(
-              {
-                class: "content-detail-resource-path",
-                attributes: { title: resource.local_path },
-              },
-              [resource.local_path],
-            )
-          : null,
-      ].filter(Boolean)),
+      View(
+        { class: "min-w-0" },
+        [
+          View(
+            {
+              class: deleted
+                ? "overflow-hidden text-sm font-semibold whitespace-nowrap text-ellipsis text-content-text text-deletable is-deleted"
+                : "overflow-hidden text-sm font-semibold whitespace-nowrap text-ellipsis text-content-text text-deletable ",
+              attributes: { title: name },
+            },
+            [name],
+          ),
+          meta ? View({ class: "mt-1 overflow-hidden text-xs whitespace-nowrap text-ellipsis text-content-muted" }, [meta]) : null,
+          resource.local_path
+            ? View(
+                {
+                  class: "mt-1 overflow-hidden text-xs whitespace-nowrap text-ellipsis text-content-muted",
+                  attributes: { title: resource.local_path },
+                },
+                [resource.local_path],
+              )
+            : null,
+        ].filter(Boolean),
+      ),
       deleted
         ? Tag(
             {
               name: "content-detail-status",
-              class:
-                "content-detail-status content-detail-status-deleted",
+              class: "border-default border-solid border-current bg-content-panel-soft text-content-danger",
             },
             ["已删除"],
           )
@@ -693,9 +792,9 @@ function ContentDetailResource(props) {
 
 function ContentDetailResources(props) {
   if (!props.resources.length) {
-    return View({ class: "content-detail-empty" }, ["暂无资源文件"]);
+    return View({ class: "p-6 text-sm text-center text-content-muted" }, ["暂无资源文件"]);
   }
-  return View({ class: "content-detail-resource-list" }, [
+  return View({ class: "grid" }, [
     For({
       each: props.resources,
       render(resource) {
@@ -710,26 +809,24 @@ function ContentDetailTask(props) {
   const task = props.task || {};
   const status = vm$.methods.taskStatus(task.status);
   const name = task.name || task.source_url || `任务 ${task.id || ""}`;
-  return View({ class: "content-detail-task" }, [
-    View({ class: "content-detail-task-id" }, [
-      task.id ? `#${task.id}` : "-",
-    ]),
-    View({ class: "content-detail-task-main" }, [
+  return View({ class: "grid min-w-0 max-480:grid-cols-content-auto grid-cols-32px-main-auto items-center py-3 px-0 gap-3 list-row-divided-root list-row-divided" }, [
+    View({ class: "max-480:hidden font-mono text-xs text-content-muted" }, [task.id ? `#${task.id}` : "-"]),
+    View({ class: "min-w-0" }, [
       View(
         {
-          class: "content-detail-task-name",
+          class: "overflow-hidden text-sm font-semibold whitespace-nowrap text-ellipsis text-content-text",
           attributes: { title: name },
         },
         [name],
       ),
-      View({ class: "content-detail-task-meta" }, [
+      View({ class: "mt-1 overflow-hidden text-xs whitespace-nowrap text-ellipsis text-content-muted" }, [
         vm$.methods.formatTime(task.updated_at || task.created_at),
       ]),
     ]),
     Tag(
       {
         name: "content-detail-status",
-        class: `content-detail-status content-detail-status-${status.tone}`,
+        class: `border-default border-solid border-current bg-content-panel-soft ${content_detail_status_classes[status.tone] || ""}`,
       },
       [status.label],
     ),
@@ -738,9 +835,9 @@ function ContentDetailTask(props) {
 
 function ContentDetailTasks(props) {
   if (!props.tasks.length) {
-    return View({ class: "content-detail-empty" }, ["暂无下载任务"]);
+    return View({ class: "p-6 text-sm text-center text-content-muted" }, ["暂无下载任务"]);
   }
-  return View({ class: "content-detail-task-list" }, [
+  return View({ class: "grid" }, [
     For({
       each: props.tasks,
       render(task) {
@@ -794,14 +891,14 @@ function ContentDetailRelation(props) {
   const subtype = related.subtype || related.type || "内容";
   const clickable = Boolean(
     id &&
-      (typeof props.onOpenDetail === "function" ||
-        (props.history && typeof props.history.push === "function")),
+    (typeof props.onOpenDetail === "function" ||
+      (props.history && typeof props.history.push === "function")),
   );
   return View(
     {
       type: clickable ? "button" : "div",
       class: [
-        "content-detail-relation dm-focus-ring",
+        "grid w-full min-w-0 grid-cols-auto-content-auto items-center py-3 px-0 gap-3 text-left border-0 bg-transparent text-inherit list-row-interactive-root list-row-interactive dm-focus-ring",
         clickable ? "is-clickable" : "",
       ]
         .filter(Boolean)
@@ -817,18 +914,18 @@ function ContentDetailRelation(props) {
       },
     },
     [
-      View({ class: "content-detail-relation-icon" }, [
+      View({ class: "grid w-control-height-sm h-control-height-sm place-items-center rounded-content bg-content-primary-soft text-content-primary" }, [
         Timeless.Icon({ name: "git-branch", size: 17 }),
       ]),
-      View({ class: "content-detail-relation-main" }, [
+      View({ class: "min-w-0" }, [
         View(
           {
-            class: "content-detail-relation-name",
+            class: "overflow-hidden text-sm font-medium whitespace-nowrap text-ellipsis text-content-text",
             attributes: { title },
           },
           [title],
         ),
-        View({ class: "content-detail-relation-meta" }, [
+        View({ class: "mt-1 text-xs text-content-muted" }, [
           [...props.item.labels, subtype].filter(Boolean).join(" · "),
         ]),
       ]),
@@ -840,9 +937,9 @@ function ContentDetailRelation(props) {
 function ContentDetailRelations(props) {
   const items = content_related_items(props.content);
   if (!items.length) {
-    return View({ class: "content-detail-empty" }, ["暂无关联内容"]);
+    return View({ class: "p-6 text-sm text-center text-content-muted" }, ["暂无关联内容"]);
   }
-  return View({ class: "content-detail-relation-list" }, [
+  return View({ class: "grid" }, [
     For({
       each: items,
       render(item) {
@@ -859,25 +956,32 @@ function ContentDetailRelations(props) {
 function ContentDetailDescription(props) {
   const vm$ = ContentDetailDescriptionModel();
   return View({ attributes: { n: "content-detail-description-section" } }, [
-    View({
-      class: computed(vm$.state.expanded, (expanded) =>
-        `content-detail-description${expanded ? "" : " is-collapsed"}`,
-      ),
-      attributes: { n: "content-detail-description" },
-      onMounted(event) {
-        vm$.methods.mount(event.target.get$elm());
+    View(
+      {
+        class: computed(
+          vm$.state.expanded,
+          (expanded) =>
+            `text-base leading-relaxed whitespace-pre-wrap overflow-wrap-anywhere text-content-muted text-collapsible ${expanded ? "" : " is-collapsed"}`,
+        ),
+        attributes: { n: "content-detail-description" },
+        onMounted(event) {
+          vm$.methods.mount(event.target.get$elm());
+        },
+        onUnmounted() {
+          vm$.methods.destroy();
+        },
       },
-      onUnmounted() {
-        vm$.methods.destroy();
-      },
-    }, [props.description]),
+      [props.description],
+    ),
     Show({
       when: vm$.state.overflowing,
       ok() {
         return ContentDetailAction({
           name: "content-detail-description-toggle",
           compact: true,
-          label: computed(vm$.state.expanded, (expanded) => expanded ? "收起" : "展开"),
+          label: computed(vm$.state.expanded, (expanded) =>
+            expanded ? "收起" : "展开",
+          ),
           attributes: {
             "aria-expanded": computed(vm$.state.expanded, String),
           },
@@ -888,49 +992,96 @@ function ContentDetailDescription(props) {
   ]);
 }
 
+function ContentDetailFileNavigationButton(props) {
+  const vm$ = props.store;
+  const direction = props.direction === "left" ? "previous" : "next";
+  const semantic_name = `content-detail-${direction}-file-action`;
+  return Button(
+    {
+      store: vm$.ui[`btn_${direction}$`],
+      class: `absolute top-0 z-2 w-72px h-full p-0 border-0 bg-transparent cursor-pointer media-nav-action is-${props.direction}`,
+      attributes: {
+        n: semantic_name,
+        type: "button",
+        title: props.title,
+        "aria-label": props.title,
+      },
+      onClick() {
+        vm$.methods[direction]();
+      },
+    },
+    [
+      Timeless.Icon({
+        name: props.direction === "left" ? "chevron-left" : "chevron-right",
+        size: 18,
+        attributes: { n: `${semantic_name}-icon` },
+      }),
+    ],
+  );
+}
+
 function ContentDetailMain(props) {
   const vm$ = props.store;
   const content = props.content;
   const description = String(content.description || "").trim();
   const cover_url = vm$.methods.coverURL(content);
-  return View({ class: "content-detail-layout" }, [
-    View({
-      class: [
-        "content-detail-summary dm-panel",
-        cover_url ? "" : "content-detail-summary-no-cover",
-      ]
-        .filter(Boolean)
-        .join(" "),
-    }, [
-      cover_url
-        ? View({ class: "content-detail-cover" }, [
-            ContentDetailCover({ store: vm$, content, coverURL: cover_url }),
-          ])
-        : null,
-      View({ class: "content-detail-info" }, [
-        View({ class: "content-card-tags" }, [
-          ContentDetailPlatform({ store: vm$, content }),
-          Tag({ name: "content-type-badge", class: "content-type-badge" }, [
-            vm$.methods.typeLabel(content.content_type),
-          ]),
-        ]),
-        View(
-          {
-            class: "content-detail-title",
-            attributes: { title: content.title },
-          },
-          [content.title],
-        ),
-        ContentDetailAccounts({ content, history: props.history }),
-        description
-          ? ContentDetailDescription({ description })
+  return View({ class: "grid gap-5" }, [
+    View(
+      {
+        class: [
+          "grid max-680:grid-cols-1 grid-cols-sidebar-main max-900:grid-cols-sidebar-main-sm p-5 max-680:p-4 gap-6 dm-panel summary-layout-root",
+          cover_url ? "" : "summary-layout-single",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      },
+      [
+        cover_url
+          ? View({ class: "min-w-0 max-680:w-full max-680:max-w-360px max-680:my-0 max-680:mx-auto overflow-hidden rounded-content" }, [
+              ContentDetailCover({ store: vm$, content, coverURL: cover_url }),
+            ])
           : null,
-        View({ class: "content-detail-publish-time" }, [
-          Timeless.Icon({ name: "clock3", size: 14 }),
-          `发布于 ${vm$.methods.formatTime(content.publish_time)}`,
-        ]),
-      ].filter(Boolean)),
-    ].filter(Boolean)),
+        View(
+          { class: "flex min-w-0 flex-col items-start gap-4" },
+          [
+            View({ class: "flex items-center gap-2" }, [
+              ContentDetailPlatform({ store: vm$, content }),
+              Tag({ name: "content-type-badge", class: "border-default border-solid border-color-content bg-content-panel-soft text-content-muted" }, [
+                vm$.methods.typeLabel(content.content_type),
+              ]),
+            ]),
+            View(
+              {
+                class: "font-display text-fluid-heading font-semibold leading-tight max-480:text-2xl overflow-wrap-anywhere text-content-text",
+                attributes: { n: "content-detail-title", title: content.title },
+              },
+              [content.title],
+            ),
+            View(
+              {
+                class: "inline-flex items-center gap-1.5 text-sm text-content-muted",
+                attributes: { n: "content-detail-publish-time" },
+              },
+              [
+                Timeless.Icon({
+                  name: "clock3",
+                  size: 14,
+                  attributes: { n: "content-detail-publish-time-icon" },
+                }),
+                `发布于 ${vm$.methods.formatTime(content.publish_time)}`,
+              ],
+            ),
+            ContentDetailAccounts({ content, history: props.history }),
+            ContentDetailTags({
+              store: vm$,
+              content,
+              client: props.client,
+            }),
+            description ? ContentDetailDescription({ description }) : null,
+          ].filter(Boolean),
+        ),
+      ].filter(Boolean),
+    ),
     ContentDetailSection({
       title: "内容",
       children: [ContentDetailExtension({ store: vm$, content })],
@@ -968,14 +1119,14 @@ function ContentDetailMain(props) {
 }
 
 function ContentDetailSkeleton() {
-  return View({ class: "content-detail-layout" }, [
-    View({ class: "content-detail-summary dm-panel" }, [
-      View({ class: "content-detail-cover content-skeleton" }),
-      View({ class: "content-detail-info" }, [
-        View({ class: "content-skeleton content-skeleton-tag" }),
-        View({ class: "content-skeleton content-skeleton-title" }),
-        View({ class: "content-skeleton content-skeleton-line" }),
-        View({ class: "content-skeleton content-skeleton-line-short" }),
+  return View({ class: "grid gap-5" }, [
+    View({ class: "grid max-680:grid-cols-1 grid-cols-sidebar-main max-900:grid-cols-sidebar-main-sm p-5 max-680:p-4 gap-6 dm-panel summary-layout-root" }, [
+      View({ class: "relative min-w-0 max-680:w-full max-680:max-w-360px max-680:my-0 max-680:mx-auto overflow-hidden rounded-content bg-skeleton-bg skeleton-shimmer " }),
+      View({ class: "flex min-w-0 flex-col items-start gap-4" }, [
+        View({ class: "relative h-3 w-16 mt-2 overflow-hidden rounded-sm bg-skeleton-bg skeleton-shimmer" }),
+        View({ class: "relative w-4/5 max-w-90 h-4 overflow-hidden rounded-sm bg-skeleton-bg skeleton-shimmer" }),
+        View({ class: "relative h-3 w-4/5 max-w-45 mt-2 overflow-hidden rounded-sm bg-skeleton-bg skeleton-shimmer" }),
+        View({ class: "relative h-3 w-72pct max-w-25 mt-2 overflow-hidden rounded-sm bg-skeleton-bg skeleton-shimmer" }),
       ]),
     ]),
   ]);
@@ -983,7 +1134,7 @@ function ContentDetailSkeleton() {
 
 function ContentDetailBody(props) {
   const vm$ = props.store;
-  return View({ class: "content-main content-detail-main container" }, [
+  return View({ class: "min-w-0 flex-auto p-4 group-content-main content-detail-main " }, [
     Show({
       when: vm$.state.loading,
       ok() {
@@ -993,13 +1144,13 @@ function ContentDetailBody(props) {
         return Show({
           when: computed(vm$.state.error, (error) => Boolean(error)),
           ok() {
-            return View({ class: "content-state content-state--error" }, [
+            return View({ class: "grid min-h-320px content-center justify-items-center p-8 gap-3 text-center border-style-solid border-0 bg-state-danger text-content-muted shadow-sm state-icon-primary" }, [
               BrandError({
                 size: 132,
                 name: "content-detail-error-symbol",
               }),
-              View({ class: "content-state-title" }, ["内容加载失败"]),
-              View({ class: "content-state-text" }, [vm$.state.error]),
+              View({ class: "text-lg font-semibold text-content-text state-title" }, ["内容加载失败"]),
+              ErrorMessage({ tip: vm$.methods.tip, error: vm$.state.error }),
               ContentDetailAction({
                 name: "content-detail-retry-action",
                 icon: "refresh-cw",
@@ -1019,12 +1170,13 @@ function ContentDetailBody(props) {
                   content: vm$.state.detail.value,
                   history: props.history,
                   onOpenDetail: props.onOpenDetail,
+                  client: props.client,
                 });
               },
               else() {
-                return View({ class: "content-state" }, [
+                return View({ class: "grid min-h-320px content-center justify-items-center p-8 gap-3 text-center border-style-solid border-0 bg-state-primary text-content-muted shadow-sm state-icon-primary" }, [
                   Timeless.Icon({ name: "inbox", size: 36 }),
-                  View({ class: "content-state-title" }, ["暂无内容详情"]),
+                  View({ class: "text-lg font-semibold text-content-text state-title" }, ["暂无内容详情"]),
                 ]);
               },
             });
@@ -1040,7 +1192,7 @@ function ContentDetailPageView(props) {
   return View(
     {
       class: [
-        "content-page content-detail-page page",
+        "flex min-h-full min-w-0 flex-col font-sans bg-content-bg text-content-text group-content-page embedded-scroll-pane",
         props.embedded ? "is-embedded" : "",
       ]
         .filter(Boolean)
@@ -1059,6 +1211,7 @@ function ContentDetailPageView(props) {
         onOpenDetail: props.embedded
           ? (content_id) => vm$.methods.openDetail(content_id)
           : null,
+        client: props.client,
       }),
     ],
   );

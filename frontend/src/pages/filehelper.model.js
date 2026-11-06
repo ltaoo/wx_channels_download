@@ -1,3 +1,14 @@
+import {
+  fetchFileHelperStatus,
+  fetchFileHelperQRCode,
+  waitForFileHelperLogin,
+  fetchChannelsStatus,
+  checkFileHelperSync,
+  syncFileHelperMessages,
+  sendFileHelperMessage,
+  logoutFileHelper,
+} from "@/biz/request.js";
+
 function error_message(error, fallback) {
   if (error && error.message) {
     return error.message;
@@ -115,14 +126,14 @@ function FileHelperViewModel(props) {
   const login_stage_ = ref("loading");
   const qrcode_url_ = ref("");
   const scanned_avatar_ = ref("");
-  const login_tip_ = ref("请使用微信扫描二维码登录\n登录后可同步接收和发送消息");
+  const login_tip_ = ref(
+    "请使用微信扫描二维码登录\n登录后可同步接收和发送消息",
+  );
   const channels_status_ = ref("idle");
   const messages_ = refarr([]);
   const message_text_ = ref("");
   const sending_ = ref(false);
   const logout_loading_ = ref(false);
-  const toast_visible_ = ref(false);
-  const toast_message_ = ref("");
 
   const connection_text_ = computed(logged_in_, (logged_in) =>
     logged_in ? "已连接" : "未登录",
@@ -245,35 +256,35 @@ function FileHelperViewModel(props) {
   });
 
   const status_request = new Timeless.kit.RequestCore(
-    () => window.request.get("/api/filehelper/status"),
+    fetchFileHelperStatus,
     { client: props.client },
   );
   const qrcode_request = new Timeless.kit.RequestCore(
-    () => window.request.get("/api/filehelper/qrcode"),
+    fetchFileHelperQRCode,
     { client: props.client },
   );
   const login_wait_request = new Timeless.kit.RequestCore(
-    () => window.request.get("/api/filehelper/login/wait"),
+    waitForFileHelperLogin,
     { client: props.client },
   );
   const channels_status_request = new Timeless.kit.RequestCore(
-    () => window.request.get("/api/status"),
+    fetchChannelsStatus,
     { client: props.client },
   );
   const sync_check_request = new Timeless.kit.RequestCore(
-    () => window.request.get("/api/filehelper/synccheck"),
+    checkFileHelperSync,
     { client: props.client },
   );
   const sync_request = new Timeless.kit.RequestCore(
-    () => window.request.get("/api/filehelper/sync"),
+    syncFileHelperMessages,
     { client: props.client },
   );
   const send_request = new Timeless.kit.RequestCore(
-    (params) => window.request.post("/api/filehelper/send", params),
+    sendFileHelperMessage,
     { client: props.client },
   );
   const logout_request = new Timeless.kit.RequestCore(
-    () => window.request.post("/api/filehelper/logout"),
+    logoutFileHelper,
     { client: props.client },
   );
 
@@ -283,7 +294,6 @@ function FileHelperViewModel(props) {
   let login_sequence = 0;
   let sync_sequence = 0;
   let qrcode_sequence = 0;
-  let toast_timer = 0;
   let scroll_frame = 0;
   let message_list_element = null;
   let image_input_element = null;
@@ -312,16 +322,8 @@ function FileHelperViewModel(props) {
     });
   }
 
-  function show_toast(message, duration = 2000) {
-    if (toast_timer) {
-      window.clearTimeout(toast_timer);
-    }
-    toast_message_.as(message);
-    toast_visible_.as(true);
-    toast_timer = window.setTimeout(() => {
-      toast_timer = 0;
-      toast_visible_.as(false);
-    }, duration);
+  function show_toast(message, type = "info") {
+    props.tip({ msg: [message], type });
   }
 
   function stop_login_polling() {
@@ -355,9 +357,7 @@ function FileHelperViewModel(props) {
       channels_status_.as("error");
       return result;
     }
-    channels_status_.as(
-      channels.available ? "available" : "unavailable",
-    );
+    channels_status_.as(channels.available ? "available" : "unavailable");
     return result;
   }
 
@@ -374,9 +374,7 @@ function FileHelperViewModel(props) {
     login_stage_.as("loading");
     qrcode_url_.as("");
     scanned_avatar_.as("");
-    login_tip_.as(
-      "请使用微信扫描二维码登录\n登录后可同步接收和发送消息",
-    );
+    login_tip_.as("请使用微信扫描二维码登录\n登录后可同步接收和发送消息");
 
     const result = await qrcode_request.run();
     if (!active || sequence !== qrcode_sequence || logged_in_.value) {
@@ -384,7 +382,7 @@ function FileHelperViewModel(props) {
     }
     if (result.error) {
       login_stage_.as("error");
-      show_toast(`获取二维码失败: ${error_message(result.error, "请求失败")}`);
+      props.tip({ msg: [`获取二维码失败: ${error_message(result.error, "请求失败")}`], type: "error" });
       return result;
     }
 
@@ -435,7 +433,7 @@ function FileHelperViewModel(props) {
         break;
       }
       if (status === "logged_in") {
-        show_toast("登录成功");
+        show_toast("登录成功", "success");
         show_chat_section();
         break;
       }
@@ -533,7 +531,7 @@ function FileHelperViewModel(props) {
       if (status === "hasMsg") {
         await fetch_and_render_messages();
       } else if (status === "logout") {
-        show_toast("登录已过期");
+        show_toast("登录已过期", "warn");
         show_login_section();
         refresh_qrcode();
         break;
@@ -571,7 +569,7 @@ function FileHelperViewModel(props) {
       return result;
     }
     if (result.error) {
-      show_toast(`发送失败: ${error_message(result.error, "请求失败")}`);
+      props.tip({ msg: [`发送失败: ${error_message(result.error, "请求失败")}`], type: "error" });
       return result;
     }
 
@@ -609,10 +607,7 @@ function FileHelperViewModel(props) {
   }
 
   async function logout() {
-    if (
-      logout_loading_.value ||
-      !window.confirm("确定要退出登录吗？")
-    ) {
+    if (logout_loading_.value || !window.confirm("确定要退出登录吗？")) {
       return null;
     }
     logout_loading_.as(true);
@@ -622,7 +617,7 @@ function FileHelperViewModel(props) {
       return result;
     }
     if (result.error) {
-      show_toast(`退出失败: ${error_message(result.error, "请求失败")}`);
+      props.tip({ msg: [`退出失败: ${error_message(result.error, "请求失败")}`], type: "error" });
       return result;
     }
 
@@ -639,9 +634,6 @@ function FileHelperViewModel(props) {
     stop_login_polling();
     stop_sync_polling();
     qrcode_sequence += 1;
-    if (toast_timer) {
-      window.clearTimeout(toast_timer);
-    }
     if (scroll_frame) {
       window.cancelAnimationFrame(scroll_frame);
     }
@@ -656,6 +648,7 @@ function FileHelperViewModel(props) {
   }
 
   const methods = {
+    tip: props.tip,
     ready() {
       props.app.setTitle("微信文件传输助手");
       return check_status();
@@ -713,14 +706,9 @@ function FileHelperViewModel(props) {
     sending: sending_,
     send_disabled: send_disabled_,
     logout_loading: logout_loading_,
-    toast_visible: toast_visible_,
-    toast_message: toast_message_,
   };
 
   return { state, ui, methods };
 }
 
-export {
-  FileHelperViewModel,
-  event_target_element,
-};
+export { FileHelperViewModel, event_target_element };

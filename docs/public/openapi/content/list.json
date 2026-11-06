@@ -1,0 +1,160 @@
+{
+  "get": {
+    "tags": [
+      "内容"
+    ],
+    "summary": "查询已归档内容",
+    "description": "page/page_size 默认 1/20；正数 limit 覆盖 page_size，非负 offset 覆盖分页偏移。scope 可选 all 或 task。start_at、end_at 是非负 Unix 毫秒时间戳，分别为含起点、不含终点的归档时间 created_at 过滤，必须 start_at < end_at。tag_ids 为逗号分隔的整数。 多个 tag_ids 要求内容同时关联所有指定标签。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/services_ContentListResult"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "get_api_content_list",
+    "parameters": [
+      {
+        "name": "account_id",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "归档账号主键字符串"
+      },
+      {
+        "name": "platform_id",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "平台标识，例如 wxchannels、wxmp、bilibili"
+      },
+      {
+        "name": "content_type",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "内容类型，例如 video、article、collection"
+      },
+      {
+        "name": "scope",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "all",
+            "task"
+          ],
+          "default": "all"
+        },
+        "description": "查询范围：all 为全部归档内容，task 为存在未删除下载任务的内容"
+      },
+      {
+        "name": "keyword",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "搜索关键词"
+      },
+      {
+        "name": "tag_ids",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "逗号分隔的标签 ID，内容必须同时关联全部指定标签"
+      },
+      {
+        "name": "start_at",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "description": "归档时间 created_at 起点（含），Unix 毫秒"
+      },
+      {
+        "name": "end_at",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "description": "归档时间 created_at 终点（不含），Unix 毫秒"
+      },
+      {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 1,
+          "minimum": 1
+        },
+        "description": "页码，从 1 开始"
+      },
+      {
+        "name": "page_size",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 20,
+          "minimum": 1
+        },
+        "description": "每页条数"
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer"
+        },
+        "description": "数量限制，可覆盖 page_size"
+      },
+      {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer"
+        },
+        "description": "分页偏移，可覆盖按 page 计算的偏移"
+      }
+    ]
+  }
+}
