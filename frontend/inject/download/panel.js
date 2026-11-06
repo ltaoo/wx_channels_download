@@ -47,14 +47,13 @@ function DownloaderEntry(props) {
       [
         View(
           {
-            class: "flex items-center",
+            class: "download-panel-entry",
             attributes: { "data-n": "download-panel-entry" },
           },
           [
             View(
               {
-                class:
-                  "relative h-5 w-5 flex-initial flex-shrink-0 text-white/60 cursor-pointer",
+                class: "download-panel-trigger",
                 attributes: {
                   "data-n": "download-panel-trigger",
                   "aria-label": "下载面板",
@@ -142,6 +141,7 @@ function DownloaderEntry(props) {
         }
         var $box = $page;
         var $btn_wrap = document.createElement("div");
+        $btn_wrap.className = "download-panel-trigger-container";
         $btn_wrap.setAttribute("data-n", "download-panel-trigger-container");
         $btn_wrap.style.cssText =
           "z-index: 999; position: fixed; right: 40px; top: 36px;";

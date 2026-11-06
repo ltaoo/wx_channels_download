@@ -8,7 +8,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -361,21 +360,21 @@ func (r *WebsocketRoutes) HandleFetchFeedListOfContactRSS(ctx *gin.Context) {
 	username := ctx.Query("username")
 	next_marker := ctx.Query("next_marker")
 
-	_, err := r.client.FetchChannelsFeedListOfContact(username, next_marker)
+	raw_response, err := r.client.FetchChannelsFeedListOfContact(username, next_marker)
 	if err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
 	}
 
-	atom := atom_feed{
-		Title:     "WeChat Channels",
-		ID:        username,
-		Updated:   time.Now().Format(time.RFC3339),
-		Generator: "FindRSS",
-		Link: []atom_link{
-			{Rel: "self", Href: "http://" + ctx.Request.Host + ctx.Request.RequestURI},
-			{Rel: "alternate", Href: "https://channels.weixin.qq.com"},
-		},
+	scheme := "http"
+	if ctx.Request.TLS != nil {
+		scheme = "https"
+	}
+	self_url := scheme + "://" + ctx.Request.Host + ctx.Request.URL.RequestURI()
+	atom, err := build_channels_atom_feed(raw_response, username, self_url)
+	if err != nil {
+		result.Err(ctx, 400, err.Error())
+		return
 	}
 	ctx.Header("Content-Type", "application/atom+xml; charset=utf-8")
 	ctx.XML(http.StatusOK, atom)

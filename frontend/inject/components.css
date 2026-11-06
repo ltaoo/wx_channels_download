@@ -97,16 +97,16 @@ body[data-weui-theme=dark] {
 }
 /* Match the native header controls without relying on the host's scoped
    utility classes or changing the popover's content styles. */
-[data-n="download-panel-trigger-container"] {
+.download-panel-trigger-container {
   pointer-events: auto;
   flex: 0 0 auto;
   padding-left: 16px;
 }
-[data-n="download-panel-entry"] {
+.download-panel-entry {
   display: flex;
   align-items: center;
 }
-[data-n="download-panel-trigger"] {
+.download-panel-trigger {
   position: relative;
   display: flex;
   align-items: center;
@@ -117,7 +117,7 @@ body[data-weui-theme=dark] {
   color: rgb(255 255 255 / 60%);
   cursor: pointer;
 }
-[data-n="download-panel-trigger"] > svg {
+.download-panel-trigger > svg {
   display: block;
   flex: 0 0 auto;
   width: 100%;

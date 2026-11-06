@@ -834,11 +834,6 @@ var WXBase64 = (() => {
   var WXAPI3 = {};
   var WXAPI4 = {};
   var WXLiveAPI = {};
-  const api4_events = {
-    finderGetInteractionedFeedList: "channels:InteractionedFeedsLoaded",
-    finderGetFeedH5Url: "channels:GetFeedH5Url",
-  };
-  const api4_wrapped_methods = new WeakSet();
 
   WXU.onAPILoaded((variables) => {
     const keys = Object.keys(variables);
@@ -861,19 +856,6 @@ var WXBase64 = (() => {
           "finderGetFeedH5Url",
         ]) {
           if (typeof methods[name] === "function") {
-            const original = methods[name];
-            const event = api4_events[name];
-            if (event && !api4_wrapped_methods.has(original)) {
-              // Wrap the actual function instead of rewriting its source body.
-              // This preserves nested blocks, literals, and the service receiver.
-              const wrapped = async function (...args) {
-                const result = await original.apply(this, args);
-                WXU.emit(event, result.data.object);
-                return result;
-              };
-              api4_wrapped_methods.add(wrapped);
-              methods[name] = wrapped;
-            }
             WXAPI4[name] = methods[name].bind(methods);
           }
         }
