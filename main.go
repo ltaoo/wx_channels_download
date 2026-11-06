@@ -18,7 +18,7 @@ import (
 	"wx_channel/internal/logtime"
 )
 
-var AppVer = "26110605"
+var AppVer = "261106"
 var Mode = "debug"
 
 func main() {
