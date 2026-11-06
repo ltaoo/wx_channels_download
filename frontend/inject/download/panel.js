@@ -48,14 +48,14 @@ function DownloaderEntry(props) {
         View(
           {
             class: "download-panel-entry",
-            attributes: { "data-n": "download-panel-entry" },
+            attributes: { n: "download-panel-entry" },
           },
           [
             View(
               {
                 class: "download-panel-trigger",
                 attributes: {
-                  "data-n": "download-panel-trigger",
+                  n: "download-panel-trigger",
                   "aria-label": "下载面板",
                 },
                 onMounted() {
@@ -70,6 +70,7 @@ function DownloaderEntry(props) {
                   name: "download",
                   size: 20,
                   class: "h-full w-full",
+                  attributes: { n: "download-panel-trigger-icon" },
                 }),
                 DownloaderConnectionStatusDot({
                   connected: vm$.state.websocket_connected,
