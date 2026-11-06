@@ -90,9 +90,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 	}
 	asset_base_url := "/__assets"
 	url_build := frontend.NewURLBuild(asset_base_url, nil)
-	// Change the key when rewrite rules change so previously broken modules
-	// are not reused, even when the application version stays the same.
-	upstream_script_query := "?wx_channels_script_v2=" + url.QueryEscape(asset_version)
+	v := "?t=" + version
 	global_script_asset_path := ""
 	if cfg.GlobalScriptPath != "" {
 		global_script_asset_path = frontend.UserGlobalScriptAssetPath(cfg.GlobalScriptPath)
@@ -175,8 +173,8 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 					return
 				}
 				html := resp_body
-				html = script_src_reg.ReplaceAllString(html, `src="$1.js`+upstream_script_query+`"`)
-				html = script_href_reg.ReplaceAllString(html, `href="$1.js`+upstream_script_query+`"`)
+				html = script_src_reg.ReplaceAllString(html, `src="$1.js`+v+`"`)
+				html = script_href_reg.ReplaceAllString(html, `href="$1.js`+v+`"`)
 
 				var injected strings.Builder
 				crossorigin_attr := ` crossorigin="anonymous"`
@@ -285,10 +283,10 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 				}
 				// fmt.Println("response2", hostname, pathname, resp_content_type, ctx.Res().StatusCode)
 				js_script := resp_body
-				js_script = js_from_reg.ReplaceAllString(js_script, `from"$1.js`+upstream_script_query+`"`)
-				js_script = js_dep_reg.ReplaceAllString(js_script, `"js/$1.js`+upstream_script_query+`"`)
-				js_script = js_lazy_import_reg.ReplaceAllString(js_script, `import("$1.js`+upstream_script_query+`")`)
-				js_script = js_import_reg.ReplaceAllString(js_script, `import"$1.js`+upstream_script_query+`"`)
+				js_script = js_from_reg.ReplaceAllString(js_script, `from"$1.js`+v+`"`)
+				js_script = js_dep_reg.ReplaceAllString(js_script, `"js/$1.js`+v+`"`)
+				js_script = js_lazy_import_reg.ReplaceAllString(js_script, `import("$1.js`+v+`")`)
+				js_script = js_import_reg.ReplaceAllString(js_script, `import"$1.js`+v+`"`)
 
 				if strings.Contains(pathname, "virtual_svg-icons-register.publish") {
 					js_script = js_preload_feed_reg.ReplaceAllString(js_script, ` (async()=>{const _r = await $1; typeof WXU !== "undefined" && WXU.emit("channels:PreloadFeeds", _r.data.object); return _r;})();(`)
