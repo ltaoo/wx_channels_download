@@ -40,7 +40,7 @@ func (s *Server) handle_request(ctx context.Context, request rpc_request) rpc_re
 		s.set_protocol_version(protocol_version)
 		response.Result = map[string]any{
 			"protocolVersion": protocol_version,
-			"capabilities":    map[string]any{"tools": map[string]any{}},
+			"capabilities":    s.capabilities(),
 			"serverInfo":      s.server_info(),
 			"instructions":    s.instructions,
 		}
@@ -52,6 +52,25 @@ func (s *Server) handle_request(ctx context.Context, request rpc_request) rpc_re
 			"ttlMs":      300000,
 			"cacheScope": "public",
 		}, modern)
+	case "resources/list":
+		response.Result = s.decorate_result(map[string]any{"resources": s.Resources()}, modern)
+	case "resources/read":
+		var params struct {
+			URI string `json:"uri"`
+		}
+		if err := decode_params(request.Params, &params); err != nil || strings.TrimSpace(params.URI) == "" {
+			response.Error = &rpc_error{Code: -32602, Message: "资源 URI 不能为空"}
+			break
+		}
+		for _, resource := range s.Resources() {
+			if resource.URI == params.URI {
+				response.Result = s.decorate_result(map[string]any{"contents": []any{map[string]any{"uri": resource.URI, "mimeType": resource.MimeType, "text": resource.Text}}}, modern)
+				break
+			}
+		}
+		if response.Result == nil {
+			response.Error = &rpc_error{Code: -32002, Message: "资源不存在"}
+		}
 	case "tools/call":
 		var params call_tool_params
 		if err := decode_params(request.Params, &params); err != nil {
@@ -99,7 +118,7 @@ func (s *Server) discover_result() map[string]any {
 	return map[string]any{
 		"resultType":        "complete",
 		"supportedVersions": []string{modern_protocol_version, legacy_protocol_version, "2025-06-18", "2025-03-26", "2024-11-05"},
-		"capabilities":      map[string]any{"tools": map[string]any{}},
+		"capabilities":      s.capabilities(),
 		"_meta":             map[string]any{"io.modelcontextprotocol/serverInfo": s.server_info()},
 		"instructions":      s.instructions,
 		"ttlMs":             300000,

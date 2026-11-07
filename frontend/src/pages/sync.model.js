@@ -18,7 +18,7 @@ const DEVICE_STATUS_LABELS = {
 
 function result_message(data) {
   const value = data || {};
-  return `已同步 ${value.contents || 0} 条内容、${value.tasks || 0} 个任务、${value.resources || 0} 个资源、${value.files || 0} 个文件`;
+  return `已同步 ${value.tasks || 0} 个下载任务、${value.resources || 0} 个资源、${value.files || 0} 个文件，并关联 ${value.contents || 0} 条内容、${value.accounts || 0} 个账号`;
 }
 
 function version_label(value) {

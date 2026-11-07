@@ -126,7 +126,8 @@ export function Toaster({ store }) {
   const blur = (event) => {
     if (!event?.relatedTarget?.closest(".dm-sonner")) store.resume("focus");
   };
-  return Runtime.View({
+  // Portal 挂到 body，避免根节点的 transform / overflow 影响 fixed 定位。
+  return Runtime.Portal({}, [Runtime.View({
     class: "dm-sonner",
     attributes: { n: "sonner-root", role: "region", "aria-label": "通知" },
     onMounted() {
@@ -217,7 +218,7 @@ export function Toaster({ store }) {
         }, [Runtime.Icon({ name: "x", size: 20, attributes: { n: "sonner-toast-dismiss-icon", "aria-hidden": "true" } })]),
       ])]);
     },
-  })])])]);
+  })])])])]);
 }
 
 export function ErrorMessage(props) {

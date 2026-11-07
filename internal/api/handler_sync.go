@@ -2,7 +2,7 @@ package api
 
 import (
 	"archive/tar"
-	"crypto/subtle"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +21,7 @@ import (
 
 	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/database/model"
+	"wx_channel/internal/services"
 	"wx_channel/pkg/hermes"
 )
 
@@ -31,9 +32,8 @@ const sync_metadata_limit = 256 << 20
 var sync_import_mu sync.Mutex
 
 type sync_server_config struct {
-	Name  string `json:"name"`
-	URL   string `json:"url"`
-	Token string `json:"token"`
+	Name string `json:"name"`
+	URL  string `json:"url"`
 }
 
 type sync_server_record struct {
@@ -43,10 +43,12 @@ type sync_server_record struct {
 }
 
 type sync_bundle struct {
-	Version   int                      `json:"version"`
-	Contents  []model.Content          `json:"contents"`
-	Tasks     []model.DownloadTask     `json:"tasks"`
-	Resources []model.DownloadResource `json:"resources"`
+	Version   int                             `json:"version"`
+	SourceID  string                          `json:"source_id,omitempty"`
+	Contents  []model.Content                 `json:"contents"`
+	Tasks     []model.DownloadTask            `json:"tasks"`
+	Resources []model.DownloadResource        `json:"resources"`
+	Records   []*services.DownloadTaskArchive `json:"records,omitempty"`
 }
 
 type sync_source_file struct {
@@ -63,12 +65,15 @@ type sync_file_stage struct {
 }
 
 type sync_import_result struct {
-	Contents  int   `json:"contents"`
-	Tasks     int   `json:"tasks"`
-	Resources int   `json:"resources"`
-	Files     int   `json:"files"`
-	Bytes     int64 `json:"bytes"`
-	task_ids  []int
+	Contents      int            `json:"contents"`
+	Tasks         int            `json:"tasks"`
+	Resources     int            `json:"resources"`
+	Files         int            `json:"files"`
+	Bytes         int64          `json:"bytes"`
+	Accounts      int            `json:"accounts"`
+	TargetTaskIDs []int          `json:"target_task_ids,omitempty"`
+	Tables        map[string]int `json:"tables,omitempty"`
+	task_ids      []int
 }
 
 func (c *APIClient) sync_servers() ([]sync_server_config, error) {
@@ -91,7 +96,6 @@ func (c *APIClient) sync_servers() ([]sync_server_config, error) {
 		server := &servers[server_index]
 		server.Name = strings.TrimSpace(server.Name)
 		server.URL = strings.TrimRight(strings.TrimSpace(server.URL), "/")
-		server.Token = strings.TrimSpace(server.Token)
 		if server.Name == "" {
 			return nil, fmt.Errorf("第 %d 个同步服务缺少 name", server_index+1)
 		}
@@ -131,7 +135,12 @@ func (c *APIClient) handle_sync_to_server(ctx *gin.Context) {
 		result.Err(ctx, http.StatusNotFound, "同步服务不存在")
 		return
 	}
-	sync_result, err := c.send_sync_bundle(ctx.Request, servers[server_id])
+	task_ids, err := requested_sync_task_ids(ctx)
+	if err != nil {
+		result.Err(ctx, http.StatusBadRequest, err.Error())
+		return
+	}
+	sync_result, err := c.send_sync_bundle(ctx.Request, servers[server_id], task_ids...)
 	if err != nil {
 		result.Err(ctx, http.StatusBadGateway, err.Error())
 		return
@@ -139,12 +148,16 @@ func (c *APIClient) handle_sync_to_server(ctx *gin.Context) {
 	result.Ok(ctx, sync_result)
 }
 
-func (c *APIClient) send_sync_bundle(source_request *http.Request, server sync_server_config) (*sync_import_result, error) {
-	bundle, source_files, err := c.build_sync_bundle()
+func (c *APIClient) send_sync_bundle(source_request *http.Request, server sync_server_config, task_ids ...int) (*sync_import_result, error) {
+	if err := check_sync_receiver(source_request.Context(), server); err != nil {
+		return nil, err
+	}
+	bundle, source_files, err := c.build_sync_bundle(task_ids...)
 	if err != nil {
 		return nil, err
 	}
 	pipe_reader, pipe_writer := io.Pipe()
+	defer pipe_reader.Close()
 	go func() {
 		archive_writer := tar.NewWriter(pipe_writer)
 		write_err := write_sync_archive(archive_writer, bundle, source_files)
@@ -161,7 +174,6 @@ func (c *APIClient) send_sync_bundle(source_request *http.Request, server sync_s
 		return nil, fmt.Errorf("创建同步请求失败: %w", err)
 	}
 	request.Header.Set("Content-Type", "application/x-tar")
-	request.Header.Set("Authorization", "Bearer "+server.Token)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("连接同步服务 %q 失败: %w", server.Name, err)
@@ -185,16 +197,15 @@ func (c *APIClient) send_sync_bundle(source_request *http.Request, server sync_s
 	return &envelope.Data, nil
 }
 
-func (c *APIClient) build_sync_bundle() (sync_bundle, []sync_source_file, error) {
-	bundle := sync_bundle{Version: 1}
-	if err := c.db.Find(&bundle.Contents).Error; err != nil {
-		return bundle, nil, fmt.Errorf("读取内容记录失败: %w", err)
-	}
-	if err := c.db.Find(&bundle.Tasks).Error; err != nil {
-		return bundle, nil, fmt.Errorf("读取下载记录失败: %w", err)
-	}
-	if err := c.db.Find(&bundle.Resources).Error; err != nil {
-		return bundle, nil, fmt.Errorf("读取下载资源失败: %w", err)
+func (c *APIClient) build_sync_bundle(task_ids ...int) (sync_bundle, []sync_source_file, error) {
+	bundle := sync_bundle{Version: 2}
+	hostname, _ := os.Hostname()
+	source_hash := sha256.Sum256([]byte(hostname + "\x00" + c.cfg.DBPath + "\x00" + c.cfg.WorkDir))
+	bundle.SourceID = fmt.Sprintf("%x", source_hash[:16])
+	if err := c.db.Transaction(func(tx *gorm.DB) error {
+		return build_sync_task_records(tx, &bundle, task_ids...)
+	}); err != nil {
+		return bundle, nil, fmt.Errorf("读取下载任务归档失败: %w", err)
 	}
 	tasks_by_id := make(map[int]model.DownloadTask, len(bundle.Tasks))
 	for _, task := range bundle.Tasks {
@@ -293,15 +304,6 @@ func write_sync_archive(archive_writer *tar.Writer, bundle sync_bundle, source_f
 }
 
 func (c *APIClient) handle_sync_import(ctx *gin.Context) {
-	configured_token := ""
-	if c.cfg != nil && c.cfg.Original != nil {
-		configured_token = strings.TrimSpace(c.cfg.Original.GetString("sync.token"))
-	}
-	provided_token := strings.TrimSpace(strings.TrimPrefix(ctx.GetHeader("Authorization"), "Bearer "))
-	if configured_token == "" || subtle.ConstantTimeCompare([]byte(configured_token), []byte(provided_token)) != 1 {
-		result.Err(ctx, http.StatusUnauthorized, "同步接收未启用或令牌无效")
-		return
-	}
 	if !strings.HasPrefix(strings.ToLower(ctx.GetHeader("Content-Type")), "application/x-tar") {
 		result.Err(ctx, http.StatusUnsupportedMediaType, "同步数据格式无效")
 		return
@@ -332,21 +334,35 @@ func (c *APIClient) import_sync_archive(reader io.Reader) (*sync_import_result, 
 		return nil, fmt.Errorf("读取同步记录失败")
 	}
 	var bundle sync_bundle
-	if err := json.Unmarshal(metadata, &bundle); err != nil || bundle.Version != 1 {
+	if err := json.Unmarshal(metadata, &bundle); err != nil || (bundle.Version != 1 && bundle.Version != 2) {
 		return nil, fmt.Errorf("同步记录版本无效")
 	}
 	resources_by_id := make(map[int]model.DownloadResource, len(bundle.Resources))
-	for _, resource := range bundle.Resources {
+	for resource_index := range bundle.Resources {
+		resource := bundle.Resources[resource_index]
 		if resource.Id <= 0 {
 			return nil, fmt.Errorf("同步资源 ID 无效")
 		}
 		if _, exists := resources_by_id[resource.Id]; exists {
 			return nil, fmt.Errorf("同步资源 ID %d 重复", resource.Id)
 		}
+		if bundle.Version == 2 {
+			if _, err := sync_resource_path(c.cfg.DownloadDir, resource.Name); err != nil {
+				return nil, err
+			}
+			// A stable per-source/resource directory prevents unrelated NAS files
+			// with the same display name from being replaced.
+			identity := fmt.Sprintf("%s\x00%d\x00%d\x00%s", bundle.SourceID, resource.Id, resource.CreatedAt, resource.UniqueID)
+			digest := sha256.Sum256([]byte(identity))
+			resource.Name = filepath.Join("synced", fmt.Sprintf("%x", digest[:16]), filepath.Base(resource.Name))
+			bundle.Resources[resource_index] = resource
+		}
 		resources_by_id[resource.Id] = resource
 	}
 	stages := make([]sync_file_stage, 0)
 	seen_paths := make(map[string]bool)
+	resource_bytes := make(map[int]int64)
+	resource_files := make(map[int]bool)
 	var total_bytes int64
 	defer func() {
 		for _, stage := range stages {
@@ -390,6 +406,20 @@ func (c *APIClient) import_sync_archive(reader io.Reader) (*sync_import_result, 
 		}
 		stages = append(stages, sync_file_stage{TempPath: temp_path, FinalPath: final_path})
 		total_bytes += copied
+		parts := strings.Split(header.Name, "/")
+		resource_id, _ := strconv.Atoi(parts[1])
+		resource_files[resource_id] = true
+		resource_bytes[resource_id] += copied
+	}
+	if bundle.Version == 2 {
+		for index := range bundle.Resources {
+			resource := &bundle.Resources[index]
+			if !resource_files[resource.Id] || resource.Status != model.ResourceStatusFinished {
+				resource.Status = model.ResourceStatusWaiting
+			}
+			resource.Speed = 0
+			resource.Downloaded = resource_bytes[resource.Id]
+		}
 	}
 
 	import_result := &sync_import_result{Contents: len(bundle.Contents), Tasks: len(bundle.Tasks), Resources: len(bundle.Resources), Files: len(stages), Bytes: total_bytes}
@@ -477,6 +507,9 @@ func path_within_root(root string, target string) (string, error) {
 }
 
 func (c *APIClient) import_sync_records(tx *gorm.DB, bundle sync_bundle, import_result *sync_import_result) error {
+	if bundle.Version == 2 {
+		return c.recreate_sync_tasks(tx, bundle, import_result)
+	}
 	for content_index := range bundle.Contents {
 		content := bundle.Contents[content_index]
 		if strings.TrimSpace(content.Id) == "" {
@@ -615,7 +648,10 @@ func upsert_sync_resource(tx *gorm.DB, source_resource model.DownloadResource) (
 func install_sync_files(stages []sync_file_stage) error {
 	for stage_index := range stages {
 		stage := &stages[stage_index]
-		if _, err := os.Stat(stage.FinalPath); err == nil {
+		if info, err := os.Stat(stage.FinalPath); err == nil {
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("同步目标路径不是普通文件")
+			}
 			backup_file, create_err := os.CreateTemp(filepath.Dir(stage.FinalPath), ".sync-backup-*")
 			if create_err != nil {
 				return create_err

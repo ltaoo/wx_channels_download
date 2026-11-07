@@ -23,5 +23,6 @@ MCP（Model Context Protocol）让支持 MCP 的 AI 客户端以工具调用的�
 - [修改下载目录](./mcp/scenarios/change-download-directory.md)
 - [解析链接并下载](./mcp/scenarios/fetch-and-download.md)
 - [查询账号内容和浏览记录](./mcp/scenarios/query-account-content.md)
+- [同步数据到另一台下载器](./mcp/scenarios/sync-data.md)
 - [排查下载失败](./mcp/scenarios/troubleshoot-download.md)
 - [使用第三方下载器保存视频号视频](./mcp/scenarios/external-downloader.md)

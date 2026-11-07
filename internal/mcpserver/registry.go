@@ -120,6 +120,7 @@ var tool_declarations = concat_tools(
 	tools_automation,
 	tools_pipeline_editor,
 	tools_data,
+	tools_sync,
 )
 
 func build_tool_registry(declarations []tool) map[string]tool {

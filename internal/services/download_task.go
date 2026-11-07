@@ -800,100 +800,18 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 		Int("resource_count", len(resource_infos)).
 		Int("endpoint_count", endpoint_count).
 		Msg("persisting download task graph")
+	var persisted *CreateTaskResult
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		tx = tx.Session(&gorm.Session{DisableNestedTransaction: true})
-		stage = "persist_task_lineage"
-		if err := database.ApplyTaskLineage(tx, &task, body.ParentTaskID, body.RelationType); err != nil {
-			return err
-		}
-		stage = "persist_task"
-		if err := tx.Create(&task).Error; err != nil {
-			return fmt.Errorf("创建下载任务失败: %w", err)
-		}
-		stage = "finalize_task_root"
-		if err := database.FinalizeTaskRoot(tx, &task); err != nil {
-			return err
-		}
-
-		stage = "persist_content"
-		if content != nil {
-			content.UpdatedAt = now
-			if err := save_content_with_text_tracks(tx, content, now); err != nil {
-				return fmt.Errorf("保存 Content 失败: %w", err)
-			}
-		}
-
-		stage = "persist_account"
-		if account != nil && account.ExternalId != "" {
-			content_id := ""
-			if content != nil {
-				content_id = content.Id
-			}
-			persisted_account, err := NewContentService(tx).UpsertAccountAndLinkContent(content_id, account, "owner", now)
-			if err != nil {
-				return err
-			}
-			account = persisted_account
-		}
-
-		stage = "persist_content_details"
-		if err := save_content_details(tx, content, info.ContentDetail, info.ContentDetails, resource_infos, now); err != nil {
-			return fmt.Errorf("保存内容详情与关联关系失败: %w", err)
-		}
-
-		if len(resource_infos) == 0 {
-			return fmt.Errorf("平台未返回可下载资源或端点")
-		}
-		stage = "persist_resources"
-		task_id := task.Id
-		resources = make([]model.DownloadResource, len(resource_infos))
-		for resource_index := range resource_infos {
-			resource := resource_infos[resource_index].Resource
-			resource.TaskId = &task_id
-			resource.DownloadDir = save_dir
-			if resource.CreatedAt == 0 {
-				resource.CreatedAt = now
-			}
-			resource.UpdatedAt = now
-			resources[resource_index] = resource
-		}
-		if err := tx.CreateInBatches(&resources, download_task_persistence_batch_size).Error; err != nil {
-			return fmt.Errorf("批量创建资源失败: %w", err)
-		}
-
-		stage = "persist_resource_assets"
-		for resource_index := range resources {
-			if err := save_download_resource_assets(
-				tx,
-				&resources[resource_index],
-				resource_infos[resource_index],
-				content,
-				info.ContentDetail,
-				now,
-			); err != nil {
-				return fmt.Errorf("关联下载资源与内容资产失败: %w", err)
-			}
-			for endpoint_index := range resource_infos[resource_index].Endpoints {
-				endpoint := resource_infos[resource_index].Endpoints[endpoint_index]
-				endpoint.ResourceId = resources[resource_index].Id
-				if endpoint.CreatedAt == 0 {
-					endpoint.CreatedAt = now
-				}
-				endpoint.UpdatedAt = now
-				endpoints = append(endpoints, endpoint)
-			}
-		}
-		stage = "persist_endpoints"
-		if len(endpoints) == 0 {
-			return fmt.Errorf("平台未返回可下载资源或端点")
-		}
-		if err := tx.CreateInBatches(&endpoints, download_task_persistence_batch_size).Error; err != nil {
-			return fmt.Errorf("批量创建端点失败: %w", err)
-		}
-		return nil
+		var err error
+		persisted, err = persist_download_task_graph(tx, info, &task, save_dir, body.ParentTaskID, body.RelationType, now, false)
+		return err
 	}); err != nil {
 		s.logger.Error().Str("platform", body.Platform).Err(err).Msg("failed to persist download task graph")
 		return nil, err
+	}
+	resources, endpoints = persisted.Resources, persisted.Endpoints
+	if persisted.Account != nil {
+		account = persisted.Account.(*model.Account)
 	}
 	task_persisted = true
 	s.logger.Info().Int("task_id", task.Id).Str("task_name", task.Name).Str("platform", body.Platform).Msg("download task written to database")

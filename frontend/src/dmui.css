@@ -3166,7 +3166,6 @@ body[data-weui-theme="dark"] .dm-table-list::-webkit-scrollbar-thumb:hover {
   flex-direction: column-reverse;
   max-height: calc(100dvh - 48px);
   overflow: visible;
-  padding: 4px;
   pointer-events: auto;
 }
 .dm-sonner-viewport[data-expanded="true"] { overflow-y: auto; }
