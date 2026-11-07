@@ -282,21 +282,7 @@ function BrowseHistoryViewModel(props) {
     (state) =>
       Math.max(1, Math.ceil(state.total / Math.max(1, state.pageSize))),
   );
-  const range_text_ = combine(
-    {
-      total: total_,
-      page: page_,
-      pageSize: page_size_,
-      count: computed(histories_, (histories) => histories.length),
-    },
-    (state) => {
-      if (!state.total || !state.count) {
-        return `共 ${state.total || 0} 条`;
-      }
-      const start = (state.page - 1) * state.pageSize + 1;
-      return `第 ${start}-${start + state.count - 1} 条，共 ${state.total} 条`;
-    },
-  );
+  const range_text_ = computed(total_, (total) => `共 ${total || 0} 条`);
   const list_status_ = combine(
     {
       initial: initial_,
