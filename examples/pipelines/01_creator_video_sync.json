@@ -1,125 +1,506 @@
 {
   "id": "01_creator_video_sync",
-  "name": "定时同步创作者全部视频",
+  "name": "定时增量同步创作者视频",
   "start_node": "start",
-  "context_schema": [],
+  "triggers": [
+    {
+      "type": "Cron",
+      "name": "每天 12:00、18:00 同步创作者视频",
+      "cron_expr": "0 12,18 * * *",
+      "enabled": true,
+      "initial_data": {
+        "username": "REPLACE_CREATOR_USERNAME@finder"
+      }
+    }
+  ],
+  "context_schema": [
+    {
+      "key": "username",
+      "type": "string",
+      "required": true
+    }
+  ],
   "nodes": {
     "start": {
+      "id": "start",
       "type": "StartNode",
-      "name": "开始",
+      "name": "开始：每天 12:00、18:00 定时触发",
       "config": {},
       "next_node_ids": [
-        "config"
+        "validate"
       ],
-      "id": "start",
       "position": {
         "x": 0,
         "y": 0
       }
     },
-    "config": {
-      "type": "SetVariableNode",
-      "name": "配置创作者和下载目录",
+    "validate": {
+      "id": "validate",
+      "type": "JSCodeNode",
+      "name": "校验创作者参数",
       "config": {
-        "variables": {
-          "creator_username": "REPLACE_CREATOR_USERNAME@finder",
-          "download_dir": "",
-          "max_pages": 1000,
-          "max_videos": 100000
-        }
+        "code": "(function () {\nif (typeof input.username !== 'string') throw new Error('必须传入字符串 username');\nvar username = input.username.trim().replace(/^wxchannels:/, '');\nif (!username || username.indexOf('REPLACE_') >= 0) throw new Error('请在定时器执行参数中传入创作者 username');\nif (!/@finder$/.test(username)) username += '@finder';\nreturn {username: username};\n})()",
+        "output_key": "creator"
       },
       "next_node_ids": [
-        "validate"
+        "config"
       ],
-      "id": "config",
       "position": {
         "x": 340,
         "y": 0
       }
     },
-    "validate": {
-      "type": "JSCodeNode",
-      "name": "校验创作者参数",
-      "config": {
-        "code": "(function () {\nvar username = String(global.creator_username || '').trim().replace(/^wxchannels:/, '');\nif (!username || username.indexOf('REPLACE_') >= 0) throw new Error('请先配置创作者 username');\nif (!/@finder$/.test(username)) username += '@finder';\nif (!(global.max_pages > 0) || !(global.max_videos > 0)) throw new Error('max_pages 和 max_videos 必须大于 0');\nreturn {username: username};\n})()",
-        "output_key": "creator"
-      },
-      "next_node_ids": [
-        "init_scan"
-      ],
-      "id": "validate",
-      "position": {
-        "x": 680,
-        "y": 0
-      }
-    },
-    "init_scan": {
+    "config": {
+      "id": "config",
       "type": "SetVariableNode",
-      "name": "初始化分页与去重状态",
+      "name": "配置下载目录与扫描上限并初始化",
       "config": {
         "variables": {
+          "download_dir": "",
+          "max_pages": 1000,
+          "max_videos": 100000,
+          "page_response": null,
           "scan_state": {
             "cursor": "",
             "page": 0,
             "items": [],
-            "index": 0,
+            "pending": [],
+            "all_existing": false,
             "next_cursor": "",
             "has_more": false,
-            "visited_cursors": [],
+            "visited_cursors": [
+              ""
+            ],
             "seen_ids": {},
-            "videos": [],
+            "checked": 0,
             "submitted": 0,
-            "skipped": 0
+            "skipped": 0,
+            "fetch_enabled": true
           }
         }
       },
       "next_node_ids": [
         "fetch_page"
       ],
-      "id": "init_scan",
       "position": {
-        "x": 1020,
+        "x": 680,
         "y": 0
       }
     },
     "fetch_page": {
-      "type": "ServiceNode",
-      "name": "获取创作者一页视频",
+      "id": "fetch_page",
+      "type": "WorkflowNode",
+      "name": "获取创作者视频列表",
       "config": {
-        "tool_name": "get_wxchannels_account_videos",
+        "workflow": {
+          "id": "creator_video_page",
+          "name": "按游标循环同步创作者视频列表",
+          "start_node": "fork_page",
+          "context_schema": [
+            {
+              "key": "username",
+              "type": "string",
+              "required": true
+            },
+            {
+              "key": "next_marker",
+              "type": "string",
+              "required": true
+            },
+            {
+              "key": "pending",
+              "type": "array",
+              "required": true
+            },
+            {
+              "key": "download_dir",
+              "type": "string",
+              "required": true
+            },
+            {
+              "key": "fetch_enabled",
+              "type": "boolean",
+              "required": true
+            }
+          ],
+          "nodes": {
+            "fork_page": {
+              "id": "fork_page",
+              "type": "GatewayNode",
+              "name": "并行：提交待下载视频与获取当前游标列表",
+              "config": {
+                "gateway_type": "Parallel",
+                "join_node_id": "merge_page"
+              },
+              "next_node_ids": [
+                "download_missing",
+                "fetch_gate"
+              ],
+              "position": {
+                "x": 0,
+                "y": 240
+              }
+            },
+            "download_missing": {
+              "id": "download_missing",
+              "type": "LoopNode",
+              "name": "遍历不存在的视频，提交下载任务",
+              "config": {
+                "items": "{{input.pending}}",
+                "workflow": {
+                  "id": "creator_video_download",
+                  "name": "下载一个不存在的视频",
+                  "start_node": "start",
+                  "context_schema": [
+                    {
+                      "key": "item",
+                      "type": "object",
+                      "required": true
+                    },
+                    {
+                      "key": "index",
+                      "type": "number",
+                      "required": true
+                    },
+                    {
+                      "key": "download_dir",
+                      "type": "string",
+                      "required": true
+                    }
+                  ],
+                  "nodes": {
+                    "start": {
+                      "id": "start",
+                      "type": "StartNode",
+                      "name": "开始下载",
+                      "config": {},
+                      "next_node_ids": [
+                        "download"
+                      ],
+                      "position": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    },
+                    "download": {
+                      "id": "download",
+                      "type": "ServiceNode",
+                      "name": "创建下载任务，竞争时跳过已有任务",
+                      "config": {
+                        "tool_name": "download_wxchannels_video",
+                        "arguments": {
+                          "oid": "{{input.item.oid}}",
+                          "nid": "{{input.item.nid}}",
+                          "download_dir": "{{input.download_dir}}",
+                          "existing_action": "skip"
+                        },
+                        "output_key": "download_result",
+                        "timeout_seconds": 120
+                      },
+                      "next_node_ids": [
+                        "inspect"
+                      ],
+                      "position": {
+                        "x": 340,
+                        "y": 0
+                      }
+                    },
+                    "inspect": {
+                      "id": "inspect",
+                      "type": "JSCodeNode",
+                      "name": "确认下载任务创建结果",
+                      "config": {
+                        "code": "(function () {\nvar result = output.download.download_result;\nif (!result || (result.created !== true && result.skipped !== true)) throw new Error('下载工具没有返回已创建或已跳过结果');\nreturn {oid: input.item.oid, created: result.created === true, skipped: result.skipped === true};\n})()",
+                        "output_key": "download_status"
+                      },
+                      "next_node_ids": [
+                        "end"
+                      ],
+                      "position": {
+                        "x": 680,
+                        "y": 0
+                      }
+                    },
+                    "end": {
+                      "id": "end",
+                      "type": "EndNode",
+                      "name": "下载任务已提交",
+                      "config": {},
+                      "next_node_ids": [],
+                      "position": {
+                        "x": 1020,
+                        "y": 0
+                      }
+                    }
+                  }
+                },
+                "arguments": {
+                  "download_dir": "{{input.download_dir}}"
+                },
+                "max_iterations": 10000,
+                "concurrency": 1,
+                "continue_on_error": false,
+                "output_key": "downloads"
+              },
+              "next_node_ids": [
+                "merge_page"
+              ],
+              "position": {
+                "x": 340,
+                "y": 0
+              }
+            },
+            "fetch_gate": {
+              "id": "fetch_gate",
+              "type": "GatewayNode",
+              "name": "是否需要获取列表？",
+              "config": {
+                "gateway_type": "Exclusive",
+                "condition_language": "js",
+                "rules": [
+                  {
+                    "condition": "input.fetch_enabled",
+                    "target_id": "fetch_list"
+                  },
+                  {
+                    "condition": "true",
+                    "target_id": "no_next"
+                  }
+                ]
+              },
+              "next_node_ids": [
+                "fetch_list",
+                "no_next"
+              ],
+              "position": {
+                "x": 340,
+                "y": 480
+              }
+            },
+            "fetch_list": {
+              "id": "fetch_list",
+              "type": "WorkflowNode",
+              "name": "获取创作者视频列表",
+              "config": {
+                "workflow": {
+                  "id": "creator_video_list",
+                  "name": "获取创作者视频列表",
+                  "start_node": "start",
+                  "context_schema": [
+                    {
+                      "key": "username",
+                      "type": "string",
+                      "required": true
+                    },
+                    {
+                      "key": "next_marker",
+                      "type": "string",
+                      "required": true
+                    }
+                  ],
+                  "nodes": {
+                    "start": {
+                      "id": "start",
+                      "type": "StartNode",
+                      "name": "开始获取列表",
+                      "config": {},
+                      "next_node_ids": [
+                        "fetch_list"
+                      ],
+                      "position": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    },
+                    "fetch_list": {
+                      "id": "fetch_list",
+                      "type": "ServiceNode",
+                      "name": "获取创作者视频列表",
+                      "config": {
+                        "tool_name": "get_wxchannels_account_videos",
+                        "arguments": {
+                          "username": "{{input.username}}",
+                          "next_marker": "{{input.next_marker}}"
+                        },
+                        "output_key": "list_response",
+                        "timeout_seconds": 120
+                      },
+                      "next_node_ids": [
+                        "end"
+                      ],
+                      "position": {
+                        "x": 340,
+                        "y": 0
+                      }
+                    },
+                    "end": {
+                      "id": "end",
+                      "type": "EndNode",
+                      "name": "返回视频列表响应",
+                      "config": {},
+                      "next_node_ids": [],
+                      "position": {
+                        "x": 680,
+                        "y": 0
+                      }
+                    }
+                  }
+                },
+                "arguments": {
+                  "username": "{{input.username}}",
+                  "next_marker": "{{input.next_marker}}"
+                },
+                "output_key": "list_result"
+              },
+              "next_node_ids": [
+                "merge_page"
+              ],
+              "position": {
+                "x": 680,
+                "y": 240
+              }
+            },
+            "no_next": {
+              "id": "no_next",
+              "type": "JSCodeNode",
+              "name": "无更多列表，仅完成待下载视频",
+              "config": {
+                "code": "({fetch_enabled: false})",
+                "output_key": "no_next_page"
+              },
+              "next_node_ids": [
+                "merge_page"
+              ],
+              "position": {
+                "x": 680,
+                "y": 600
+              }
+            },
+            "merge_page": {
+              "id": "merge_page",
+              "type": "JSCodeNode",
+              "name": "汇总下载提交结果并返回列表响应",
+              "config": {
+                "code": "(function () {\nvar results = output.download_missing.downloads;\nif (!Array.isArray(results) || results.length !== input.pending.length) throw new Error('下载遍历结果不完整');\nvar submitted = 0, skipped = 0;\nfor (var i = 0; i < results.length; i++) {\n  var result = results[i].output.inspect.download_status;\n  if (result.oid !== input.pending[i].oid) throw new Error('下载遍历结果与视频不匹配');\n  if (result.skipped) skipped += 1; else if (result.created) submitted += 1; else throw new Error('下载任务未创建');\n}\nreturn {submitted: submitted, skipped: skipped, response: input.fetch_enabled ? output.fetch_list.list_result.output.fetch_list.list_response : null};\n})()",
+                "output_key": "page_result"
+              },
+              "next_node_ids": [
+                "end"
+              ],
+              "position": {
+                "x": 1020,
+                "y": 0
+              }
+            },
+            "end": {
+              "id": "end",
+              "type": "EndNode",
+              "name": "当前游标调用结束",
+              "config": {},
+              "next_node_ids": [],
+              "position": {
+                "x": 1360,
+                "y": 0
+              }
+            }
+          }
+        },
         "arguments": {
           "username": "{{output.validate.creator.username}}",
-          "next_marker": "{{global.scan_state.cursor}}"
+          "next_marker": "{{global.scan_state.cursor}}",
+          "pending": "{{global.scan_state.pending}}",
+          "download_dir": "{{global.download_dir}}",
+          "fetch_enabled": "{{global.scan_state.fetch_enabled}}"
         },
-        "output_key": "page_result",
-        "timeout_seconds": 120
+        "output_key": "page_execution"
       },
       "next_node_ids": [
-        "parse_page"
+        "record_page"
       ],
-      "id": "fetch_page",
       "position": {
-        "x": 0,
-        "y": 180
+        "x": 1020,
+        "y": 240
+      }
+    },
+    "record_page": {
+      "id": "record_page",
+      "type": "JSCodeNode",
+      "name": "收集下载结果和当前游标列表响应",
+      "config": {
+        "code": "(function () {\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nvar result = output.fetch_page.page_execution.output.merge_page.page_result;\nstate.submitted += result.submitted;\nstate.skipped += result.skipped;\nstate.pending = [];\nreturn {state: state, response: result.response};\n})()",
+        "output_key": "page_call"
+      },
+      "next_node_ids": [
+        "store_response"
+      ],
+      "position": {
+        "x": 1360,
+        "y": 240
+      }
+    },
+    "store_response": {
+      "id": "store_response",
+      "type": "SetVariableNode",
+      "name": "保存当前游标响应与下载进度",
+      "config": {
+        "variables": {
+          "scan_state": "{{output.record_page.page_call.state}}",
+          "page_response": "{{output.record_page.page_call.response}}"
+        }
+      },
+      "next_node_ids": [
+        "response_gate"
+      ],
+      "position": {
+        "x": 1700,
+        "y": 240
+      }
+    },
+    "response_gate": {
+      "id": "response_gate",
+      "type": "GatewayNode",
+      "name": "本次是否获取了视频列表？",
+      "config": {
+        "gateway_type": "Exclusive",
+        "condition_language": "js",
+        "rules": [
+          {
+            "condition": "global.scan_state.fetch_enabled",
+            "target_id": "parse_page"
+          },
+          {
+            "condition": "true",
+            "target_id": "finish_summary"
+          }
+        ]
+      },
+      "next_node_ids": [
+        "parse_page",
+        "finish_summary"
+      ],
+      "position": {
+        "x": 2040,
+        "y": 240
       }
     },
     "parse_page": {
+      "id": "parse_page",
       "type": "JSCodeNode",
-      "name": "校验分页并筛选视频",
+      "name": "解析当前页响应并筛选视频",
       "config": {
-        "code": "(function () {\nvar response = output.fetch_page.page_result;\nif (!response || (response.errCode !== undefined && Number(response.errCode) !== 0) || (response.code !== undefined && Number(response.code) !== 0)) throw new Error('获取视频列表失败');\nvar data = response.data;\nif (!data || !Array.isArray(data.object)) throw new Error('视频列表响应缺少 data.object');\nif (data.BaseResponse && Number(data.BaseResponse.ret || 0) !== 0) throw new Error('视频列表 BaseResponse 返回错误');\nif (data.continueFlag === undefined) throw new Error('视频列表缺少 continueFlag，无法确认是否已获取全部视频');\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nstate.page += 1;\nif (state.page > global.max_pages) throw new Error('超过 max_pages，本次同步未完成，请调大限制');\nstate.items = []; state.index = 0;\nfunction id_string(value) {\n  if (typeof value === 'number' && (!isFinite(value) || Math.floor(value) !== value || Math.abs(value) > 9007199254740991)) throw new Error('平台返回不安全的数字 ID，需要字符串 ID');\n  return value === undefined || value === null ? '' : String(value);\n}\nfor (var i = 0; i < data.object.length; i++) {\n  var item = data.object[i], desc = item.objectDesc || {}, media = desc.media || [];\n  if (Number(desc.mediaType) !== 4 && !media.some(function (m) { return Number(m.mediaType) === 4; })) continue;\n  var oid = id_string(item.id), nid = id_string(item.objectNonceId);\n  if (!oid || !nid) throw new Error('视频缺少 id 或 objectNonceId');\n  if (state.seen_ids[oid]) continue;\n  state.seen_ids[oid] = true;\n  if (Object.keys(state.seen_ids).length > global.max_videos) throw new Error('超过 max_videos，本次扫描未完成');\n  state.items.push({oid:oid,nid:nid,title:String(desc.description || ''),published_at:item.createtime || item.createTime || 0});\n}\nstate.has_more = Number(data.continueFlag) !== 0;\nstate.next_cursor = data.lastBuffer || '';\nif (state.has_more) {\n  if (typeof state.next_cursor !== 'string' || !state.next_cursor || state.next_cursor === state.cursor || state.visited_cursors.indexOf(state.next_cursor) >= 0) throw new Error('分页游标缺失或重复，停止以避免漏数据或无限循环');\n  if (state.page >= global.max_pages) throw new Error('达到 max_pages 但仍有下一页，本次扫描未完成');\n}\nreturn state;\n})()",
+        "code": "(function () {\nif (!(global.max_pages > 0) || Math.floor(global.max_pages) !== global.max_pages || !(global.max_videos > 0) || Math.floor(global.max_videos) !== global.max_videos) throw new Error('max_pages 和 max_videos 必须为正整数');\nvar response = global.page_response;\nif (!response || (response.errCode !== undefined && Number(response.errCode) !== 0) || (response.code !== undefined && Number(response.code) !== 0)) throw new Error('获取视频列表失败');\nvar data = response.data;\nif (!data || !Array.isArray(data.object)) throw new Error('视频列表响应缺少 data.object');\nif (data.BaseResponse && Number(data.BaseResponse.ret || 0) !== 0) throw new Error('视频列表 BaseResponse 返回错误');\nif (data.continueFlag === undefined || data.continueFlag === null || !isFinite(Number(data.continueFlag))) throw new Error('视频列表缺少有效 continueFlag');\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nstate.page += 1;\nif (state.page > global.max_pages) throw new Error('超过 max_pages，本次同步未完成');\nstate.items = []; state.pending = []; state.all_existing = false;\nvar page_ids = {};\nfunction id_string(value) {\n  if (typeof value === 'number' && (!isFinite(value) || Math.floor(value) !== value || Math.abs(value) > 9007199254740991)) throw new Error('平台返回不安全的数字 ID，需要字符串 ID');\n  return value === undefined || value === null ? '' : String(value);\n}\nfor (var i = 0; i < data.object.length; i++) {\n  var item = data.object[i], desc = item.objectDesc || {}, media = desc.media || [];\n  if (Number(desc.mediaType) !== 4 && !media.some(function (m) { return Number(m.mediaType) === 4; })) continue;\n  var oid = id_string(item.id), nid = id_string(item.objectNonceId);\n  if (!oid || !nid) throw new Error('视频缺少 id 或 objectNonceId');\n  if (page_ids[oid]) continue;\n  page_ids[oid] = true; state.seen_ids[oid] = true;\n  state.items.push({oid: oid, nid: nid, title: String(desc.description || '')});\n}\nif (Object.keys(state.seen_ids).length > global.max_videos) throw new Error('超过 max_videos，本次扫描未完成');\nstate.has_more = Number(data.continueFlag) !== 0;\nstate.next_cursor = data.lastBuffer || '';\nreturn state;\n})()",
         "output_key": "page_state"
       },
       "next_node_ids": [
         "store_page"
       ],
-      "id": "parse_page",
       "position": {
-        "x": 340,
-        "y": 180
+        "x": 2380,
+        "y": 0
       }
     },
     "store_page": {
+      "id": "store_page",
       "type": "SetVariableNode",
       "name": "保存当前页状态",
       "config": {
@@ -128,159 +509,194 @@
         }
       },
       "next_node_ids": [
-        "item_gate"
+        "check_videos"
       ],
-      "id": "store_page",
       "position": {
-        "x": 680,
-        "y": 180
+        "x": 2720,
+        "y": 0
       }
     },
-    "item_gate": {
-      "type": "GatewayNode",
-      "name": "当前页是否还有视频",
+    "check_videos": {
+      "id": "check_videos",
+      "type": "LoopNode",
+      "name": "遍历视频：逐条检查是否已存在",
       "config": {
-        "gateway_type": "Exclusive",
-        "condition_language": "js",
-        "rules": [
-          {
-            "condition": "global.scan_state.index < global.scan_state.items.length",
-            "target_id": "select_video"
-          },
-          {
-            "condition": "true",
-            "target_id": "page_gate"
+        "items": "{{global.scan_state.items}}",
+        "workflow": {
+          "id": "creator_video_exists",
+          "name": "逐条检查视频是否已有下载任务",
+          "start_node": "start",
+          "context_schema": [
+            {
+              "key": "item",
+              "type": "object",
+              "required": true
+            },
+            {
+              "key": "index",
+              "type": "number",
+              "required": true
+            }
+          ],
+          "nodes": {
+            "start": {
+              "id": "start",
+              "type": "StartNode",
+              "name": "开始检查",
+              "config": {},
+              "next_node_ids": [
+                "lookup"
+              ],
+              "position": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            "lookup": {
+              "id": "lookup",
+              "type": "ServiceNode",
+              "name": "按视频 ID 查询已有下载任务",
+              "config": {
+                "tool_name": "get_download_tasks",
+                "arguments": {
+                  "content_id": "wxchannels:{{input.item.oid}}",
+                  "page": 1,
+                  "page_size": 1
+                },
+                "output_key": "tasks",
+                "timeout_seconds": 30
+              },
+              "next_node_ids": [
+                "inspect"
+              ],
+              "position": {
+                "x": 340,
+                "y": 0
+              }
+            },
+            "inspect": {
+              "id": "inspect",
+              "type": "JSCodeNode",
+              "name": "返回视频存在性检查结果",
+              "config": {
+                "code": "(function () {\nvar tasks = output.lookup.tasks;\nif (!tasks || !Array.isArray(tasks.list) || typeof tasks.total !== 'number' || !isFinite(tasks.total) || tasks.total < 0 || Math.floor(tasks.total) !== tasks.total) throw new Error('查询下载任务失败或响应缺少 list/total');\nreturn {video: input.item, exists: tasks.total > 0};\n})()",
+                "output_key": "check_result"
+              },
+              "next_node_ids": [
+                "end"
+              ],
+              "position": {
+                "x": 680,
+                "y": 0
+              }
+            },
+            "end": {
+              "id": "end",
+              "type": "EndNode",
+              "name": "检查结束",
+              "config": {},
+              "next_node_ids": [],
+              "position": {
+                "x": 1020,
+                "y": 0
+              }
+            }
           }
-        ]
-      },
-      "next_node_ids": [
-        "select_video",
-        "page_gate"
-      ],
-      "id": "item_gate",
-      "position": {
-        "x": 1020,
-        "y": 180
-      }
-    },
-    "select_video": {
-      "type": "JSCodeNode",
-      "name": "选择当前视频",
-      "config": {
-        "code": "(function () {\nreturn global.scan_state.items[global.scan_state.index];\n})()",
-        "output_key": "selected_video"
-      },
-      "next_node_ids": [
-        "download_video"
-      ],
-      "id": "select_video",
-      "position": {
-        "x": 0,
-        "y": 360
-      }
-    },
-    "download_video": {
-      "type": "ServiceNode",
-      "name": "下载当前视频，已有任务跳过",
-      "config": {
-        "tool_name": "download_wxchannels_video",
-        "arguments": {
-          "oid": "{{output.select_video.selected_video.oid}}",
-          "nid": "{{output.select_video.selected_video.nid}}",
-          "download_dir": "{{global.download_dir}}",
-          "existing_action": "skip"
         },
-        "output_key": "download_result",
-        "timeout_seconds": 120
+        "arguments": {},
+        "max_iterations": 10000,
+        "concurrency": 1,
+        "continue_on_error": false,
+        "output_key": "checks"
       },
       "next_node_ids": [
-        "advance_item"
+        "aggregate_checks"
       ],
-      "id": "download_video",
       "position": {
-        "x": 340,
-        "y": 360
+        "x": 3060,
+        "y": 0
       }
     },
-    "advance_item": {
+    "aggregate_checks": {
+      "id": "aggregate_checks",
       "type": "JSCodeNode",
-      "name": "统计结果并移到下一条",
+      "name": "汇总整页结果，筛选不存在的视频",
       "config": {
-        "code": "(function () {\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nvar result = output.download_video.download_result;\nif (!result || (!result.created && !result.skipped)) throw new Error('下载工具没有返回已创建或已跳过结果');\nstate.index += 1;\nif (result.skipped) state.skipped += 1; else state.submitted += 1;\nreturn state;\n})()",
-        "output_key": "item_state"
+        "code": "(function () {\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nvar results = output.check_videos.checks;\nif (!Array.isArray(results) || results.length !== state.items.length) throw new Error('视频存在性检查结果不完整');\nstate.pending = [];\nfor (var i = 0; i < results.length; i++) {\n  var check = results[i].output.inspect.check_result;\n  if (!check || typeof check.exists !== 'boolean' || check.video.oid !== state.items[i].oid) throw new Error('视频存在性检查结果无效');\n  state.checked += 1;\n  if (check.exists) state.skipped += 1; else state.pending.push(check.video);\n}\nstate.all_existing = results.length > 0 && state.pending.length === 0;\nreturn state;\n})()",
+        "output_key": "checked_state"
       },
       "next_node_ids": [
-        "store_item"
+        "store_checks"
       ],
-      "id": "advance_item",
       "position": {
-        "x": 680,
-        "y": 360
+        "x": 3400,
+        "y": 0
       }
     },
-    "store_item": {
+    "store_checks": {
+      "id": "store_checks",
       "type": "SetVariableNode",
-      "name": "保存视频处理进度",
+      "name": "保存整页检查结果",
       "config": {
         "variables": {
-          "scan_state": "{{output.advance_item.item_state}}"
+          "scan_state": "{{output.aggregate_checks.checked_state}}"
         }
       },
       "next_node_ids": [
-        "item_gate"
+        "all_existing"
       ],
-      "id": "store_item",
       "position": {
-        "x": 1020,
-        "y": 360
+        "x": 3740,
+        "y": 0
       }
     },
-    "page_gate": {
+    "all_existing": {
+      "id": "all_existing",
       "type": "GatewayNode",
-      "name": "是否需要继续翻页",
+      "name": "本页视频是否全部已存在？",
       "config": {
         "gateway_type": "Exclusive",
         "condition_language": "js",
         "rules": [
           {
-            "condition": "global.scan_state.has_more",
-            "target_id": "advance_page"
+            "condition": "global.scan_state.all_existing",
+            "target_id": "summary"
           },
           {
             "condition": "true",
-            "target_id": "summary"
+            "target_id": "advance_page"
           }
         ]
       },
       "next_node_ids": [
-        "advance_page",
-        "summary"
+        "summary",
+        "advance_page"
       ],
-      "id": "page_gate",
       "position": {
-        "x": 0,
-        "y": 540
+        "x": 4080,
+        "y": 0
       }
     },
     "advance_page": {
+      "id": "advance_page",
       "type": "JSCodeNode",
-      "name": "移到下一页",
+      "name": "提取 next_marker，准备再次调用同一子流程",
       "config": {
-        "code": "(function () {\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nstate.visited_cursors.push(state.next_cursor); state.cursor = state.next_cursor;\nreturn state;\n})()",
+        "code": "(function () {\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nstate.fetch_enabled = state.has_more;\nif (state.has_more) {\n  if (typeof state.next_cursor !== 'string' || !state.next_cursor || state.visited_cursors.indexOf(state.next_cursor) >= 0) throw new Error('分页游标缺失或重复，停止以避免漏数据或无限循环');\n  if (state.page >= global.max_pages) throw new Error('达到 max_pages 但仍有下一页，本次扫描未完成');\n  state.cursor = state.next_cursor;\n  state.visited_cursors.push(state.cursor);\n}\nreturn state;\n})()",
         "output_key": "next_page_state"
       },
       "next_node_ids": [
         "store_cursor"
       ],
-      "id": "advance_page",
       "position": {
-        "x": 340,
-        "y": 540
+        "x": 4420,
+        "y": 480
       }
     },
     "store_cursor": {
+      "id": "store_cursor",
       "type": "SetVariableNode",
-      "name": "保存分页游标",
+      "name": "保存游标并 loop 调用获取列表子流程",
       "config": {
         "variables": {
           "scan_state": "{{output.advance_page.next_page_state}}"
@@ -289,37 +705,63 @@
       "next_node_ids": [
         "fetch_page"
       ],
-      "id": "store_cursor",
       "position": {
-        "x": 680,
-        "y": 540
+        "x": 2380,
+        "y": 840
       }
     },
     "summary": {
+      "id": "summary",
       "type": "JSCodeNode",
-      "name": "全量扫描与下载提交结果",
+      "name": "增量同步与下载提交结果",
       "config": {
-        "code": "(function () {\nreturn {username:output.validate.creator.username,pages:global.scan_state.page,videos:Object.keys(global.scan_state.seen_ids).length,submitted:global.scan_state.submitted,skipped:global.scan_state.skipped,note:'submitted 表示下载任务已启动，最终文件状态请查看下载任务'};\n})()",
+        "code": "(function () {\nvar state = global.scan_state;\nreturn {username: output.validate.creator.username, pages: state.page, videos: Object.keys(state.seen_ids).length, checked: state.checked, submitted: state.submitted, skipped: state.skipped, stop_reason: state.all_existing ? 'all_existing' : 'no_more_pages', note: '已存在指已有下载任务；submitted 表示任务已启动，不表示文件已下载完成；遇到整页已存在即停止翻页'};\n})()",
         "output_key": "sync_summary"
       },
       "next_node_ids": [
         "end"
       ],
-      "id": "summary",
       "position": {
-        "x": 1020,
-        "y": 540
+        "x": 4420,
+        "y": 0
       }
     },
     "end": {
+      "id": "end",
       "type": "EndNode",
-      "name": "结束",
+      "name": "同步结束",
       "config": {},
       "next_node_ids": [],
-      "id": "end",
       "position": {
-        "x": 0,
-        "y": 720
+        "x": 4760,
+        "y": 0
+      }
+    },
+    "finish_summary": {
+      "id": "finish_summary",
+      "type": "JSCodeNode",
+      "name": "全部页面检查完成，汇总结果",
+      "config": {
+        "code": "(function () {\nvar state = global.scan_state;\nreturn {username: output.validate.creator.username, pages: state.page, videos: Object.keys(state.seen_ids).length, checked: state.checked, submitted: state.submitted, skipped: state.skipped, stop_reason: state.all_existing ? 'all_existing' : 'no_more_pages', note: '已存在指已有下载任务；submitted 表示任务已启动，不表示文件已下载完成；遇到整页已存在即停止翻页'};\n})()",
+        "output_key": "sync_summary"
+      },
+      "next_node_ids": [
+        "finish_end"
+      ],
+      "position": {
+        "x": 2380,
+        "y": 480
+      }
+    },
+    "finish_end": {
+      "id": "finish_end",
+      "type": "EndNode",
+      "name": "无更多页面，同步结束",
+      "config": {},
+      "next_node_ids": [],
+      "position": {
+        "x": 2720,
+        "y": 480
       }
     }
   }
