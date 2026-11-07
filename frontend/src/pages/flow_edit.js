@@ -1,7 +1,6 @@
 import { AutomationPageViewModel } from "./automation.model.js";
 import {
   AutomationEmptyState,
-  AutomationFeedback,
   AutomationFlowGraph,
   AutomationNodeExecutionWindows,
   AutomationRunPipelineDialog,
@@ -13,7 +12,7 @@ function AutomationNodeInspector(props) {
   const vm$ = props.store;
   return View(
     {
-      class: "dm-panel fixed z-sticky top-120px max-520:top-160px right-4 bottom-4 w-[min(420px,_calc(100vw_-_32px))] min-w-0 min-h-0 flex flex-col overflow-hidden shadow-md transition-[transform_200ms_ease,_opacity_200ms_ease,_visibility_200ms] motion-reduce:transition-none",
+      class: "dm-panel fixed z-sticky top-4 max-900:top-120px max-520:top-160px right-4 bottom-4 w-[min(420px,_calc(100vw_-_32px))] min-w-0 min-h-0 flex flex-col overflow-hidden shadow-md transition-[transform_200ms_ease,_opacity_200ms_ease,_visibility_200ms] motion-reduce:transition-none",
       style: computed(vm$.state.node_inspector_open, (open) => ({
         transform: open ? "translateX(0)" : "translateX(calc(100% + 16px))",
         opacity: open ? "1" : "0",
@@ -33,7 +32,7 @@ function AutomationNodeInspector(props) {
       },
     },
     [
-      View({ class: "flex items-center justify-between gap-2 p-3 bg-color-bg-surface border-bottom-[var(--dm-border-width)_solid_var(--dm-color-border)]", attributes: { n: "automation-node-inspector-header" } }, [
+      View({ class: "flex-none flex items-center justify-between gap-2 p-3 bg-color-bg-surface border-bottom-[var(--dm-border-width)_solid_var(--dm-color-border)]", attributes: { n: "automation-node-inspector-header" } }, [
         View({ attributes: { n: "automation-node-inspector-heading" } }, [
           View({ class: "text-color-text-primary font-display text-base font-semibold", attributes: { n: "automation-node-inspector-title", id: "automation-node-inspector-title" } }, ["节点配置"]),
           View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base", attributes: { n: "automation-node-inspector-description" } }, [
@@ -595,9 +594,6 @@ function FlowEditPageView(props) {
         },
       }),
       AutomationWorkspaceToolbar({ store: vm$, mode: "edit" }),
-      View({ class: "fixed z-sticky bottom-4 left-4 max-w-[calc(100vw_-_32px)] pointer-events-none", attributes: { n: "automation-editor-feedback" } }, [
-        AutomationFeedback({ store: vm$ }),
-      ]),
       Show({
         when: computed(vm$.state.selected_pipeline, (flow) => !flow),
         ok() {

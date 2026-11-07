@@ -207,25 +207,6 @@ export function AutomationPipelineLink(props) {
   );
 }
 
-export function AutomationFeedback(props) {
-  const vm$ = props.store;
-  return View({ class: "grid gap-2 p-[var(--dm-space-4)_var(--dm-space-4)_0] [&:empty]:hidden " }, [
-
-    Show({
-      when: vm$.state.notice,
-      ok() {
-        return Alert(
-          {
-            class: "m-0",
-            attributes: { n: "automation-notice-alert" },
-          },
-          [AlertDescription({}, [vm$.state.notice.value])],
-        );
-      },
-    }),
-  ]);
-}
-
 export function AutomationWorkspaceToolbar(props) {
   const vm$ = props.store;
   const is_edit = props.mode === "edit";
@@ -559,6 +540,7 @@ const automation_flow_minimap_size = {
 export function AutomationFlowGraph(props) {
   const vm$ = props.store;
   const editable = Boolean(props.editable);
+  const inspectable = Boolean(props.executionLogs);
   const FlowPrimitive = Timeless.ui.FlowPrimitive;
   const flow$ = new Timeless.vm.FlowCanvasModel({
     nodes: [],
@@ -854,9 +836,16 @@ export function AutomationFlowGraph(props) {
   function handle_canvas_wheel(event) {
     event.preventDefault();
     if (!root_element) return;
+    // 双指滑动平移画布；捏合手势（ctrlKey）保留缩放。
+    if (!event.ctrlKey) {
+      flow$.setViewport({
+        x: flow$.viewport.x - event.deltaX,
+        y: flow$.viewport.y - event.deltaY,
+      });
+      return;
+    }
     const rect = root_element.getBoundingClientRect();
-    const sensitivity = event.ctrlKey ? 0.01 : 0.001;
-    const factor = Math.max(0.5, 1 - event.deltaY * sensitivity);
+    const factor = Math.max(0.5, 1 - event.deltaY * 0.01);
     set_flow_zoom(flow$.viewport.zoom * factor, {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top,
@@ -1213,15 +1202,15 @@ export function AutomationFlowGraph(props) {
                     class: combine(
                       { selected, execution_status },
                       ({ selected: is_selected, execution_status: status }) =>
-                        `dm-panel group-automation-flow-node relative w-full min-h-104px p-[var(--dm-space-2)_var(--dm-space-2-5)] user-select-none [&::before]:absolute [&::before]:top-[50%] [&::before]:w-2 [&::before]:h-2 [&::before]:content-[""] [&::before]:bg-color-bg-surface [&::before]:border-[var(--dm-border-width-strong)_solid_var(--dm-color-border-strong)] [&::before]:rounded-full [&::before]:transform-[translateY(-50%)] [&::after]:absolute [&::after]:top-[50%] [&::after]:w-2 [&::after]:h-2 [&::after]:content-[""] [&::after]:bg-color-bg-surface [&::after]:border-[var(--dm-border-width-strong)_solid_var(--dm-color-border-strong)] [&::after]:rounded-full [&::after]:transform-[translateY(-50%)] [&::before]:left-[calc(-1_*_var(--dm-space-1))] [&::after]:right-[calc(-1_*_var(--dm-space-1))] [&.is-start::before]:visibility-hidden [&.has-execution:not(.is-selected)]:shadow-[inset_var(--dm-space-0-5)_0_0_var(--dm-color-info)] [&.has-execution.is-running:not(.is-selected)]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_48%,_var(--dm-color-border))] [&.has-execution.is-running:not(.is-selected)]:shadow-[inset_var(--dm-space-0-5)_0_0_var(--dm-color-warning)] [&.has-execution.is-retrying:not(.is-selected)]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_48%,_var(--dm-color-border))] [&.has-execution.is-retrying:not(.is-selected)]:shadow-[inset_var(--dm-space-0-5)_0_0_var(--dm-color-warning)] [&.has-execution.is-completed:not(.is-selected)]:border-color-[color-mix(in_srgb,_var(--dm-color-success)_48%,_var(--dm-color-border))] [&.has-execution.is-completed:not(.is-selected)]:shadow-[inset_var(--dm-space-0-5)_0_0_var(--dm-color-success)] [&.has-execution.is-failed:not(.is-selected)]:border-color-color-danger-border [&.has-execution.is-failed:not(.is-selected)]:shadow-[inset_var(--dm-space-0-5)_0_0_var(--dm-color-danger)] [&.has-execution_.group-automation-flow-node__schema]:pr-16 [&.is-selected]:text-color-selection-text [&.is-selected]:bg-color-selection-surface [&.is-selected]:border-color-color-selection-border [&.is-selected]:shadow-selection [&.is-selected:focus-visible]:outline-0 [&.is-selected:focus-visible]:shadow-[var(--dm-shadow-selection),_var(--dm-focus-ring)] [&.is-start]:border-color-[color-mix(_in_srgb,_var(--dm-color-success)_60%,_var(--dm-color-border)_)] [&.is-start]:shadow-[inset_3px_0_0_var(--dm-color-success),_var(--dm-shadow-sm)] [&.is-start.is-selected]:border-color-color-selection-border [&.is-start.is-selected]:shadow-selection${is_start ? " is-start" : ""}${is_selected ? " is-selected" : ""}${status
-                            ? ` has-execution is-${automation_execution_status_class(status.status)}`
+                        `dm-panel group-automation-flow-node relative w-full min-h-104px p-[var(--dm-space-2)_var(--dm-space-2-5)] user-select-none [&::before]:absolute [&::before]:top-[50%] [&::before]:w-2 [&::before]:h-2 [&::before]:content-[""] [&::before]:bg-color-bg-surface [&::before]:border-[var(--dm-border-width-strong)_solid_var(--dm-color-border-strong)] [&::before]:rounded-full [&::before]:transform-[translateY(-50%)] [&::after]:absolute [&::after]:top-[50%] [&::after]:w-2 [&::after]:h-2 [&::after]:content-[""] [&::after]:bg-color-bg-surface [&::after]:border-[var(--dm-border-width-strong)_solid_var(--dm-color-border-strong)] [&::after]:rounded-full [&::after]:transform-[translateY(-50%)] [&::before]:left-[calc(-1_*_var(--dm-space-1))] [&::after]:right-[calc(-1_*_var(--dm-space-1))] [&.is-start::before]:visibility-hidden [&.has-execution:not(.is-selected)]:shadow-[inset_var(--dm-space-0-5)_0_0_var(--dm-color-info)] [&.has-execution.is-pending:not(.is-selected)]:shadow-none [&.has-execution.is-pending:not(.is-selected)]:border-color-color-border [&.has-execution.is-running:not(.is-selected)]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_48%,_var(--dm-color-border))] [&.has-execution.is-running:not(.is-selected)]:shadow-[inset_var(--dm-space-0-5)_0_0_var(--dm-color-warning)] [&.has-execution.is-retrying:not(.is-selected)]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_48%,_var(--dm-color-border))] [&.has-execution.is-retrying:not(.is-selected)]:shadow-[inset_var(--dm-space-0-5)_0_0_var(--dm-color-warning)] [&.has-execution.is-completed:not(.is-selected)]:border-color-[color-mix(in_srgb,_var(--dm-color-success)_48%,_var(--dm-color-border))] [&.has-execution.is-completed:not(.is-selected)]:shadow-[inset_var(--dm-space-0-5)_0_0_var(--dm-color-success)] [&.has-execution.is-failed:not(.is-selected)]:border-color-color-danger-border [&.has-execution.is-failed:not(.is-selected)]:shadow-[inset_var(--dm-space-0-5)_0_0_var(--dm-color-danger)] [&.has-execution_.group-automation-flow-node__schema]:pr-16 [&.is-selected]:text-color-selection-text [&.is-selected]:bg-color-selection-surface [&.is-selected]:border-color-color-selection-border [&.is-selected]:shadow-selection [&.is-selected:focus-visible]:outline-0 [&.is-selected:focus-visible]:shadow-[var(--dm-shadow-selection),_var(--dm-focus-ring)] [&.is-start]:border-color-[color-mix(_in_srgb,_var(--dm-color-success)_60%,_var(--dm-color-border)_)] [&.is-start]:shadow-[inset_3px_0_0_var(--dm-color-success),_var(--dm-shadow-sm)] [&.is-start.is-selected]:border-color-color-selection-border [&.is-start.is-selected]:shadow-selection${is_start ? " is-start" : ""}${is_selected ? " is-selected" : ""}${inspectable ? " cursor-pointer" : ""}${status
+                            ? ` has-execution is-${automation_execution_status_class((status?.status || "PENDING"))}`
                             : ""}`,
                       ),
                       attributes: {
                         n: `automation-flow-node-${node.id}`,
                         title: node.name || node.id,
-                        role: editable ? "button" : undefined,
-                        tabindex: editable ? "0" : undefined,
+                        role: editable || inspectable ? "button" : undefined,
+                        tabindex: editable || inspectable ? "0" : undefined,
                         "aria-pressed": computed(selected, (is_selected) =>
                           editable ? String(is_selected) : undefined,
                         ),
@@ -1229,15 +1218,15 @@ export function AutomationFlowGraph(props) {
                       onMouseDown(event) {
                         start_node_drag(event, node, flow_node);
                       },
-                      // 点节点只做选中/编辑，执行日志走 header 上的日志浮标
-                      onClick() {
-                        if (!editable) return;
-                        vm$.methods.selectEditNode(node.id);
+                      onClick(event) {
+                        if (editable) vm$.methods.selectEditNode(node.id);
+                        else if (inspectable) vm$.methods.openNodeExecutionWindow(node.id, { x: event.clientX, y: event.clientY });
                       },
                       onKeyDown(event) {
-                        if (!editable) return;
+                        if (!editable && !inspectable) return;
                         automation_activate(event, () => {
-                          vm$.methods.selectEditNode(node.id);
+                          if (editable) vm$.methods.selectEditNode(node.id);
+                          else vm$.methods.openNodeExecutionWindow(node.id);
                         });
                       },
                     },
@@ -1283,9 +1272,7 @@ export function AutomationFlowGraph(props) {
                           class: "inline-flex items-center flex-[0_0_auto] gap-1",
                           attributes: { n: `automation-flow-node-badges-${node.id}` },
                         }, [
-                          // 执行过的节点才有日志可看（when 为空则不渲染）；
-                          // 浮标只在可编辑的画布上出现，只读页没有浮窗容器
-                          editable
+                          editable || inspectable
                             ? Show({
                                 when: execution_status,
                                 ok() {
@@ -1305,9 +1292,8 @@ export function AutomationFlowGraph(props) {
                                         event.stopPropagation();
                                       },
                                       onClick(event) {
-                                        if (!editable) return;
                                         event.stopPropagation();
-                                        vm$.methods.selectEditNode(node.id);
+                                        if (editable) vm$.methods.selectEditNode(node.id);
                                         vm$.methods.openNodeExecutionWindow(
                                           node.id,
                                           {
@@ -1375,13 +1361,13 @@ export function AutomationFlowGraph(props) {
                             class: computed(
                               execution_status,
                               (status) =>
-                                `inline-flex items-center min-h-4-5 px-1-5 text-color-info bg-color-info-soft border-[var(--dm-border-width)_solid_var(--dm-color-info-border)] rounded-badge text-caption font-semibold leading-1 [&.is-completed]:text-color-success [&.is-completed]:bg-color-success-soft [&.is-completed]:border-color-[color-mix(in_srgb,_var(--dm-color-success)_34%,_transparent)] [&.is-running]:text-color-warning [&.is-running]:bg-color-warning-soft [&.is-running]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-retrying]:text-color-warning [&.is-retrying]:bg-color-warning-soft [&.is-retrying]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-failed]:text-color-danger [&.is-failed]:bg-color-danger-soft [&.is-failed]:border-color-color-danger-border absolute right-2 bottom-2 is-${automation_execution_status_class(status.status)}`,
+                                `inline-flex items-center min-h-4-5 px-1-5 text-color-info bg-color-info-soft border-[var(--dm-border-width)_solid_var(--dm-color-info-border)] rounded-badge text-caption font-semibold leading-1 [&.is-pending]:text-color-text-secondary [&.is-pending]:bg-color-bg-interactive [&.is-pending]:border-color-color-border [&.is-completed]:text-color-success [&.is-completed]:bg-color-success-soft [&.is-completed]:border-color-[color-mix(in_srgb,_var(--dm-color-success)_34%,_transparent)] [&.is-running]:text-color-warning [&.is-running]:bg-color-warning-soft [&.is-running]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-retrying]:text-color-warning [&.is-retrying]:bg-color-warning-soft [&.is-retrying]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-failed]:text-color-danger [&.is-failed]:bg-color-danger-soft [&.is-failed]:border-color-color-danger-border absolute right-2 bottom-2 is-${automation_execution_status_class((status?.status || "PENDING"))}`,
                             ),
                             attributes: { role: "status" },
                           },
                           [
                             computed(execution_status, (status) =>
-                              vm$.methods.nodeExecutionStatusLabel(status.status),
+                              vm$.methods.nodeExecutionStatusLabel((status?.status || "PENDING")),
                             ),
                           ],
                         );
@@ -1548,8 +1534,8 @@ export function AutomationFlowGraph(props) {
                   class: combine(
                     { selected, execution_status },
                     ({ selected: is_selected, execution_status: status }) =>
-                      `absolute box-sizing-border-box bg-color-bg-interactive border-[var(--dm-border-width)_solid_var(--dm-color-border-strong)] rounded-xs [&.is-start]:border-color-color-success [&.is-selected]:bg-color-primary-fill [&.is-selected]:border-color-color-primary [&.has-execution.is-running:not(.is-selected)]:bg-color-warning [&.has-execution.is-retrying:not(.is-selected)]:bg-color-warning [&.has-execution.is-completed:not(.is-selected)]:bg-color-success [&.has-execution.is-failed:not(.is-selected)]:bg-color-danger${node.type === "StartNode" ? " is-start" : ""}${is_selected ? " is-selected" : ""}${status
-                          ? ` has-execution is-${automation_execution_status_class(status.status)}`
+                      `absolute box-sizing-border-box bg-color-bg-interactive border-[var(--dm-border-width)_solid_var(--dm-color-border-strong)] rounded-xs [&.is-start]:border-color-color-success [&.is-selected]:bg-color-primary-fill [&.is-selected]:border-color-color-primary [&.has-execution.is-running:not(.is-selected)]:bg-color-warning [&.has-execution.is-retrying:not(.is-selected)]:bg-color-warning [&.has-execution.is-completed:not(.is-selected)]:bg-color-success [&.has-execution.is-failed:not(.is-selected)]:bg-color-danger${node.type === "StartNode" ? " is-start" : ""}${is_selected ? " is-selected" : ""}${inspectable ? " cursor-pointer" : ""}${status
+                          ? ` has-execution is-${automation_execution_status_class((status?.status || "PENDING"))}`
                           : ""}`,
                   ),
                   style: minimap_node_style(node),
@@ -1751,6 +1737,10 @@ export function AutomationNodeExecutionWindow(props) {
     ({ logs, node_id: id }) =>
       (logs || []).filter((entry) => entry.node_id === id).reverse(),
   );
+  const error_ = combine({ status: status_, logs: logs_ }, ({ status, logs }) => {
+    const error = status?.error || logs[0]?.error;
+    return typeof error === "string" ? error : error ? vm$.methods.formatExecutionValue(error) : "";
+  });
   const z_ = computed(
     combine(
       { z: vm$.state.execution_window_z, node_id: node_id_ },
@@ -1765,6 +1755,9 @@ export function AutomationNodeExecutionWindow(props) {
     ),
     ({ active, node_id: id }) => active === id,
   );
+  const is_detail = vm$.state.view_mode.value === "detail";
+  const record_ = combine({ run: vm$.state.selected_run, states: vm$.state.node_execution_states, logs: vm$.state.execution_logs },
+    () => vm$.methods.formatExecutionValue(vm$.methods.nodeExecutionRecord(node_id)));
 
   const position = vm$.methods.executionWindowPosition(node_id);
 
@@ -1808,7 +1801,7 @@ export function AutomationNodeExecutionWindow(props) {
       },
     },
     [
-      Show({
+      View({ class: "flex items-start gap-2 min-w-0", attributes: { n: `automation-node-status-row-${node_id}` } }, [Show({
         when: status_,
         ok() {
           return View(
@@ -1816,19 +1809,27 @@ export function AutomationNodeExecutionWindow(props) {
               class: computed(
                 status_,
                 (status) =>
-                  `align-self-flex-start inline-flex items-center min-h-4-5 px-1-5 text-color-info bg-color-info-soft border-[var(--dm-border-width)_solid_var(--dm-color-info-border)] rounded-badge text-caption font-semibold leading-1 [&.is-completed]:text-color-success [&.is-completed]:bg-color-success-soft [&.is-completed]:border-color-[color-mix(in_srgb,_var(--dm-color-success)_34%,_transparent)] [&.is-running]:text-color-warning [&.is-running]:bg-color-warning-soft [&.is-running]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-retrying]:text-color-warning [&.is-retrying]:bg-color-warning-soft [&.is-retrying]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-failed]:text-color-danger [&.is-failed]:bg-color-danger-soft [&.is-failed]:border-color-color-danger-border is-${automation_execution_status_class(
-                    status.status,
+                  `align-self-flex-start inline-flex items-center min-h-4-5 px-1-5 text-color-info bg-color-info-soft border-[var(--dm-border-width)_solid_var(--dm-color-info-border)] rounded-badge text-caption font-semibold leading-1 [&.is-pending]:text-color-text-secondary [&.is-pending]:bg-color-bg-interactive [&.is-pending]:border-color-color-border [&.is-completed]:text-color-success [&.is-completed]:bg-color-success-soft [&.is-completed]:border-color-[color-mix(in_srgb,_var(--dm-color-success)_34%,_transparent)] [&.is-running]:text-color-warning [&.is-running]:bg-color-warning-soft [&.is-running]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-retrying]:text-color-warning [&.is-retrying]:bg-color-warning-soft [&.is-retrying]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-failed]:text-color-danger [&.is-failed]:bg-color-danger-soft [&.is-failed]:border-color-color-danger-border is-${automation_execution_status_class(
+                    (status?.status || "PENDING"),
                   )}`,
               ),
             },
             [
               computed(status_, (status) =>
-                vm$.methods.nodeExecutionStatusLabel(status.status),
+                vm$.methods.nodeExecutionStatusLabel((status?.status || "PENDING")),
               ),
             ],
           );
         },
-      }),
+      }), Show({
+        when: error_,
+        ok() {
+          return View({
+            class: "flex-1 min-w-0 text-color-danger text-sm leading-base whitespace-pre-wrap word-break-break-word",
+            attributes: { n: `automation-node-error-${node_id}`, role: "alert", title: error_ },
+          }, [error_]);
+        },
+      })]),
       Show({
         when: computed(logs_, (logs) => logs.length === 0),
         ok() {
@@ -1837,7 +1838,10 @@ export function AutomationNodeExecutionWindow(props) {
           ]);
         },
       }),
-      For({
+      is_detail ? View({ class: "grid gap-2 min-w-0", attributes: { n: `automation-node-record-${node_id}` } }, [
+        View({ class: "text-color-text-secondary text-caption font-semibold" }, ["执行记录 JSON"]),
+        View({ as: "pre", class: "m-0 p-2 overflow-auto font-mono text-xs whitespace-pre-wrap word-break-break-all bg-color-bg-subtle rounded-content", attributes: { n: `automation-node-record-json-${node_id}` } }, [record_]),
+      ]) : For({
         each: logs_,
         key: "_execution_key",
         render(entry_) {
@@ -1851,7 +1855,7 @@ export function AutomationNodeExecutionWindow(props) {
               View({ class: "flex items-center gap-2 p-[var(--dm-space-1-5)_var(--dm-space-3)] bg-color-bg-subtle border-bottom-[var(--dm-border-width)_solid_var(--dm-color-border)]" }, [
                 View(
                   {
-                    class: `inline-flex items-center min-h-4-5 px-1-5 text-color-info bg-color-info-soft border-[var(--dm-border-width)_solid_var(--dm-color-info-border)] rounded-badge text-caption font-semibold leading-1 [&.is-completed]:text-color-success [&.is-completed]:bg-color-success-soft [&.is-completed]:border-color-[color-mix(in_srgb,_var(--dm-color-success)_34%,_transparent)] [&.is-running]:text-color-warning [&.is-running]:bg-color-warning-soft [&.is-running]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-retrying]:text-color-warning [&.is-retrying]:bg-color-warning-soft [&.is-retrying]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-failed]:text-color-danger [&.is-failed]:bg-color-danger-soft [&.is-failed]:border-color-color-danger-border is-${automation_execution_status_class(
+                    class: `inline-flex items-center min-h-4-5 px-1-5 text-color-info bg-color-info-soft border-[var(--dm-border-width)_solid_var(--dm-color-info-border)] rounded-badge text-caption font-semibold leading-1 [&.is-pending]:text-color-text-secondary [&.is-pending]:bg-color-bg-interactive [&.is-pending]:border-color-color-border [&.is-completed]:text-color-success [&.is-completed]:bg-color-success-soft [&.is-completed]:border-color-[color-mix(in_srgb,_var(--dm-color-success)_34%,_transparent)] [&.is-running]:text-color-warning [&.is-running]:bg-color-warning-soft [&.is-running]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-retrying]:text-color-warning [&.is-retrying]:bg-color-warning-soft [&.is-retrying]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-failed]:text-color-danger [&.is-failed]:bg-color-danger-soft [&.is-failed]:border-color-color-danger-border is-${automation_execution_status_class(
                       entry.outcome,
                     )}`,
                   },
@@ -1877,23 +1881,32 @@ export function AutomationNodeExecutionWindow(props) {
 
 export function AutomationRunHistory(props) {
   const vm$ = props.store;
-  return View({ class: "dm-panel m-4 p-3 grid gap-3 min-w-0", attributes: { n: "automation-run-history" } }, [
-    View({ class: "flex items-center justify-between gap-2" }, [
-      View({ class: "font-semibold text-color-text-primary" }, ["最近运行"]),
-      Button({ store: vm$.ui.btn_refresh_runs$, attributes: { type: "button", "aria-label": "刷新运行记录" } }, ["刷新运行记录"]),
+  return View({ class: "dm-panel h-full flex flex-col min-h-0 min-w-0 overflow-hidden shadow-md", attributes: { n: "automation-run-history" } }, [
+    View({ class: "flex items-center justify-between gap-2 p-3 border-bottom-[var(--dm-border-width)_solid_var(--dm-color-border)]" }, [
+      View({ class: "font-semibold text-color-text-primary" }, ["执行记录"]),
+      Button({ store: vm$.ui.btn_refresh_runs$, attributes: { type: "button", "aria-label": "刷新运行记录" } }, ["刷新"]),
     ]),
-    View({ class: "flex flex-wrap gap-2 max-h-200px overflow-auto min-w-0" }, [
+    View({ class: "flex-1 min-h-0 overflow-auto p-2 grid gap-2 content-start", attributes: { n: "automation-run-list", "aria-label": "选择执行记录" } }, [
       For({ each: vm$.state.runs, key: "id", render(value) {
         const run = value && value.value !== undefined ? value.value : value;
-        return Button({ store: vm$.ui.btn_select_run$.bind(run), attributes: { type: "button", title: run.id, "aria-label": `查看运行 ${run.id}` } }, [`${vm$.methods.formatTime(run.created_at)} · ${run.status}`]);
+        const current_ = computed(vm$.state.runs, (runs) => runs.find((item) => item.id === run.id) || run);
+        return Button({
+          store: vm$.ui.btn_select_run$.bind(run),
+          class: computed(vm$.state.selected_run_id, (id) => `dm-button--list-row w-full min-w-0 h-auto flex flex-col items-start gap-1 p-3 text-left border-[var(--dm-border-width)_solid_var(--dm-color-border)] [&.is-selected]:bg-color-selection-surface [&.is-selected]:border-color-color-selection-border [&.is-selected]:shadow-selection${id === run.id ? " is-selected" : ""}`),
+          attributes: { type: "button", n: `automation-run-select-${run.id}`, title: run.id, "aria-label": `查看运行 ${run.id}`, "aria-pressed": computed(vm$.state.selected_run_id, (id) => String(id === run.id)) },
+        }, [
+          View({ class: "w-full flex items-center justify-between gap-2" }, [
+            View({ class: "min-w-0 overflow-hidden text-sm text-ellipsis whitespace-nowrap" }, [computed(current_, (item) => vm$.methods.formatTime(item.created_at))]),
+            View({ class: "text-caption text-color-text-secondary" }, [computed(current_, (item) => vm$.methods.nodeExecutionStatusLabel(item.status))]),
+          ]),
+          View({ class: "max-w-full overflow-hidden font-mono text-xs text-color-text-secondary text-ellipsis whitespace-nowrap" }, [run.id]),
+        ]);
       } }),
-      Show({ when: computed(vm$.state.runs, (runs) => !runs.length), ok() { return View({ class: "text-color-text-secondary text-sm" }, ["暂无运行记录。保存 Pipeline 后手动执行或配置触发器。"]); } }),
+      Show({ when: computed(vm$.state.runs, (runs) => !runs.length), ok() { return View({ class: "text-color-text-secondary text-sm p-2" }, [computed(vm$.state.runs_loading, (loading) => loading ? "正在加载执行记录…" : "暂无执行记录，点击顶部「手动执行」开始。")]); } }),
     ]),
     For({ each: computed(vm$.state.selected_run, (run) => run ? [{ ...run, render_key: `${run.id}-${run.status}-${run.updated_at}` }] : []), key: "render_key", render(value) {
       const run = value && value.value !== undefined ? value.value : value;
-      let logs = [];
-      try { logs = JSON.parse(run.node_logs || "[]"); } catch { /* Legacy records may have no trace. */ }
-      return View({ class: "grid gap-2 min-w-0 border-top-[1px_solid_var(--dm-color-border)] pt-3" }, [
+      return View({ class: "grid gap-2 min-w-0 max-h-60vh overflow-auto border-top-[var(--dm-border-width)_solid_var(--dm-color-border)] p-3" }, [
         View({ class: "flex flex-wrap gap-2 items-center text-sm min-w-0" }, [
           automation_status_badge(run.status), View({ class: "font-mono text-xs word-break-break-all" }, [run.id]),
           View({ class: "text-color-text-secondary" }, [`当前节点：${run.current_node || "等待执行"}`]),
@@ -1914,10 +1927,7 @@ export function AutomationRunHistory(props) {
             Button({ store: vm$.ui.btn_retry_current_run$, attributes: { type: "button" } }, ["按当前已保存流程重试"]),
           ]),
         ]) : null,
-        logs.length ? View({ as: "details", class: "min-w-0 text-sm", attributes: { n: "automation-persisted-logs" } }, [
-          View({ as: "summary", class: "text-color-text-secondary" }, [`节点执行记录（最近 ${logs.length} 条）`]),
-          View({ as: "pre", class: "max-h-200px overflow-auto font-mono text-xs whitespace-pre-wrap word-break-break-all" }, [JSON.stringify(logs, null, 2)]),
-        ]) : null,
+        View({ class: "text-color-text-secondary text-caption leading-base" }, ["点击画布节点查看本次执行的 JSON。未执行的节点显示 Pending。"]),
       ].filter(Boolean));
     } }),
   ]);

@@ -440,6 +440,48 @@ function pipeline_triggers(pipeline, schedules) {
   return triggers;
 }
 
+function automation_run_json(value, fallback) {
+  if (typeof value !== "string") return value == null ? fallback : value;
+  try { return JSON.parse(value); } catch { return fallback; }
+}
+
+function automation_run_projection(run, pipeline) {
+  const definition = automation_run_json(run && run.definition, null);
+  const flow = definition && definition.nodes
+    ? normalize_pipeline({ ...pipeline, definition })
+    : pipeline;
+  const nodes = (flow && flow.nodes) || [];
+  const ids = new Set(nodes.map((node) => node.id));
+  const raw_logs = automation_run_json(run && run.node_logs, []);
+  const flow_id = run && run.flow_id || pipeline && pipeline.id;
+  const logs = (Array.isArray(raw_logs) ? raw_logs : []).filter((entry) =>
+    entry && ids.has(entry.node_id) && (!entry.flow_id || entry.flow_id === flow_id || entry.flow_id === definition?.id));
+  const states = Object.fromEntries(nodes.map((node) => [node.id, { node_id: node.id, status: "PENDING" }]));
+  logs.forEach((entry, index) => {
+    const outcome = String(entry.outcome || "").toUpperCase();
+    const status = outcome === "WAITING" ? "WAITING_FOR_USER"
+      : ["COMPLETED", "FAILED", "RETRYING"].includes(outcome) ? outcome
+        : entry.error || entry.success === false ? "FAILED" : "COMPLETED";
+    states[entry.node_id] = { ...entry, status };
+    logs[index] = { ...entry, _execution_key: `${run.id}-${entry.node_id}-${entry.attempt || 0}-${index}` };
+  });
+  // The log ring may no longer contain early nodes; persisted attempts still
+  // identify nodes that ran. Do not infer success solely from a missing log.
+  const attempts = automation_run_json(run && run.node_attempts, {});
+  Object.entries(attempts || {}).forEach(([id, attempt]) => {
+    if (states[id]) {
+      states[id].attempt = attempt;
+      if (attempt > 0 && states[id].status === "PENDING") states[id].status = "UNKNOWN";
+    }
+  });
+  const current = run && run.current_node;
+  if (current && states[current]) {
+    const active = { QUEUED: "PENDING", RUNNING: "RUNNING", WAITING: "WAITING_FOR_USER", FAILED: "FAILED", CANCELLED: "CANCELLED" }[run.status];
+    if (active) states[current] = { ...states[current], status: active, error: run.error || states[current].error };
+  }
+  return { flow, states, logs };
+}
+
 function automation_view_query(props, fallback_mode) {
   const query = (props && props.view && props.view.query) || {};
   const requested_mode = String(
@@ -488,7 +530,6 @@ function AutomationPageViewModel(props, options) {
   const selected_pipeline_ = refobj(null);
   const loading_ = ref(false);
   const error_ = track_error(ref(""), props.tip);
-  const notice_ = ref("");
   const dirty_ = ref(false);
   const saving_ = ref(false);
   const execution_channel_connected_ = ref(false);
@@ -502,7 +543,10 @@ function AutomationPageViewModel(props, options) {
   let run_poll_timer = null;
   let run_query_sequence = 0;
   let run_detail_sequence = 0;
-  let selected_run_id = "";
+  const selected_run_id_ = ref("");
+  const runs_loading_ = ref(false);
+  const canvas_revision_ = ref(0);
+  let canvas_definition = "";
   const node_execution_states_ = refobj({});
   const execution_logs_ = refarr([]);
   // 画布节点执行日志浮窗：可同时存在多个，各自位置独立，层级由 WindowManager 维护
@@ -660,7 +704,7 @@ function AutomationPageViewModel(props, options) {
       onClick() {
         ui.input_keyword$.setValue("");
         search_pipelines();
-        return load_data({ silent: true });
+        return load_data();
       },
     }),
     create_dialog$: new Timeless.vm.DialogCore({
@@ -761,8 +805,8 @@ function AutomationPageViewModel(props, options) {
     }),
     input_manual_response$: new Timeless.vm.InputCore({ defaultValue: "{}", onChange(value) { manual_response_.as(value); } }),
     input_edit_node_policy$: new Timeless.vm.InputCore({ defaultValue: "{}", onChange(value) { edit_node_policy_.as(value); } }),
-    btn_refresh_runs$: new Timeless.vm.ButtonCore({ variant: "outline", onClick() { return load_runs(); } }),
-    btn_select_run$: new Timeless.vm.ButtonInListCore({ variant: "ghost", onClick(run) { return select_run(run.id); } }),
+    btn_refresh_runs$: new Timeless.vm.ButtonCore({ variant: "outline", size: "sm", onClick() { return load_runs().catch(set_error); } }),
+    btn_select_run$: new Timeless.vm.ButtonInListCore({ variant: "ghost", onClick(run) { return select_run(run.id).catch(set_error); } }),
     btn_cancel_run$: new Timeless.vm.ButtonCore({ variant: "outline", onClick() { return act_on_run("cancel"); } }),
     btn_resume_run$: new Timeless.vm.ButtonCore({ variant: "outline", onClick() { return act_on_run("resume"); } }),
     btn_retry_run$: new Timeless.vm.ButtonCore({ variant: "outline", onClick() { return act_on_run("retry"); } }),
@@ -784,7 +828,7 @@ function AutomationPageViewModel(props, options) {
       variant: "outline",
       disabled: loading_.value,
       onClick() {
-        return load_data({ silent: true });
+        return load_data();
       },
     }),
     btn_create_pipeline$: new Timeless.vm.ButtonCore({
@@ -859,7 +903,7 @@ function AutomationPageViewModel(props, options) {
       },
     }),
     btn_run_flow$: new Timeless.vm.ButtonCore({
-      variant: "outline",
+      variant: view_mode_.value === "detail" ? "primary" : "outline",
       size: "sm",
       onClick() {
         return trigger_flow();
@@ -919,6 +963,13 @@ function AutomationPageViewModel(props, options) {
       size: "xs",
       onClick(pipeline) {
         return ask_delete_pipeline(pipeline);
+      },
+    }),
+    btn_pipeline_trigger$: new Timeless.vm.ButtonInListCore({
+      variant: "outline",
+      size: "xs",
+      onClick(pipeline) {
+        return trigger_pipeline(pipeline);
       },
     }),
     btn_param_remove$: new Timeless.vm.ButtonInListCore({
@@ -1433,11 +1484,27 @@ function AutomationPageViewModel(props, options) {
     }
   }
 
-  function reset_execution_tracking() {
+  function reset_execution_tracking(nodes = []) {
     execution_run_id_.as("");
     execution_run_status_.as("");
-    node_execution_states_.as({});
+    node_execution_states_.as(Object.fromEntries(nodes.map((node) => [node.id, { node_id: node.id, status: "PENDING" }])));
     execution_logs_.as([], { reset: true });
+  }
+
+  function apply_run_to_canvas(run) {
+    if (view_mode_.value !== "detail") return;
+    const projection = automation_run_projection(run, selected_pipeline_.value);
+    const definition_key = run && run.definition || selected_pipeline_.value?.definition || "";
+    if (definition_key !== canvas_definition) {
+      canvas_definition = definition_key;
+      edit_nodes_.as(projection.flow && projection.flow.nodes || [], { reset: true });
+      edit_start_node_id_.as(projection.flow && projection.flow.start_node_id || "");
+      canvas_revision_.as(canvas_revision_.value + 1);
+    }
+    execution_run_id_.as(run && run.id || "");
+    execution_run_status_.as(run && run.status || "");
+    node_execution_states_.as(projection.states);
+    execution_logs_.as(projection.logs, { reset: true });
   }
 
   function ensure_execution_run(run_id, run_status) {
@@ -1554,6 +1621,10 @@ function AutomationPageViewModel(props, options) {
     if (!message || typeof message !== "object") return;
     const flow_id = String(message.flow_id || "").trim();
     if (!flow_id || flow_id !== selected_flow_id_.value) return;
+    if (view_mode_.value === "detail") {
+      const run_id = message.run_id || message.node_status?.run_id || message.execution_log?.run_id;
+      if (!selected_run_id_.value || run_id !== selected_run_id_.value) return;
+    }
 
     if (message.type === "automation_run_started") {
       ensure_execution_run(message.run_id, message.run_status || "RUNNING");
@@ -1655,12 +1726,10 @@ function AutomationPageViewModel(props, options) {
     return schedules;
   }
 
-  async function load_data(options) {
-    options = options || {};
+  async function load_data() {
     const sequence = ++request_sequence;
     loading_.as(true);
     error_.as("");
-    if (!options.silent) notice_.as("");
     try {
       const [pipelines, catalog, schedules] = await Promise.all([
         load_pipelines(),
@@ -1860,7 +1929,7 @@ function AutomationPageViewModel(props, options) {
       if (!policy || typeof policy !== "object" || Array.isArray(policy)) throw new Error("执行策略必须是 JSON 对象");
       const patch = { config, retry: policy.retry || { max_attempts: 1, delay_ms: 0, backoff_multiplier: 1 }, error_next_node: String(policy.error_next_node || ""), input_schema: policy.input_schema || [], output_schema: policy.output_schema || [] };
       update_selected_node(next_ids ? { ...patch, next_ids } : patch);
-      notice_.as("节点配置已应用，保存 Pipeline 后生效");
+      props.tip({ msg: ["节点配置已应用，保存 Pipeline 后生效"], type: "success" });
     } catch (err) {
       set_error(err);
     }
@@ -1871,23 +1940,35 @@ function AutomationPageViewModel(props, options) {
     const flow_id = selected_flow_id_.value;
     if (!flow_id || disposed) return;
     const sequence = ++run_query_sequence;
-    const response = await reqs.run.list.run({ flow_id, page: 1, page_size: 20 });
-    if (response.error) throw request_result_error(response, "运行记录加载失败");
-    if (sequence !== run_query_sequence || flow_id !== selected_flow_id_.value || disposed) return;
-    runs_.as(response.data.list || [], { reset: true });
-    const current_id = selected_run_id || selected_run_.value && selected_run_.value.id;
-    const latest = (response.data.list || [])[0];
-    const id = current_id || latest && latest.id;
-    if (id) await select_run(id, flow_id);
+    runs_loading_.as(true);
+    try {
+      const response = await reqs.run.list.run({ flow_id, page: 1, page_size: 20 });
+      if (response.error) throw request_result_error(response, "运行记录加载失败");
+      if (sequence !== run_query_sequence || flow_id !== selected_flow_id_.value || disposed) return;
+      runs_.as(response.data.list || [], { reset: true });
+      const current_id = selected_run_id_.value || selected_run_.value && selected_run_.value.id;
+      const latest = (response.data.list || [])[0];
+      const id = current_id || latest && latest.id;
+      if (id) await select_run(id, flow_id);
+      else apply_run_to_canvas(null);
+    } finally {
+      if (sequence === run_query_sequence) runs_loading_.as(false);
+    }
   }
 
   async function select_run(id, expected_flow_id = selected_flow_id_.value) {
-    selected_run_id = id;
+    if (id !== selected_run_id_.value) {
+      close_all_node_execution_windows();
+      selected_run_.as(null);
+      reset_execution_tracking(edit_nodes_.value);
+    }
+    selected_run_id_.as(id);
     const sequence = ++run_detail_sequence;
     const response = await reqs.run.detail.run({ id });
     if (response.error) throw request_result_error(response, "运行详情加载失败");
     if (disposed || sequence !== run_detail_sequence || selected_flow_id_.value !== expected_flow_id) return;
     selected_run_.as(response.data);
+    apply_run_to_canvas(response.data);
     return response.data;
   }
 
@@ -1906,8 +1987,8 @@ function AutomationPageViewModel(props, options) {
       } else if (action === "cancel") response = await reqs.run.cancel.run({ id: run.id });
       else response = await reqs.run.retry.run({ id: run.id, use_current_definition: action === "retry_current" });
       if (response.error) throw request_result_error(response, "运行操作失败");
-      if (response.data && response.data.id && action !== "cancel") { selected_run_id = response.data.id; selected_run_.as(response.data); }
-      notice_.as(action === "resume" ? "运行已恢复" : action === "cancel" ? "运行已取消" : "已创建重试运行，请核对外部操作结果");
+      if (response.data && response.data.id && action !== "cancel") { selected_run_id_.as(response.data.id); selected_run_.as(response.data); }
+      props.tip({ msg: [action === "resume" ? "运行已恢复" : action === "cancel" ? "运行已取消" : "已创建重试运行，请核对外部操作结果"], type: "success" });
       await load_runs();
     } catch (error) { set_error(error); }
     run_action_busy_.as(false);
@@ -1923,7 +2004,7 @@ function AutomationPageViewModel(props, options) {
 
   async function select_pipeline(flow_id, options) {
     options = options || {};
-    if (selected_flow_id_.value !== flow_id) { reset_execution_tracking(); selected_run_.as(null); selected_run_id = ""; runs_.as([], { reset: true }); }
+    if (selected_flow_id_.value !== flow_id) { reset_execution_tracking(); close_all_node_execution_windows(); selected_run_.as(null); selected_run_id_.as(""); canvas_definition = ""; runs_.as([], { reset: true }); }
     selected_flow_id_.as(flow_id);
     const pipeline = find_pipeline(flow_id);
     if (pipeline) enter_edit(pipeline);
@@ -2035,8 +2116,8 @@ function AutomationPageViewModel(props, options) {
       const flow = r.data;
       ui.create_dialog$.hide();
       create_open_.as(false);
-      await load_data({ silent: true });
-      notice_.as("Pipeline 已创建，请在开始节点配置触发器");
+      await load_data();
+      props.tip({ msg: ["Pipeline 已创建，请在开始节点配置触发器"], type: "success" });
       if (props.history && typeof props.history.push === "function") {
         props.history.push("root.shell.flow_edit", { id: flow.id });
       }
@@ -2179,13 +2260,14 @@ function AutomationPageViewModel(props, options) {
       ui.add_dialog$.hide();
       add_open_.as(false);
       add_insert_to_.as("");
-      notice_.as(
-        insert_to
+      props.tip({
+        msg: [insert_to
           ? "节点已插入，记得保存 Pipeline"
           : gateway_append
             ? "节点已作为新分支添加；还要在该节点的 rules 里补上条件，否则引擎不会走到它"
-            : "节点已添加，记得保存 Pipeline",
-      );
+            : "节点已添加，记得保存 Pipeline"],
+        type: "success",
+      });
     } catch (err) {
       set_error(err);
     }
@@ -2247,8 +2329,8 @@ function AutomationPageViewModel(props, options) {
       });
       if (r.error) throw request_result_error(r, "Pipeline 保存失败");
       dirty_.as(false);
-      notice_.as("Pipeline 已保存");
-      await load_data({ silent: true });
+      props.tip({ msg: ["Pipeline 已保存"], type: "success" });
+      await load_data();
     } catch (err) {
       set_error(err);
     }
@@ -2276,8 +2358,8 @@ function AutomationPageViewModel(props, options) {
         selected_pipeline_.as(null);
         edit_nodes_.as([], { reset: true });
       }
-      notice_.as("Pipeline 已删除");
-      await load_data({ silent: true });
+      props.tip({ msg: ["Pipeline 已删除"], type: "success" });
+      await load_data();
     } catch (err) {
       set_error(err);
     }
@@ -2299,21 +2381,15 @@ function AutomationPageViewModel(props, options) {
     const key = String(field.key || "").trim();
     const type = String(field.type || "string").toLowerCase();
     const required = Boolean(field.required);
-    const row = { uid: ++run_param_sequence, key, type, required, value: undefined };
+    const row = { uid: ++run_param_sequence, key, type, required };
     if (type === "boolean") {
       row.checkbox$ = new Timeless.vm.CheckboxCore({
         checked: false,
-        onChange(value) {
-          row.value = Boolean(value);
-        },
       });
     } else {
       row.input$ = new Timeless.vm.InputCore({
         defaultValue: "",
         placeholder: required ? "必填" : "可选",
-        onChange(value) {
-          row.value = value;
-        },
       });
     }
     return row;
@@ -2351,14 +2427,16 @@ function AutomationPageViewModel(props, options) {
     for (const param of params) {
       const key = String(param.key || "").trim();
       if (!key) continue;
-      const value = coerce_run_param(param.type, param.value);
-      if (value === undefined || value === null || value === "") {
+      const raw = param.type === "boolean"
+        ? param.checkbox$.state.checked
+        : param.input$.state.value;
+      if (raw === undefined || raw === null || (typeof raw === "string" && !raw.trim())) {
         if (param.required) {
           return { error: `请填写必填参数：${key}` };
         }
         continue;
       }
-      initial_data[key] = value;
+      initial_data[key] = coerce_run_param(param.type, raw);
     }
     return { initial_data };
   }
@@ -2373,19 +2451,34 @@ function AutomationPageViewModel(props, options) {
       execution_run_status_.as("FAILED");
       return r;
     }
-    if (r.data.id) { execution_run_id_.as(r.data.id); selected_run_id = r.data.id; selected_run_.as(r.data); }
+    if (r.data.id) {
+      close_all_node_execution_windows();
+      execution_run_id_.as(r.data.id);
+      selected_run_id_.as(r.data.id);
+      selected_run_.as(r.data);
+      apply_run_to_canvas(r.data);
+    }
     load_runs().catch(set_error);
-    notice_.as(`已触发执行（${r.data.status || "RUNNING"}）`);
+    props.tip({ msg: [`已触发执行（${r.data.status || "RUNNING"}）`], type: "success" });
     return r;
   }
 
+  function trigger_pipeline(pipeline) {
+    if (!pipeline || !pipeline.id || run_submitting_.value) return null;
+    selected_flow_id_.as(pipeline.id);
+    selected_pipeline_.as(pipeline);
+    return trigger_flow();
+  }
+
   async function trigger_flow() {
+    if (run_submitting_.value) return null;
     const flow_id = selected_flow_id_.value;
     if (!flow_id) return null;
     if (run_schema_fields().length > 0) {
       open_run_dialog();
       return null;
     }
+    run_submitting_.as(true);
     try {
       const r = await run_flow_direct({});
       if (r && r.error) {
@@ -2394,6 +2487,8 @@ function AutomationPageViewModel(props, options) {
     } catch (err) {
       execution_run_status_.as("FAILED");
       set_error(err);
+    } finally {
+      run_submitting_.as(false);
     }
     return null;
   }
@@ -2445,8 +2540,8 @@ function AutomationPageViewModel(props, options) {
       const flow = r.data;
       ui.import_dialog$.hide();
       import_open_.as(false);
-      await load_data({ silent: true });
-      notice_.as("Pipeline 已导入");
+      await load_data();
+      props.tip({ msg: ["Pipeline 已导入"], type: "success" });
       if (props.history && typeof props.history.push === "function") {
         props.history.push("root.shell.flow_edit", { id: flow.id });
       }
@@ -2469,8 +2564,8 @@ function AutomationPageViewModel(props, options) {
         event_key: metadata.type === "Event" ? metadata.event_key : "",
       });
       if (r.error) throw request_result_error(r, "触发器执行失败");
-      notice_.as(metadata.type === "Event" ? "事件已触发" : "Pipeline 已手动触发");
-      await load_data({ silent: true });
+      props.tip({ msg: [metadata.type === "Event" ? "事件已触发" : "Pipeline 已手动触发"], type: "success" });
+      await load_data();
     } catch (err) {
       set_error(err);
     }
@@ -2531,7 +2626,7 @@ function AutomationPageViewModel(props, options) {
       if (Array.isArray(draft.triggers)) edit_triggers_.as(draft.triggers.map(new_trigger_row), { reset: true });
       select_edit_node(find_edit_node(selected_edit_node_id_.value) ? selected_edit_node_id_.value : draft.start_node_id);
       dirty_.as(true);
-      notice_.as("MCP 已更新流程画布，保存 Pipeline 后生效");
+      props.tip({ msg: ["MCP 已更新流程画布，保存 Pipeline 后生效"], type: "success" });
     },
     on_error(error) {
       if (!disposed) error_.as(error && error.message ? error.message : "编辑器通信失败");
@@ -2556,7 +2651,7 @@ function AutomationPageViewModel(props, options) {
     },
     destroy: dispose,
     refresh() {
-      return load_data({ silent: true });
+      return load_data();
     },
     search: search_pipelines,
     changePage: change_page,
@@ -2602,18 +2697,36 @@ function AutomationPageViewModel(props, options) {
     flowIcon: flow_icon,
     nodeExecutionStatusLabel(status) {
       const labels = {
-      PENDING: "等待",
-      WAITING: "等待",
-      RUNNING: "执行中",
-        COMPLETED: "已完成",
+        PENDING: "Pending",
+        UNKNOWN: "记录缺失",
+        QUEUED: "排队中",
+        WAITING: "等待",
+        RUNNING: "执行中",
+        COMPLETED: "成功",
         FAILED: "失败",
         RETRYING: "重试中",
         WAITING_FOR_USER: "等待确认",
         WAITING_FOR_SUBPROCESS: "等待子流程",
-      WAITING_FOR_MERGE: "等待汇聚",
-      CANCELLED: "已取消",
+        WAITING_FOR_MERGE: "等待汇聚",
+        CANCELLED: "已取消",
       };
       return labels[String(status || "").toUpperCase()] || String(status || "");
+    },
+    nodeExecutionRecord(node_id) {
+      const state = (node_execution_states_.value || {})[node_id] || { status: "PENDING" };
+      return {
+        run_id: execution_run_id_.value || null,
+        flow_id: selected_flow_id_.value,
+        node_id,
+        status: state.status,
+        attempt: state.attempt || 0,
+        executions: (execution_logs_.value || []).filter((entry) => entry.node_id === node_id)
+          .map((entry) => {
+            const record = { ...entry };
+            delete record._execution_key;
+            return record;
+          }),
+      };
     },
     formatExecutionValue(value) {
       try {
@@ -2668,13 +2781,12 @@ function AutomationPageViewModel(props, options) {
     edit_node_config: edit_node_config_,
     loading: loading_,
     error: error_,
-    notice: notice_,
     dirty: dirty_,
     saving: saving_,
     execution_channel_connected: execution_channel_connected_,
     execution_run_id: execution_run_id_,
     execution_run_status: execution_run_status_,
-    runs: runs_, selected_run: selected_run_, run_action_busy: run_action_busy_,
+    runs: runs_, runs_loading: runs_loading_, canvas_revision: canvas_revision_, selected_run_id: selected_run_id_, selected_run: selected_run_, run_action_busy: run_action_busy_,
     manual_response: manual_response_, edit_node_policy: edit_node_policy_,
     node_execution_states: node_execution_states_,
     execution_logs: execution_logs_,
