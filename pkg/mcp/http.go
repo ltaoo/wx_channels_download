@@ -70,6 +70,7 @@ func (h *http_handler) request_server(request *http.Request) *Server {
 		error_output: h.server.error_output,
 		tools:        h.server.tools,
 		handlers:     h.server.handlers,
+		resources:    h.server.Resources(),
 		pending:      make(map[string]context.CancelFunc),
 	}
 	protocol_version := strings.TrimSpace(request.Header.Get("MCP-Protocol-Version"))

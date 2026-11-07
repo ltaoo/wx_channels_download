@@ -33,6 +33,7 @@ type Server struct {
 	error_output     io.Writer
 	tools_mu         sync.RWMutex
 	tools            []Tool
+	resources        []Resource
 	handlers         map[string]ToolHandler
 	write_mu         sync.Mutex
 	pending_mu       sync.Mutex

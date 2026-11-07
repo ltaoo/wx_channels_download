@@ -94,3 +94,16 @@ MCP 中的“命令”以工具（tool）的形式提供。调用时由 AI 客�
 | `get_browse_history` | `page`、`page_size`、`keyword`、`username`、`platform_ids` | 分页查询浏览记录；`username` 是数据库账号 ID，例如 `wxchannels:xxx`。 |
 | `get_logs` | `page`、`page_size`、`max_bytes`、`keyword`、`source`、`levels`、`format_json` | 分页读取并筛选应用日志。 |
 | `get_certificate_status` | 无 | 获取代理根证书的来源、安装、信任状态和风险提示。 |
+
+## 数据同步
+
+同步复用创建下载任务的保存流程，在目标端重建下载记录及其关联的内容、账号，并上传已有文件，不解析平台、不启动下载、不包含浏览记录，不要求两端数据库 ID 相同。完整流程见[同步数据到另一台下载器](./scenarios/sync-data.md)。
+
+| 工具 | 主要参数 | 用途 |
+| --- | --- | --- |
+| `get_sync_skill` | 无 | 读取内置的同步 Skill；也可通过 MCP 资源 `dm://skills/sync-downloads` 读取。 |
+| `get_sync_servers` | 无 | 查看已配置目标，不返回令牌。 |
+| `configure_sync_server` | `name`、`url` | 按名称添加或更新目标，立即生效，无需令牌。 |
+| `preview_sync` | 可选 `task_ids` | 只读统计选定任务的记录、文件及字节数。 |
+| `sync_to_server` | `server_id`，`task_ids` 或 `all=true` | 用户授权后启动指定范围的后台同步，返回 `job_id`；全量须显式指定。 |
+| `get_sync_status` | `job_id` | 查询任务，只有 `completed` 表示同步成功。 |
