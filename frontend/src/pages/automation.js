@@ -1,8 +1,8 @@
 import { AutomationPageViewModel } from "./automation.model.js";
 import {
-  AutomationFeedback,
   AutomationPipelineLink,
   AutomationPipelineTriggerBadges,
+  AutomationRunPipelineDialog,
 } from "./flow.components.js";
 
 function AutomationPageView(props) {
@@ -39,6 +39,7 @@ function AutomationPageView(props) {
       AutomationCreatePipelineDialog({ store: vm$ }),
       AutomationImportPipelineDialog({ store: vm$ }),
       AutomationDeletePipelineDialog({ store: vm$ }),
+      AutomationRunPipelineDialog({ store: vm$ }),
     ],
   );
 }
@@ -49,7 +50,6 @@ function AutomationListPage(props) {
     View({ class: "group-content-toolbar-wrap p-[var(--dm-space-4)_var(--dm-space-4)_0] " }, [
       AutomationPageToolbar({ store: vm$ }),
     ]),
-    AutomationFeedback({ store: vm$ }),
     AutomationPipelineList({ store: vm$ }),
   ]);
 }
@@ -175,7 +175,22 @@ function AutomationPipelineList(props) {
         width: 210,
         cellClass: "flex items-center gap-1 flex-wrap",
         render(pipeline) {
-          return AutomationPipelineTriggerBadges({ store: vm$, pipeline });
+          return [
+            AutomationPipelineTriggerBadges({ store: vm$, pipeline }),
+            vm$.methods.pipelineTriggerTypes(pipeline).includes("Manual")
+              ? Button(
+                  {
+                    store: vm$.ui.btn_pipeline_trigger$.bind(pipeline),
+                    attributes: {
+                      n: `automation-pipeline-trigger-${pipeline.id}`,
+                      type: "button",
+                      "aria-label": `触发 ${pipeline.name || pipeline.id}`,
+                    },
+                  },
+                  ["触发"],
+                )
+              : null,
+          ].filter(Boolean);
         },
       },
       {

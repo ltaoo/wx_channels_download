@@ -218,6 +218,25 @@ test("the automation editor fills its page and keeps the inspector and toolbar f
   assert.doesNotMatch(read("src/pages/flow_edit.js"), /AutomationRunHistory|automation-editor-toolbar-wrap/);
 });
 
+test("the automation detail fills its page with a fixed run toolbar and history rail", () => {
+  const page = element(view_classes("pages/flow_detail.js", "automation-page"));
+  assert.equal(styles(page).height, "100%");
+  assert.equal(styles(page)["min-height"], "0");
+  assert.equal(styles(page).overflow, "hidden");
+  const workspace = element(view_classes("pages/flow_detail.js", "automation-detail-workspace"), page);
+  assert.equal(styles(workspace).position, "absolute");
+  assert.equal(styles(workspace).inset, "0");
+  assert.equal(styles(element("group-automation-flow-scroll", workspace)).height, "100%");
+  const toolbar = element(view_classes("pages/flow_detail.js", "automation-detail-toolbar"));
+  assert.equal(styles(toolbar).position, "fixed");
+  const rail = element(view_classes("pages/flow_detail.js", "automation-run-sidebar"));
+  assert.equal(styles(rail).position, "fixed");
+  assert.equal(styles(rail).width, "var(--dm-layout-sidebar-width)");
+  assert.equal(styles(rail, { width: 640 }).width, "calc(var(--dm-space-24) * 2)");
+  assert.equal(styles(workspace, { width: 640 }).inset, "0");
+  assert.doesNotMatch(read("src/pages/flow_detail.js"), /AutomationNodeInspector|AutomationStartTriggers|AutomationPipelineLink|AutomationWorkspaceToolbar/);
+});
+
 test("dynamic gallery variants retain single-image and three-image layouts", () => {
   for (const count of [1, 2, 3, 4]) {
     const gallery = element(view_classes("pages/account.js", "account-content-card-gallery", {
