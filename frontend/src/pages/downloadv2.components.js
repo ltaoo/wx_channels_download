@@ -1,4 +1,3 @@
-import { ErrorMessage } from "@/dmui.js";
 import {
   resource_file_icon,
   format_file_size,
@@ -536,16 +535,41 @@ export function DownloadV2TaskMain(props) {
             attributes: { n: "download-task-description" },
           },
           [
-            View(
-              {
-                class: "flex-[0_0_auto]",
-                style: computed(state_, (state) => ({
-                  color: state.status_color,
-                })),
-                attributes: { n: "download-task-status" },
+            Show({
+              when: computed(state_, (state) => state.is_failed),
+              ok() {
+                return View(
+                  {
+                    as: "button",
+                    class: "flex-[0_0_auto] p-0 border-0 bg-transparent text-color-danger [font-family:inherit] text-sm leading-18px cursor-pointer hover:text-decoration-underline dm-focus-ring",
+                    attributes: {
+                      n: "download-task-status",
+                      type: "button",
+                      title: "查看错误原因",
+                      "aria-label": "失败，查看错误原因",
+                      "aria-haspopup": "dialog",
+                    },
+                    onClick(event) {
+                      event?.stopPropagation?.();
+                      vm$.methods.requestTaskError(state_.value.error_text);
+                    },
+                  },
+                  ["失败"],
+                );
               },
-              [computed(state_, (state) => state.status_text)],
-            ),
+              else() {
+                return View(
+                  {
+                    class: "flex-[0_0_auto]",
+                    style: computed(state_, (state) => ({
+                      color: state.status_color,
+                    })),
+                    attributes: { n: "download-task-status" },
+                  },
+                  [computed(state_, (state) => state.status_text)],
+                );
+              },
+            }),
             "·",
             Show({
               when: computed(state_, (state) => state.is_completed),
@@ -595,18 +619,30 @@ export function DownloadV2TaskMain(props) {
             }),
           ],
         ),
-        Show({
-          when: computed(
-            state_,
-            (state) => state.is_failed && Boolean(state.error_text),
-          ),
-          ok() {
-            return ErrorMessage({ tip: vm$.methods.tip, error: computed(state_, (state) => state.error_text) });
-          },
-        }),
       ],
     ),
   ];
+}
+
+export function TaskErrorDialog(props) {
+  const { store: vm$ } = props;
+  return Dialog(
+    {
+      store: vm$.ui.taskErrorDialog$,
+      attributes: { n: "download-task-error-dialog" },
+    },
+    () => [
+      DialogBody({}, [
+        View(
+          {
+            class: "whitespace-pre-wrap word-break-break-all",
+            attributes: { n: "download-task-error-reason" },
+          },
+          [vm$.state.task_error],
+        ),
+      ]),
+    ],
+  );
 }
 
 export function DownloadV2TaskSkeletonRow() {

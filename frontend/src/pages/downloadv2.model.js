@@ -191,6 +191,7 @@ function DownloadV2Model(props = {}) {
   const initial_ = ref(true);
   const loading_ = ref(false);
   const error_ = track_error(ref(""), props.tip);
+  const task_error_ = ref("");
   const list_render_enabled_ = ref(true);
   const selected_task_ids_ = refarr([]);
   const delete_task_ = ref(null);
@@ -302,6 +303,10 @@ function DownloadV2Model(props = {}) {
 
   const methods = {
     tip: props.tip,
+    requestTaskError(error) {
+      task_error_.as(error?.message || String(error || "下载失败"));
+      ui.taskErrorDialog$.show();
+    },
   };
   const ui = {
     btn_refresh_tasks$: new Timeless.vm.ButtonCore({
@@ -411,6 +416,11 @@ function DownloadV2Model(props = {}) {
     }),
     taskPreviewDrawer$: new Timeless.vm.DialogCore({
       title: "任务详情",
+      closeable: true,
+      footer: false,
+    }),
+    taskErrorDialog$: new Timeless.vm.DialogCore({
+      title: "错误原因",
       closeable: true,
       footer: false,
     }),
@@ -1238,6 +1248,7 @@ function DownloadV2Model(props = {}) {
     loading: loading_,
     error: error_,
     overwrite: overwrite_,
+    task_error: task_error_,
     overwrite_apply_all: overwrite_apply_all_,
     overwrite_processing: overwrite_processing_,
     overwrite_conflict: overwrite_conflict_,
