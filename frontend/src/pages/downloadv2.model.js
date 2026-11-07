@@ -239,21 +239,7 @@ function DownloadV2Model(props = {}) {
     (state) =>
       Math.max(1, Math.ceil(state.total / Math.max(1, state.pageSize))),
   );
-  const range_text_ = combine(
-    {
-      total: filtered_task_count_,
-      page: page_,
-      pageSize: page_size_,
-      count: computed(tasks_, (tasks) => tasks.length),
-    },
-    (state) => {
-      if (!state.total || !state.count) {
-        return `共 ${state.total || 0} 条`;
-      }
-      const start = (state.page - 1) * state.pageSize + 1;
-      return `第 ${start}-${start + state.count - 1} 条，共 ${state.total} 条`;
-    },
-  );
+  const range_text_ = computed(filtered_task_count_, (total) => `共 ${total || 0} 条`);
   const loaded_task_selection_ = combine(
     {
       tasks: tasks_,

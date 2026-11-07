@@ -516,14 +516,7 @@ function AutomationPageViewModel(props, options) {
       return pipelines.slice(start, start + pageSize);
     },
   );
-  const range_text_ = combine(
-    { total: total_, page: page_, pageSize: page_size_ },
-    ({ total, page, pageSize }) => {
-      if (!total) return "共 0 条";
-      const start = (page - 1) * pageSize + 1;
-      return `第 ${start}-${Math.min(page * pageSize, total)} 条，共 ${total} 条`;
-    },
-  );
+  const range_text_ = computed(total_, (total) => `共 ${total || 0} 条`);
   const catalog_ = refarr([]);
   const schedules_ = refarr([]);
   const selected_flow_id_ = ref(view_query.flow_id);

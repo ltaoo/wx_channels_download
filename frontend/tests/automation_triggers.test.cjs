@@ -169,10 +169,10 @@ test("automation pagination shows bounded pages and clamps the last page after a
   assert.equal(model.state.page_size.value, 50);
   assert.equal(model.state.page_count.value, 3);
   assert.equal(model.state.paged_pipelines.value.length, 50);
-  assert.equal(model.state.range_text.value, "第 1-50 条，共 101 条");
+  assert.equal(model.state.range_text.value, "共 101 条");
   model.methods.changePage(2);
   assert.equal(model.state.paged_pipelines.value[0].id, "flow-50");
-  assert.equal(model.state.range_text.value, "第 51-100 条，共 101 条");
+  assert.equal(model.state.range_text.value, "共 101 条");
   model.methods.changePage(99);
   assert.equal(model.state.page.value, 3);
   assert.equal(model.state.paged_pipelines.value.length, 1);
@@ -180,7 +180,7 @@ test("automation pagination shows bounded pages and clamps the last page after a
   flows.splice(100);
   await model.methods.refresh();
   assert.equal(model.state.page.value, 2);
-  assert.equal(model.state.range_text.value, "第 51-100 条，共 100 条");
+  assert.equal(model.state.range_text.value, "共 100 条");
   assert.equal(model.state.paged_pipelines.value.length, 50);
   model.methods.changePage(-1);
   assert.equal(model.state.page.value, 1);
@@ -201,7 +201,7 @@ test("automation search and reset return to page one and paginate the matching n
   assert.equal(model.state.page_count.value, 2);
   model.methods.changePage(2);
   assert.equal(model.state.paged_pipelines.value.length, 10);
-  assert.equal(model.state.range_text.value, "第 51-60 条，共 60 条");
+  assert.equal(model.state.range_text.value, "共 60 条");
   assert.ok(model.state.paged_pipelines.value.every((flow) => flow.name.includes("下载")));
   model.methods.search();
   assert.equal(model.state.page.value, 1, "resubmitting the same search resets pagination");
@@ -213,7 +213,7 @@ test("automation search and reset return to page one and paginate the matching n
   await model.ui.btn_reset$.click();
   assert.equal(model.state.page.value, 1);
   assert.equal(model.state.total.value, 120);
-  assert.equal(model.state.range_text.value, "第 1-50 条，共 120 条");
+  assert.equal(model.state.range_text.value, "共 120 条");
   model.methods.destroy();
 });
 

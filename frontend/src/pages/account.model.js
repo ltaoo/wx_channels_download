@@ -378,21 +378,7 @@ function AccountViewModel(props) {
       return state.accounts.length === 0 ? "empty" : "normal";
     },
   );
-  const range_text_ = combine(
-    {
-      total: total_,
-      page: page_,
-      pageSize: page_size_,
-      count: computed(accounts_, (accounts) => accounts.length),
-    },
-    (state) => {
-      if (!state.total || !state.count) {
-        return `共 ${state.total || 0} 个账号`;
-      }
-      const start = (state.page - 1) * state.pageSize + 1;
-      return `第 ${start}-${start + state.count - 1} 个，共 ${state.total} 个账号`;
-    },
-  );
+  const range_text_ = computed(total_, (total) => `共 ${total || 0} 个账号`);
   const drawer_status_ = combine(
     {
       initial: drawer_initial_,
