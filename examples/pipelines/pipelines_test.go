@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -28,16 +29,20 @@ func (f round_trip_func) RoundTrip(request *http.Request) (*http.Response, error
 }
 
 type pipeline_fixture struct {
-	definition engine.FlowDefinition
-	engine     *engine.FlowEngine
-	pages      map[string]map[string]any
-	downloads  []string
-	recordings int
-	initial    map[string]any
-	notified   []string
-	fail_send  int
-	sends      int
-	fail_save  bool
+	definition  engine.FlowDefinition
+	engine      *engine.FlowEngine
+	pages       map[string]map[string]any
+	downloads   []string
+	existing    map[string]bool
+	checked     []string
+	requested   []string
+	before_tool func(string, map[string]any) error
+	recordings  int
+	initial     map[string]any
+	notified    []string
+	fail_send   int
+	sends       int
+	fail_save   bool
 }
 
 func new_fixture(t *testing.T, filename string) *pipeline_fixture {
@@ -88,25 +93,53 @@ func new_fixture(t *testing.T, filename string) *pipeline_fixture {
 	variables["monitor_schedule_id"] = "sched-test"
 	fixture := &pipeline_fixture{
 		definition: definition, engine: flow_engine, pages: map[string]map[string]any{},
-		initial: map[string]any{"keep": "preserved", "__automation": map[string]any{"type": "Cron", "start_node": "start"}},
+		existing: map[string]bool{},
+		initial:  map[string]any{"keep": "preserved", "__automation": map[string]any{"type": "Cron", "start_node": "start"}},
 	}
 	flow_engine.FlowDefinitions[definition.ID] = definition
 	flowengine.RegisterServiceNode(flow_engine, func(_ context.Context, tool string, arguments map[string]any) (any, error) {
+		if fixture.before_tool != nil {
+			if err := fixture.before_tool(tool, arguments); err != nil {
+				return nil, err
+			}
+		}
 		switch tool {
 		case "get_wxchannels_account_videos":
 			if arguments["username"] != "test@finder" {
 				return nil, fmt.Errorf("unexpected username: %v", arguments)
 			}
 			cursor, _ := arguments["next_marker"].(string)
+			fixture.requested = append(fixture.requested, cursor)
 			page, ok := fixture.pages[cursor]
 			if !ok {
 				return nil, fmt.Errorf("unexpected cursor %q", cursor)
 			}
 			return map[string]any{"errCode": 0, "data": page}, nil
+		case "get_download_tasks":
+			content_id, _ := arguments["content_id"].(string)
+			if !strings.HasPrefix(content_id, "wxchannels:") {
+				return nil, fmt.Errorf("invalid content ID: %v", arguments)
+			}
+			id := strings.TrimPrefix(content_id, "wxchannels:")
+			fixture.checked = append(fixture.checked, id)
+			exists := fixture.existing[id]
+			for _, downloaded := range fixture.downloads {
+				exists = exists || downloaded == id
+			}
+			total := 0
+			list := []any{}
+			if exists {
+				total = 1
+				list = append(list, map[string]any{"content_id": content_id})
+			}
+			return map[string]any{"total": total, "list": list}, nil
 		case "download_wxchannels_video":
 			id, ok := arguments["oid"].(string)
 			if !ok || arguments["nid"] != "nonce-"+id || arguments["existing_action"] != "skip" {
 				return nil, fmt.Errorf("invalid download arguments: %v", arguments)
+			}
+			if fixture.existing[id] {
+				return map[string]any{"skipped": true}, nil
 			}
 			for _, previous := range fixture.downloads {
 				if previous == id {
@@ -177,7 +210,7 @@ func (f *pipeline_fixture) round_trip(request *http.Request) (*http.Response, er
 
 func (f *pipeline_fixture) run(t *testing.T, want_error bool) *engine.RunRecord {
 	t.Helper()
-	id, err := f.engine.StartFlow(f.definition.ID, nil)
+	id, err := f.engine.StartFlow(f.definition.ID, map[string]any{"username": "test@finder"})
 	if (err != nil) != want_error {
 		t.Fatalf("run error = %v, want_error = %v", err, want_error)
 	}
@@ -211,8 +244,113 @@ func TestCreatorVideoSync(t *testing.T) {
 	}
 	snapshot := f.run(t, false)
 	summary := snapshot.NodeOutputs["sync_summary"].(map[string]any)
-	if fmt.Sprint(summary["skipped"]) != "2" || fmt.Sprint(summary["submitted"]) != "0" {
+	if fmt.Sprint(summary["skipped"]) != "1" || fmt.Sprint(summary["submitted"]) != "0" || fmt.Sprint(summary["pages"]) != "1" || summary["stop_reason"] != "all_existing" {
 		t.Fatalf("repeat run did not skip: %v", summary)
+	}
+}
+
+func TestCreatorVideoSyncStopsAtExistingPage(t *testing.T) {
+	f := new_fixture(t, "01_creator_video_sync.json")
+	f.existing["a"], f.existing["b"] = true, true
+	f.pages[""] = page("older", 1, video("a"), video("b"))
+	snapshot := f.run(t, false)
+	summary := snapshot.NodeOutputs["sync_summary"].(map[string]any)
+	if !reflect.DeepEqual(f.requested, []string{""}) || !reflect.DeepEqual(f.checked, []string{"a", "b"}) || len(f.downloads) != 0 || summary["stop_reason"] != "all_existing" {
+		t.Fatalf("existing page did not stop scanning: requests=%v checks=%v downloads=%v summary=%v", f.requested, f.checked, f.downloads, summary)
+	}
+}
+
+func TestCreatorVideoSyncChecksWholePageBeforeDownloading(t *testing.T) {
+	f := new_fixture(t, "01_creator_video_sync.json")
+	f.existing["old"] = true
+	f.pages[""] = page("page-2", 1, video("old"), video("new-1"), video("new-2"))
+	f.pages["page-2"] = page("older", 1, video("old"))
+	f.before_tool = func(tool string, arguments map[string]any) error {
+		if tool == "download_wxchannels_video" && (len(f.checked) != 3 || arguments["oid"] == "old") {
+			return fmt.Errorf("download started before complete page checks, or selected an existing video: %v %v", f.checked, arguments)
+		}
+		return nil
+	}
+	snapshot := f.run(t, false)
+	summary := snapshot.NodeOutputs["sync_summary"].(map[string]any)
+	if !reflect.DeepEqual(f.downloads, []string{"new-1", "new-2"}) || !reflect.DeepEqual(f.requested, []string{"", "page-2"}) || fmt.Sprint(summary["submitted"]) != "2" || fmt.Sprint(summary["skipped"]) != "2" {
+		t.Fatalf("incorrect mixed page handling: requests=%v downloads=%v summary=%v", f.requested, f.downloads, summary)
+	}
+}
+
+func TestCreatorVideoSyncPrefetchesWhileSubmittingDownloads(t *testing.T) {
+	f := new_fixture(t, "01_creator_video_sync.json")
+	f.pages[""] = page("page-2", 1, video("a"))
+	f.pages["page-2"] = page("page-3", 1, video("b"))
+	f.pages["page-3"] = page("", 0, video("c"))
+	download_started, prefetch_started := make(chan struct{}), make(chan struct{})
+	f.before_tool = func(tool string, arguments map[string]any) error {
+		var peer <-chan struct{}
+		if tool == "download_wxchannels_video" && arguments["oid"] == "a" {
+			close(download_started)
+			peer = prefetch_started
+		}
+		if tool == "get_wxchannels_account_videos" && arguments["next_marker"] == "page-2" {
+			close(prefetch_started)
+			peer = download_started
+		}
+		if peer != nil {
+			select {
+			case <-peer:
+			case <-time.After(2 * time.Second):
+				return fmt.Errorf("download and prefetch were serialized")
+			}
+		}
+		return nil
+	}
+	snapshot := f.run(t, false)
+	summary := snapshot.NodeOutputs["sync_summary"].(map[string]any)
+	if !reflect.DeepEqual(f.downloads, []string{"a", "b", "c"}) || !reflect.DeepEqual(f.requested, []string{"", "page-2", "page-3"}) || fmt.Sprint(summary["submitted"]) != "3" || summary["stop_reason"] != "no_more_pages" {
+		t.Fatalf("page iterations leaked results or failed to stop: requests=%v downloads=%v summary=%v", f.requested, f.downloads, summary)
+	}
+}
+
+func TestCreatorVideoSyncContinuesPastPagesWithoutVideos(t *testing.T) {
+	for _, non_videos := range []bool{false, true} {
+		t.Run(fmt.Sprint(non_videos), func(t *testing.T) {
+			f := new_fixture(t, "01_creator_video_sync.json")
+			f.pages[""] = page("next", 1)
+			if non_videos {
+				f.pages[""] = page("next", 1, map[string]any{"id": "picture", "objectDesc": map[string]any{"mediaType": 2}})
+			}
+			f.pages["next"] = page("", 0, video("a"))
+			f.run(t, false)
+			if !reflect.DeepEqual(f.downloads, []string{"a"}) || !reflect.DeepEqual(f.requested, []string{"", "next"}) {
+				t.Fatalf("page without videos stopped scanning: requests=%v downloads=%v", f.requested, f.downloads)
+			}
+		})
+	}
+}
+
+func TestCreatorVideoSyncRejectsFailedChecksBeforeDownloading(t *testing.T) {
+	f := new_fixture(t, "01_creator_video_sync.json")
+	f.pages[""] = page("next", 1, video("a"), video("b"))
+	f.before_tool = func(tool string, arguments map[string]any) error {
+		if tool == "get_download_tasks" && arguments["content_id"] == "wxchannels:b" {
+			return fmt.Errorf("task database unavailable")
+		}
+		return nil
+	}
+	f.run(t, true)
+	if len(f.downloads) != 0 || !reflect.DeepEqual(f.requested, []string{""}) {
+		t.Fatalf("incomplete checks caused downloads or prefetch: requests=%v downloads=%v", f.requested, f.downloads)
+	}
+}
+
+func TestCreatorVideoSyncRequiresUsername(t *testing.T) {
+	f := new_fixture(t, "01_creator_video_sync.json")
+	for _, username := range []any{nil, "", "  ", 123} {
+		if _, err := f.engine.StartFlow(f.definition.ID, map[string]any{"username": username}); err == nil {
+			t.Fatalf("invalid username accepted: %#v", username)
+		}
+	}
+	if len(f.requested) != 0 || len(f.downloads) != 0 {
+		t.Fatal("invalid username reached a service node")
 	}
 }
 

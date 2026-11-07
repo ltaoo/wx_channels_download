@@ -271,6 +271,7 @@ func (s *AutomationService) CreateUserFlow(input CreateUserFlowInput) (*model.Us
 // same shape persisted in a UserFlow.Definition). Node ids, edges, context
 // schema and the start node are taken from the imported definition; a fresh
 // flow id is always generated so an import never overwrites an existing flow.
+// Optional top-level triggers are copied into new rules on the start node.
 func (s *AutomationService) ImportUserFlow(raw string) (*model.UserFlow, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("自动化服务未初始化")
@@ -281,6 +282,16 @@ func (s *AutomationService) ImportUserFlow(raw string) (*model.UserFlow, error) 
 	}
 	if err := normalize_user_flow_definition(definition); err != nil {
 		return nil, err
+	}
+	var imported struct {
+		Triggers []UserFlowTriggerInput `json:"triggers"`
+	}
+	if err := json.Unmarshal([]byte(raw), &imported); err != nil {
+		return nil, fmt.Errorf("触发器配置无效: %w", err)
+	}
+	for index := range imported.Triggers {
+		// Imported rules always belong to the new flow and receive fresh IDs.
+		imported.Triggers[index].ID = ""
 	}
 	now := time.Now().UnixMilli()
 	flow := model.UserFlow{
@@ -298,7 +309,19 @@ func (s *AutomationService) ImportUserFlow(raw string) (*model.UserFlow, error) 
 		return nil, fmt.Errorf("流程定义无法序列化: %w", err)
 	}
 	flow.Definition = string(encoded)
-	if err := s.db.Create(&flow).Error; err != nil {
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		if imported.Triggers != nil {
+			flow.TriggerType = model.FlowRunTriggerManual
+		}
+		if err := tx.Create(&flow).Error; err != nil {
+			return err
+		}
+		if imported.Triggers != nil {
+			return s.replace_user_flow_triggers(tx, flow.ID, definition.StartNodeID, imported.Triggers)
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, fmt.Errorf("导入流程失败: %w", err)
 	}
 	s.register_user_flow(*definition)
