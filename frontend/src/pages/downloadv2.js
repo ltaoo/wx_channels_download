@@ -14,6 +14,7 @@ import {
   OverwriteConfirmDialog,
   SingleOverwriteConfirmDialog,
   TaskDeleteConfirmDialog,
+  TaskErrorDialog,
 } from "./downloadv2.components.js";
 import { DownloadV2Model } from "./downloadv2.model.js";
 import PreviewPageView from "./preview.js";
@@ -175,6 +176,7 @@ function DownloadV2Page(props) {
       CreateTaskPreviewDialog({ store: vm$ }),
       CreatePlatformTaskPreviewDialog({ store: vm$ }),
       TaskDeleteConfirmDialog({ store: vm$ }),
+      TaskErrorDialog({ store: vm$ }),
       ClearTasksConfirmDialog({ store: vm$ }),
       OverwriteConfirmDialog({ store: vm$ }),
       SingleOverwriteConfirmDialog({ store: vm$ }),
