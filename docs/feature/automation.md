@@ -86,7 +86,7 @@ description: 自动化流程的节点配置、触发、取消、恢复与重试�
 
 非密钥字符串可声明 `multiline: true` 使用多行输入框，或者声明 `options: [{"label":"企业微信","value":"wecom"},{"label":"Webhook","value":"webhook"}]` 使用下拉选择。保存配置和开始运行都会校验选择值属于声明的选项。`multiline`、`options`、`secret` 互不组合。
 
-每个节点的 `config.<key>` 只读取自己的配置，同名字段互不覆盖。模板使用 `{{config.apikey}}`；JS/表达式使用 `config.apikey`。声明和填写值分开保存，节点声明在流程定义内，填写值在 `user_flow.node_configs`（迁移 `000006_automation_node_configs`）：
+每个节点的 `config.<key>` 只读取自己的配置，同名字段互不覆盖。模板使用 <code v-pre>{{config.apikey}}</code>；JS/表达式使用 `config.apikey`。声明和填写值分开保存，节点声明在流程定义内，填写值在 `user_flow.node_configs`（迁移 `000006_automation_node_configs`）：
 
 ```json
 {"request_a":{"apikey":"key-a"},"request_b":{"apikey":"key-b"}}
@@ -135,7 +135,7 @@ API 通过 `update_flow` 的 `node_configs` 对象保存配置；省略该属性
 
 导入使用项目自己的 `FlowDefinition`：顶层 `start_node`、`context_schema`、`nodes` 对象。保存 API 使用 `start_node_id`、节点数组和 `next_ids`。这些格式不是 n8n JSON 或 Dify DSL，不能直接互导。
 
-导入生成新流程 ID，**不自动导入触发规则**。创作者视频同步、直播录制和新增视频通知示例见 `examples/pipelines/README.md`。
+导入生成新流程 ID；JSON 顶层声明了 `triggers` 时，会一并创建触发规则。创作者视频同步、直播录制和新增视频通知示例见[流程示例](./pipelines/)，可直接在示例页面复制完整 JSON。
 
 `get_pipeline_editor` / `update_pipeline_editor` 读取或修改已连接页面的实时草稿，包含执行策略；修改必须携带 `revision`，旧版本会被拒绝。它只更新草稿，不自动保存或运行。更新请求体上限 1 MiB。待应用的节点配置或执行策略文本必须先处理。
 
@@ -308,7 +308,7 @@ QUEUED → RUNNING → COMPLETED
 ## 9. 非浏览器验证
 
 ```sh
-go test -race ./pkg/flowengine/... ./internal/services ./internal/api ./internal/mcpserver ./examples/pipelines
+go test -race ./pkg/flowengine/... ./internal/services ./internal/api ./internal/mcpserver
 npm --prefix frontend test
 npm --prefix docs run build
 ```
