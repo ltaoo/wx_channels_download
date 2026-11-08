@@ -12,7 +12,7 @@ import (
 
 func TestImportCreatorVideoSyncSchedule(t *testing.T) {
 	service := new_trigger_test_service(t)
-	raw, err := os.ReadFile(filepath.Join("..", "..", "examples", "pipelines", "01_creator_video_sync.json"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "feature", "pipelines", "01_creator_video_sync.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
