@@ -994,7 +994,7 @@
       const message =
         next_raw.error || next_raw.error_message || next_raw._errMsg;
       logger
-        .Info()
+        .Debug()
         .Str("file", "/public/dl.sdk.js:952")
         .Int("task_id", id_.value)
         .Bool("success", success_statuses.has(next_status))

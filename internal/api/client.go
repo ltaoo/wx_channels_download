@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -42,6 +43,7 @@ type APIClient struct {
 	bridge_service              *services.BridgeService
 	certificate_service         *services.CertificateService
 	mcp_service                 *services.MCPService
+	frontend_log_limiter        *FrontendLogLimiter
 }
 
 func NewAPIClient(
@@ -68,7 +70,7 @@ func NewAPIClient(
 	engine := gin.New()
 	engine.Use(
 		gin.LoggerWithConfig(gin.LoggerConfig{
-			SkipPaths: []string{"/report"},
+			SkipPaths: []string{"/report", "/api/status"},
 		}),
 		gin.Recovery(),
 	)
@@ -93,6 +95,7 @@ func NewAPIClient(
 		bridge_service:              bridge_service,
 		certificate_service:         certificate_service,
 		mcp_service:                 mcp_service,
+		frontend_log_limiter:        NewFrontendLogLimiter(3*time.Second, 50, 20),
 	}
 
 	// // Set file transfer helper Channels auto-download callback

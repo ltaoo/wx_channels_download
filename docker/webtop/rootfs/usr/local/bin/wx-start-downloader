@@ -57,6 +57,16 @@ fi
 
 cd "$WX_HOME"
 umask 0002
-nohup "$WX_BIN" --config "$WX_CONFIG" >>"${LOG_DIR}/wx_video_download.out.log" 2>&1 &
+
+LOG_MAX_BYTES="${WX_LOG_MAX_BYTES:-10485760}"
+LOG_FILE="${LOG_DIR}/wx_video_download.out.log"
+if [ -f "$LOG_FILE" ]; then
+    current_size=$(wc -c < "$LOG_FILE" 2>/dev/null || echo 0)
+    if [ "$current_size" -ge "$LOG_MAX_BYTES" ]; then
+        : > "$LOG_FILE"
+    fi
+fi
+
+nohup "$WX_BIN" --config "$WX_CONFIG" >>"${LOG_FILE}" 2>&1 &
 echo "$!" >"$PID_FILE"
 echo "wx_video_download started, pid $(cat "$PID_FILE")."

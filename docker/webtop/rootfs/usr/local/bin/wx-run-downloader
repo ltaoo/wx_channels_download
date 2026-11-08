@@ -64,12 +64,48 @@ cd "$WX_HOME"
 umask 0002
 echo "$$" >"$PID_FILE"
 
+LOG_MAX_BYTES="${WX_LOG_MAX_BYTES:-10485760}"
+
+rotate_log_if_needed() {
+    if [ -f "$LOG_FILE" ]; then
+        local current_size
+        current_size=$(wc -c < "$LOG_FILE" 2>/dev/null || echo 0)
+        if [ "$current_size" -ge "$LOG_MAX_BYTES" ]; then
+            : > "$LOG_FILE"
+        fi
+    fi
+}
+
+rotate_log_if_needed
+
+rotator_pid=""
+start_log_rotator() {
+    (
+        while true; do
+            sleep 60
+            rotate_log_if_needed
+        done
+    ) &
+    rotator_pid=$!
+}
+
+cleanup() {
+    if [ -n "$rotator_pid" ]; then
+        kill "$rotator_pid" 2>/dev/null || true
+        wait "$rotator_pid" 2>/dev/null || true
+    fi
+    rm -f "$PID_FILE"
+}
+trap cleanup EXIT INT TERM
+
+start_log_rotator
+
 set +e
 "$WX_BIN" --config "$WX_CONFIG" > >(tee -a "$LOG_FILE") 2>&1
 status=$?
 set -e
 
-rm -f "$PID_FILE"
+cleanup
 echo
 echo "wx_video_download exited with status ${status}."
 read -r -p "Press Enter to close this terminal..." _ || true

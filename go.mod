@@ -1,6 +1,6 @@
 module wx_channel
 
-go 1.20
+go 1.24.0
 
 exclude (
 	github.com/andybalholm/brotli v1.2.0
@@ -35,6 +35,7 @@ require (
 	github.com/fatih/color v1.16.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/gorilla/websocket v1.5.3
+	github.com/klauspost/compress v1.18.2
 	github.com/ltaoo/echo v0.12.1
 	github.com/ltaoo/velo v1.1.2
 	github.com/pterm/pterm v0.12.50
@@ -44,6 +45,7 @@ require (
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.16.0
 	github.com/tetratelabs/wazero v1.7.3
+	github.com/tidwall/gjson v1.18.0
 	github.com/tjfoc/gmsm v1.4.1
 	github.com/zeebo/blake3 v0.2.4
 	golang.org/x/net v0.48.0
@@ -150,7 +152,6 @@ require (
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/lib/pq v1.10.9 // indirect
@@ -182,7 +183,6 @@ require (
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
