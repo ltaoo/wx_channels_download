@@ -135,6 +135,7 @@ type CreateUserFlowInput struct {
 // UpdateUserFlowInput replaces the editable parts of a user pipeline. Nodes is
 // the authoritative node list; edges are expressed as next_ids on each node.
 type UpdateUserFlowInput struct {
+	NodeConfigs   map[string]map[string]interface{}
 	Name          *string
 	Description   *string
 	ContextSchema []engine.FieldSchema
@@ -145,9 +146,10 @@ type UpdateUserFlowInput struct {
 }
 
 type UserFlowNodeInput struct {
-	RetryPolicy     *engine.RetryPolicy  `json:"retry,omitempty"`
-	ErrorNextNodeID *string              `json:"error_next_node,omitempty"`
-	OutputSchema    []engine.FieldSchema `json:"output_schema,omitempty"`
+	ConfigSchema    []engine.NodeConfigField `json:"config_schema"`
+	RetryPolicy     *engine.RetryPolicy      `json:"retry,omitempty"`
+	ErrorNextNodeID *string                  `json:"error_next_node,omitempty"`
+	OutputSchema    []engine.FieldSchema     `json:"output_schema,omitempty"`
 
 	ID          string                 `json:"id"`
 	Type        string                 `json:"type"`
@@ -304,6 +306,7 @@ func (s *AutomationService) ImportUserFlow(raw string) (*model.UserFlow, error) 
 		},
 	}
 	definition.ID = flow.ID
+	clear_runtime_node_configs(definition)
 	encoded, err := json.Marshal(definition)
 	if err != nil {
 		return nil, fmt.Errorf("流程定义无法序列化: %w", err)
@@ -360,6 +363,9 @@ func normalize_user_flow_definition_at_depth(definition *engine.FlowDefinition, 
 	}
 	normalized := make(map[string]engine.NodeDefinition, len(definition.Nodes))
 	for node_id, node := range definition.Nodes {
+		if err := validate_node_config_schema(node.ConfigSchema); err != nil {
+			return fmt.Errorf("节点 %s 配置声明无效: %w", node_id, err)
+		}
 		node_id = strings.TrimSpace(node_id)
 		if node_id == "" {
 			return fmt.Errorf("节点 id 不能为空")
@@ -519,6 +525,16 @@ func (s *AutomationService) UpdateUserFlow(id string, input UpdateUserFlowInput)
 	if err := apply_user_flow_update(definition, input); err != nil {
 		return nil, err
 	}
+	values := decode_node_configs(flow.NodeConfigs)
+	if input.NodeConfigs != nil {
+		values = input.NodeConfigs
+	}
+	values, err = normalize_node_configs(*definition, values, input.NodeConfigs != nil)
+	if err != nil {
+		return nil, err
+	}
+	flow.NodeConfigs = marshal_json(values)
+	clear_runtime_node_configs(definition)
 	encoded, err := json.Marshal(definition)
 	if err != nil {
 		return nil, fmt.Errorf("流程定义无法序列化: %w", err)
@@ -540,6 +556,7 @@ func (s *AutomationService) UpdateUserFlow(id string, input UpdateUserFlowInput)
 				"name":         flow.Name,
 				"description":  flow.Description,
 				"definition":   flow.Definition,
+				"node_configs": flow.NodeConfigs,
 				"updated_at":   flow.UpdatedAt,
 				"trigger_type": flow.TriggerType,
 				"event_key":    flow.EventKey,
@@ -588,6 +605,10 @@ func apply_user_flow_update(definition *engine.FlowDefinition, input UpdateUserF
 				next_nodes = append(next_nodes, engine.TargetNode{TargetID: next})
 			}
 			previous := definition.Nodes[node_id]
+			config_schema := node.ConfigSchema
+			if config_schema == nil {
+				config_schema = previous.ConfigSchema
+			}
 			retry_policy := node.RetryPolicy
 			if retry_policy == nil {
 				retry_policy = previous.RetryPolicy
@@ -601,7 +622,8 @@ func apply_user_flow_update(definition *engine.FlowDefinition, input UpdateUserF
 				output_schema = previous.OutputSchema
 			}
 			rebuilt[node_id] = engine.NodeDefinition{
-				RetryPolicy: retry_policy, ErrorNextNodeID: error_next, OutputSchema: output_schema,
+				ConfigSchema: config_schema,
+				RetryPolicy:  retry_policy, ErrorNextNodeID: error_next, OutputSchema: output_schema,
 				ID:          node_id,
 				Type:        node.Type,
 				Name:        node.Name,

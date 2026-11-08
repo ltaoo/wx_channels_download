@@ -40,6 +40,7 @@ function AutomationPageView(props) {
       AutomationImportPipelineDialog({ store: vm$ }),
       AutomationDeletePipelineDialog({ store: vm$ }),
       AutomationRunPipelineDialog({ store: vm$ }),
+      AutomationConfigDialog({ store: vm$ }),
     ],
   );
 }
@@ -177,31 +178,32 @@ function AutomationPipelineList(props) {
         render(pipeline) {
           return [
             AutomationPipelineTriggerBadges({ store: vm$, pipeline }),
-            vm$.methods.pipelineTriggerTypes(pipeline).includes("Manual")
-              ? Button(
-                  {
-                    store: vm$.ui.btn_pipeline_trigger$.bind(pipeline),
-                    attributes: {
-                      n: `automation-pipeline-trigger-${pipeline.id}`,
-                      type: "button",
-                      "aria-label": `触发 ${pipeline.name || pipeline.id}`,
-                    },
-                  },
-                  ["触发"],
-                )
-              : null,
           ].filter(Boolean);
         },
       },
       {
-        name: "scale",
-        title: "节点 / 连线",
-        width: 130,
-        cellClass: "overflow-hidden text-color-text-primary font-mono text-sm font-variant-numeric-tabular-nums text-ellipsis whitespace-nowrap",
+        name: "config",
+        title: "配置",
+        width: "minmax(240px, 1fr)",
+        cellClass: "min-w-0 flex flex-col items-start gap-3",
         render(pipeline) {
+          const groups = vm$.methods.pipelineConfigGroups(pipeline);
+          if (!groups.length) return [];
+          const configured_groups = groups.map((group) => ({
+            ...group,
+            fields: group.fields.filter((field) => field.filled),
+          })).filter((group) => group.fields.length);
           return [
-            `${(pipeline.nodes || []).length} / ${(pipeline.edges || []).length}`,
-          ];
+            configured_groups.length ? View({ class: "w-full min-w-0 grid gap-2", attributes: { n: `automation-pipeline-config-values-${pipeline.id}` } },
+              configured_groups.map((group) => View({ class: "min-w-0 grid gap-0-5" }, [
+                View({ class: "overflow-hidden text-color-text-secondary text-xs font-semibold text-ellipsis whitespace-nowrap", attributes: { title: `${group.name} (${group.id})` } }, [group.name]),
+                ...group.fields.map((field) => {
+                  const text = `${field.label}: ${field.text}`;
+                  return View({ class: "overflow-hidden text-color-text-primary text-sm text-ellipsis whitespace-nowrap", attributes: { title: text } }, [text]);
+                }),
+              ]))) : null,
+            Button({ store: vm$.ui.btn_pipeline_config$.bind(pipeline), class: "flex-none", attributes: { n: `automation-pipeline-config-${pipeline.id}`, type: "button", "aria-label": `配置 ${pipeline.name || pipeline.id}` } }, ["配置"]),
+          ].filter(Boolean);
         },
       },
       {
@@ -222,6 +224,19 @@ function AutomationPipelineList(props) {
         cellClass: "flex flex-wrap items-center justify-end gap-1-5 max-900:justify-start",
         render(pipeline) {
           return [
+            vm$.methods.pipelineTriggerTypes(pipeline).includes("Manual")
+              ? Button(
+                  {
+                    store: vm$.ui.btn_pipeline_trigger$.bind(pipeline),
+                    attributes: {
+                      n: `automation-pipeline-trigger-${pipeline.id}`,
+                      type: "button",
+                      "aria-label": `触发 ${pipeline.name || pipeline.id}`,
+                    },
+                  },
+                  ["触发"],
+                )
+              : null,
             AutomationPipelineLink({
               flowId: pipeline.id,
               mode: "detail",
@@ -243,7 +258,7 @@ function AutomationPipelineList(props) {
               },
               ["删除"],
             ),
-          ];
+          ].filter(Boolean);
         },
       },
     ],
@@ -278,6 +293,48 @@ function AutomationPipelineList(props) {
             : "点击右上角「创建自动化」开始搭建流程。",
     ),
   });
+}
+
+function AutomationConfigDialog(props) {
+  const vm$ = props.store;
+  return Dialog({ store: vm$.ui.config_dialog$, class: "automation-form-dialog", attributes: { n: "automation-config-dialog" } }, [
+    DialogHeader({}, [
+      DialogTitle({}, ["自动化配置"]),
+      DialogDescription({}, [computed(vm$.state.config_pipeline, (pipeline) => `${pipeline ? pipeline.name || pipeline.id : ""} · 按节点填写，所有触发方式共用。`)]),
+    ]),
+    DialogBody({}, [
+      Show({ when: vm$.state.config_loading, ok: () => View({ class: "text-color-text-secondary" }, ["正在加载配置…"]) }),
+      Show({ when: computed(vm$.state.config_error, Boolean), ok: () => View({ class: "text-color-danger text-sm", attributes: { role: "alert" } }, [vm$.state.config_error]) }),
+      Show({ when: combine({ groups: vm$.state.config_groups, loading: vm$.state.config_loading, error: vm$.state.config_error }, ({ groups, loading, error }) => !loading && !error && !groups.length), ok: () => View({ class: "text-color-text-secondary text-sm" }, ["此自动化暂无所需配置。在编辑页选择节点，声明所需配置后保存。"]) }),
+      View({ class: "flex flex-col gap-4" }, [For({ each: vm$.state.config_groups, key: "id", render(group_) {
+        const group = group_ && group_.value !== undefined ? group_.value : group_;
+        return View({ class: "flex flex-col gap-3" }, [
+          View({ class: "text-color-text-primary font-semibold word-break-break-all" }, [`${group.name} (${group.id})`]),
+          ...group.fields.map((field) => {
+            const id = `automation-config-${group.id}-${field.key}`;
+            const attributes = { id, n: id, "aria-label": field.label || field.key, "aria-required": String(Boolean(field.required)), "aria-describedby": field.description ? `${id}-help` : undefined };
+            const onChange = (event) => field.input$.setValue(String(event.target.value));
+            const input = field.type === "boolean"
+              ? Checkbox({ store: field.input$, attributes }, [field.label || field.key])
+              : field.options && field.options.length
+                ? Select({ store: field.input$, attributes })
+              : field.multiline || field.type === "array" || field.type === "object"
+                ? Textarea({ store: field.input$, onChange, class: "font-mono text-xs", attributes: { ...attributes, rows: "4", spellcheck: "false" } })
+                : Input({ store: field.input$, onChange, attributes: { ...attributes, type: field.secret ? "password" : field.type === "number" || field.type === "integer" ? "number" : "text", step: field.type === "number" ? "any" : undefined, autocomplete: field.secret ? "new-password" : "off" } });
+            return View({ class: "min-w-0 flex flex-col gap-1" }, [
+              field.type !== "boolean" ? Label({ class: "text-color-text-secondary text-xs font-semibold", attributes: { for: id } }, [`${field.label || field.key}${field.required ? " *" : ""}`]) : null,
+              input,
+              field.description ? View({ class: "text-color-text-secondary text-caption", attributes: { id: `${id}-help` } }, [field.description]) : null,
+            ].filter(Boolean));
+          }),
+        ]);
+      } })]),
+    ]),
+    DialogFooter({}, [
+      Button({ store: vm$.ui.btn_config_cancel$, attributes: { type: "button" } }, ["取消"]),
+      Button({ store: vm$.ui.btn_config_save$, attributes: { n: "automation-config-save", type: "button" } }, [computed(vm$.state.config_saving, (saving) => saving ? "正在保存…" : "保存配置")]),
+    ]),
+  ]);
 }
 
 function AutomationCreatePipelineDialog(props) {

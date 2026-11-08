@@ -107,6 +107,13 @@ function AutomationNodeInspector(props) {
                     },
                   }),
                 ]) : null,
+                current_node.type !== "StartNode" ? View({ class: "min-w-0 flex flex-col gap-1", attributes: { n: "automation-inspector-node-config-schema-field" } }, [
+                  Label({ class: "text-color-text-secondary text-xs font-semibold", attributes: { for: "automation-edit-node-config-schema" } }, ["所需配置声明 JSON"]),
+                  Textarea({ store: vm$.ui.input_edit_node_config_schema$, class: "font-mono text-xs", attributes: { id: "automation-edit-node-config-schema", n: "automation-edit-node-config-schema", rows: "6", spellcheck: "false", "aria-label": "所需配置声明 JSON" } }),
+                  View({ class: "text-color-text-secondary text-caption" }, ["声明后在自动化列表的「配置」中填写。支持 string、number、integer、boolean、object、array；字符串可用 secret 隐藏输入、multiline 多行输入或 options 声明下拉选项。"]),
+                  View({ class: "font-mono text-xs whitespace-pre-wrap word-break-break-all" }, ['示例：[{"key":"apikey","label":"API Key","type":"string","required":true,"secret":true}]']),
+                  View({ class: "text-color-text-secondary text-caption" }, ['在节点参数中使用 {{config.apikey}}，例如请求头 Authorization: "Bearer {{config.apikey}}"。']),
+                ]) : null,
                 current_node.type !== "StartNode" ? View({ class: "min-w-0 flex flex-col gap-1", attributes: { n: "automation-inspector-node-policy-field" } }, [
                   Label({ attributes: { n: "automation-inspector-node-policy-label", for: "automation-edit-node-policy" }, class: "text-color-text-secondary text-xs font-semibold" }, ["执行策略 JSON"]),
                   Textarea({ store: vm$.ui.input_edit_node_policy$, class: "font-mono text-xs", attributes: { id: "automation-edit-node-policy", n: "automation-edit-node-policy", rows: "8", spellcheck: "false", "aria-label": "执行策略 JSON" } }),

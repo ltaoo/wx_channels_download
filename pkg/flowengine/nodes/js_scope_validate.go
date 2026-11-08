@@ -530,7 +530,7 @@ func js_join_path(root string, segments []string) string {
 
 func is_scope_root(name string) bool {
 	switch name {
-	case "input", "output", "global":
+	case "input", "output", "global", "config":
 		return true
 	}
 	return false

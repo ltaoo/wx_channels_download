@@ -62,6 +62,11 @@ func clone_definition(definition FlowDefinition) FlowDefinition {
 	copied.ContextSchema = append([]FieldSchema(nil), definition.ContextSchema...)
 	for id, node := range definition.Nodes {
 		node.Config = snapshot_map(node.Config)
+		node.ConfigValues = snapshot_map(node.ConfigValues)
+		node.ConfigSchema = append([]NodeConfigField(nil), node.ConfigSchema...)
+		for index := range node.ConfigSchema {
+			node.ConfigSchema[index].Options = append([]NodeConfigOption(nil), node.ConfigSchema[index].Options...)
+		}
 		node.NextNodeIDs = append([]string(nil), node.NextNodeIDs...)
 		node.NextNodes = append([]TargetNode(nil), node.NextNodes...)
 		if node.RetryPolicy != nil {

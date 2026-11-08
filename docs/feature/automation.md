@@ -15,6 +15,7 @@ description: 自动化流程的节点配置、触发、取消、恢复与重试�
 - 每次运行冻结用户流程及引用的子流程定义，支持用原定义或当前已保存定义从头重试。
 - 节点重试、退避、错误分支、输入/输出 schema 可经过导入、画布、MCP 草稿和保存链路保留。
 - HTTP 支持请求头、查询参数、JSON/form/raw 请求体、Basic/Bearer 认证、动态模板及可配置超时。
+- 节点可声明所需配置，在自动化列表按节点生成动态表单；填写值保存在对应 `user_flow.node_configs`，所有触发方式共用。
 - 专用数组迭代、子流程、延时、主动报错节点，以及隔离变量的并行分支与一次汇聚。
 - 应用事件桥接和带 Bearer 令牌的 Webhook；节点日志落库，页面刷新后仍可查看。
 
@@ -62,6 +63,36 @@ description: 自动化流程的节点配置、触发、取消、恢复与重试�
 | `flow_run_record` | 真实运行 ID、触发来源、输入快照、定义快照、截止时间、恢复检查点、节点尝试次数/输出、日志及最终状态 |
 
 新增字段通过 `000005_automation_runtime` 数据库迁移接入。`platform_workflow_run` 仍属于平台下载工作流，与 automation 运行记录分开。
+
+### 2.2 节点所需配置
+
+在 `/automation/edit?id=...` 中选择节点，在「所需配置声明 JSON」填入声明，点击「应用节点配置」并保存自动化。例如 HTTP 请求节点：
+
+```json
+{
+  "config_schema": [
+    {"key": "apikey", "label": "API Key", "type": "string", "required": true, "secret": true, "description": "请求服务的访问密钥"}
+  ],
+  "config": {
+    "url": "https://example.com/api",
+    "headers": {"Authorization": "Bearer {{config.apikey}}"}
+  }
+}
+```
+
+「所需配置声明 JSON」中只填写上例的 `config_schema` 数组，节点参数仍填在「节点配置 JSON」。回到 `/automation`，点击对应行的「配置」，填写按节点分组的表单并保存。
+
+支持 `string`、`number`、`integer`、`boolean`、`object`、`array`。字符串使用输入框，数字使用数字输入框，布尔值使用复选框，对象和数组使用 JSON 文本框。`secret: true` 仅用于字符串，将输入框显示为密码框；数据库和执行快照仍按普通配置值存储，未加密。
+
+非密钥字符串可声明 `multiline: true` 使用多行输入框，或者声明 `options: [{"label":"企业微信","value":"wecom"},{"label":"Webhook","value":"webhook"}]` 使用下拉选择。保存配置和开始运行都会校验选择值属于声明的选项。`multiline`、`options`、`secret` 互不组合。
+
+每个节点的 `config.<key>` 只读取自己的配置，同名字段互不覆盖。模板使用 `{{config.apikey}}`；JS/表达式使用 `config.apikey`。声明和填写值分开保存，节点声明在流程定义内，填写值在 `user_flow.node_configs`（迁移 `000006_automation_node_configs`）：
+
+```json
+{"request_a":{"apikey":"key-a"},"request_b":{"apikey":"key-b"}}
+```
+
+API 通过 `update_flow` 的 `node_configs` 对象保存配置；省略该属性会保留原值。保存配置或开始运行时校验必填及类型，编辑流程允许必填项暂未填写。移除节点或声明时清理对应填写值。引用其他自动化作为子流程时，使用子流程自己保存的配置。每次运行将配置冻结到定义快照，按原定义重试和恢复人工等待沿用原值，按当前定义重试读取最新值。
 
 触发器类型及扩展参数保存在规则的 `initial_data.__automation` 中：
 

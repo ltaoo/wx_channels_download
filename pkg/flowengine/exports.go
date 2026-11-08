@@ -6,10 +6,12 @@ import "wx_channel/pkg/flowengine/engine"
 
 // Node types
 type (
-	NodeDefinition = engine.NodeDefinition
-	Node           = engine.Node
-	NodeState      = engine.NodeState
-	NodeError      = engine.NodeError
+	NodeDefinition   = engine.NodeDefinition
+	NodeConfigField  = engine.NodeConfigField
+	NodeConfigOption = engine.NodeConfigOption
+	Node             = engine.Node
+	NodeState        = engine.NodeState
+	NodeError        = engine.NodeError
 )
 
 // Node state constants

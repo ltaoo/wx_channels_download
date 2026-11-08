@@ -60,7 +60,8 @@ function setup({ legacy_event = false, schedules = [], reject_save = false, reje
       if (url.endsWith("update_flow")) {
         if (reject_save) return { error: new Error("invalid Cron") };
         if (body.name !== undefined) flow.name = body.name;
-        schedules = body.triggers.map((trigger, index) => ({
+        if (body.node_configs !== undefined) flow.node_configs = JSON.stringify(body.node_configs);
+        if (body.triggers !== undefined) schedules = body.triggers.map((trigger, index) => ({
           ...trigger, id: trigger.id || `new-${index}`, flow_id: flow.id,
           initial_data: JSON.stringify({ ...trigger.initial_data, __automation: { type: trigger.type, event_key: trigger.event_key, start_node: "start" } }),
         }));
@@ -217,25 +218,49 @@ test("automation search and reset return to page one and paginate the matching n
   model.methods.destroy();
 });
 
-test("the automation list renders a trigger button in its trigger column and mounts the run dialog", async () => {
+test("the automation list renders a trigger button in its actions column and mounts the run dialog", async () => {
   const { model, context } = setup({ mode: "list" });
   await model.methods.refresh();
   context.Table = (props) => props;
   context.View = (props, children) => ({ props, children });
   context.Button = (props, children) => ({ props, children });
   context.AutomationPipelineTriggerBadges = () => ({ component: "badges" });
+  context.AutomationPipelineLink = () => ({ component: "pipeline-link" });
   context.AutomationRunPipelineDialog = () => ({ component: "run-dialog" });
   vm.runInContext(fs.readFileSync(path.join(frontend, "src/pages/automation.js"), "utf8")
     .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export default .*;$/gm, ""), context);
   const table = context.AutomationPipelineList({ store: model });
   const pipeline = model.state.pipelines.value[0];
-  const cell = table.columns.find((column) => column.name === "trigger").render(pipeline);
+  const trigger_cell = table.columns.find((column) => column.name === "trigger").render(pipeline);
+  assert.equal(trigger_cell.length, 1);
+  assert.equal(trigger_cell[0].component, "badges");
+  const cell = table.columns.find((column) => column.name === "actions").render(pipeline);
   const action = cell.find((item) => item.props?.attributes?.n === `automation-pipeline-trigger-${pipeline.id}`);
   assert.ok(action);
   assert.equal(action.children[0], "触发");
   assert.equal(action.props.attributes["aria-label"], "触发 test");
+  assert.equal(cell.some((item) => item.props?.attributes?.n === `automation-pipeline-config-${pipeline.id}`), false);
+  const config_column = table.columns.find((column) => column.name === "config");
+  assert.equal(config_column.render(pipeline).length, 0, "no declared fields should leave the cell empty");
+  pipeline.nodes[0].config_schema = [
+    { key: "username", type: "string" }, { key: "count", type: "integer" }, { key: "enabled", type: "boolean" },
+  ];
+  const config_cell = config_column.render(pipeline);
+  assert.equal(config_cell.length, 1, "unfilled configuration should show only the button");
+  const config_button = config_cell.find((item) => item.props?.attributes?.n === `automation-pipeline-config-${pipeline.id}`);
+  assert.ok(config_button);
+  assert.equal(config_button.children[0], "配置");
+  pipeline.node_configs = { [pipeline.nodes[0].id]: { count: 0, enabled: false } };
+  const configured_cell = config_column.render(pipeline);
+  assert.equal(configured_cell.length, 2);
+  const configured_content = JSON.stringify(configured_cell[0]);
+  assert.ok(configured_content.includes("count: 0"));
+  assert.ok(configured_content.includes("enabled: false"));
+  assert.ok(!configured_content.includes("username:"));
+  assert.ok(!configured_content.includes("未填写"));
+  assert.ok(!configured_content.includes("暂无配置"));
   context.AutomationPageViewModel = () => model;
-  for (const name of ["AutomationListPage", "AutomationCreatePipelineDialog", "AutomationImportPipelineDialog", "AutomationDeletePipelineDialog"]) {
+  for (const name of ["AutomationListPage", "AutomationCreatePipelineDialog", "AutomationImportPipelineDialog", "AutomationDeletePipelineDialog", "AutomationConfigDialog"]) {
     context[name] = () => ({ component: name });
   }
   const page = context.AutomationPageView({});
@@ -727,5 +752,149 @@ test("manual confirmation sends typed JSON and cancellation refreshes persisted 
   assert.deepEqual(submitted, { id: run.id, node_id: "confirm", input: { approved: true } });
   assert.equal(model.state.selected_run.value.status, "RUNNING");
   await model.methods.actOnRun("cancel"); assert.equal(model.state.selected_run.value.status, "CANCELLED");
+  model.methods.destroy();
+});
+
+function add_config_declarations(flow) {
+  const definition = JSON.parse(flow.definition);
+  definition.nodes.start.config_schema = [{ key: "apikey", label: "入口 Key", type: "string", required: true, secret: true }];
+  definition.nodes.end.config_schema = [
+    { key: "apikey", label: "API Key", type: "string", required: true, secret: true },
+    { key: "count", type: "integer", required: true },
+    { key: "enabled", type: "boolean", required: true },
+    { key: "options", type: "object" },
+  ];
+  flow.definition = JSON.stringify(definition);
+  flow.node_configs = JSON.stringify({ start: { apikey: "entry-key" }, end: { apikey: "request-key", count: 0, enabled: false, options: { test: true } } });
+}
+
+test("the configuration column groups values by node and masks secrets", async () => {
+  const { model, flow } = setup({ mode: "list" });
+  add_config_declarations(flow);
+  const definition = JSON.parse(flow.definition);
+  definition.nodes.end.config_schema.push({ key: "username", label: "创作者", type: "string", required: true });
+  flow.definition = JSON.stringify(definition);
+  await model.methods.refresh();
+  const pipeline = model.state.pipelines.value[0];
+  let groups = model.methods.pipelineConfigGroups(pipeline);
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].fields[0].text, "••••••");
+  assert.equal(groups[1].fields[0].text, "••••••");
+  assert.equal(groups[1].fields[1].text, "0");
+  assert.equal(groups[1].fields[2].text, "false");
+  assert.equal(groups[1].fields[3].text, '{"test":true}');
+  assert.equal(groups[1].fields[4].text, "未填写");
+  pipeline.node_configs = { end: { username: "creator@finder" } };
+  groups = model.methods.pipelineConfigGroups(pipeline);
+  assert.equal(groups[1].fields[4].text, "creator@finder");
+  pipeline.node_configs = "invalid JSON";
+  assert.equal(model.methods.pipelineConfigGroups(pipeline)[1].fields[4].text, "未填写");
+  model.methods.destroy();
+});
+
+test("automation settings load by node and save typed values independently of the graph", async () => {
+  const { model, flow, calls } = setup({ mode: "list" });
+  add_config_declarations(flow);
+  await model.methods.refresh();
+  await model.methods.openPipelineConfig(model.state.pipelines.value[0]);
+  const [start, end] = model.state.config_groups.value;
+  assert.equal(start.fields[0].input$.state.value, "entry-key");
+  assert.equal(end.fields[0].input$.state.value, "request-key");
+  end.fields[0].input$.setValue("new-key", { silence: true });
+  await model.methods.savePipelineConfig();
+  const saved = calls.find((call) => call.url.endsWith("update_flow")).body;
+  assert.deepEqual(saved, { id: flow.id, node_configs: { start: { apikey: "entry-key" }, end: { apikey: "new-key", count: 0, enabled: false, options: { test: true } } } });
+  await model.methods.openPipelineConfig(flow);
+  assert.equal(model.state.config_groups.value[1].fields[0].input$.state.value, "new-key");
+  model.methods.destroy();
+});
+
+test("automation settings reject missing or invalid values and retain inputs after failure", async () => {
+  const { model, flow, calls } = setup({ mode: "list", reject_save: true });
+  add_config_declarations(flow);
+  await model.methods.openPipelineConfig(flow);
+  const fields = model.state.config_groups.value[1].fields;
+  for (const [index, input, message] of [[0, " ", /不能为空/], [1, "0.5", /整数/], [3, "[]", /对象/]]) {
+    const previous = fields[index].input$.state.value;
+    fields[index].input$.setValue(input);
+    await model.methods.savePipelineConfig();
+    assert.match(model.state.config_error.value, message);
+    assert.equal(calls.filter((call) => call.url.endsWith("update_flow")).length, 0);
+    fields[index].input$.setValue(previous);
+  }
+  fields[0].input$.setValue("retained-key");
+  await model.methods.savePipelineConfig();
+  assert.match(model.state.config_error.value, /invalid Cron/);
+  assert.equal(fields[0].input$.state.value, "retained-key");
+  model.methods.destroy();
+});
+
+test("node configuration declarations survive editing, applying and saving", async () => {
+  const { model, flow, calls } = setup();
+  add_config_declarations(flow);
+  await model.methods.refresh();
+  model.methods.selectEditNode("end");
+  const declaration = JSON.parse(model.state.edit_node_config_schema.value);
+  assert.equal(declaration[0].key, "apikey");
+  model.ui.input_edit_node_config_schema$.setValue('[{"key":"apikey","type":"string"},{"key":"apikey","type":"string"}]');
+  model.methods.applySelectedNodeConfig();
+  assert.match(model.state.error.value, /唯一/);
+  model.ui.input_edit_node_config_schema$.setValue('[{"key":"apikey","label":"令牌","type":"string","secret":true}]');
+  model.methods.applySelectedNodeConfig();
+  await model.methods.saveFlow();
+  const saved = calls.find((call) => call.url.endsWith("update_flow")).body.nodes.find((node) => node.id === "end");
+  assert.deepEqual(saved.config_schema, [{ key: "apikey", label: "令牌", type: "string", secret: true }]);
+  model.methods.destroy();
+});
+
+test("rendered configuration forms mask secrets and submit input before blur", async () => {
+  const { model, context, flow, calls } = setup({ mode: "list" });
+  add_config_declarations(flow);
+  await model.methods.openPipelineConfig(flow);
+  load_canvas_components(context);
+  vm.runInContext(fs.readFileSync(path.join(frontend, "src/pages/automation.js"), "utf8")
+    .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export default .*;$/gm, ""), context);
+  const dialog = context.AutomationConfigDialog({ store: model });
+  const input = find_view(dialog, "automation-config-end-apikey");
+  assert.equal(input.state.attributes.type, "password");
+  input.events.onChange({ target: { value: "typed-without-blur" } });
+  const options = find_view(dialog, "automation-config-end-options");
+  options.events.onChange({ target: { value: '{"updated":true}' } });
+  await model.methods.savePipelineConfig();
+  const saved = calls.find((call) => call.url.endsWith("update_flow")).body.node_configs.end;
+  assert.equal(saved.apikey, "typed-without-blur");
+  assert.deepEqual(saved.options, { updated: true });
+  model.methods.destroy();
+});
+
+test("configuration choices and multiline templates render, load and save through the settings form", async () => {
+  const { model, context, flow, calls } = setup({ mode: "list" });
+  add_config_declarations(flow);
+  const definition = JSON.parse(flow.definition);
+  definition.nodes.end.config_schema.push(
+    { key: "push_method", label: "推送方式", type: "string", required: true, options: [{ label: "企业微信", value: "wecom" }, { label: "Webhook", value: "webhook" }] },
+    { key: "message_template", label: "消息模板", type: "string", multiline: true },
+  );
+  flow.definition = JSON.stringify(definition);
+  const values = JSON.parse(flow.node_configs);
+  values.end.push_method = "wecom";
+  values.end.message_template = "{username}\n{title}";
+  flow.node_configs = JSON.stringify(values);
+  await model.methods.openPipelineConfig(flow);
+  const fields = model.state.config_groups.value[1].fields;
+  const method = fields.find((field) => field.key === "push_method");
+  assert.equal(method.input$.state.value, "wecom");
+  method.input$.setValue("webhook");
+  load_canvas_components(context);
+  vm.runInContext(fs.readFileSync(path.join(frontend, "src/pages/automation.js"), "utf8")
+    .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export default .*;$/gm, ""), context);
+  const dialog = context.AutomationConfigDialog({ store: model });
+  const template = find_view(dialog, "automation-config-end-message_template");
+  assert.equal(template.state.attributes.rows, "4");
+  template.events.onChange({ target: { value: "账号：{username}\n新视频：{title}" } });
+  await model.methods.savePipelineConfig();
+  const saved = calls.find((call) => call.url.endsWith("update_flow")).body.node_configs.end;
+  assert.equal(saved.push_method, "webhook");
+  assert.equal(saved.message_template, "账号：{username}\n新视频：{title}");
   model.methods.destroy();
 });

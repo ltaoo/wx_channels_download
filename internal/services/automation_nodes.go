@@ -164,12 +164,14 @@ func (s *AutomationService) snapshot_flow_dependencies(definition *engine.FlowDe
 			continue
 		}
 		var child engine.FlowDefinition
+		referenced := false
 		if flow_id, _ := node.Config["flow_id"].(string); flow_id != "" {
 			value, ok := s.flow_engine.GetFlowDefinition(flow_id)
 			if !ok {
 				return fmt.Errorf("子流程不存在: %s", flow_id)
 			}
 			child = value
+			referenced = true
 		} else {
 			raw, err := json.Marshal(node.Config["workflow"])
 			if err != nil {
@@ -181,6 +183,11 @@ func (s *AutomationService) snapshot_flow_dependencies(definition *engine.FlowDe
 		}
 		if err := normalize_user_flow_definition(&child); err != nil {
 			return err
+		}
+		if referenced && strings.HasPrefix(child.ID, user_flow_id_prefix) {
+			if err := s.bind_node_configs(&child); err != nil {
+				return err
+			}
 		}
 		for _, child_node := range child.Nodes {
 			if child_node.Type == "ManualNode" {
