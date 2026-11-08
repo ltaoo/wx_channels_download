@@ -281,6 +281,13 @@ func new_mcp_data_reader(data_service *services.DataQueryService) *mcp_data_read
 	return &mcp_data_reader{data_service: data_service}
 }
 
+func (r *mcp_data_reader) CheckDownloadTaskContents(ctx context.Context, content_ids []string) (any, error) {
+	if r == nil || r.data_service == nil {
+		return nil, fmt.Errorf("数据查询服务未初始化")
+	}
+	return r.data_service.CheckDownloadTaskContents(ctx, content_ids)
+}
+
 func (r *mcp_data_reader) ListDownloadTasks(ctx context.Context, query mcpserver.DownloadTaskListQuery) (any, error) {
 	if r == nil || r.data_service == nil {
 		return nil, fmt.Errorf("数据查询服务未初始化")

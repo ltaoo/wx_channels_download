@@ -78,6 +78,7 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/v1/download_task/clear", c.handle_clear_download_task)
 	c.engine.POST("/api/v1/download_task/clear_all", c.handle_clear_all_download_task)
 	c.engine.POST("/api/v1/download_task/check_files", c.handle_check_download_task_files)
+	c.engine.POST("/api/v1/download_task/check_contents", c.handle_check_download_task_contents)
 	c.engine.GET("/api/v1/download_task/list", c.handle_list_download_task)
 	c.engine.GET("/api/v1/download_task/detail", c.handle_download_task_detail)
 	c.engine.POST("/api/v1/third_party_downloader/probe", c.handle_probe_third_party_downloader)

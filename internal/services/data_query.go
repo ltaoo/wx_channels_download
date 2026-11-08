@@ -179,6 +179,13 @@ func NewDataQueryService(config DataQueryServiceConfig) *DataQueryService {
 	}
 }
 
+func (r *DataQueryService) CheckDownloadTaskContents(ctx context.Context, content_ids []string) (*DownloadTaskContentChecks, error) {
+	if r == nil || r.download_task_service == nil {
+		return nil, fmt.Errorf("下载任务服务未初始化")
+	}
+	return r.download_task_service.CheckContentIDs(ctx, content_ids)
+}
+
 func (r *DataQueryService) ListDownloadTasks(ctx context.Context, input DownloadTaskListQuery) (any, error) {
 	if r == nil || r.db == nil || r.download_task_service == nil {
 		return nil, errors.New("下载任务数据库服务未初始化")

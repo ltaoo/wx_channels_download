@@ -35,6 +35,41 @@ type download_task_detail_arguments struct {
 	ID int `json:"id"`
 }
 
+type download_task_contents_arguments struct {
+	ContentIDs []string `json:"content_ids"`
+}
+
+func (s *ToolSet) check_download_task_contents(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
+	var arguments download_task_contents_arguments
+	if err := decode_tool_arguments(raw_arguments, &arguments); err != nil {
+		return nil, err
+	}
+	if arguments.ContentIDs == nil {
+		return nil, fmt.Errorf("content_ids 必须是字符串数组")
+	}
+	if len(arguments.ContentIDs) > 10000 {
+		return nil, fmt.Errorf("content_ids 最多允许 10000 项")
+	}
+	for index, id := range arguments.ContentIDs {
+		arguments.ContentIDs[index] = strings.TrimSpace(id)
+		if arguments.ContentIDs[index] == "" {
+			return nil, fmt.Errorf("content_ids 不能包含空 ID")
+		}
+	}
+	if s.data_reader != nil {
+		value, err := s.data_reader.CheckDownloadTaskContents(ctx, arguments.ContentIDs)
+		if err != nil {
+			return nil, err
+		}
+		return successful_tool_result(value)
+	}
+	value, err := s.api_client.check_download_task_contents(ctx, arguments.ContentIDs)
+	if err != nil {
+		return nil, err
+	}
+	return successful_tool_result(raw_json_value(value))
+}
+
 type delete_download_tasks_arguments struct {
 	TaskIDs     []int `json:"task_ids"`
 	DeleteFiles bool  `json:"delete_files"`
@@ -435,6 +470,15 @@ var tools_download_task = []tool{
 		annotations:  json.RawMessage(`{"destructiveHint":false,"idempotentHint":true,"openWorldHint":false,"readOnlyHint":true}`),
 		supports:     supports_data,
 		handle:       (*ToolSet).get_download_tasks,
+	},
+	{
+		name:         "check_download_task_contents",
+		title:        "批量检查内容是否已有下载任务",
+		description:  "按内容 ID 批量查询下载任务存在性和任务数，排除已删除任务，包含所有任务状态。返回每个去重 ID 的 content_id、exists、task_count，保留输入顺序；不存在的 ID 也会返回。适合整页视频一次检查，空数组返回空结果。",
+		input_schema: json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{"content_ids":{"type":"array","maxItems":10000,"items":{"type":"string","minLength":1},"description":"内容 ID 列表，例如 wxchannels:视频ID。"}},"required":["content_ids"]}`),
+		annotations:  json.RawMessage(`{"destructiveHint":false,"idempotentHint":true,"openWorldHint":false,"readOnlyHint":true}`),
+		supports:     supports_data,
+		handle:       (*ToolSet).check_download_task_contents,
 	},
 	{
 		name:         "get_download_task_detail",
