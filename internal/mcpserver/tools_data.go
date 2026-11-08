@@ -18,6 +18,7 @@ const (
 
 // DataReader supplies read-only data tools.
 type DataReader interface {
+	CheckDownloadTaskContents(ctx context.Context, content_ids []string) (any, error)
 	ListDownloadTasks(ctx context.Context, query DownloadTaskListQuery) (any, error)
 	GetDownloadTaskDetail(ctx context.Context, task_id int) (any, error)
 	ListAccounts(ctx context.Context, query AccountListQuery) (any, error)

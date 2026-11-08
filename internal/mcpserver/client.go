@@ -111,6 +111,11 @@ func (c *api_client) wait_download_task(ctx context.Context, task_id int) (*down
 	return task, map_api_error(err)
 }
 
+func (c *api_client) check_download_task_contents(ctx context.Context, content_ids []string) (json.RawMessage, error) {
+	raw_result, err := c.client.CheckDownloadTaskContents(ctx, content_ids)
+	return raw_result, map_api_error(err)
+}
+
 func (c *api_client) download_tasks(ctx context.Context, query DownloadTaskListQuery) (json.RawMessage, error) {
 	raw_result, err := c.client.DownloadTasks(ctx, query)
 	return raw_result, map_api_error(err)
