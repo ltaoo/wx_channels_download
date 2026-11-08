@@ -198,6 +198,9 @@ func (d *HTTPDriver) new_request(ctx context.Context, endpoint hermes.Endpoint) 
 }
 
 func (d *HTTPDriver) do_stream(req *http.Request, endpoint hermes.Endpoint) (*http.Response, error) {
+	if endpoint.HTTPClient != nil {
+		return endpoint.HTTPClient.Do(req)
+	}
 	proxy_url, err := endpoint.ProxyServer.URL()
 	if err != nil {
 		return nil, err

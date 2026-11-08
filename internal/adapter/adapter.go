@@ -260,6 +260,11 @@ type Postprocessor interface {
 	Postprocess(context.Context, *hermes.TaskJob, PostprocessDeps) error
 }
 
+// DownloadPreparer resolves an adapter's deferred resource list at task start.
+type DownloadPreparer interface {
+	PrepareDownload(context.Context, *hermes.TaskJob, PostprocessDeps) error
+}
+
 // ---------- Global registry ----------
 
 var (

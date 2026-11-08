@@ -1,0 +1,29 @@
+{
+  "source_commit": "b3458e1a6931cab3a78fa3ec06c6b60d185d9f86",
+  "now": 1793853000123,
+  "nonce": "NTU1NTU1NTU1NTU1NTU1NTU1",
+  "payload": "{\"biz_param\":{\"detail_page_version\":0,\"device_level\":3,\"disable_digg_stat\":false,\"need_all_video_definition\":true,\"need_mp4_align\":false,\"use_os_player\":false,\"use_server_dns\":false,\"video_platform\":1024},\"mixed_video_id_map\":{\"1004\":[\"11\"]}}",
+  "url": "https://api5-normal-sinfonlineb.fqnovel.com/novel/player/multi_video_model/v1/?ac=wifi&channel=update_64&aid=8662&app_name=novelread&version_code=71332&version_name=7.1.3.32&device_platform=android&os=android&ssmix=a&device_type=25053RT47C&device_brand=Redmi&language=zh&os_api=36&os_version=16&manifest_version_code=71332&resolution=1280*2772&dpi=520&update_version_code=71332&host_abi=arm64-v8a&dragon_device_type=phone&pv_player=71332&compliance_status=0&need_personal_recommend=1&player_so_load=1&is_android_pad_screen=0&device_id=7000000000000000001&iid=7000000000000000002&cdid=00000000-0000-4000-8000-000000000003&ts=1793853000&_rticket=1793853000123",
+  "headers": {
+    "User-Agent": "com.phoenix.read/71532 (Linux; U; Android 9; SM-N9860; Build/PQ3A.190705.10241111;tt-ok/3.12.13.20)",
+    "Accept": "application/json; charset=utf-8,application/x-protobuf",
+    "Content-Type": "application/json; charset=UTF-8",
+    "x-ss-req-ticket": "1793853000123",
+    "sdk-version": "2",
+    "x-xs-from-web": "0",
+    "x-khronos": "1793853000",
+    "x-gorgon": "840400404001e92b80bdebf47d456235404121f54839d186a48b",
+    "x-ladon": "auwGSA==",
+    "x-argus": "SAbsag==",
+    "x-helios": "AAAAQP9RO85gCTAu/caMzsUzHZHlYrNwGsGtI+hn8Ro1cDwL",
+    "x-medusa": "Swbsar/us5Cf0TBRniwkGh/JjXIAAAABJDUAABBAAdkDGFhC6bYxxOjXd3w6OD1S1tm9YDJq0gVjZdsyqvCPHRziogz+ojXAbsWYvWoBa8DYez8op0ZYt0SwHuWjn85axXB8Dpd4TUTfai0tQv695FUUptnm3dZNT0WsjwHtH/OddhRhEhoLMTdgJx32Wq8NEG5mxceQP9dLW1eFd5sTnmEXCOE8IjNwOc0r4fe1cKoHVO4nvC3wTRRqXyLGk50AW1/8mBcLTTOVc03LJVOab8PLoS2GGBsHN4sWPKFUBLrBgIz5K7RhPZUSyTDcDZKr7xVtCRBtuTdpceIA2Ut5kRSPdbDvY1VmI/vEynP+pO0KVpFyGHnoWkFdGBtki+rUUUH+0NVUSkEPUhRt1Imqra+UfkY7m+8HevfspF80mq83M+lSNE7FZqTq+lJXLWhnBvBV1YecLyaRtD9JpDfeOqpxAOvo46QljLxo5gJ6mkojzPZ67BkPP+tv2/y3TZhHue21H5zf3nJwDuKUBhvFTSqAx7mFyuMmnXyTo6OSl818EHzOZlvcLSbBEvtEqmqtZs6iCG+ErR3Ti5Tj7ZuMdfb+mNJRKFmJ2vP0tU3UMiaGAUeZSrA0neE24/ntPCVGqB31+h6cAcg049lyPgDRSCei/2WuP6yabPZgzUTIhdJ/LsMA0bGlsFRJtcbh8hsMfCaw8LPpkU+5w5ajmDI/3RxUPiAxN6Ki0V2aQ4rq1wEq6K5jpVb90TwTBvRAm2TFQHaj12EIfdst/9jYQh6vb1KMdPr3aXs8LA9uaWH7k3wGDr5u2hUJzhUHytcSg/5ROIYWZLXp0WuDhFUxZCb1Dqk5qhMQ8p2b2dSNtwjTrulJS4mo3h+UUTa0FvvVQUpsMDTouaIp6FPIogjqe7tTKIBckfdWukLGrOs4JWFjgqj9fD29wNzEnyJC61KFVsYX5pkhjrblNKs2k2FzLN6M5ImozovdoR4ywE0p0AtWDpCLv////7///r8AQA==",
+    "x-tt-dt": "",
+    "x-tt-store-region": "cn",
+    "x-tt-store-region-src": "did"
+  },
+  "spade": "kLMT9Fq9EfFfvBDsaZUS6WyVK91hly3aYpQyxUi/NMJLvg==",
+  "content_key": "0123456789abcdef0123456789abcdef",
+  "encrypted_url": "qAABAHKZNsJXhhYw4C/USFRZZ0pHyM6qH8BrqkpOfpMHtoC7/gs5u5Wzw5OttEIH1ouILQ==",
+  "url_seed": "BwcHBwcHBwcHBwcHBwcHBw==",
+  "media_url": "https://v3-reading.qznovelvod.com/test.mp4"
+}
