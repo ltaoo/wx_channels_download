@@ -15,7 +15,7 @@ const default_service_output_key = "service_result"
 
 // service_template_re matches a {{a.b.c}} token and captures the whole dotted
 // path. The path is resolved scope-then-path: the first segment names one of
-// the three scopes (input/output/global) and the remaining segments drill
+// the scopes (input/output/global/config) and the remaining segments drill
 // through maps and numeric slice indexes.
 var service_template_re = regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\s*\.\s*[A-Za-z_][A-Za-z0-9_]*)*)\s*\}\}`)
 
@@ -178,6 +178,16 @@ func service_template_lookup(ctx *engine.ProcessContext, path string) (any, erro
 	}
 	not_found := fmt.Errorf("context value not found: %s", path)
 	switch segments[0] {
+	case "config":
+		if len(segments) < 2 {
+			return nil, not_found
+		}
+		config, _ := ctx.ScopeEnv()["config"].(map[string]interface{})
+		value, exists := config[segments[1]]
+		if !exists {
+			return nil, not_found
+		}
+		return drill_template_path(value, segments[2:], not_found)
 	case "input":
 		if len(segments) < 2 || !input_key_declared(ctx, segments[1]) {
 			return nil, not_found
@@ -211,7 +221,7 @@ func service_template_lookup(ctx *engine.ProcessContext, path string) (any, erro
 		return drill_template_path(value, segments[2:], not_found)
 	}
 	if len(segments) == 1 {
-		return nil, fmt.Errorf("template %s must declare an explicit scope (input/output/global)", path)
+		return nil, fmt.Errorf("template %s must declare an explicit scope (input/output/global/config)", path)
 	}
 	return nil, fmt.Errorf("unknown template namespace: %s", segments[0])
 }

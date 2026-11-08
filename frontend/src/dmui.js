@@ -1599,6 +1599,9 @@ export function Dialog(props, children = []) {
     ...rest
   } = props || {};
   const store = require_store("Dialog", provided_store, vm.DialogCore);
+  if (store.okBtn.state.variant === "default") {
+    store.okBtn.setVariant("primary");
+  }
   const state_ = refobj(store.state);
   const presence_state_ = refobj(store.presence.state);
   const was_exiting_ = ref(false);

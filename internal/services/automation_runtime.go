@@ -54,6 +54,11 @@ func (s *AutomationService) prepare_run(schedule model.FlowSchedule, trigger_typ
 		return nil, fmt.Errorf("流程不存在: %s", schedule.FlowID)
 	}
 	if strings.HasPrefix(schedule.FlowID, user_flow_id_prefix) {
+		if original_definition == "" {
+			if err := s.bind_node_configs(&definition); err != nil {
+				return nil, err
+			}
+		}
 		if err := s.snapshot_flow_dependencies(&definition, 0); err != nil {
 			return nil, err
 		}

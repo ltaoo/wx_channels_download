@@ -7,9 +7,9 @@ import (
 
 // node_scope_names is the ordered set of variable scopes exposed to JavaScript
 // nodes, matching ScopeEnv and the template namespaces.
-var node_scope_names = [3]string{"input", "output", "global"}
+var node_scope_names = [4]string{"input", "output", "global", "config"}
 
-// new_scope_vm builds a goja runtime with the three scopes bound as global
+// new_scope_vm builds a goja runtime with the declared scopes bound as global
 // objects. JSCodeNode and JS gateway conditions both go through here so the two
 // can never drift apart; a scope added for one is automatically available to
 // the other.

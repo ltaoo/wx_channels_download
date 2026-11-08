@@ -16,7 +16,7 @@ export function automation_trigger_badge(props) {
     {
       variant: variants[normalized] || "default",
       class: "min-w-52px",
-      attributes: { n: `automation-trigger-${normalized}` },
+      attributes: { n: `automation-trigger-${normalized}`, title: props.title },
     },
     [props.label],
   );
@@ -30,7 +30,15 @@ export function AutomationPipelineTriggerBadges(props) {
     key: "type",
     render(value) {
       const item = value && value.value !== undefined ? value.value : value;
-      return automation_trigger_badge({ type: item.type, label: vm$.methods.triggerLabel(item.type) });
+      return automation_trigger_badge({
+        type: item.type,
+        label: vm$.methods.triggerLabel(item.type),
+        title: item.type === "Cron" ? computed(vm$.state.schedules, () =>
+          vm$.methods.pipelineTriggers(props.pipeline)
+            .filter((trigger) => trigger.type === "Cron")
+            .map((trigger) => `${trigger.name || "定时触发"}：${trigger.cron_expr}（${trigger.enabled ? "已启用" : "已暂停"}）`)
+            .join("\n")) : undefined,
+      });
     },
   })]);
 }

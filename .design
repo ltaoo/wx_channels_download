@@ -1,8 +1,8 @@
 schema: design.v1
 name: wx-channels-download
-version: 1.0.8
+version: 1.0.10
 status: bootstrap
-updated_at: 2026-10-19
+updated_at: 2026-11-08
 description: Living visual contract extracted from the frontend DMUI token and page-composition layers.
 
 agent:
@@ -448,6 +448,7 @@ components:
     states: [default, hover, focus-within, disabled, invalid, loading]
     rules:
       - All Select dropdowns, including platform, account, and tag popovers, use typography.size.base (14px) at the popup container; option text, descriptions, group labels, and loading/empty text inherit it without font-size overrides.
+      - Automation node configuration strings with options use the shared Select, and multiline strings use the shared Textarea; secret strings use a password Input.
     tokens:
       default:
         backgroundColor: "{tokens.color.surface-subtle}"
@@ -517,6 +518,8 @@ components:
     when_not: ["Information that belongs in the normal page flow"]
     variants: [dialog, drawer, popover, dropdown, select]
     states: [entering, open, exiting]
+    rules:
+      - Dialog default footer confirmation uses components.button primary; preserve explicitly configured variants such as destructive.
     tokens:
       dialog:
         backgroundColor: "{tokens.color.surface}"

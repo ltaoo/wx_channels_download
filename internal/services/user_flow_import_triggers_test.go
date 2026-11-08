@@ -29,8 +29,19 @@ func TestImportCreatorVideoSyncSchedule(t *testing.T) {
 	if rule.CronExpr != "0 12,18 * * *" || !rule.Enabled || rule.NextRunAt == nil || metadata.Type != "Cron" || metadata.StartNodeID != "start" {
 		t.Fatalf("incorrect imported schedule: %+v, metadata: %+v", rule, metadata)
 	}
-	if flow_initial_data(rule)["username"] != "REPLACE_CREATOR_USERNAME@finder" {
-		t.Fatal("import lost creator parameter")
+	if _, exists := flow_initial_data(rule)["username"]; exists {
+		t.Fatal("creator username should be a node configuration, not a trigger parameter")
+	}
+	definition, err := decode_user_flow_definition(flow.Definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := definition.Nodes["validate"].ConfigSchema
+	if len(definition.ContextSchema) != 0 || len(schema) != 2 || schema[0].Key != "username" || schema[0].Label != "username" || schema[0].Type != "string" || !schema[0].Required {
+		t.Fatalf("import lost required creator configuration: %+v", schema)
+	}
+	if schema[1].Key != "remark" || schema[1].Label != "备注" || schema[1].Type != "string" || schema[1].Required {
+		t.Fatalf("import lost optional remark configuration: %+v", schema)
 	}
 	// Check both daily fire times and rollover using the real scheduler parser.
 	location := time.FixedZone("UTC+8", 8*60*60)

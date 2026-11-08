@@ -12,7 +12,7 @@ import (
 )
 
 // ValidateFlowScopes statically checks every variable read in a flow
-// definition against the three-scope contract that ScopeEnv implements at
+// definition against the scope contract that ScopeEnv implements at
 // runtime:
 //
 //	input.<key>            — key must be declared by the flow's ContextSchema
@@ -196,7 +196,7 @@ func (v *scope_validator) validate_expression(node_id, code, where string) {
 		return
 	}
 	for _, name := range bare {
-		v.problemf("节点 %s 的 %s 引用了未声明作用域的名称 %q，请写成 input./output./global. 形式", node_id, where, name)
+		v.problemf("节点 %s 的 %s 引用了未声明作用域的名称 %q，请写成 input./output./global./config. 形式", node_id, where, name)
 	}
 	for _, path := range paths {
 		v.validate_path(node_id, path, where)
@@ -224,7 +224,7 @@ func (v *scope_validator) validate_gateway_rule(node_id, code, where, language s
 		}
 		for _, name := range bare {
 			v.problemf(
-				"节点 %s 的 %s（JavaScript 条件）引用了未声明的名称 %q；只能访问 input./output./global. 作用域或标准内置对象（%s）",
+				"节点 %s 的 %s（JavaScript 条件）引用了未声明的名称 %q；只能访问 input./output./global./config. 作用域或标准内置对象（%s）",
 				node_id, where, name, strings.Join(js_condition_builtin_name_list, "、"),
 			)
 		}
@@ -275,6 +275,17 @@ func (v *scope_validator) validate_path(node_id, path, where string) {
 	}
 	prefix := fmt.Sprintf("节点 %s 的 %s 引用了 %s", node_id, where, path)
 	switch segments[0] {
+	case "config":
+		if len(segments) < 2 {
+			v.problemf("%s，缺少配置项名称", prefix)
+			return
+		}
+		for _, field := range v.definition.Nodes[node_id].ConfigSchema {
+			if field.Key == segments[1] {
+				return
+			}
+		}
+		v.problemf("%s，但当前节点 config_schema 未声明配置项 %q", prefix, segments[1])
 	case "input":
 		if len(segments) < 2 {
 			v.problemf("%s，缺少入参名", prefix)
@@ -308,7 +319,7 @@ func (v *scope_validator) validate_path(node_id, path, where string) {
 		}
 	default:
 		if len(segments) == 1 {
-			v.problemf("%s，但缺少显式作用域（请写成 input./output./global.）", prefix)
+			v.problemf("%s，但缺少显式作用域（请写成 input./output./global./config.）", prefix)
 			return
 		}
 		v.problemf("%s，但作用域 %q 不存在", prefix, segments[0])

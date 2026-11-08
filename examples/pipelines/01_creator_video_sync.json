@@ -8,18 +8,10 @@
       "name": "每天 12:00、18:00 同步创作者视频",
       "cron_expr": "0 12,18 * * *",
       "enabled": true,
-      "initial_data": {
-        "username": "REPLACE_CREATOR_USERNAME@finder"
-      }
+      "initial_data": {}
     }
   ],
-  "context_schema": [
-    {
-      "key": "username",
-      "type": "string",
-      "required": true
-    }
-  ],
+  "context_schema": [],
   "nodes": {
     "start": {
       "id": "start",
@@ -38,8 +30,23 @@
       "id": "validate",
       "type": "JSCodeNode",
       "name": "校验创作者参数",
+      "config_schema": [
+        {
+          "key": "username",
+          "label": "username",
+          "description": "填写创作者账号标识，例如 xxx@finder，不是昵称；自动移除开头的 wxchannels: 和首尾空白，未带 @finder 时自动补齐。",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "remark",
+          "label": "备注",
+          "type": "string",
+          "required": false
+        }
+      ],
       "config": {
-        "code": "(function () {\nif (typeof input.username !== 'string') throw new Error('必须传入字符串 username');\nvar username = input.username.trim().replace(/^wxchannels:/, '');\nif (!username || username.indexOf('REPLACE_') >= 0) throw new Error('请在定时器执行参数中传入创作者 username');\nif (!/@finder$/.test(username)) username += '@finder';\nreturn {username: username};\n})()",
+        "code": "(function () {\nif (typeof config.username !== 'string') throw new Error('必须配置字符串 username');\nvar username = config.username.trim().replace(/^wxchannels:/, '').trim();\nif (!username || username.indexOf('REPLACE_') >= 0) throw new Error('请在自动化配置中填写创作者 username');\nif (!/@finder$/.test(username)) username += '@finder';\nreturn {username: username};\n})()",
         "output_key": "creator"
       },
       "next_node_ids": [
@@ -509,127 +516,62 @@
         }
       },
       "next_node_ids": [
-        "check_videos"
+        "prepare_checks"
       ],
       "position": {
         "x": 2720,
         "y": 0
       }
     },
-    "check_videos": {
-      "id": "check_videos",
-      "type": "LoopNode",
-      "name": "遍历视频：逐条检查是否已存在",
+    "prepare_checks": {
+      "id": "prepare_checks",
+      "type": "JSCodeNode",
+      "name": "收集本页视频的内容 ID",
       "config": {
-        "items": "{{global.scan_state.items}}",
-        "workflow": {
-          "id": "creator_video_exists",
-          "name": "逐条检查视频是否已有下载任务",
-          "start_node": "start",
-          "context_schema": [
-            {
-              "key": "item",
-              "type": "object",
-              "required": true
-            },
-            {
-              "key": "index",
-              "type": "number",
-              "required": true
-            }
-          ],
-          "nodes": {
-            "start": {
-              "id": "start",
-              "type": "StartNode",
-              "name": "开始检查",
-              "config": {},
-              "next_node_ids": [
-                "lookup"
-              ],
-              "position": {
-                "x": 0,
-                "y": 0
-              }
-            },
-            "lookup": {
-              "id": "lookup",
-              "type": "ServiceNode",
-              "name": "按视频 ID 查询已有下载任务",
-              "config": {
-                "tool_name": "get_download_tasks",
-                "arguments": {
-                  "content_id": "wxchannels:{{input.item.oid}}",
-                  "page": 1,
-                  "page_size": 1
-                },
-                "output_key": "tasks",
-                "timeout_seconds": 30
-              },
-              "next_node_ids": [
-                "inspect"
-              ],
-              "position": {
-                "x": 340,
-                "y": 0
-              }
-            },
-            "inspect": {
-              "id": "inspect",
-              "type": "JSCodeNode",
-              "name": "返回视频存在性检查结果",
-              "config": {
-                "code": "(function () {\nvar tasks = output.lookup.tasks;\nif (!tasks || !Array.isArray(tasks.list) || typeof tasks.total !== 'number' || !isFinite(tasks.total) || tasks.total < 0 || Math.floor(tasks.total) !== tasks.total) throw new Error('查询下载任务失败或响应缺少 list/total');\nreturn {video: input.item, exists: tasks.total > 0};\n})()",
-                "output_key": "check_result"
-              },
-              "next_node_ids": [
-                "end"
-              ],
-              "position": {
-                "x": 680,
-                "y": 0
-              }
-            },
-            "end": {
-              "id": "end",
-              "type": "EndNode",
-              "name": "检查结束",
-              "config": {},
-              "next_node_ids": [],
-              "position": {
-                "x": 1020,
-                "y": 0
-              }
-            }
-          }
-        },
-        "arguments": {},
-        "max_iterations": 10000,
-        "concurrency": 1,
-        "continue_on_error": false,
-        "output_key": "checks"
+        "code": "(function () {\nreturn global.scan_state.items.map(function (video) { return 'wxchannels:' + video.oid; });\n})()",
+        "output_key": "content_ids"
       },
       "next_node_ids": [
-        "aggregate_checks"
+        "check_videos"
       ],
       "position": {
         "x": 3060,
         "y": 0
       }
     },
+    "check_videos": {
+      "id": "check_videos",
+      "type": "ServiceNode",
+      "name": "一次批量检查本页视频是否已有下载任务",
+      "config": {
+        "tool_name": "check_download_task_contents",
+        "arguments": {
+          "content_ids": "{{output.prepare_checks.content_ids}}"
+        },
+        "output_key": "checks",
+        "timeout_seconds": 30
+      },
+      "next_node_ids": [
+        "aggregate_checks"
+      ],
+      "position": {
+        "x": 3400,
+        "y": 0
+      }
+    },
     "aggregate_checks": {
       "id": "aggregate_checks",
       "type": "JSCodeNode",
-      "name": "汇总整页结果，筛选不存在的视频",
+      "name": "校验批量查询结果，筛选本地不存在的视频",
       "config": {
-        "code": "(function () {\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nvar results = output.check_videos.checks;\nif (!Array.isArray(results) || results.length !== state.items.length) throw new Error('视频存在性检查结果不完整');\nstate.pending = [];\nfor (var i = 0; i < results.length; i++) {\n  var check = results[i].output.inspect.check_result;\n  if (!check || typeof check.exists !== 'boolean' || check.video.oid !== state.items[i].oid) throw new Error('视频存在性检查结果无效');\n  state.checked += 1;\n  if (check.exists) state.skipped += 1; else state.pending.push(check.video);\n}\nstate.all_existing = results.length > 0 && state.pending.length === 0;\nreturn state;\n})()",
+        "code": "(function () {\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nvar response = output.check_videos.checks;\nif (!response || !Array.isArray(response.list) || response.total !== state.items.length || response.list.length !== state.items.length) throw new Error('批量视频存在性检查结果不完整');\nvar checks = Object.create(null);\nresponse.list.forEach(function (check) {\n  if (!check || typeof check.content_id !== 'string' || Object.prototype.hasOwnProperty.call(checks, check.content_id) || typeof check.exists !== 'boolean' || typeof check.task_count !== 'number' || !isFinite(check.task_count) || check.task_count < 0 || Math.floor(check.task_count) !== check.task_count || check.exists !== (check.task_count > 0)) throw new Error('批量视频存在性检查结果无效');\n  checks[check.content_id] = check;\n});\nstate.pending = [];\nfor (var i = 0; i < state.items.length; i++) {\n  var video = state.items[i], content_id = 'wxchannels:' + video.oid;\n  if (!Object.prototype.hasOwnProperty.call(checks, content_id)) throw new Error('批量检查缺少视频 ' + video.oid);\n  var check = checks[content_id];\n  state.checked += 1;\n  if (check.exists) state.skipped += 1;\n  else {\n    state.pending.push(video);\n  }\n}\nstate.all_existing = state.items.length > 0 && state.pending.length === 0;\nreturn state;\n})()",
         "output_key": "checked_state"
       },
       "next_node_ids": [
         "store_checks"
       ],
       "position": {
-        "x": 3400,
+        "x": 3740,
         "y": 0
       }
     },
@@ -646,7 +588,7 @@
         "all_existing"
       ],
       "position": {
-        "x": 3740,
+        "x": 4080,
         "y": 0
       }
     },
@@ -673,7 +615,7 @@
         "advance_page"
       ],
       "position": {
-        "x": 4080,
+        "x": 4420,
         "y": 0
       }
     },
@@ -689,7 +631,7 @@
         "store_cursor"
       ],
       "position": {
-        "x": 4420,
+        "x": 4760,
         "y": 480
       }
     },
@@ -722,7 +664,7 @@
         "end"
       ],
       "position": {
-        "x": 4420,
+        "x": 4760,
         "y": 0
       }
     },
@@ -733,7 +675,7 @@
       "config": {},
       "next_node_ids": [],
       "position": {
-        "x": 4760,
+        "x": 5100,
         "y": 0
       }
     },

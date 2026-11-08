@@ -14,7 +14,8 @@ type UserFlow struct {
 	EventKey    string `gorm:"column:event_key" json:"event_key"`
 	// Definition is the serialized engine.FlowDefinition (nodes, edges,
 	// context schema).
-	Definition string `gorm:"column:definition;type:text" json:"definition"`
+	Definition  string `gorm:"column:definition;type:text" json:"definition"`
+	NodeConfigs string `gorm:"column:node_configs;type:text;not null;default:'{}'" json:"node_configs"`
 	Timestamps
 }
 

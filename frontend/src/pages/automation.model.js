@@ -61,6 +61,45 @@ function trigger_label(type) {
   return "定时触发";
 }
 
+function validate_config_schema(schema) {
+  if (!Array.isArray(schema)) throw new Error("所需配置声明必须是 JSON 数组");
+  const keys = new Set();
+  schema.forEach((field) => {
+    if (!field || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(field.key) || keys.has(field.key)) throw new Error("配置项名称必须唯一，且只能使用字母、数字、下划线，不能以数字开头");
+    keys.add(field.key);
+    if (!["string", "number", "integer", "boolean", "object", "array"].includes(field.type)) throw new Error(`配置项 ${field.key} 类型不支持`);
+    if (field.secret && field.type !== "string") throw new Error(`配置项 ${field.key} 只有 string 类型支持 secret`);
+    if (field.options !== undefined && (!Array.isArray(field.options) || field.options.some((option) => !option || typeof option.value !== "string" || !option.value.trim() || typeof option.label !== "string"))) throw new Error(`配置项 ${field.key} 选项必须包含 label 和非空字符串 value`);
+    if (field.options && new Set(field.options.map((option) => option.value)).size !== field.options.length) throw new Error(`配置项 ${field.key} 选项值不能重复`);
+    if (field.options && field.options.length && (field.type !== "string" || field.secret)) throw new Error(`配置项 ${field.key} 选项仅用于非密钥的 string 类型`);
+    if (field.multiline && (field.type !== "string" || field.secret || (field.options && field.options.length))) throw new Error(`配置项 ${field.key} 多行输入仅用于非密钥且无选项的 string 类型`);
+  });
+  return schema;
+}
+
+function config_field_value(field, raw) {
+  const empty = raw === undefined || raw === null || (typeof raw === "string" && !raw.trim());
+  if (empty) {
+    if (field.required) throw new Error(`${field.label || field.key} 不能为空`);
+    return undefined;
+  }
+  if (field.type === "boolean") return Boolean(raw);
+  if (field.type === "string") {
+    const value = String(raw);
+    if (field.options && field.options.length && !field.options.some((option) => option.value === value)) throw new Error(`${field.label || field.key} 必须选择声明的选项`);
+    return value;
+  }
+  if (field.type === "number" || field.type === "integer") {
+    const value = Number(raw);
+    if (!Number.isFinite(value) || (field.type === "integer" && !Number.isInteger(value))) throw new Error(`${field.label || field.key} 必须为${field.type === "integer" ? "整数" : "数字"}`);
+    return value;
+  }
+  let value;
+  try { value = JSON.parse(raw); } catch { throw new Error(`${field.label || field.key} 必须是有效 JSON`); }
+  if (field.type === "array" ? !Array.isArray(value) : !value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${field.label || field.key} 必须是 JSON ${field.type === "array" ? "数组" : "对象"}`);
+  return value;
+}
+
 function schema_text(schema) {
   if (!Array.isArray(schema) || schema.length === 0) return "无";
   return schema
@@ -374,6 +413,7 @@ function normalize_pipeline(value) {
       type: node.type || "",
       name: node.name || node.id || node_id,
       config: node.config || {},
+      config_schema: node.config_schema || [],
       position,
       next_ids,
       input_schema: node.input_schema || [],
@@ -407,6 +447,24 @@ function normalize_pipeline(value) {
     nodes,
     edges,
   };
+}
+
+function pipeline_config_groups(pipeline) {
+  let values = pipeline.node_configs || {};
+  try { if (typeof values === "string") values = JSON.parse(values); }
+  catch { values = {}; }
+  if (!values || typeof values !== "object" || Array.isArray(values)) values = {};
+  return (pipeline.nodes || []).filter((node) => Array.isArray(node.config_schema) && node.config_schema.length).map((node) => ({
+    id: node.id,
+    name: node.name || node.id,
+    fields: node.config_schema.map((field) => {
+      const saved = Object.prototype.hasOwnProperty.call(values, node.id) ? values[node.id] : null;
+      const value = saved && Object.prototype.hasOwnProperty.call(saved, field.key) ? saved[field.key] : undefined;
+      const filled = value !== undefined && value !== null && !(typeof value === "string" && !value.trim());
+      const text = !filled ? "未填写" : field.secret ? "••••••" : typeof value === "string" ? value : JSON.stringify(value);
+      return { key: field.key, label: field.label || field.key, text, filled };
+    }),
+  }));
 }
 
 function pipeline_triggers(pipeline, schedules) {
@@ -557,6 +615,13 @@ function AutomationPageViewModel(props, options) {
   const selected_edit_node_id_ = ref("");
   const node_inspector_open_ = ref(false);
   const edit_node_config_ = ref("{}");
+  const edit_node_config_schema_ = ref("[]");
+  const config_groups_ = refarr([]);
+  const config_error_ = ref("");
+  const config_saving_ = ref(false);
+  const config_loading_ = ref(false);
+  const config_pipeline_ = refobj(null);
+  let config_sequence = 0;
   const staged_node_positions = new Map();
 
   // create-pipeline dialog state
@@ -675,6 +740,11 @@ function AutomationPageViewModel(props, options) {
   };
 
   const ui = {
+    config_dialog$: new Timeless.vm.DialogCore({ footer: false }),
+    btn_pipeline_config$: new Timeless.vm.ButtonInListCore({ variant: "outline", onClick(pipeline) { return open_pipeline_config(pipeline); } }),
+    btn_config_save$: new Timeless.vm.ButtonCore({ variant: "primary", onClick() { return save_pipeline_config(); } }),
+    btn_config_cancel$: new Timeless.vm.ButtonCore({ variant: "outline", onClick() { if (!config_saving_.value) ui.config_dialog$.hide(); } }),
+    input_edit_node_config_schema$: new Timeless.vm.InputCore({ defaultValue: "[]", onChange(value) { edit_node_config_schema_.as(String(value || "")); } }),
     input_keyword$: new Timeless.vm.InputCore({
       defaultValue: "",
       placeholder: "搜索名称",
@@ -1764,6 +1834,7 @@ function AutomationPageViewModel(props, options) {
       type: node.type,
       name: node.name || node.id,
       config: node.config || {},
+      config_schema: node.config_schema || [],
       position: node.position ? { ...node.position } : null,
       next_ids: (node.next_ids || []).slice(),
       input_schema: node.input_schema || [],
@@ -1848,6 +1919,9 @@ function AutomationPageViewModel(props, options) {
     selected_edit_node_id_.as(node ? node.id : "");
     const config_text = JSON.stringify((node && node.config) || {}, null, 2);
     edit_node_config_.as(config_text);
+    const schema_text = JSON.stringify((node && node.config_schema) || [], null, 2);
+    edit_node_config_schema_.as(schema_text);
+    ui.input_edit_node_config_schema$.setValue(schema_text, { silence: true });
     const policy_text = JSON.stringify({ retry: node && node.retry || { max_attempts: 1, delay_ms: 0, backoff_multiplier: 1 }, error_next_node: node && node.error_next_node || "", input_schema: node && node.input_schema || [], output_schema: node && node.output_schema || [] }, null, 2);
     edit_node_policy_.as(policy_text);
     ui.input_edit_node_policy$.setValue(policy_text, { silence: true });
@@ -1920,7 +1994,8 @@ function AutomationPageViewModel(props, options) {
       );
       const policy = JSON.parse(edit_node_policy_.value || "{}");
       if (!policy || typeof policy !== "object" || Array.isArray(policy)) throw new Error("执行策略必须是 JSON 对象");
-      const patch = { config, retry: policy.retry || { max_attempts: 1, delay_ms: 0, backoff_multiplier: 1 }, error_next_node: String(policy.error_next_node || ""), input_schema: policy.input_schema || [], output_schema: policy.output_schema || [] };
+      const config_schema = validate_config_schema(JSON.parse(edit_node_config_schema_.value || "[]"));
+      const patch = { config, config_schema, retry: policy.retry || { max_attempts: 1, delay_ms: 0, backoff_multiplier: 1 }, error_next_node: String(policy.error_next_node || ""), input_schema: policy.input_schema || [], output_schema: policy.output_schema || [] };
       update_selected_node(next_ids ? { ...patch, next_ids } : patch);
       props.tip({ msg: ["节点配置已应用，保存 Pipeline 后生效"], type: "success" });
     } catch (err) {
@@ -1986,6 +2061,77 @@ function AutomationPageViewModel(props, options) {
     } catch (error) { set_error(error); }
     run_action_busy_.as(false);
     action_buttons.forEach((button) => button.enable());
+  }
+
+  function config_schema_is_pending(node) {
+    try { return JSON.stringify(JSON.parse(edit_node_config_schema_.value || "[]")) !== JSON.stringify((node && node.config_schema) || []); }
+    catch { return true; }
+  }
+
+  async function open_pipeline_config(pipeline) {
+    if (!pipeline || config_saving_.value) return;
+    const sequence = ++config_sequence;
+    config_pipeline_.as(pipeline);
+    config_error_.as("");
+    config_groups_.as([], { reset: true });
+    config_loading_.as(true);
+    ui.btn_config_save$.disable();
+    ui.config_dialog$.show();
+    try {
+      const response = await reqs.pipeline.detail.run({ id: pipeline.id });
+      if (sequence !== config_sequence || disposed) return;
+      if (response.error) throw request_result_error(response, "自动化配置加载失败");
+      const fresh = normalize_pipeline(response.data);
+      config_pipeline_.as(fresh);
+      let values = fresh.node_configs || {};
+      if (typeof values === "string") values = JSON.parse(values || "{}");
+      config_groups_.as(fresh.nodes.filter((node) => (node.config_schema || []).length).map((node) => ({
+        id: node.id, name: node.name || node.id,
+        fields: validate_config_schema(node.config_schema).map((schema) => {
+          const value = (values[node.id] || {})[schema.key];
+          const field = { ...schema, value: value === undefined ? (schema.type === "boolean" ? false : "") : value };
+          if (schema.options && schema.options.length) {
+            field.input$ = new Timeless.vm.SelectCore({ defaultValue: String(field.value), position: "popper", placeholder: `选择 ${schema.label || schema.key}`, options: schema.options.map((option) => new Timeless.vm.SelectItemCore(option)) });
+          } else if (schema.type === "boolean") {
+            field.input$ = new Timeless.vm.CheckboxCore({ checked: field.value, onChange(value) { field.value = value; } });
+          } else {
+            const text = schema.type === "array" || schema.type === "object" ? (value === undefined ? "" : JSON.stringify(value, null, 2)) : String(field.value);
+            field.value = text;
+            field.input$ = new Timeless.vm.InputCore({ defaultValue: text, onChange(value) { field.value = value; } });
+          }
+          return field;
+        }),
+      })), { reset: true });
+      if (config_groups_.value.length) ui.btn_config_save$.enable();
+    } catch (error) {
+      if (sequence === config_sequence) config_error_.as(error.message || "自动化配置加载失败");
+    } finally { if (sequence === config_sequence) config_loading_.as(false); }
+  }
+
+  async function save_pipeline_config() {
+    if (config_loading_.value || config_saving_.value || !config_pipeline_.value || !config_groups_.value.length) return;
+    config_error_.as("");
+    config_saving_.as(true);
+    ui.btn_config_save$.disable();
+    ui.btn_config_cancel$.disable();
+    try {
+      const node_configs = Object.create(null);
+      config_groups_.value.forEach((group) => {
+        const values = Object.create(null);
+        group.fields.forEach((field) => {
+          const raw = field.type === "boolean" ? field.input$.state.checked : field.input$.state.value;
+          const value = config_field_value(field, raw);
+          if (value !== undefined) values[field.key] = value;
+        });
+        node_configs[group.id] = values;
+      });
+      const response = await reqs.pipeline.update.run({ id: config_pipeline_.value.id, node_configs });
+      if (response.error) throw request_result_error(response, "自动化配置保存失败");
+      ui.config_dialog$.hide();
+      props.tip({ msg: ["自动化配置已保存"], type: "success" });
+      await load_data();
+    } catch (error) { config_error_.as(error.message || "自动化配置保存失败"); }
+    finally { config_saving_.as(false); ui.btn_config_save$.enable(); ui.btn_config_cancel$.enable(); }
   }
 
   function execution_policy_is_pending(node) {
@@ -2309,6 +2455,7 @@ function AutomationPageViewModel(props, options) {
           type: node.type,
           name: node.name,
           config: node.config || {},
+          config_schema: node.config_schema || [],
           position:
             staged_node_positions.get(node.id) ||
             calculated_positions[node.id] ||
@@ -2572,7 +2719,7 @@ function AutomationPageViewModel(props, options) {
       const selected = find_edit_node(selected_edit_node_id_.value);
       let pending_node_config = false;
       try {
-        pending_node_config = JSON.stringify(JSON.parse(edit_node_config_.value || "{}")) !== JSON.stringify((selected && selected.config) || {}) || execution_policy_is_pending(selected);
+        pending_node_config = JSON.stringify(JSON.parse(edit_node_config_.value || "{}")) !== JSON.stringify((selected && selected.config) || {}) || execution_policy_is_pending(selected) || config_schema_is_pending(selected);
       } catch { pending_node_config = true; }
       let triggers = null;
       let trigger_error = "";
@@ -2585,6 +2732,7 @@ function AutomationPageViewModel(props, options) {
         selected_node_id: selected_edit_node_id_.value,
         node_config_text: edit_node_config_.value,
         node_policy_text: edit_node_policy_.value,
+        node_config_schema_text: edit_node_config_schema_.value,
         pending_node_config,
         trigger_error,
         trigger_forms: edit_triggers_.value.map((trigger) => ({
@@ -2667,6 +2815,8 @@ function AutomationPageViewModel(props, options) {
     applySelectedNodeConfig: apply_selected_node_config,
     removeNode: remove_node,
     saveFlow: save_flow,
+    openPipelineConfig: open_pipeline_config,
+    savePipelineConfig: save_pipeline_config,
     deleteFlow: delete_flow,
     askDeletePipeline: ask_delete_pipeline,
     triggerFlow: trigger_flow,
@@ -2682,6 +2832,7 @@ function AutomationPageViewModel(props, options) {
     schemaText: schema_text,
     formatTime: format_time,
     pipelineName: pipeline_name,
+    pipelineConfigGroups: pipeline_config_groups,
     pipelineTriggers(flow) { return pipeline_triggers(flow, schedules_.value); },
     pipelineTriggerTypes(flow) {
       return [...new Set(["Manual", ...pipeline_triggers(flow, schedules_.value).map((trigger) => trigger.type)])];
@@ -2772,6 +2923,8 @@ function AutomationPageViewModel(props, options) {
     selected_edit_node_id: selected_edit_node_id_,
     node_inspector_open: node_inspector_open_,
     edit_node_config: edit_node_config_,
+    edit_node_config_schema: edit_node_config_schema_,
+    config_groups: config_groups_, config_error: config_error_, config_saving: config_saving_, config_loading: config_loading_, config_pipeline: config_pipeline_,
     loading: loading_,
     error: error_,
     dirty: dirty_,

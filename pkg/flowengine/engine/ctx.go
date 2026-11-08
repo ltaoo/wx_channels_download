@@ -8,18 +8,22 @@ import (
 )
 
 // ProcessContext carries the runtime state of one flow run. Variable reads are
-// split into three disjoint scopes, mirroring the n8n model:
+// split into four disjoint scopes, mirroring the n8n model:
 //
 //   - input.<key>            — a run parameter declared by the flow's
 //     ContextSchema; it is a live projection of Data
 //     (see ScopeEnv).
+//
 //   - output.<node_id>.<key> — a key produced by a specific upstream node;
 //     reads NodeOutputs, so two nodes emitting the same
 //     key never collide.
+//
 //   - global.<key>           — a variable written explicitly by a
 //     SetVariableNode; reads Globals.
 //
-// The same key name may live in all three scopes without interfering.
+//   - config.<key>           — a setting declared and filled for the current node.
+//
+// The same key name may live in these scopes without interfering.
 type ProcessContext struct {
 	ValidateSchemas bool
 	reached_stop    bool
@@ -91,7 +95,7 @@ func (ctx *ProcessContext) SetExecutionDetail(key string, value interface{}) {
 }
 
 // ScopeEnv builds the read environment exposed to templates and expressions:
-// exactly the three namespaces input / output / global. A bare identifier (or
+// the input / output / global / config namespaces. A bare identifier (or
 // a ctx.* path) is therefore not resolvable, which is what makes typos a hard
 // error instead of a silent nil.
 func (ctx *ProcessContext) ScopeEnv() map[string]any {
@@ -101,7 +105,14 @@ func (ctx *ProcessContext) ScopeEnv() map[string]any {
 			input[key] = value
 		}
 	}
+	config := map[string]any{}
+	if ctx.Definition != nil {
+		if node, ok := ctx.Definition.Nodes[ctx.CurrentNode]; ok && node.ConfigValues != nil {
+			config = node.ConfigValues
+		}
+	}
 	return map[string]any{
+		"config": config,
 		"input":  input,
 		"output": ctx.NodeOutputs,
 		"global": ctx.Globals,
