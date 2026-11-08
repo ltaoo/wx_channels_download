@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"runtime/debug"
 	"strings"
@@ -53,6 +54,8 @@ type Endpoint struct {
 	Priority int
 	Headers  map[string]string
 	Cookies  string
+	// HTTPClient optionally supplies runtime request policies. It is not persisted.
+	HTTPClient *http.Client
 	// ProxyServer is copied from the owning TaskJob before protocol requests are
 	// made. Drivers that perform network I/O should honor it for this endpoint.
 	ProxyServer ProxyServer
@@ -340,6 +343,12 @@ type Postprocessor interface {
 	Process(ctx context.Context, task_job *TaskJob) error
 }
 
+// Preprocessor resolves and persists a task's resources before probing begins.
+// Applications may expand deferred inputs without adding business protocols.
+type Preprocessor interface {
+	Process(context.Context, *TaskJob) error
+}
+
 // HermesEngine is a protocol-agnostic finite resource download scheduler.
 // FILE and COLLECTION are scheduled by the same task, STREAM is handled by the recording scheduler.
 type HermesEngine struct {
@@ -357,6 +366,7 @@ type HermesEngine struct {
 	drivers        map[string]ProtocolDriver
 	hooks          *HookManager
 	postprocessor  Postprocessor
+	preprocessor   Preprocessor
 	progress_mu    sync.RWMutex
 	progress_cache map[int]*progress_tracker // keyed by task ID
 	cfg            HermesEngineConfig
@@ -523,6 +533,8 @@ func (d *HermesEngine) SetHooks(h *HookManager) {
 func (d *HermesEngine) SetPostprocessor(p Postprocessor) {
 	d.postprocessor = p
 }
+
+func (d *HermesEngine) SetPreprocessor(p Preprocessor) { d.preprocessor = p }
 
 // RegisterProtocol registers or replaces a protocol driver. Protocol names are case-insensitive.
 func (d *HermesEngine) RegisterProtocol(driver ProtocolDriver) {
@@ -789,6 +801,12 @@ func (d *HermesEngine) run(info *TaskJob) error {
 	info.Config = loaded.Config
 	info.Metadata = loaded.Metadata
 	apply_task_proxy(info)
+	if d.preprocessor != nil {
+		if err := d.preprocessor.Process(ctx, info); err != nil {
+			return fmt.Errorf("prepare task resources: %w", err)
+		}
+		apply_task_proxy(info)
+	}
 	if len(info.Resources) == 0 {
 		return errors.New("task has no downloadable resources")
 	}

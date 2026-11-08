@@ -9,7 +9,10 @@ Package boundaries:
 - `Store` persists tasks, resources, segments, and progress in external storage.
 - `New(HermesNewConfig{})` supplies an in-memory store and a standard HTTP/HTTPS driver for direct Go use.
 - Applications can still provide a persistent `Store` and replace protocol drivers through `Engine.RegisterProtocol`.
+- Runtime `Endpoint.HTTPClient` can provide application-owned request, proxy and redirect policies; both HTTP drivers honor it without switching to fallback clients.
+- An optional `Preprocessor` resolves and persists resource lists after task loading, before resource probing and transfer. Applications register it through `SetPreprocessor`.
 - This package does not depend on the API, GORM, the frontend, or any specific content platform.
+- Application-specific source refresh and resource-list expansion belong in application preprocessors. Raw HTTP/HTTPS resources use the regular protocol drivers. Media merging, decryption, and remuxing belong in adapter postprocessors invoked before final output naming and task completion.
 
 ## High-level Go API
 

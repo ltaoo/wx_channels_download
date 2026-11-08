@@ -184,6 +184,7 @@ func Start(cfg *config.Config) error {
 	downloader.RegisterProtocol(protocol.NewInlineDriver())
 	downloader.RegisterProtocol(protocol.NewFileDriver())
 	downloader.SetHooks(hook_manager)
+	downloader.SetPreprocessor(adapter.NewPlatformPreprocessor(b.DB, *logger, api_cfg.DownloadDir))
 	downloader.SetPostprocessor(adapter.NewPlatformPostprocessor(b.DB, *logger, api_cfg.DownloadDir))
 	service_download_task := services.NewDownloadTaskService(
 		b.DB,
