@@ -121,7 +121,7 @@ func (c *api_client) download_tasks(ctx context.Context, query DownloadTaskListQ
 	return raw_result, map_api_error(err)
 }
 
-func (c *api_client) download_task_detail(ctx context.Context, task_id int) (json.RawMessage, error) {
+func (c *api_client) download_task_detail(ctx context.Context, task_id int) (*dm.DownloadTask, error) {
 	raw_result, err := c.client.DownloadTaskDetail(ctx, task_id)
 	return raw_result, map_api_error(err)
 }

@@ -413,7 +413,9 @@
   function merge_task_record(current, update) {
     const next = Object.assign({}, current || {}, update || {});
     if (Object.prototype.hasOwnProperty.call(update || {}, "files")) {
-      next.files = merge_files(current && current.files, update.files);
+      next.files = success_statuses.has(normalize_status(update.status))
+        ? task_files(update)
+        : merge_files(current && current.files, update.files);
       delete next.resources;
     } else if (
       Object.prototype.hasOwnProperty.call(update || {}, "resources")
@@ -459,6 +461,8 @@
     let ready_state = deferred();
     let finished_state = deferred();
     let terminal_state = null;
+    let success_detail = null;
+    let completion_request = null;
     let last_failure = null;
     let task_channel = null;
     let task_channel_id = "";
@@ -525,6 +529,9 @@
         return ready_state.promise;
       },
       get finished() {
+        if (success_statuses.has(status_.value) && !terminal_state) {
+          load_success_detail();
+        }
         return finished_state.promise;
       },
       get files() {
@@ -548,7 +555,9 @@
           .Msg("add success handler");
         const unsubscribe = bus.on("task:success", handler);
         if (terminal_state === "success") {
-          global.queueMicrotask(() => handler(raw_.value));
+          global.queueMicrotask(() => handler(success_detail));
+        } else if (success_statuses.has(status_.value)) {
+          load_success_detail();
         }
         return unsubscribe;
       },
@@ -902,6 +911,8 @@
 
     function begin(status) {
       terminal_state = null;
+      success_detail = null;
+      completion_request = null;
       last_failure = null;
       error_.as(null);
       finished_state = deferred();
@@ -909,6 +920,41 @@
         status_.as(normalize_status(status));
       }
       return model;
+    }
+
+    function load_success_detail() {
+      if (completion_request) return;
+      const completion_state = finished_state;
+      const task_id = id_.value;
+      const pending = (async () => {
+        const detail_request = reqs.download && reqs.download.detail;
+        if (!detail_request) {
+          throw new Error("Download task detail request is unavailable");
+        }
+        const response = await detail_request.run({ id: task_id });
+        if (
+          disposed || finished_state !== completion_state ||
+          !success_statuses.has(status_.value)
+        ) return;
+        if (!response || response.error) {
+          throw (response && response.error) || new Error("Load download task detail failed");
+        }
+        const detail = response.data;
+        if (!detail || String(detail.id) !== String(task_id) || detail.status !== 5) {
+          throw new Error("Download task detail is not a completed task");
+        }
+        update(detail, { replace: true, detail: true });
+      })().catch((error) => {
+        if (
+          !disposed && finished_state === completion_state &&
+          success_statuses.has(status_.value)
+        ) {
+          fail(error, { creation: false, preserve_status: true });
+        }
+      }).finally(() => {
+        if (completion_request === pending) completion_request = null;
+      });
+      completion_request = pending;
     }
 
     function fail(value, options) {
@@ -987,6 +1033,8 @@
           failure_statuses.has(previous_status))
       ) {
         terminal_state = null;
+        success_detail = null;
+        completion_request = null;
         last_failure = null;
         error_.as(null);
         finished_state = deferred();
@@ -1002,14 +1050,19 @@
         .Str("terminal_state", terminal_state)
         .Msg("update - check whether the task is completed");
       if (success_statuses.has(next_status) && terminal_state !== "success") {
-        terminal_state = "success";
-        error_.as(null);
-        bus.emit("task:success", next_raw);
-        if (!finished_state.settled) {
-          finished_state.settled = true;
-          finished_state.resolve(model);
+        if (opt && opt.detail) {
+          terminal_state = "success";
+          success_detail = next_raw;
+          error_.as(null);
+          bus.emit("task:success", success_detail);
+          if (!finished_state.settled) {
+            finished_state.settled = true;
+            finished_state.resolve(model);
+          }
+          methods.disconnectWebSocket();
+        } else {
+          load_success_detail();
         }
-        methods.disconnectWebSocket();
       } else if (
         failure_statuses.has(next_status) &&
         terminal_state !== "fail"
@@ -1175,7 +1228,7 @@
    *   platform: "wxchannels",
    *   skip: true,
    * });
-   * task$.onSuccess((detail) => console.log(detail.files[0].local_path));
+   * task$.onSuccess((detail) => console.log(detail.files[0].file_path));
    * task$.onFailed((error) => console.error(error));
    */
   function DownloaderModel(props) {
