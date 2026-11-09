@@ -2,8 +2,8 @@ name: Refresh Sponsor Data
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '17 * * * *'
+  repository_dispatch:
+    types: [refresh-sponsors]
 
 permissions:
   contents: write
@@ -40,8 +40,7 @@ jobs:
       - name: Commit sponsor data
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-
-          actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add sponsors.json
 
           if git diff --cached --quiet; then
