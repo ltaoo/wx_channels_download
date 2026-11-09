@@ -48,6 +48,9 @@
     "/api/channels/live/replay/list": {
       "$ref": "./channels/live_replay_list.json"
     },
+    "/api/channels/live/profile": {
+      "$ref": "./channels/live_profile.json"
+    },
     "/api/channels/interactioned/list": {
       "$ref": "./channels/interactioned_list.json"
     },
