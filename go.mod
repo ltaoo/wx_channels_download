@@ -29,6 +29,7 @@ require (
 	github.com/andybalholm/cascadia v1.3.2
 	github.com/aymerick/douceur v0.2.0
 	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c
+	github.com/dop251/goja_nodejs v0.0.0-20260212111938-1f56ff5bcf14
 	github.com/ebitengine/oto/v3 v3.2.0-alpha.4
 	github.com/evanw/esbuild v0.21.5
 	github.com/expr-lang/expr v1.16.9
@@ -70,7 +71,7 @@ require (
 require (
 	github.com/JohannesKaufmann/html-to-markdown v1.4.1
 	github.com/PuerkitoBio/goquery v1.8.1
-	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
+	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27
 	golang.org/x/exp v0.0.0-20251113190631-e25ba8c21ef6 // indirect
 	golang.org/x/image v0.23.0

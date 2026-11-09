@@ -15,6 +15,7 @@ import (
 type HookManager struct {
 	mu                sync.Mutex
 	vm                *goja.Runtime
+	runtime           *hook_runtime
 	has_create_hook   bool
 	has_success_hook  bool
 	has_failed_hook   bool
@@ -121,14 +122,18 @@ func (hm *HookManager) Load(script string) error {
 	hm.mu.Lock()
 	defer hm.mu.Unlock()
 
-	vm := goja.New()
-	register_builtins(vm)
+	runtime, err := new_hook_runtime()
+	if err != nil {
+		return fmt.Errorf("failed to initialize hook runtime: %w", err)
+	}
+	vm := runtime.vm
 
-	if _, err := vm.RunString(script); err != nil {
+	if _, err := runtime.run(func() (goja.Value, error) { return vm.RunString(script) }); err != nil {
 		return fmt.Errorf("failed to execute hook script: %w", err)
 	}
 
 	hm.vm = vm
+	hm.runtime = runtime
 	hm.has_create_hook = is_defined_function(vm, "onTaskCreate")
 	hm.has_success_hook = is_defined_function(vm, "onTaskSuccess")
 	hm.has_failed_hook = is_defined_function(vm, "onTaskFailed")
@@ -175,7 +180,9 @@ func (hm *HookManager) InvokeCreateHook(input *TaskInput) (*TaskInput, error) {
 	}
 	config_val := hm.vm.ToValue(input.Config)
 
-	result, err := fn(goja.Undefined(), task_val, resources_val, config_val)
+	result, err := hm.runtime.run(func() (goja.Value, error) {
+		return fn(goja.Undefined(), task_val, resources_val, config_val)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("onTaskCreate execution failed: %w", err)
 	}
@@ -247,7 +254,7 @@ func (hm *HookManager) invoke_terminal_hook(hook_name string, ctx *FinishContext
 	if err != nil {
 		return fmt.Errorf("failed to prepare %s context value: %w", hook_name, err)
 	}
-	_, err = fn(goja.Undefined(), ctx_val)
+	_, err = hm.runtime.run(func() (goja.Value, error) { return fn(goja.Undefined(), ctx_val) })
 	if err != nil {
 		return fmt.Errorf("%s execution failed: %w", hook_name, err)
 	}
@@ -288,7 +295,9 @@ func (hm *HookManager) InvokeFilenameHook(params *FilenameParams) (*FilenameHook
 	}
 	config_val := hm.vm.ToValue(filename_hook_config(params.Config))
 
-	result, err := fn(goja.Undefined(), meta_val, task_val, config_val)
+	result, err := hm.runtime.run(func() (goja.Value, error) {
+		return fn(goja.Undefined(), meta_val, task_val, config_val)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("onFilename execution failed: %w", err)
 	}
