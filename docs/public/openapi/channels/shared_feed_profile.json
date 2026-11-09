@@ -1,0 +1,40 @@
+{
+  "get": {
+    "tags": [
+      "视频号"
+    ],
+    "summary": "获取分享视频详情（未实现）",
+    "description": "该路由当前尚未实现，未传 url 返回 code=400、msg=missing url；传入 url 仍返回 code=400、msg=need to process。",
+    "responses": {
+      "200": {
+        "description": "HTTP 200；code=0 成功，非零为业务失败，以 msg 判断错误。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "parameters": [
+      {
+        "name": "url",
+        "in": "query",
+        "required": true,
+        "description": "url",
+        "schema": {
+          "type": "string"
+        }
+      }
+    ]
+  }
+}

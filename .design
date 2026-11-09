@@ -1,8 +1,8 @@
 schema: design.v1
 name: wx-channels-download
-version: 1.0.10
+version: 1.0.11
 status: bootstrap
-updated_at: 2026-11-08
+updated_at: 2026-11-09
 description: Living visual contract extracted from the frontend DMUI token and page-composition layers.
 
 agent:
@@ -449,6 +449,7 @@ components:
     rules:
       - All Select dropdowns, including platform, account, and tag popovers, use typography.size.base (14px) at the popup container; option text, descriptions, group labels, and loading/empty text inherit it without font-size overrides.
       - Automation node configuration strings with options use the shared Select, and multiline strings use the shared Textarea; secret strings use a password Input.
+      - Automation JSON and service template fields use TemplateEditor with the shared field focus ring and primary tokens for variable highlights; suggestions support keyboard selection and the input, output, global, and node config scopes.
     tokens:
       default:
         backgroundColor: "{tokens.color.surface-subtle}"
@@ -821,7 +822,7 @@ sources:
   - path: frontend/src/style.css
     role: "Consumed atomic utilities for pages and business components, state/child variants, responsive layouts, and page keyframes."
     inspected_at: 2026-10-17
-  - path: frontend/src/pages/flow.components.js
+  - path: frontend/src/pages/automation.components.js
     role: "Master-detail workflow consuming local utilities while preserving group and state hooks for canvas interactions."
     inspected_at: 2026-10-17
 

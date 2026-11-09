@@ -665,7 +665,7 @@ function ContentRowMain(props) {
   );
   return [
     ContentRowCover({ content }),
-    View({ class: "content-row-main dm-min-w-0 dm-flex-1" }, [
+    View({ class: "dm-min-w-0 dm-flex-1 content-row-main" }, [
       View(
         {
           class: "overflow-hidden text-content-text text-base font-semibold text-ellipsis whitespace-nowrap",
@@ -805,7 +805,7 @@ function ContentSkeletonRow() {
           }),
           View(
             {
-              class: "content-row-main dm-min-w-0 dm-flex-1",
+              class: "dm-min-w-0 dm-flex-1 content-row-main",
               attributes: { n: "content-table-skeleton-main" },
             },
             [

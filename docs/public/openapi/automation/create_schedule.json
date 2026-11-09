@@ -1,0 +1,88 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "创建自动化计划",
+    "description": "name、cron_expr、flow_id 必填。timeout_sec 非正数时默认 3600 秒，上限 86400 秒。使用服务端 Cron 解析器校验表达式。 Cron 使用 5 字段（分、时、日、月、周），也支持 @daily 等描述符。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/model_FlowSchedule"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_automation_create_schedule",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": "string"
+              },
+              "cron_expr": {
+                "type": "string",
+                "minLength": 1
+              },
+              "flow_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "initial_data": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "enabled": {
+                "type": "boolean",
+                "nullable": true
+              },
+              "timeout_sec": {
+                "type": "integer",
+                "default": 3600,
+                "maximum": 86400
+              }
+            },
+            "required": [
+              "name",
+              "cron_expr",
+              "flow_id"
+            ]
+          },
+          "example": {
+            "name": "每日执行",
+            "flow_id": "flow-demo",
+            "cron_expr": "0 9 * * *",
+            "timeout_sec": 3600
+          }
+        }
+      }
+    }
+  }
+}

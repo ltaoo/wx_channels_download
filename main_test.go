@@ -13,7 +13,9 @@ import (
 	"wx_channel/internal/config"
 )
 
-func TestAppLoggingRequiresExplicitDebug(t *testing.T) {
+func TestAppLoggingRequiresExplicitOptIn(t *testing.T) {
+	t.Setenv("ENABLE_LOG", "")
+	t.Setenv("WX_ENABLE_LOG", "")
 	original_level := zerolog.GlobalLevel()
 	original_time_format := zerolog.TimeFieldFormat
 	t.Cleanup(func() {
@@ -24,8 +26,11 @@ func TestAppLoggingRequiresExplicitDebug(t *testing.T) {
 	for _, test_case := range []struct {
 		name         string
 		settings     string
+		env_name     string
+		env_value    string
 		existing_log bool
 		enabled      bool
+		log_only     bool
 	}{
 		{name: "default"},
 		{name: "explicitly_disabled", settings: "debug:\n  enabled: false\n"},
@@ -33,9 +38,16 @@ func TestAppLoggingRequiresExplicitDebug(t *testing.T) {
 		{name: "preserves_existing_log", existing_log: true},
 		{name: "enabled", settings: "debug:\n  enabled: true\n", enabled: true},
 		{name: "enabled_truncates_existing_log", settings: "debug:\n  enabled: true\n", existing_log: true, enabled: true},
+		{name: "log_enabled", settings: "log:\n  enabled: true\n", enabled: true, log_only: true},
+		{name: "enable_log_env", env_name: "ENABLE_LOG", env_value: "true", enabled: true, log_only: true},
+		{name: "wx_enable_log_env", env_name: "WX_ENABLE_LOG", env_value: "1", enabled: true, log_only: true},
+		{name: "disabled_log_env", env_name: "ENABLE_LOG", env_value: "false"},
 	} {
 		t.Run(test_case.name, func(t *testing.T) {
 			viper.Reset()
+			if test_case.env_name != "" {
+				t.Setenv(test_case.env_name, test_case.env_value)
+			}
 			test_dir := t.TempDir()
 			log_dir := filepath.Join(test_dir, "logs")
 			log_path := filepath.Join(log_dir, "app.log")
@@ -62,8 +74,8 @@ func TestAppLoggingRequiresExplicitDebug(t *testing.T) {
 			if err := cfg.LoadConfig(); err != nil {
 				t.Fatal(err)
 			}
-			if cfg.Debug != test_case.enabled {
-				t.Fatalf("debug = %v, want %v", cfg.Debug, test_case.enabled)
+			if cfg.Debug != (test_case.enabled && !test_case.log_only) {
+				t.Fatalf("debug = %v, enabled = %v, log_only = %v", cfg.Debug, test_case.enabled, test_case.log_only)
 			}
 			child_logger := logger.With().Str("component", "test").Logger()
 			for _, level := range []zerolog.Level{zerolog.DebugLevel, zerolog.InfoLevel, zerolog.WarnLevel, zerolog.ErrorLevel, zerolog.NoLevel} {
@@ -91,6 +103,12 @@ func TestAppLoggingRequiresExplicitDebug(t *testing.T) {
 				}
 			}
 			for _, level := range []string{"debug", "info", "warn", "error"} {
+				if level == "debug" && test_case.log_only {
+					if strings.Contains(string(contents), "after configuration: debug") {
+						t.Fatalf("log-only mode recorded debug output: %s", contents)
+					}
+					continue
+				}
 				if !strings.Contains(string(contents), "after configuration: "+level) {
 					t.Fatalf("missing %s log: %s", level, contents)
 				}

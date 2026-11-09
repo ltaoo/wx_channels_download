@@ -1,0 +1,45 @@
+{
+  "get": {
+    "tags": [
+      "同步"
+    ],
+    "summary": "列出同步目标服务",
+    "description": "返回配置 sync.servers 的公开信息，id 是从 0 开始的数组下标，不返回 token。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "servers": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "../components.json#/schemas/api_sync_server_record"
+                      }
+                    }
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "get_api_v1_sync_servers"
+  }
+}

@@ -2776,20 +2776,12 @@ body {
   margin-left: auto;
 }
 
-.top-\[calc\(100\%_\+_var\(--dm-space-1\)\)\] {
-  top: calc(100% + var(--dm-space-1));
-}
-
 .left-0 {
   left: 0;
 }
 
 .right-0 {
   right: 0;
-}
-
-.max-h-200px {
-  max-height: 200px;
 }
 
 .border-\[var\(--dm-border-width\)_solid_var\(--dm-color-border-strong\)\] {

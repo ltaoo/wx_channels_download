@@ -590,11 +590,11 @@ func setFrontendHTMLCacheHeaders(header http.Header) {
 	header.Set("Expires", "0")
 }
 
-func (c *APIClient) isLoggingEnabled() bool {
-	if c.cfg == nil || c.cfg.Original == nil {
+func (c *APIClient) is_logging_enabled() bool {
+	if c.cfg == nil || c.cfg.Original == nil || c.logger == nil {
 		return false
 	}
-	return c.cfg.Original.LogPath() != "" || c.cfg.Original.GetBool("log.enabled")
+	return zerolog.GlobalLevel() < zerolog.Disabled && c.logger.GetLevel() < zerolog.Disabled
 }
 
 // handleFrontendTip handles frontend log/tip messages posted from injected pages.
@@ -609,7 +609,7 @@ func (c *APIClient) handleFrontendTip(ctx *gin.Context) {
 		result.Err(ctx, 400, err.Error())
 		return
 	}
-	if !c.isLoggingEnabled() {
+	if !c.is_logging_enabled() {
 		result.Ok(ctx, nil)
 		return
 	}
@@ -719,7 +719,7 @@ func (c *APIClient) handle_frontend_report(ctx *gin.Context) {
 		}
 
 		// Non-error logs are only displayed if logging is explicitly enabled
-		if !c.isLoggingEnabled() || data.Level == "debug" || data.Level == "trace" {
+		if !c.is_logging_enabled() || data.Level == "debug" || data.Level == "trace" {
 			continue
 		}
 		prefix_text := "[FRONTEND]"

@@ -3,7 +3,7 @@ import {
   AutomationPipelineLink,
   AutomationPipelineTriggerBadges,
   AutomationRunPipelineDialog,
-} from "./flow.components.js";
+} from "./automation.components.js";
 
 function AutomationPageView(props) {
   const vm$ = AutomationPageViewModel(props);

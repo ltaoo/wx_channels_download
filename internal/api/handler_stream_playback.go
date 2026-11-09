@@ -29,15 +29,6 @@ type stream_playback_location struct {
 	safe_roots  []string
 }
 
-func download_task_stream_playback_url(task_id, resource_id int) string {
-	return fmt.Sprintf(
-		"/api/v1/download_task/live/%d/%d/%s",
-		task_id,
-		resource_id,
-		stream_playback_manifest_name,
-	)
-}
-
 func (c *APIClient) handle_stream_playback_asset(ctx *gin.Context) {
 	task_id, task_err := strconv.Atoi(ctx.Param("task_id"))
 	resource_id, resource_err := strconv.Atoi(ctx.Param("resource_id"))
@@ -148,29 +139,8 @@ func (c *APIClient) resolve_stream_playback_location(task_id, resource_id int) (
 }
 
 func (c *APIClient) stream_playback_location_for_resource(task model.DownloadTask, resource model.DownloadResource) (stream_playback_location, error) {
-	output_path := hermes.ResolveOutputPath(c.cfg.DownloadDir, resource.DownloadDir, resource.UniqueID)
-	output_path, err := filepath.Abs(output_path)
-	if err != nil {
-		return stream_playback_location{}, err
-	}
-	output_path = filepath.Clean(output_path)
-	roots_by_path := c.download_task_local_file_roots(task, &resource)
-	safe_roots := make([]string, 0, len(roots_by_path))
-	for root := range roots_by_path {
-		safe_roots = append(safe_roots, root)
-		if resolved_root, resolve_err := filepath.EvalSymlinks(root); resolve_err == nil {
-			if resolved_root, absolute_err := filepath.Abs(resolved_root); absolute_err == nil {
-				resolved_root = filepath.Clean(resolved_root)
-				if resolved_root != root {
-					safe_roots = append(safe_roots, resolved_root)
-				}
-			}
-		}
-	}
-	if !path_within_any_download_root(safe_roots, output_path) {
-		return stream_playback_location{}, errors.New("stream output path is outside its download root")
-	}
-	return stream_playback_location{output_path: output_path, safe_roots: safe_roots}, nil
+	output_path, safe_roots, err := c.service_download_task.StreamPlaybackLocation(task, resource)
+	return stream_playback_location{output_path: output_path, safe_roots: safe_roots}, err
 }
 
 func stream_playback_directories(output_path string) []string {
@@ -187,35 +157,4 @@ func path_within_any_download_root(roots []string, target string) bool {
 		}
 	}
 	return false
-}
-
-func (c *APIClient) stream_playback_availability(task_id int) map[int]bool {
-	availability := make(map[int]bool)
-	if c == nil || c.db == nil || c.cfg == nil {
-		return availability
-	}
-	var task model.DownloadTask
-	if err := c.db.Where("id = ? AND deleted_at IS NULL", task_id).First(&task).Error; err != nil {
-		return availability
-	}
-	var resources []model.DownloadResource
-	if err := c.db.
-		Where("task_id = ? AND deleted_at IS NULL AND UPPER(type) = ?", task_id, model.ResourceTypeStream).
-		Find(&resources).Error; err != nil {
-		return availability
-	}
-	for _, resource := range resources {
-		location, err := c.stream_playback_location_for_resource(task, resource)
-		if err != nil {
-			continue
-		}
-		for _, playback_dir := range stream_playback_directories(location.output_path) {
-			manifest_path := filepath.Join(playback_dir, stream_playback_manifest_name)
-			if info, stat_err := os.Lstat(manifest_path); stat_err == nil && info.Mode().IsRegular() && info.Size() > 0 {
-				availability[resource.Id] = true
-				break
-			}
-		}
-	}
-	return availability
 }

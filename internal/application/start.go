@@ -28,6 +28,7 @@ import (
 	"wx_channel/internal/webassets"
 	"wx_channel/pkg/cache"
 	"wx_channel/pkg/cookies"
+	"wx_channel/pkg/dm"
 	"wx_channel/pkg/flowengine"
 	"wx_channel/pkg/hermes"
 	"wx_channel/pkg/hermes/protocol"
@@ -41,6 +42,13 @@ func Start(cfg *config.Config) error {
 
 	fmt.Printf("\nv%v\n", cfg.Version)
 	fmt.Printf("Feedback/Issues https://github.com/ltaoo/wx_channels_download/issues\n\n")
+
+	proxy_enabled := cfg.GetBool("proxy.enabled")
+	if proxy_enabled || cfg.GetString("cert.file") != "" || cfg.GetString("cert.key") != "" {
+		if err := services.EnsureLocalCertificate(cfg); err != nil {
+			return err
+		}
+	}
 
 	logger := cfg.Logger()
 	cache_registry, err := cache.NewProviderRegistry(cfg.WorkDir)
@@ -63,7 +71,6 @@ func Start(cfg *config.Config) error {
 	}
 
 	api_cfg := api.NewAPIConfig(cfg)
-	proxy_enabled := cfg.GetBool("proxy.enabled")
 	static_assets := webassets.NewRegistry()
 	if cfg.GlobalScriptPath != "" {
 		global_script_asset_path := frontend.UserGlobalScriptAssetPath(cfg.GlobalScriptPath)
@@ -126,7 +133,7 @@ func Start(cfg *config.Config) error {
 	}
 	table_data = append(table_data, []string{"Download Dir", api_cfg.DownloadDir})
 	// --- Hook manager ---
-	hook_manager := hermes.NewHookManager()
+	hook_manager := hermes.NewHookManager(logger)
 	configured_hook_path := cfg.GetString("download.hooksScript")
 	logger.Info().
 		Str("file", "internal/application/start.go").
@@ -195,6 +202,9 @@ func Start(cfg *config.Config) error {
 		api_cfg.DownloadDir,
 		bus,
 	)
+	downloader.SetTaskDetailProvider(func(task_id int, snapshot []hermes.TaskFinishedResource) (*dm.DownloadTask, error) {
+		return service_download_task.BuildTaskDetail(context.Background(), task_id, snapshot)
+	})
 	service_runtime_status := services.NewRuntimeStatusService()
 	download_task_broadcaster := api.NewDownloadTaskBroadcaster(b.DB, logger, service_download_task)
 	bus.Subscribe(events.TypeDownloadTaskCreated, func(event events.Event) {

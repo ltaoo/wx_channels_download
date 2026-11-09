@@ -1538,6 +1538,62 @@ img.dm-lazy-img-image[data-lazy-img-state] {
   min-height: 112px;
 }
 
+.dm-template-editor {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.dm-template-input {
+  position: relative;
+  width: 100%;
+  padding: var(--dm-space-2) var(--dm-space-3);
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: var(--dm-font-size-sm)/var(--dm-line-height-base) ui-monospace, monospace;
+}
+
+.dm-template-input[data-empty="true"]::before {
+  position: absolute;
+  content: attr(data-placeholder);
+  color: var(--dm-color-text-secondary);
+  pointer-events: none;
+}
+
+.dm-template-token {
+  color: var(--dm-color-primary);
+  background: var(--dm-color-bg-interactive);
+  border-radius: var(--dm-radius-xs);
+}
+
+.dm-template-suggestions {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + var(--dm-space-1));
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow: auto;
+  color: var(--dm-color-text-primary);
+  background: var(--dm-color-bg-surface);
+  border: var(--dm-border-width) solid var(--dm-color-border-strong);
+  border-radius: var(--dm-radius-control);
+  box-shadow: var(--dm-shadow-md);
+}
+
+.dm-template-suggestions > [role="option"] {
+  padding: var(--dm-space-2) var(--dm-space-3);
+  overflow-wrap: anywhere;
+  font: var(--dm-font-size-sm)/var(--dm-line-height-base) ui-monospace, monospace;
+  cursor: pointer;
+}
+
+.dm-template-suggestions > [aria-selected="true"],
+.dm-template-suggestions > [role="option"]:hover {
+  background: var(--dm-color-bg-interactive);
+}
+
 .dm-textarea-count {
   align-self: flex-end;
   color: var(--dm-color-text-secondary);

@@ -197,44 +197,44 @@ test("the account page retains its bounded layout and content region", () => {
 });
 
 test("the automation editor fills its page and keeps the inspector and toolbar fixed", () => {
-  const page = element(view_classes("pages/flow_edit.js", "automation-page"));
+  const page = element(view_classes("pages/automation_edit.js", "automation-page"));
   assert.equal(styles(page).height, "100%");
   assert.equal(styles(page)["min-height"], "0");
   assert.equal(styles(page).overflow, "hidden");
-  const workspace = element(view_classes("pages/flow_edit.js", "automation-editor-workspace"), page);
+  const workspace = element(view_classes("pages/automation_edit.js", "automation-editor-workspace"), page);
   assert.equal(styles(workspace).position, "absolute");
   assert.equal(styles(workspace).inset, "0");
   const canvas = element("group-automation-flow-scroll", workspace);
   assert.equal(styles(canvas).height, "100%");
   assert.equal(styles(canvas)["min-height"], "0");
-  const inspector = element(view_classes("pages/flow_edit.js", "automation-node-inspector"));
+  const inspector = element(view_classes("pages/automation_edit.js", "automation-node-inspector"));
   assert.equal(styles(inspector).position, "fixed");
   assert.equal(styles(inspector).width, "min(420px, calc(100vw - 32px))");
   assert.match(styles(inspector).transition, /transform.*opacity.*visibility/);
   assert.equal(styles(inspector, { reduced: true }).transition, "none");
-  const toolbar = element(view_classes("pages/flow.components.js", "automation-workspace-toolbar", { is_edit: true }));
+  const toolbar = element(view_classes("pages/automation.components.js", "automation-workspace-toolbar", { is_edit: true }));
   assert.equal(styles(toolbar).position, "fixed");
   assert.equal(styles(toolbar).left, "var(--dm-space-4)");
-  assert.doesNotMatch(read("src/pages/flow_edit.js"), /AutomationRunHistory|automation-editor-toolbar-wrap/);
+  assert.doesNotMatch(read("src/pages/automation_edit.js"), /AutomationRunHistory|automation-editor-toolbar-wrap/);
 });
 
 test("the automation detail fills its page with a fixed run toolbar and history rail", () => {
-  const page = element(view_classes("pages/flow_detail.js", "automation-page"));
+  const page = element(view_classes("pages/automation_detail.js", "automation-page"));
   assert.equal(styles(page).height, "100%");
   assert.equal(styles(page)["min-height"], "0");
   assert.equal(styles(page).overflow, "hidden");
-  const workspace = element(view_classes("pages/flow_detail.js", "automation-detail-workspace"), page);
+  const workspace = element(view_classes("pages/automation_detail.js", "automation-detail-workspace"), page);
   assert.equal(styles(workspace).position, "absolute");
   assert.equal(styles(workspace).inset, "0");
   assert.equal(styles(element("group-automation-flow-scroll", workspace)).height, "100%");
-  const toolbar = element(view_classes("pages/flow_detail.js", "automation-detail-toolbar"));
+  const toolbar = element(view_classes("pages/automation_detail.js", "automation-detail-toolbar"));
   assert.equal(styles(toolbar).position, "fixed");
-  const rail = element(view_classes("pages/flow_detail.js", "automation-run-sidebar"));
+  const rail = element(view_classes("pages/automation_detail.js", "automation-run-sidebar"));
   assert.equal(styles(rail).position, "fixed");
   assert.equal(styles(rail).width, "var(--dm-layout-sidebar-width)");
   assert.equal(styles(rail, { width: 640 }).width, "calc(var(--dm-space-24) * 2)");
   assert.equal(styles(workspace, { width: 640 }).inset, "0");
-  assert.doesNotMatch(read("src/pages/flow_detail.js"), /AutomationNodeInspector|AutomationStartTriggers|AutomationPipelineLink|AutomationWorkspaceToolbar/);
+  assert.doesNotMatch(read("src/pages/automation_detail.js"), /AutomationNodeInspector|AutomationStartTriggers|AutomationPipelineLink|AutomationWorkspaceToolbar/);
 });
 
 test("dynamic gallery variants retain single-image and three-image layouts", () => {

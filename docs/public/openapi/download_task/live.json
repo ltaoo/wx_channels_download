@@ -1,0 +1,140 @@
+{
+  "get": {
+    "tags": [
+      "媒体"
+    ],
+    "summary": "读取直播 HLS 播放资源",
+    "description": "仅支持 index.m3u8 或 segment- 后接 9 位数字的 .ts 分片，例如 segment-000000001.ts。资源必须属于指定任务且为 STREAM 类型。GET 返回文件，HEAD 仅返回响应头；支持 HTTP Range。",
+    "responses": {
+      "200": {
+        "description": "HLS 清单或 MPEG-TS 分片；HEAD 无响应体",
+        "content": {
+          "application/vnd.apple.mpegurl": {
+            "schema": {
+              "type": "string",
+              "format": "binary"
+            }
+          },
+          "video/mp2t": {
+            "schema": {
+              "type": "string",
+              "format": "binary"
+            }
+          }
+        }
+      },
+      "206": {
+        "description": "Range 部分内容"
+      },
+      "304": {
+        "description": "缓存未变化"
+      },
+      "400": {
+        "description": "无效 ID 或资源名"
+      },
+      "404": {
+        "description": "任务、资源或播放文件不存在"
+      },
+      "416": {
+        "description": "Range 无效"
+      },
+      "500": {
+        "description": "读取失败"
+      }
+    },
+    "operationId": "get_api_v1_download_task_live_task_id_resource_id_asset_name",
+    "parameters": [
+      {
+        "name": "task_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": "下载任务正整数 ID"
+      },
+      {
+        "name": "resource_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": "所属任务的 STREAM 资源正整数 ID"
+      },
+      {
+        "name": "asset_name",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "index.m3u8 或 segment-000000001.ts 格式的资源名"
+      }
+    ]
+  },
+  "head": {
+    "tags": [
+      "媒体"
+    ],
+    "summary": "读取直播 HLS 播放资源响应头",
+    "description": "仅支持 index.m3u8 或 segment- 后接 9 位数字的 .ts 分片，例如 segment-000000001.ts。资源必须属于指定任务且为 STREAM 类型。GET 返回文件，HEAD 仅返回响应头；支持 HTTP Range。",
+    "responses": {
+      "200": {
+        "description": "HLS 清单或 MPEG-TS 分片；HEAD 无响应体"
+      },
+      "206": {
+        "description": "Range 部分内容"
+      },
+      "304": {
+        "description": "缓存未变化"
+      },
+      "400": {
+        "description": "无效 ID 或资源名"
+      },
+      "404": {
+        "description": "任务、资源或播放文件不存在"
+      },
+      "416": {
+        "description": "Range 无效"
+      },
+      "500": {
+        "description": "读取失败"
+      }
+    },
+    "operationId": "head_api_v1_download_task_live_task_id_resource_id_asset_name",
+    "parameters": [
+      {
+        "name": "task_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": "下载任务正整数 ID"
+      },
+      {
+        "name": "resource_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": "所属任务的 STREAM 资源正整数 ID"
+      },
+      {
+        "name": "asset_name",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "index.m3u8 或 segment-000000001.ts 格式的资源名"
+      }
+    ]
+  }
+}

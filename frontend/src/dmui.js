@@ -950,7 +950,7 @@ export function Textarea(props) {
           }
           if (typeof onMounted === "function") onMounted(event);
         },
-        class: class_names(["dm-field dm-textarea", extra_class]),
+        class: class_names(["dm-textarea dm-field", extra_class]),
         onKeyDown(event) {
           store.handleKeyDown(event);
           if (typeof onKeyDown === "function") onKeyDown(event);
@@ -1332,7 +1332,7 @@ export function Select(props = {}) {
           View(
             {
               as: "button",
-              class: "dm-select-action dm-select-clear dm-focus-ring",
+              class: "dm-select-clear dm-select-action dm-focus-ring",
               attributes: {
                 n: "select-clear-button",
                 type: "button",
@@ -2901,7 +2901,7 @@ export function Card(props = {}, children = []) {
   return View(
     {
       ...props,
-      class: class_names(["dm-panel dm-card", props.class]),
+      class: class_names(["dm-card dm-panel", props.class]),
       attributes: { n: "card", ...(props.attributes || {}) },
     },
     children,
@@ -3835,7 +3835,7 @@ function TableSelectionHeaderCell(props) {
   return View(
     {
       class: static_classes([
-        "dm-table-selection-cell dm-flex dm-items-center dm-justify-center dm-min-w-0",
+        "dm-min-w-0 dm-table-selection-cell dm-items-center dm-justify-center dm-flex",
         row_selection.headerClass,
       ]),
       style: row_selection.headerStyle || {},
@@ -3933,7 +3933,7 @@ function DataTableHeader(props) {
   return View(
     {
       class: static_classes([
-        "dm-table-row dm-grid dm-items-center",
+        "dm-grid dm-items-center dm-table-row",
         "dm-table-header",
         props.headerClass,
       ]),
@@ -3954,7 +3954,7 @@ function TableSelectionCell(props) {
   return View(
     {
       class: static_classes([
-        "dm-table-selection-cell dm-flex dm-items-center dm-justify-center dm-min-w-0",
+        "dm-min-w-0 dm-table-selection-cell dm-items-center dm-justify-center dm-flex",
         row_selection.cellClass,
       ]),
       style: row_selection.cellStyle || {},
@@ -4069,7 +4069,7 @@ function TableDataRow(props) {
     {
       ...row_events,
       class: class_names([
-        "dm-table-row dm-grid dm-items-center",
+        "dm-grid dm-items-center dm-table-row",
         table_resolve(props.rowClass, item, props.itemSource),
         row_class,
         last_row_class,
@@ -4273,7 +4273,7 @@ function TablePanel(props, render_list) {
   return View(
     {
       class: static_classes([
-        "dm-table-panel dm-panel dm-flex dm-flex-col dm-min-w-0 dm-overflow-hidden",
+        "dm-min-w-0 dm-flex-col dm-overflow-hidden dm-panel dm-flex dm-table-panel",
         props.border !== false && "dm-table--bordered",
         props.panelClass,
       ]),

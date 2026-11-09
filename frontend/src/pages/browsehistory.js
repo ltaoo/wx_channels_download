@@ -181,7 +181,7 @@ function BrowseHistoryRowMain(props) {
     BrowseHistoryRowCover({ history }),
     View(
       {
-        class: "content-row-main dm-min-w-0 dm-flex-1",
+        class: "dm-min-w-0 dm-flex-1 content-row-main",
         attributes: { n: "browse-history-main" },
       },
       [
@@ -270,7 +270,7 @@ function BrowseHistoryRowAccess(props) {
       ? View(
           {
             class:
-              "dm-flex dm-items-center dm-gap-1-5 dm-text-primary dm-text-sm dm-font-medium dm-tabular-nums dm-whitespace-nowrap",
+              "dm-items-center dm-gap-1-5 dm-text-sm dm-font-medium dm-tabular-nums dm-whitespace-nowrap dm-text-primary dm-flex",
             attributes: { n: "browse-history-visit-count" },
           },
           [`浏览 ${history.visited_times} 次`],
@@ -279,7 +279,7 @@ function BrowseHistoryRowAccess(props) {
     View(
       {
         class:
-          "dm-flex dm-items-center dm-gap-1-5 dm-text-muted dm-text-sm dm-tabular-nums dm-whitespace-nowrap",
+          "dm-items-center dm-gap-1-5 dm-text-sm dm-tabular-nums dm-whitespace-nowrap dm-text-muted dm-flex",
         attributes: { n: "browse-history-updated-at" },
       },
       [vm$.methods.formatTime(history.updated_at)],
@@ -321,7 +321,7 @@ function BrowseHistorySkeletonRow() {
       ),
       View(
         {
-          class: "dm-table-cell dm-min-w-0",
+          class: "dm-min-w-0 dm-table-cell",
           attributes: { n: "browse-history-skeleton-account", role: "cell" },
         },
         [View({ class: "relative overflow-hidden bg-skeleton-bg rounded-sm [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite] h-3 mt-2 w-[min(180px,_80%)]" })],

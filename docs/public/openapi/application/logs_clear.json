@@ -1,0 +1,48 @@
+{
+  "post": {
+    "tags": [
+      "应用"
+    ],
+    "summary": "清空应用日志文件",
+    "description": "清空已发现的日志文件，保留文件本体。返回 cleared 和 files；无可用日志文件时业务码 404。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "cleared": {
+                      "type": "integer"
+                    },
+                    "files": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "../components.json#/schemas/api_api_log_file_info"
+                      }
+                    }
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_logs_clear"
+  }
+}

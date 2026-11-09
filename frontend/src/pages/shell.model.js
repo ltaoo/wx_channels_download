@@ -674,6 +674,7 @@ export function ShellViewModel(props) {
       loading: certificate_loading_.value,
       onClick: load_certificate,
     }),
+    certificate_restart_tooltip$: new Timeless.vm.TooltipCore(),
     delete_certificate_button$: new Timeless.vm.ButtonCore({
       variant: "destructive",
       size: "sm",

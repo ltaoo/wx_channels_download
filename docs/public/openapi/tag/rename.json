@@ -1,0 +1,72 @@
+{
+  "post": {
+    "tags": [
+      "标签"
+    ],
+    "summary": "重命名标签",
+    "description": "重命名标签。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_tag_rename",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ]
+          },
+          "example": {
+            "id": 1,
+            "name": "已整理"
+          }
+        }
+      }
+    }
+  }
+}

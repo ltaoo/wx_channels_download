@@ -106,14 +106,6 @@ type data_download_task_status_count struct {
 	Count  int64 `gorm:"column:count"`
 }
 
-type data_download_task_file struct {
-	DownloadTaskFileRecord
-	LocalPath string `json:"local_path"`
-	FileType  string `json:"file_type"`
-	FileURL   string `json:"file_url"`
-	Exists    bool   `json:"exists"`
-}
-
 type data_log_entry struct {
 	Index     int    `json:"index"`
 	File      string `json:"file"`
@@ -157,13 +149,6 @@ type data_log_file_info struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
 	Size int64  `json:"size"`
-}
-
-type data_download_task_account_row struct {
-	AccountID  string `gorm:"column:account_id"`
-	Nickname   string `gorm:"column:nickname"`
-	AvatarURL  string `gorm:"column:avatar_url"`
-	ExternalID string `gorm:"column:external_id"`
 }
 
 // NewDataQueryService constructs the process-local application data service.
@@ -257,92 +242,11 @@ func (r *DataQueryService) GetDownloadTaskDetail(ctx context.Context, task_id in
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	record, err := r.download_task_service.BuildTaskRecord(task_id)
-	if err != nil || record == nil {
-		return record, err
+	detail, err := r.download_task_service.BuildTaskDetail(ctx, task_id, nil)
+	if err != nil || detail == nil {
+		return nil, err
 	}
-	db := r.db.WithContext(ctx)
-
-	var content_data map[string]any
-	if record.ContentID != nil && *record.ContentID != "" {
-		var content model.Content
-		if err := db.Where("id = ?", *record.ContentID).First(&content).Error; err == nil {
-			publish_time := int64(0)
-			if content.PublishTime != nil {
-				publish_time = *content.PublishTime
-			}
-			content_data = map[string]any{
-				"id":           content.Id,
-				"platform_id":  content.PlatformId,
-				"type":         content.Type,
-				"title":        content.Title,
-				"description":  content.Description,
-				"cover_url":    content.CoverURL,
-				"url":          content.URL,
-				"source_url":   content.SourceURL,
-				"publish_time": publish_time,
-			}
-			var account_rows []data_download_task_account_row
-			if err := db.Table("content_account").
-				Select("content_account.account_id, account.nickname, account.avatar_url, account.external_id").
-				Joins("JOIN account ON account.id = content_account.account_id").
-				Where("content_account.content_id = ? AND account.deleted_at IS NULL", *record.ContentID).
-				Scan(&account_rows).Error; err == nil {
-				accounts := make([]map[string]any, 0, len(account_rows))
-				for _, row := range account_rows {
-					accounts = append(accounts, map[string]any{
-						"id":          row.AccountID,
-						"nickname":    row.Nickname,
-						"avatar_url":  row.AvatarURL,
-						"external_id": row.ExternalID,
-					})
-				}
-				content_data["accounts"] = accounts
-			}
-		}
-	}
-
-	files := make([]data_download_task_file, 0, len(record.Files))
-	for _, file := range record.Files {
-		local_path := filepath.Join(file.DownloadDir, file.Name)
-		_, stat_err := os.Stat(local_path)
-		files = append(files, data_download_task_file{
-			DownloadTaskFileRecord: file,
-			LocalPath:              local_path,
-			FileType:               data_file_type_by_ext(file.Name),
-			FileURL:                data_api_file_url(local_path),
-			Exists:                 stat_err == nil,
-		})
-	}
-	return map[string]any{
-		"id":             record.ID,
-		"content":        content_data,
-		"content_id":     record.ContentID,
-		"content_type":   record.ContentType,
-		"parent_task_id": record.ParentTaskID,
-		"root_task_id":   record.RootTaskID,
-		"relation_type":  record.RelationType,
-		"child_count":    record.ChildCount,
-		"name":           record.Name,
-		"platform_id":    record.PlatformID,
-		"status":         record.Status,
-		"source_url":     record.SourceURL,
-		"cover_url":      record.CoverURL,
-		"cover_width":    record.CoverWidth,
-		"cover_height":   record.CoverHeight,
-		"config_json":    record.ConfigJSON,
-		"metadata_json":  record.MetadataJSON,
-		"url":            record.URL,
-		"size":           record.Size,
-		"downloaded":     record.Downloaded,
-		"speed":          record.Speed,
-		"progress":       record.Progress,
-		"error":          record.Error,
-		"files":          files,
-		"file_count":     len(files),
-		"created_at":     record.CreatedAt,
-		"updated_at":     record.UpdatedAt,
-	}, nil
+	return detail, nil
 }
 
 func (r *DataQueryService) ListAccounts(ctx context.Context, input AccountListQuery) (any, error) {

@@ -39,7 +39,14 @@ CREATE TABLE IF NOT EXISTS `flow_run_record` (
   `completed_at` INTEGER,
   `created_at` INTEGER NOT NULL DEFAULT 0,
   `updated_at` INTEGER NOT NULL DEFAULT 0,
-  `deleted_at` INTEGER
+  `deleted_at` INTEGER,
+  `definition` TEXT,
+  `initial_data` TEXT,
+  `checkpoint` TEXT,
+  `node_logs` TEXT,
+  `timeout_sec` INTEGER NOT NULL DEFAULT 3600,
+  `deadline_at` INTEGER NOT NULL DEFAULT 0,
+  `retry_of` TEXT
 );
 
 CREATE INDEX IF NOT EXISTS `idx_flow_run_record_schedule_id`
@@ -50,6 +57,10 @@ CREATE INDEX IF NOT EXISTS `idx_flow_run_record_status`
 ON `flow_run_record` (`status`);
 CREATE INDEX IF NOT EXISTS `idx_flow_run_record_deleted_at`
 ON `flow_run_record` (`deleted_at`);
+CREATE INDEX IF NOT EXISTS `idx_flow_run_record_deadline_at`
+ON `flow_run_record` (`deadline_at`);
+CREATE INDEX IF NOT EXISTS `idx_flow_run_record_retry_of`
+ON `flow_run_record` (`retry_of`);
 
 -- 标签系统：扁平标签 + 内容/账号多对多关联
 CREATE TABLE IF NOT EXISTS `tag` (
@@ -91,3 +102,36 @@ FROM `content`, json_each(content.tags) AS j
 JOIN `tag` ON tag.name = j.value
 WHERE content.tags IS NOT NULL AND content.tags != '' AND content.tags != '[]'
     AND json_valid(content.tags) = 1;
+
+-- User-defined pipelines: JSON flow definitions that are registered into the
+-- shared flow engine so schedules can trigger them like built-in flows.
+CREATE TABLE IF NOT EXISTS `user_flow` (
+  `id` TEXT PRIMARY KEY,
+  `name` TEXT NOT NULL,
+  `description` TEXT,
+  `trigger_type` TEXT NOT NULL DEFAULT 'Cron',
+  `event_key` TEXT,
+  `definition` TEXT,
+  `node_configs` TEXT NOT NULL DEFAULT '{}',
+  `created_at` INTEGER NOT NULL DEFAULT 0,
+  `updated_at` INTEGER NOT NULL DEFAULT 0,
+  `deleted_at` INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS `idx_user_flow_deleted_at`
+ON `user_flow` (`deleted_at`);
+
+-- Reuse content + content_video (movie subtype), content_series,
+-- content_episode, content_relation and the existing resource/asset catalog.
+INSERT OR IGNORE INTO platform (id, code, name, homepage, entry_url) VALUES
+ ('youku', 'youku', '优酷', 'https://www.youku.com', 'https://www.youku.com'),
+ ('tencent', 'tencent', '腾讯视频', 'https://v.qq.com', 'https://v.qq.com'),
+ ('mgtv', 'mgtv', '芒果TV', 'https://www.mgtv.com', 'https://www.mgtv.com'),
+ ('hongguo', 'hongguo', '红果短剧', 'https://hongguoduanju.com', 'https://hongguoduanju.com');
+
+INSERT OR IGNORE INTO platform (id, code, name, homepage, entry_url)
+VALUES ('iqiyi', 'iqiyi', '爱奇艺', 'https://www.iqiyi.com', 'https://www.iqiyi.com');
+
+-- Composite index for expiring waiting automation runs.
+CREATE INDEX IF NOT EXISTS `idx_flow_run_record_status_deleted_deadline`
+ON `flow_run_record` (`status`, `deleted_at`, `deadline_at`);

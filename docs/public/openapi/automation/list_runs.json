@@ -1,0 +1,88 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "查询自动化运行记录",
+    "description": "请求体可省略。status 为 QUEUED/RUNNING/WAITING/COMPLETED/FAILED/CANCELLED。当前响应的 page/page_size 回显请求值，服务内部查询另行应用分页默认值。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "list": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "../components.json#/schemas/model_FlowRunRecord"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "page_size": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_automation_list_runs",
+    "requestBody": {
+      "required": false,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer",
+                "description": "省略或 0 时查询第 1 页，响应回显原始请求值"
+              },
+              "page_size": {
+                "type": "integer",
+                "description": "省略或 0 时按 20 条查询，上限 200；响应回显原始请求值"
+              },
+              "schedule_id": {
+                "type": "string"
+              },
+              "flow_id": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              }
+            }
+          },
+          "example": {
+            "page": 1,
+            "page_size": 20,
+            "status": "FAILED"
+          }
+        }
+      }
+    }
+  }
+}

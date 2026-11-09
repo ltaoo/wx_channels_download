@@ -1,0 +1,84 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "更新自动化计划",
+    "description": "按 id 更新，省略的指针字段保留原值；initial_data 非 null 时替换已有初始数据。 timeout_sec 更新时必须在 1–86400 秒之间。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/model_FlowSchedule"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_automation_update_schedule",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "nullable": true
+              },
+              "description": {
+                "type": "string",
+                "nullable": true
+              },
+              "cron_expr": {
+                "type": "string",
+                "nullable": true
+              },
+              "flow_id": {
+                "type": "string",
+                "nullable": true
+              },
+              "initial_data": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "enabled": {
+                "type": "boolean",
+                "nullable": true
+              },
+              "timeout_sec": {
+                "type": "integer",
+                "nullable": true
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

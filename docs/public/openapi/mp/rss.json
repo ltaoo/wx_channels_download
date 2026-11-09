@@ -4,7 +4,7 @@
       "公众号"
     ],
     "summary": "RSS 订阅",
-    "description": "同样可以传入 `offset` 指定偏移量，获取到更多消息记录。\n\n还提供 `proxy` 和 `content` 参数，分别用于代理公众号内容和默认获取公众号文章全文",
+    "description": "同样可以传入 `offset` 指定偏移量，获取到更多消息记录。\n\n还提供 `proxy` 和 `content` 参数，分别用于代理公众号内容和默认获取公众号文章全文 正文、代理和封面代理参数仅在值为 1 时启用。",
     "parameters": [
       {
         "name": "token",
@@ -75,7 +75,27 @@
     ],
     "responses": {
       "200": {
-        "description": "RSS XML"
+        "description": "成功返回 Atom XML；失败返回 code/msg JSON",
+        "content": {
+          "application/atom+xml": {
+            "schema": {
+              "type": "string"
+            }
+          },
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
       }
     }
   }

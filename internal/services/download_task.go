@@ -22,6 +22,7 @@ import (
 	"wx_channel/internal/database"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/events"
+	"wx_channel/pkg/dm"
 	"wx_channel/pkg/hermes"
 )
 
@@ -328,50 +329,8 @@ type TaskListResult struct {
 // DownloadTaskRecord & DownloadTaskFileRecord
 // ---------------------------------------------------------------------------
 
-type DownloadTaskRecord struct {
-	ID           int                      `json:"id"`
-	ContentID    *string                  `json:"content_id,omitempty"`
-	ContentType  string                   `json:"content_type,omitempty"`
-	ParentTaskID *int                     `json:"parent_task_id,omitempty"`
-	RootTaskID   int                      `json:"root_task_id"`
-	RelationType string                   `json:"relation_type,omitempty"`
-	ChildCount   int                      `json:"child_count"`
-	Name         string                   `json:"name"`
-	PlatformID   string                   `json:"platform_id"`
-	Status       int                      `json:"status"`
-	SourceURL    string                   `json:"source_url"`
-	CoverURL     string                   `json:"cover_url"`
-	CoverWidth   string                   `json:"cover_width"`
-	CoverHeight  string                   `json:"cover_height"`
-	ConfigJSON   string                   `json:"config_json"`
-	MetadataJSON string                   `json:"metadata_json"`
-	URL          string                   `json:"url"`
-	Size         int64                    `json:"size"`
-	Downloaded   int64                    `json:"downloaded"`
-	Speed        int64                    `json:"speed"`
-	Progress     float64                  `json:"progress"`
-	Error        string                   `json:"error"`
-	Files        []DownloadTaskFileRecord `json:"files"`
-	FileCount    int                      `json:"file_count"`
-	CreatedAt    int64                    `json:"created_at"`
-	UpdatedAt    int64                    `json:"updated_at"`
-}
-
-type DownloadTaskFileRecord struct {
-	ID          int     `json:"id"`
-	DownloadDir string  `json:"download_dir"`
-	Name        string  `json:"name"`
-	FilePath    string  `json:"file_path"`
-	Kind        string  `json:"kind"`
-	Type        string  `json:"type"`
-	Status      string  `json:"status"`
-	Size        int64   `json:"size"`
-	Downloaded  int64   `json:"downloaded"`
-	Speed       int64   `json:"speed"`
-	Progress    float64 `json:"progress"`
-	URL         string  `json:"url"`
-	Error       string  `json:"error"`
-}
+type DownloadTaskRecord = dm.DownloadTask
+type DownloadTaskFileRecord = dm.DownloadTaskFile
 
 // DownloadTaskStats holds counts of download tasks by status.
 type DownloadTaskStats struct {
@@ -1436,6 +1395,9 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 	progress_resource_by_task := make(map[int]map[int]hermes.ResourceProgress, len(tasks))
 	if s.downloader != nil {
 		for _, task := range tasks {
+			if task.Status == model.TaskStatusFinished {
+				continue
+			}
 			progress := s.downloader.CurrentProgress(task.Id)
 			if progress == nil {
 				continue
@@ -1583,6 +1545,9 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 			resource_size := r.Size
 			resource_downloaded := downloaded_by_resource[r.ID]
 			resource_speed := speed_by_resource[r.ID]
+			if task.Status == model.TaskStatusFinished {
+				resource_downloaded, resource_speed = resource_size, 0
+			}
 			if resource_progress, ok := progress_resources[r.ID]; ok {
 				if resource_progress.Size > resource_size {
 					resource_size = resource_progress.Size
@@ -1622,7 +1587,7 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 				Name:        r.Name,
 				FilePath:    filepath.Join(r.DownloadDir, r.Name),
 				Kind:        r.Kind,
-				Type:        r.ResourceType,
+				Type:        strings.ToUpper(r.ResourceType),
 				Status:      file_status,
 				Size:        resource_size,
 				Downloaded:  resource_downloaded,
@@ -1633,6 +1598,9 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 			})
 		}
 		effective_status := ComputeEffectiveTaskStatus(task.Status, files)
+		if effective_status == model.TaskStatusFinished {
+			downloaded_by_task[task.Id], speed_by_task[task.Id] = total_size, 0
+		}
 		content_type := ""
 		if task.ContentId != nil {
 			content_type = content_type_by_id[*task.ContentId]

@@ -88,7 +88,7 @@ function load_canvas_components(context) {
   context.ui = context.Timeless.ui;
   vm.runInContext(fs.readFileSync(path.join(frontend, "src/dmui.js"), "utf8")
     .replace(/^export \{[^}]+\};\n/gm, "").replace(/^export /gm, ""), context);
-  vm.runInContext(fs.readFileSync(path.join(frontend, "src/pages/flow.components.js"), "utf8")
+  vm.runInContext(fs.readFileSync(path.join(frontend, "src/pages/automation.components.js"), "utf8")
     .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export /gm, ""), context);
 }
 

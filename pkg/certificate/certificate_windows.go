@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func fetchCertificates() ([]Certificate, error) {
+func fetch_certificates() ([]Certificate, error) {
 	// PowerShell 2.0 compatible command
 	cmd := "Get-ChildItem Cert:\\LocalMachine\\Root | ForEach-Object { $_.Thumbprint + \"###\" + $_.Subject }"
 	ps := exec.Command("powershell.exe", "-NoProfile", "-Command", cmd)
@@ -65,7 +65,7 @@ func fetchCertificates() ([]Certificate, error) {
 	return certificates, nil
 }
 
-func installCertificate(cert_data []byte) error {
+func install_certificate(cert_data []byte) error {
 	cert_file, err := os.CreateTemp("", "SunnyNet.cer")
 	if err != nil {
 		return fmt.Errorf("没有创建证书的权限，%v\n", err.Error())
@@ -100,10 +100,10 @@ func check_certificate_data_trusted(_ []byte, cert_name string) (bool, error) {
 	return check_certificate_trusted(cert_name)
 }
 
-func uninstallCertificate(name string) error {
+func uninstall_certificate(name string) error {
 	fmt.Println(name)
 	// Remove-Item "Cert:\LocalMachine\Root\D70CD039051F77C30673B8209FC15EFA650ED52C"
-	certificates, err := fetchCertificates()
+	certificates, err := fetch_certificates()
 	if err != nil {
 		return err
 	}

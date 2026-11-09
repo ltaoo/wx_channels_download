@@ -26,6 +26,7 @@ import (
 	"wx_channel/internal/config"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/mcpserver"
+	"wx_channel/internal/services"
 )
 
 // This opt-in acceptance test writes exactly one selected task to a real
@@ -95,6 +96,7 @@ func TestSyncLiveSelectedTaskViaMCP(t *testing.T) {
 	}
 	log := zerolog.Nop()
 	source := &APIClient{db: db, logger: &log, cfg: &APIConfig{DBPath: db_path, WorkDir: filepath.Dir(db_path), DownloadDir: source_resource.DownloadDir, Original: &config.Config{FullPath: filepath.Join(t.TempDir(), "config.yaml")}}}
+	source.service_download_task = services.NewDownloadTaskService(db, &log, nil, nil, source.cfg.WorkDir, source.cfg.DownloadDir, nil)
 	bundle, files, err := source.build_sync_bundle(task_id)
 	if err != nil {
 		t.Fatal(err)

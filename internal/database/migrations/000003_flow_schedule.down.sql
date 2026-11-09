@@ -1,3 +1,10 @@
+-- Remove the platform seeds introduced with automation and video support.
+DELETE FROM platform WHERE id = 'iqiyi';
+DELETE FROM platform WHERE id IN ('youku', 'tencent', 'mgtv', 'hongguo');
+
+DROP INDEX IF EXISTS `idx_user_flow_deleted_at`;
+DROP TABLE IF EXISTS `user_flow`;
+
 -- Drop the tag tables first because content_tag/account_tag reference tag.
 DROP TABLE IF EXISTS `account_tag`;
 DROP TABLE IF EXISTS `content_tag`;

@@ -1,0 +1,149 @@
+{
+  "get": {
+    "tags": [
+      "应用"
+    ],
+    "summary": "读取应用配置字段",
+    "description": "返回 fields、application_fields、plugin_fields 及 config_file。敏感项不返回 value、effective_value 和默认值，只返回 configured。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "config_file": {
+                      "type": "string"
+                    },
+                    "fields": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "../components.json#/schemas/api_application_config_field"
+                      }
+                    },
+                    "application_fields": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "../components.json#/schemas/api_application_config_field"
+                      }
+                    },
+                    "plugin_fields": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "../components.json#/schemas/api_application_config_field"
+                      }
+                    }
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "get_api_config"
+  },
+  "post": {
+    "tags": [
+      "应用"
+    ],
+    "summary": "保存应用配置并安排重启",
+    "description": "values 为非空配置键值映射，仅允许已注册的配置字段。保存有变更的配置后自动安排应用重启，并返回 restart_token。连接恢复后查询 /api/restart/status 确认；changed=false 时不重启。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "changed": {
+                      "type": "boolean"
+                    },
+                    "updated_keys": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "restart_scheduled": {
+                      "type": "boolean"
+                    },
+                    "restart_status": {
+                      "type": "string"
+                    },
+                    "restart_token": {
+                      "type": "string"
+                    },
+                    "confirmation_required": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "next_action": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_config",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "values": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "values"
+            ]
+          },
+          "example": {
+            "values": {
+              "download.defaultActionWhenExisting": "skip"
+            }
+          }
+        }
+      }
+    }
+  }
+}

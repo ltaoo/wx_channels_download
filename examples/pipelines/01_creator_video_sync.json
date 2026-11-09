@@ -1,0 +1,326 @@
+{
+  "id": "01_creator_video_sync",
+  "name": "定时同步创作者全部视频",
+  "start_node": "start",
+  "context_schema": [],
+  "nodes": {
+    "start": {
+      "type": "StartNode",
+      "name": "开始",
+      "config": {},
+      "next_node_ids": [
+        "config"
+      ],
+      "id": "start",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    "config": {
+      "type": "SetVariableNode",
+      "name": "配置创作者和下载目录",
+      "config": {
+        "variables": {
+          "creator_username": "REPLACE_CREATOR_USERNAME@finder",
+          "download_dir": "",
+          "max_pages": 1000,
+          "max_videos": 100000
+        }
+      },
+      "next_node_ids": [
+        "validate"
+      ],
+      "id": "config",
+      "position": {
+        "x": 340,
+        "y": 0
+      }
+    },
+    "validate": {
+      "type": "JSCodeNode",
+      "name": "校验创作者参数",
+      "config": {
+        "code": "(function () {\nvar username = String(global.creator_username || '').trim().replace(/^wxchannels:/, '');\nif (!username || username.indexOf('REPLACE_') >= 0) throw new Error('请先配置创作者 username');\nif (!/@finder$/.test(username)) username += '@finder';\nif (!(global.max_pages > 0) || !(global.max_videos > 0)) throw new Error('max_pages 和 max_videos 必须大于 0');\nreturn {username: username};\n})()",
+        "output_key": "creator"
+      },
+      "next_node_ids": [
+        "init_scan"
+      ],
+      "id": "validate",
+      "position": {
+        "x": 680,
+        "y": 0
+      }
+    },
+    "init_scan": {
+      "type": "SetVariableNode",
+      "name": "初始化分页与去重状态",
+      "config": {
+        "variables": {
+          "scan_state": {
+            "cursor": "",
+            "page": 0,
+            "items": [],
+            "index": 0,
+            "next_cursor": "",
+            "has_more": false,
+            "visited_cursors": [],
+            "seen_ids": {},
+            "videos": [],
+            "submitted": 0,
+            "skipped": 0
+          }
+        }
+      },
+      "next_node_ids": [
+        "fetch_page"
+      ],
+      "id": "init_scan",
+      "position": {
+        "x": 1020,
+        "y": 0
+      }
+    },
+    "fetch_page": {
+      "type": "ServiceNode",
+      "name": "获取创作者一页视频",
+      "config": {
+        "tool_name": "get_wxchannels_account_videos",
+        "arguments": {
+          "username": "{{output.validate.creator.username}}",
+          "next_marker": "{{global.scan_state.cursor}}"
+        },
+        "output_key": "page_result",
+        "timeout_seconds": 120
+      },
+      "next_node_ids": [
+        "parse_page"
+      ],
+      "id": "fetch_page",
+      "position": {
+        "x": 0,
+        "y": 180
+      }
+    },
+    "parse_page": {
+      "type": "JSCodeNode",
+      "name": "校验分页并筛选视频",
+      "config": {
+        "code": "(function () {\nvar response = output.fetch_page.page_result;\nif (!response || (response.errCode !== undefined && Number(response.errCode) !== 0) || (response.code !== undefined && Number(response.code) !== 0)) throw new Error('获取视频列表失败');\nvar data = response.data;\nif (!data || !Array.isArray(data.object)) throw new Error('视频列表响应缺少 data.object');\nif (data.BaseResponse && Number(data.BaseResponse.ret || 0) !== 0) throw new Error('视频列表 BaseResponse 返回错误');\nif (data.continueFlag === undefined) throw new Error('视频列表缺少 continueFlag，无法确认是否已获取全部视频');\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nstate.page += 1;\nif (state.page > global.max_pages) throw new Error('超过 max_pages，本次同步未完成，请调大限制');\nstate.items = []; state.index = 0;\nfunction id_string(value) {\n  if (typeof value === 'number' && (!isFinite(value) || Math.floor(value) !== value || Math.abs(value) > 9007199254740991)) throw new Error('平台返回不安全的数字 ID，需要字符串 ID');\n  return value === undefined || value === null ? '' : String(value);\n}\nfor (var i = 0; i < data.object.length; i++) {\n  var item = data.object[i], desc = item.objectDesc || {}, media = desc.media || [];\n  if (Number(desc.mediaType) !== 4 && !media.some(function (m) { return Number(m.mediaType) === 4; })) continue;\n  var oid = id_string(item.id), nid = id_string(item.objectNonceId);\n  if (!oid || !nid) throw new Error('视频缺少 id 或 objectNonceId');\n  if (state.seen_ids[oid]) continue;\n  state.seen_ids[oid] = true;\n  if (Object.keys(state.seen_ids).length > global.max_videos) throw new Error('超过 max_videos，本次扫描未完成');\n  state.items.push({oid:oid,nid:nid,title:String(desc.description || ''),published_at:item.createtime || item.createTime || 0});\n}\nstate.has_more = Number(data.continueFlag) !== 0;\nstate.next_cursor = data.lastBuffer || '';\nif (state.has_more) {\n  if (typeof state.next_cursor !== 'string' || !state.next_cursor || state.next_cursor === state.cursor || state.visited_cursors.indexOf(state.next_cursor) >= 0) throw new Error('分页游标缺失或重复，停止以避免漏数据或无限循环');\n  if (state.page >= global.max_pages) throw new Error('达到 max_pages 但仍有下一页，本次扫描未完成');\n}\nreturn state;\n})()",
+        "output_key": "page_state"
+      },
+      "next_node_ids": [
+        "store_page"
+      ],
+      "id": "parse_page",
+      "position": {
+        "x": 340,
+        "y": 180
+      }
+    },
+    "store_page": {
+      "type": "SetVariableNode",
+      "name": "保存当前页状态",
+      "config": {
+        "variables": {
+          "scan_state": "{{output.parse_page.page_state}}"
+        }
+      },
+      "next_node_ids": [
+        "item_gate"
+      ],
+      "id": "store_page",
+      "position": {
+        "x": 680,
+        "y": 180
+      }
+    },
+    "item_gate": {
+      "type": "GatewayNode",
+      "name": "当前页是否还有视频",
+      "config": {
+        "gateway_type": "Exclusive",
+        "condition_language": "js",
+        "rules": [
+          {
+            "condition": "global.scan_state.index < global.scan_state.items.length",
+            "target_id": "select_video"
+          },
+          {
+            "condition": "true",
+            "target_id": "page_gate"
+          }
+        ]
+      },
+      "next_node_ids": [
+        "select_video",
+        "page_gate"
+      ],
+      "id": "item_gate",
+      "position": {
+        "x": 1020,
+        "y": 180
+      }
+    },
+    "select_video": {
+      "type": "JSCodeNode",
+      "name": "选择当前视频",
+      "config": {
+        "code": "(function () {\nreturn global.scan_state.items[global.scan_state.index];\n})()",
+        "output_key": "selected_video"
+      },
+      "next_node_ids": [
+        "download_video"
+      ],
+      "id": "select_video",
+      "position": {
+        "x": 0,
+        "y": 360
+      }
+    },
+    "download_video": {
+      "type": "ServiceNode",
+      "name": "下载当前视频，已有任务跳过",
+      "config": {
+        "tool_name": "download_wxchannels_video",
+        "arguments": {
+          "oid": "{{output.select_video.selected_video.oid}}",
+          "nid": "{{output.select_video.selected_video.nid}}",
+          "download_dir": "{{global.download_dir}}",
+          "existing_action": "skip"
+        },
+        "output_key": "download_result",
+        "timeout_seconds": 120
+      },
+      "next_node_ids": [
+        "advance_item"
+      ],
+      "id": "download_video",
+      "position": {
+        "x": 340,
+        "y": 360
+      }
+    },
+    "advance_item": {
+      "type": "JSCodeNode",
+      "name": "统计结果并移到下一条",
+      "config": {
+        "code": "(function () {\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nvar result = output.download_video.download_result;\nif (!result || (!result.created && !result.skipped)) throw new Error('下载工具没有返回已创建或已跳过结果');\nstate.index += 1;\nif (result.skipped) state.skipped += 1; else state.submitted += 1;\nreturn state;\n})()",
+        "output_key": "item_state"
+      },
+      "next_node_ids": [
+        "store_item"
+      ],
+      "id": "advance_item",
+      "position": {
+        "x": 680,
+        "y": 360
+      }
+    },
+    "store_item": {
+      "type": "SetVariableNode",
+      "name": "保存视频处理进度",
+      "config": {
+        "variables": {
+          "scan_state": "{{output.advance_item.item_state}}"
+        }
+      },
+      "next_node_ids": [
+        "item_gate"
+      ],
+      "id": "store_item",
+      "position": {
+        "x": 1020,
+        "y": 360
+      }
+    },
+    "page_gate": {
+      "type": "GatewayNode",
+      "name": "是否需要继续翻页",
+      "config": {
+        "gateway_type": "Exclusive",
+        "condition_language": "js",
+        "rules": [
+          {
+            "condition": "global.scan_state.has_more",
+            "target_id": "advance_page"
+          },
+          {
+            "condition": "true",
+            "target_id": "summary"
+          }
+        ]
+      },
+      "next_node_ids": [
+        "advance_page",
+        "summary"
+      ],
+      "id": "page_gate",
+      "position": {
+        "x": 0,
+        "y": 540
+      }
+    },
+    "advance_page": {
+      "type": "JSCodeNode",
+      "name": "移到下一页",
+      "config": {
+        "code": "(function () {\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nstate.visited_cursors.push(state.next_cursor); state.cursor = state.next_cursor;\nreturn state;\n})()",
+        "output_key": "next_page_state"
+      },
+      "next_node_ids": [
+        "store_cursor"
+      ],
+      "id": "advance_page",
+      "position": {
+        "x": 340,
+        "y": 540
+      }
+    },
+    "store_cursor": {
+      "type": "SetVariableNode",
+      "name": "保存分页游标",
+      "config": {
+        "variables": {
+          "scan_state": "{{output.advance_page.next_page_state}}"
+        }
+      },
+      "next_node_ids": [
+        "fetch_page"
+      ],
+      "id": "store_cursor",
+      "position": {
+        "x": 680,
+        "y": 540
+      }
+    },
+    "summary": {
+      "type": "JSCodeNode",
+      "name": "全量扫描与下载提交结果",
+      "config": {
+        "code": "(function () {\nreturn {username:output.validate.creator.username,pages:global.scan_state.page,videos:Object.keys(global.scan_state.seen_ids).length,submitted:global.scan_state.submitted,skipped:global.scan_state.skipped,note:'submitted 表示下载任务已启动，最终文件状态请查看下载任务'};\n})()",
+        "output_key": "sync_summary"
+      },
+      "next_node_ids": [
+        "end"
+      ],
+      "id": "summary",
+      "position": {
+        "x": 1020,
+        "y": 540
+      }
+    },
+    "end": {
+      "type": "EndNode",
+      "name": "结束",
+      "config": {},
+      "next_node_ids": [],
+      "id": "end",
+      "position": {
+        "x": 0,
+        "y": 720
+      }
+    }
+  }
+}

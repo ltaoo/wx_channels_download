@@ -239,7 +239,7 @@ func (s *AutomationService) expire_waiting_runs() {
 	}
 	now := time.Now().UnixMilli()
 	var runs []model.FlowRunRecord
-	if err := s.db.Where("status = ? AND deadline_at > 0 AND deadline_at <= ? AND deleted_at IS NULL", model.FlowRunStatusWaiting, now).Find(&runs).Error; err != nil {
+	if err := s.db.Select("id", "schedule_id", "flow_id", "trigger_type").Where("status = ? AND deadline_at > 0 AND deadline_at <= ? AND deleted_at IS NULL", model.FlowRunStatusWaiting, now).Find(&runs).Error; err != nil {
 		s.log_error(err, "query expired workflow waits")
 		return
 	}

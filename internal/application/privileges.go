@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/viper"
 
 	"wx_channel/internal/buildtags"
+	"wx_channel/internal/config"
 	"wx_channel/internal/services"
 	"wx_channel/pkg/certificate"
 	"wx_channel/pkg/platform"
@@ -16,22 +17,33 @@ import (
 )
 
 // PrepareStartPrivileges requests elevation when a local proxy start requires it.
-// shouldExit is true after an elevation attempt because the current process must end.
-func PrepareStartPrivileges(isStartCommand bool) (shouldExit bool, err error) {
-	needAdminForProxy := viper.GetBool("proxy.enabled") && ((viper.GetBool("proxy.tun") || buildtags.UsingSunnyNet))
-	if !isStartCommand || runtime.GOOS != "windows" || !needAdminForProxy || platform.IsAdmin() {
+// should_exit is true after an elevation attempt because the current process must end.
+func PrepareStartPrivileges(cfg *config.Config, is_start_command bool) (should_exit bool, err error) {
+	if !is_start_command || runtime.GOOS != "windows" || !viper.GetBool("proxy.enabled") || platform.IsAdmin() {
 		return false, nil
 	}
-	needAdminForCertificate := false
-	if !viper.GetBool("proxy.skipInstallRootCert") {
-		certFiles := services.LoadCertFiles()
-		installed, checkErr := certificate.CheckHasCertificate(certFiles.Name)
-		if checkErr != nil {
-			return false, fmt.Errorf("failed to check root certificate before elevation: %w", checkErr)
+	need_admin_for_proxy := viper.GetBool("proxy.tun") || buildtags.UsingSunnyNet
+	need_admin_for_certificate := false
+	if cfg.GetString("cert.file") != "" || cfg.GetString("cert.key") != "" {
+		if err := services.EnsureLocalCertificate(cfg); err != nil {
+			return false, err
 		}
-		needAdminForCertificate = !installed
+	} else {
+		cert_files := services.LoadCertFiles()
+		installed, check_err := certificate.CheckHasCertificateData(cert_files.Cert)
+		if check_err != nil {
+			return false, fmt.Errorf("failed to check root certificate before elevation: %w", check_err)
+		}
+		trusted := false
+		if installed {
+			trusted, check_err = certificate.CheckCertificateDataTrusted(cert_files.Cert, cert_files.Name)
+			if check_err != nil {
+				return false, fmt.Errorf("failed to check root certificate trust before elevation: %w", check_err)
+			}
+		}
+		need_admin_for_certificate = !trusted
 	}
-	if !needAdminForProxy && !needAdminForCertificate {
+	if !need_admin_for_proxy && !need_admin_for_certificate {
 		return false, nil
 	}
 	started, exited := platform.RequestAdminPermissionAndWait()

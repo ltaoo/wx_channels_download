@@ -1,7 +1,13 @@
 package certificate
 
 import (
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/x509"
 	_ "embed"
+	"encoding/pem"
+	"fmt"
+	"strings"
 )
 
 //go:embed certs/SunnyNet.cer
@@ -43,17 +49,46 @@ type Certificate struct {
 
 // Fetch all certificates
 func FetchCertificates() ([]Certificate, error) {
-	return fetchCertificates()
+	return fetch_certificates()
 }
 
 // Check if a certificate with the given name exists
 func CheckHasCertificate(cert_name string) (bool, error) {
-	certificates, err := fetchCertificates()
+	certificates, err := fetch_certificates()
 	if err != nil {
 		return false, err
 	}
 	for _, cert := range certificates {
 		if cert.Subject.CN == cert_name {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// CheckHasCertificateData distinguishes roots with the same name but different keys.
+func CheckHasCertificateData(cert_data []byte) (bool, error) {
+	certificates, err := fetch_certificates()
+	if err != nil {
+		return false, err
+	}
+	return check_has_certificate_data(cert_data, certificates)
+}
+
+func check_has_certificate_data(cert_data []byte, certificates []Certificate) (bool, error) {
+	if block, _ := pem.Decode(cert_data); block != nil {
+		cert_data = block.Bytes
+	}
+	cert, err := x509.ParseCertificate(cert_data)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse root certificate: %w", err)
+	}
+	sha256_fingerprint := fmt.Sprintf("%X", sha256.Sum256(cert.Raw))
+	// Windows exposes SHA-1 thumbprints; macOS and Linux expose SHA-256.
+	sha1_fingerprint := fmt.Sprintf("%X", sha1.Sum(cert.Raw))
+	for _, installed_cert := range certificates {
+		fingerprint := strings.ToUpper(strings.ReplaceAll(installed_cert.Thumbprint, ":", ""))
+		if fingerprint == sha256_fingerprint || fingerprint == sha1_fingerprint {
 			return true, nil
 		}
 	}
@@ -73,10 +108,10 @@ func CheckCertificateDataTrusted(cert_data []byte, cert_name string) (bool, erro
 
 // Install a certificate
 func InstallCertificate(cert_data []byte) error {
-	return installCertificate(cert_data)
+	return install_certificate(cert_data)
 }
 
 // Uninstall a certificate by name
 func UninstallCertificate(name string) error {
-	return uninstallCertificate(name)
+	return uninstall_certificate(name)
 }

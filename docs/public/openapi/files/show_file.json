@@ -1,0 +1,55 @@
+{
+  "post": {
+    "tags": [
+      "文件"
+    ],
+    "summary": "在系统文件管理器中定位文件",
+    "description": "path 可为绝对路径或相对下载目录的路径，name 可单独指定或与目录组合。成功响应不含 data。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_show_file",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "example": {
+            "name": "example.mp4"
+          }
+        }
+      }
+    }
+  }
+}

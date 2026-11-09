@@ -3,6 +3,7 @@
 package certificate
 
 import (
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -16,50 +17,50 @@ import (
 	"strings"
 )
 
-const linuxCertNickname = "WeChatAppEx_CA"
+const linux_cert_nickname = "WeChatAppEx_CA"
 
-type linuxCertStore struct {
-	certPath     string
-	updateCmd    []string
-	updateErrMsg string
+type linux_cert_store struct {
+	cert_path      string
+	update_cmd     []string
+	update_err_msg string
 }
 
 // Check if running as root
-func isRoot() bool {
+func is_root() bool {
 	return os.Geteuid() == 0
 }
 
-func commandExists(name string) bool {
+func command_exists(name string) bool {
 	_, err := exec.LookPath(name)
 	return err == nil
 }
 
-func detectLinuxCertStore() (*linuxCertStore, error) {
-	if commandExists("update-ca-certificates") {
-		return &linuxCertStore{
-			certPath:     "/usr/local/share/ca-certificates/" + linuxCertNickname + ".crt",
-			updateCmd:    []string{"update-ca-certificates", "--fresh"},
-			updateErrMsg: "更新 OpenSSL 证书库失败",
+func detect_linux_cert_store() (*linux_cert_store, error) {
+	if command_exists("update-ca-certificates") {
+		return &linux_cert_store{
+			cert_path:      "/usr/local/share/ca-certificates/" + linux_cert_nickname + ".crt",
+			update_cmd:     []string{"update-ca-certificates", "--fresh"},
+			update_err_msg: "更新 OpenSSL 证书库失败",
 		}, nil
 	}
-	if commandExists("update-ca-trust") {
-		return &linuxCertStore{
-			certPath:     "/etc/pki/ca-trust/source/anchors/" + linuxCertNickname + ".crt",
-			updateCmd:    []string{"update-ca-trust", "extract"},
-			updateErrMsg: "更新证书库失败 (update-ca-trust)",
+	if command_exists("update-ca-trust") {
+		return &linux_cert_store{
+			cert_path:      "/etc/pki/ca-trust/source/anchors/" + linux_cert_nickname + ".crt",
+			update_cmd:     []string{"update-ca-trust", "extract"},
+			update_err_msg: "更新证书库失败 (update-ca-trust)",
 		}, nil
 	}
-	if commandExists("trust") {
-		return &linuxCertStore{
-			certPath:     "/etc/ca-certificates/trust-source/anchors/" + linuxCertNickname + ".crt",
-			updateCmd:    []string{"trust", "extract-compat"},
-			updateErrMsg: "更新证书库失败 (trust)",
+	if command_exists("trust") {
+		return &linux_cert_store{
+			cert_path:      "/etc/ca-certificates/trust-source/anchors/" + linux_cert_nickname + ".crt",
+			update_cmd:     []string{"trust", "extract-compat"},
+			update_err_msg: "更新证书库失败 (trust)",
 		}, nil
 	}
 	return nil, fmt.Errorf("未找到支持的证书更新命令！ (update-ca-certificates、update-ca-trust 或 trust)")
 }
 
-func runCommand(stdin io.Reader, args ...string) error {
+func run_command(stdin io.Reader, args ...string) error {
 	if len(args) == 0 {
 		return nil
 	}
@@ -74,15 +75,15 @@ func runCommand(stdin io.Reader, args ...string) error {
 	return cmd.Run()
 }
 
-func runPrivileged(stdin io.Reader, args ...string) error {
-	if isRoot() {
-		return runCommand(stdin, args...)
+func run_privileged(stdin io.Reader, args ...string) error {
+	if is_root() {
+		return run_command(stdin, args...)
 	}
 	fmt.Println("Administrator privileges required, requesting...")
-	return runCommand(stdin, append([]string{"sudo"}, args...)...)
+	return run_command(stdin, append([]string{"sudo"}, args...)...)
 }
 
-func currentDesktopUser() (*user.User, error) {
+func current_desktop_user() (*user.User, error) {
 	candidates := []string{}
 	add := func(value string) {
 		value = strings.TrimSpace(value)
@@ -106,8 +107,8 @@ func currentDesktopUser() (*user.User, error) {
 			return u, nil
 		}
 	}
-	if pkexecUID := strings.TrimSpace(os.Getenv("PKEXEC_UID")); pkexecUID != "" {
-		if u, err := user.LookupId(pkexecUID); err == nil {
+	if pkexec_uid := strings.TrimSpace(os.Getenv("PKEXEC_UID")); pkexec_uid != "" {
+		if u, err := user.LookupId(pkexec_uid); err == nil {
 			return u, nil
 		}
 	}
@@ -117,23 +118,23 @@ func currentDesktopUser() (*user.User, error) {
 	return nil, fmt.Errorf("获取登录用户失败: 无法从 SUDO_USER/USER/LOGNAME/PKEXEC_UID 获取用户")
 }
 
-func runAsUser(u *user.User, stdin io.Reader, args ...string) error {
+func run_as_user(u *user.User, stdin io.Reader, args ...string) error {
 	if u == nil {
-		return runCommand(stdin, args...)
+		return run_command(stdin, args...)
 	}
 	if strconv.Itoa(os.Geteuid()) == u.Uid {
 		cmd := append([]string{}, args...)
-		return runCommand(stdin, cmd...)
+		return run_command(stdin, cmd...)
 	}
-	envArgs := append([]string{"env", "HOME=" + u.HomeDir}, args...)
-	if isRoot() && commandExists("runuser") {
-		return runCommand(stdin, append([]string{"runuser", "-u", u.Username, "--"}, envArgs...)...)
+	env_args := append([]string{"env", "HOME=" + u.HomeDir}, args...)
+	if is_root() && command_exists("runuser") {
+		return run_command(stdin, append([]string{"runuser", "-u", u.Username, "--"}, env_args...)...)
 	}
-	return runCommand(stdin, append([]string{"sudo", "-u", u.Username}, envArgs...)...)
+	return run_command(stdin, append([]string{"sudo", "-u", u.Username}, env_args...)...)
 }
 
-func writeSystemCert(path string, cert []byte) error {
-	if isRoot() {
+func write_system_cert(path string, cert []byte) error {
+	if is_root() {
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 			return fmt.Errorf("创建证书目录失败: %v", err)
 		}
@@ -143,12 +144,12 @@ func writeSystemCert(path string, cert []byte) error {
 		return nil
 	}
 
-	tmp, err := os.CreateTemp("", linuxCertNickname+"-*.crt")
+	tmp, err := os.CreateTemp("", linux_cert_nickname+"-*.crt")
 	if err != nil {
 		return fmt.Errorf("创建临时证书失败: %v", err)
 	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
+	tmp_path := tmp.Name()
+	defer os.Remove(tmp_path)
 	if _, err := tmp.Write(cert); err != nil {
 		tmp.Close()
 		return fmt.Errorf("写入临时证书失败: %v", err)
@@ -156,106 +157,106 @@ func writeSystemCert(path string, cert []byte) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("关闭临时证书失败: %v", err)
 	}
-	if err := os.Chmod(tmpPath, 0644); err != nil {
+	if err := os.Chmod(tmp_path, 0644); err != nil {
 		return fmt.Errorf("设置临时证书权限失败: %v", err)
 	}
-	if err := runPrivileged(nil, "mkdir", "-p", filepath.Dir(path)); err != nil {
+	if err := run_privileged(nil, "mkdir", "-p", filepath.Dir(path)); err != nil {
 		return fmt.Errorf("创建证书目录失败: %v", err)
 	}
-	if err := runPrivileged(nil, "install", "-m", "0644", tmpPath, path); err != nil {
+	if err := run_privileged(nil, "install", "-m", "0644", tmp_path, path); err != nil {
 		return fmt.Errorf("写入证书失败: %v", err)
 	}
 	return nil
 }
 
-func removeSystemCert(path string) error {
-	if isRoot() {
+func remove_system_cert(path string) error {
+	if is_root() {
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 		return nil
 	}
-	return runPrivileged(nil, "rm", "-f", path)
+	return run_privileged(nil, "rm", "-f", path)
 }
 
-func warnIfErr(prefix string, err error) {
+func warn_if_err(prefix string, err error) {
 	if err != nil {
 		fmt.Printf("Warning: %s: %v\n", prefix, err)
 	}
 }
 
-func installSystemNSSCert(certPath string) {
-	if !commandExists("certutil") {
+func install_system_nss_cert(cert_path string) {
+	if !command_exists("certutil") {
 		return
 	}
 
-	systemDB := "/etc/pki/nssdb"
-	if _, err := os.Stat(systemDB); os.IsNotExist(err) {
-		fmt.Printf("NSS system database not found: %s, creating...\n", systemDB)
-		if err := runPrivileged(nil, "mkdir", "-p", systemDB); err != nil {
-			warnIfErr("Failed to create NSS system database directory", err)
+	system_db := "/etc/pki/nssdb"
+	if _, err := os.Stat(system_db); os.IsNotExist(err) {
+		fmt.Printf("NSS system database not found: %s, creating...\n", system_db)
+		if err := run_privileged(nil, "mkdir", "-p", system_db); err != nil {
+			warn_if_err("Failed to create NSS system database directory", err)
 			return
 		}
-		warnIfErr("Failed to set permissions on NSS system database directory", runPrivileged(nil, "chmod", "700", systemDB))
-		err := runPrivileged(strings.NewReader("\n\n"), "certutil", "-d", "sql:"+systemDB, "-N", "--empty-password")
+		warn_if_err("Failed to set permissions on NSS system database directory", run_privileged(nil, "chmod", "700", system_db))
+		err := run_privileged(strings.NewReader("\n\n"), "certutil", "-d", "sql:"+system_db, "-N", "--empty-password")
 		if err != nil {
-			warnIfErr("Failed to initialize NSS system database", err)
+			warn_if_err("Failed to initialize NSS system database", err)
 			return
 		}
-		fmt.Printf("NSS system database created: %s (empty password)\n", systemDB)
+		fmt.Printf("NSS system database created: %s (empty password)\n", system_db)
 	}
-	_ = runPrivileged(nil, "certutil", "-d", "sql:"+systemDB, "-D", "-n", linuxCertNickname)
-	warnIfErr("Failed to add NSS system certificate", runPrivileged(nil, "certutil", "-d", "sql:"+systemDB, "-A", "-n", linuxCertNickname, "-t", "CT,C,C", "-i", certPath))
+	_ = run_privileged(nil, "certutil", "-d", "sql:"+system_db, "-D", "-n", linux_cert_nickname)
+	warn_if_err("Failed to add NSS system certificate", run_privileged(nil, "certutil", "-d", "sql:"+system_db, "-A", "-n", linux_cert_nickname, "-t", "CT,C,C", "-i", cert_path))
 }
 
-func installUserNSSCert(certPath string) {
-	if !commandExists("certutil") {
+func install_user_nss_cert(cert_path string) {
+	if !command_exists("certutil") {
 		return
 	}
-	desktopUser, err := currentDesktopUser()
-	if err != nil || desktopUser.HomeDir == "" {
-		warnIfErr("Failed to get login user, skipping NSS user certificate store", err)
+	desktop_user, err := current_desktop_user()
+	if err != nil || desktop_user.HomeDir == "" {
+		warn_if_err("Failed to get login user, skipping NSS user certificate store", err)
 		return
 	}
-	userDB := filepath.Join(desktopUser.HomeDir, ".pki", "nssdb")
-	if _, err := os.Stat(userDB); os.IsNotExist(err) {
-		fmt.Printf("NSS user database not found: %s, creating...\n", userDB)
-		if err := runAsUser(desktopUser, nil, "mkdir", "-p", userDB); err != nil {
-			warnIfErr("Failed to create NSS user database directory", err)
+	user_db := filepath.Join(desktop_user.HomeDir, ".pki", "nssdb")
+	if _, err := os.Stat(user_db); os.IsNotExist(err) {
+		fmt.Printf("NSS user database not found: %s, creating...\n", user_db)
+		if err := run_as_user(desktop_user, nil, "mkdir", "-p", user_db); err != nil {
+			warn_if_err("Failed to create NSS user database directory", err)
 			return
 		}
-		warnIfErr("Failed to set permissions on NSS user database directory", runAsUser(desktopUser, nil, "chmod", "700", userDB))
-		err := runAsUser(desktopUser, strings.NewReader("\n\n"), "certutil", "-d", "sql:"+userDB, "-N", "--empty-password")
+		warn_if_err("Failed to set permissions on NSS user database directory", run_as_user(desktop_user, nil, "chmod", "700", user_db))
+		err := run_as_user(desktop_user, strings.NewReader("\n\n"), "certutil", "-d", "sql:"+user_db, "-N", "--empty-password")
 		if err != nil {
-			warnIfErr("Failed to initialize NSS user database", err)
+			warn_if_err("Failed to initialize NSS user database", err)
 			return
 		}
-		fmt.Printf("NSS user database created: %s (empty password)\n", userDB)
+		fmt.Printf("NSS user database created: %s (empty password)\n", user_db)
 	}
-	_ = runAsUser(desktopUser, nil, "certutil", "-d", "sql:"+userDB, "-D", "-n", linuxCertNickname)
-	warnIfErr("Failed to add NSS user certificate", runAsUser(desktopUser, nil, "certutil", "-d", "sql:"+userDB, "-A", "-n", linuxCertNickname, "-t", "CT,C,C", "-i", certPath))
+	_ = run_as_user(desktop_user, nil, "certutil", "-d", "sql:"+user_db, "-D", "-n", linux_cert_nickname)
+	warn_if_err("Failed to add NSS user certificate", run_as_user(desktop_user, nil, "certutil", "-d", "sql:"+user_db, "-A", "-n", linux_cert_nickname, "-t", "CT,C,C", "-i", cert_path))
 }
 
-func uninstallNSSCerts() {
-	if !commandExists("certutil") {
+func uninstall_nss_certs() {
+	if !command_exists("certutil") {
 		return
 	}
-	systemDB := "/etc/pki/nssdb"
-	if _, err := os.Stat(systemDB); err == nil {
-		_ = runPrivileged(nil, "certutil", "-d", "sql:"+systemDB, "-D", "-n", linuxCertNickname)
+	system_db := "/etc/pki/nssdb"
+	if _, err := os.Stat(system_db); err == nil {
+		_ = run_privileged(nil, "certutil", "-d", "sql:"+system_db, "-D", "-n", linux_cert_nickname)
 	}
-	desktopUser, err := currentDesktopUser()
-	if err != nil || desktopUser.HomeDir == "" {
-		warnIfErr("Failed to get login user, skipping NSS user certificate store", err)
+	desktop_user, err := current_desktop_user()
+	if err != nil || desktop_user.HomeDir == "" {
+		warn_if_err("Failed to get login user, skipping NSS user certificate store", err)
 		return
 	}
-	userDB := filepath.Join(desktopUser.HomeDir, ".pki", "nssdb")
-	if _, err := os.Stat(userDB); err == nil {
-		_ = runAsUser(desktopUser, nil, "certutil", "-d", "sql:"+userDB, "-D", "-n", linuxCertNickname)
+	user_db := filepath.Join(desktop_user.HomeDir, ".pki", "nssdb")
+	if _, err := os.Stat(user_db); err == nil {
+		_ = run_as_user(desktop_user, nil, "certutil", "-d", "sql:"+user_db, "-D", "-n", linux_cert_nickname)
 	}
 }
 
-func fetchCertificates() ([]Certificate, error) {
+func fetch_certificates() ([]Certificate, error) {
 	var certs []Certificate
 	paths := []string{
 		"/etc/ssl/certs",
@@ -291,7 +292,8 @@ func fetchCertificates() ([]Certificate, error) {
 					continue
 				}
 				certs = append(certs, Certificate{
-					Subject: CertificateSubject{CN: cert.Subject.CommonName},
+					Thumbprint: fmt.Sprintf("%X", sha256.Sum256(cert.Raw)),
+					Subject:    CertificateSubject{CN: cert.Subject.CommonName},
 				})
 			}
 			return nil
@@ -300,23 +302,23 @@ func fetchCertificates() ([]Certificate, error) {
 	return certs, nil
 }
 
-func installCertificate(cert []byte) error {
-	store, err := detectLinuxCertStore()
+func install_certificate(cert []byte) error {
+	store, err := detect_linux_cert_store()
 	if err != nil {
 		return err
 	}
 
-	if err := writeSystemCert(store.certPath, cert); err != nil {
+	if err := write_system_cert(store.cert_path, cert); err != nil {
 		return err
 	}
 
-	if err := runPrivileged(nil, store.updateCmd...); err != nil {
-		return fmt.Errorf("%s: %v", store.updateErrMsg, err)
+	if err := run_privileged(nil, store.update_cmd...); err != nil {
+		return fmt.Errorf("%s: %v", store.update_err_msg, err)
 	}
 
 	// NSS certificate store handling (Firefox/Chromium); failures do not affect system CA installation.
-	installSystemNSSCert(store.certPath)
-	installUserNSSCert(store.certPath)
+	install_system_nss_cert(store.cert_path)
+	install_user_nss_cert(store.cert_path)
 	return nil
 }
 
@@ -333,18 +335,18 @@ func check_certificate_data_trusted(_ []byte, cert_name string) (bool, error) {
 	return check_certificate_trusted(cert_name)
 }
 
-func uninstallCertificate(name string) error {
-	store, err := detectLinuxCertStore()
+func uninstall_certificate(name string) error {
+	store, err := detect_linux_cert_store()
 	if err != nil {
 		return err
 	}
 
-	if err := removeSystemCert(store.certPath); err != nil {
+	if err := remove_system_cert(store.cert_path); err != nil {
 		return fmt.Errorf("删除证书失败: %v", err)
 	}
-	if err := runPrivileged(nil, store.updateCmd...); err != nil {
-		return fmt.Errorf("%s: %v", store.updateErrMsg, err)
+	if err := run_privileged(nil, store.update_cmd...); err != nil {
+		return fmt.Errorf("%s: %v", store.update_err_msg, err)
 	}
-	uninstallNSSCerts()
+	uninstall_nss_certs()
 	return nil
 }

@@ -1219,13 +1219,18 @@ function AutomationPageViewModel(props, options) {
       if (!node_id) return;
       const config = node && node.config;
       const produced = [];
-      if (config && config.output_key) produced.push(config.output_key);
+      const output_key = config && config.output_key || {
+        APICallNode: "api_response", ServiceNode: "service_result", ExprNode: "calc_out",
+        ManualNode: "response", WorkflowNode: "workflow_result", LoopNode: "loop_result",
+      }[node.type];
+      if (output_key) produced.push(output_key);
       const output_schema = node && node.output_schema;
       if (Array.isArray(output_schema)) {
         output_schema.forEach((field) => produced.push(field && field.key));
       }
       if (node.type === "APICallNode") {
-        produced.forEach((key) => push("output", `${node_id}.${key}_status`));
+        push("output", `${node_id}.${output_key}_status`);
+        push("output", `${node_id}.${output_key}_headers`);
       }
       produced.forEach((key) => push("output", `${node_id}.${key}`));
       if (node.type === "SetVariableNode" && config) {
@@ -1234,6 +1239,8 @@ function AutomationPageViewModel(props, options) {
         );
       }
     });
+    const selected_node = (edit_nodes_.value || []).find((node) => node.id === selected_edit_node_id_.value);
+    (selected_node && selected_node.config_schema || []).forEach((field) => push("config", field.key));
     return keys;
   }
 
@@ -1324,7 +1331,6 @@ function AutomationPageViewModel(props, options) {
   }
 
   function create_service_tool_form(form_schema) {
-    const context_keys = available_context_keys();
     const fields = {};
     form_schema.forEach((field_schema) => {
       const initial_value = service_form_input_value(
@@ -1376,9 +1382,7 @@ function AutomationPageViewModel(props, options) {
         field_schema.control === "input" ||
         field_schema.control === "textarea"
       ) {
-        field.suggest_visible = ref(false);
-        field.suggest_keyword = ref("");
-        field.context_keys = context_keys;
+        field.get_variables = available_context_keys;
       }
       fields[field_schema.name] = field;
     });
@@ -2815,6 +2819,7 @@ function AutomationPageViewModel(props, options) {
     applySelectedNodeConfig: apply_selected_node_config,
     removeNode: remove_node,
     saveFlow: save_flow,
+    availableContextKeys: available_context_keys,
     openPipelineConfig: open_pipeline_config,
     savePipelineConfig: save_pipeline_config,
     deleteFlow: delete_flow,
