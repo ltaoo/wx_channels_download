@@ -11,14 +11,77 @@ import (
 	"time"
 )
 
-// DownloadTask is one download task record.
+// DownloadTask is the shared task detail returned by REST, SDK completion and hooks.
 type DownloadTask struct {
-	ID           int             `json:"id"`
-	Name         string          `json:"name"`
-	Status       int             `json:"status"`
-	Error        string          `json:"error"`
-	ErrorMessage string          `json:"error_message"`
-	Files        json.RawMessage `json:"files"`
+	ID           int                  `json:"id"`
+	Name         string               `json:"name"`
+	PlatformID   string               `json:"platform_id"`
+	Status       int                  `json:"status"`
+	Error        string               `json:"error"`
+	ContentID    *string              `json:"content_id"`
+	ContentType  string               `json:"content_type"`
+	Content      *DownloadTaskContent `json:"content"`
+	ParentTaskID *int                 `json:"parent_task_id"`
+	RootTaskID   int                  `json:"root_task_id"`
+	RelationType string               `json:"relation_type"`
+	ChildCount   int                  `json:"child_count"`
+	SourceURL    string               `json:"source_url"`
+	URL          string               `json:"url"`
+	CoverURL     string               `json:"cover_url"`
+	CoverWidth   string               `json:"cover_width"`
+	CoverHeight  string               `json:"cover_height"`
+	ConfigJSON   string               `json:"config_json"`
+	MetadataJSON string               `json:"metadata_json"`
+	Size         int64                `json:"size"`
+	Downloaded   int64                `json:"downloaded"`
+	Speed        int64                `json:"speed"`
+	Progress     float64              `json:"progress"`
+	Files        []DownloadTaskFile   `json:"files"`
+	FileCount    int                  `json:"file_count"`
+	CreatedAt    int64                `json:"created_at"`
+	UpdatedAt    int64                `json:"updated_at"`
+}
+
+type DownloadTaskFile struct {
+	ID                int     `json:"id"`
+	Name              string  `json:"name"`
+	DownloadDir       string  `json:"download_dir"`
+	FilePath          string  `json:"file_path"`
+	LocalPath         string  `json:"local_path"`
+	Kind              string  `json:"kind"`
+	Type              string  `json:"type"`
+	Status            string  `json:"status"`
+	Error             string  `json:"error"`
+	Size              int64   `json:"size"`
+	Downloaded        int64   `json:"downloaded"`
+	Speed             int64   `json:"speed"`
+	Progress          float64 `json:"progress"`
+	URL               string  `json:"url"`
+	FileType          string  `json:"file_type"`
+	FileURL           string  `json:"file_url"`
+	PlaybackURL       string  `json:"playback_url,omitempty"`
+	PlaybackAvailable bool    `json:"playback_available"`
+	Exists            bool    `json:"exists"`
+}
+
+type DownloadTaskContent struct {
+	ID          string                `json:"id"`
+	PlatformID  string                `json:"platform_id"`
+	Type        string                `json:"type"`
+	Title       string                `json:"title"`
+	Description string                `json:"description"`
+	CoverURL    string                `json:"cover_url"`
+	URL         string                `json:"url"`
+	SourceURL   string                `json:"source_url"`
+	PublishTime int64                 `json:"publish_time"`
+	Accounts    []DownloadTaskAccount `json:"accounts"`
+}
+
+type DownloadTaskAccount struct {
+	ID         string `json:"id" gorm:"column:account_id"`
+	Nickname   string `json:"nickname"`
+	AvatarURL  string `json:"avatar_url"`
+	ExternalID string `json:"external_id"`
 }
 
 // DownloadCreateItem is one per-object result inside a create response.
@@ -65,10 +128,6 @@ type TaskFailedError struct {
 
 func (e *TaskFailedError) Error() string { return e.Message }
 
-type task_list_response struct {
-	List []DownloadTask `json:"list"`
-}
-
 // CreateDownloadTask submits one batch of download task objects.
 func (c *Client) CreateDownloadTask(ctx context.Context, request CreateDownloadTaskRequest) (*DownloadCreateResponse, error) {
 	raw_data, err := c.do(ctx, http.MethodPost, "/api/v1/download_task/create", nil, request)
@@ -95,11 +154,7 @@ func (c *Client) WaitDownloadTask(ctx context.Context, task_id int) (*DownloadTa
 		}
 	}()
 	for {
-		raw_data, err := c.get(ctx, "/api/v1/download_task/list", url.Values{"task_id": []string{strconv.Itoa(task_id)}})
-		if err != nil {
-			return nil, err
-		}
-		task, err := decode_download_task(raw_data, task_id)
+		task, err := c.DownloadTaskDetail(ctx, task_id)
 		if err != nil {
 			return nil, err
 		}
@@ -110,7 +165,7 @@ func (c *Client) WaitDownloadTask(ctx context.Context, task_id int) (*DownloadTa
 		case 5:
 			return task, nil
 		case 6, 7:
-			message := value_or_default(task.ErrorMessage, task.Error)
+			message := task.Error
 			message = value_or_default(message, fmt.Sprintf("下载任务以状态 %d 结束", task.Status))
 			return nil, &TaskFailedError{Status: task.Status, Message: message, Task: task}
 		}
@@ -163,9 +218,20 @@ func (c *Client) DownloadTasks(ctx context.Context, query DownloadTaskListQuery)
 	return c.get(ctx, "/api/v1/download_task/list", values)
 }
 
-// DownloadTaskDetail returns the raw detail response for one task.
-func (c *Client) DownloadTaskDetail(ctx context.Context, task_id int) (json.RawMessage, error) {
-	return c.get(ctx, "/api/v1/download_task/detail", url.Values{"id": []string{strconv.Itoa(task_id)}})
+// DownloadTaskDetail returns the same typed detail as WaitDownloadTask.
+func (c *Client) DownloadTaskDetail(ctx context.Context, task_id int) (*DownloadTask, error) {
+	raw_data, err := c.get(ctx, "/api/v1/download_task/detail", url.Values{"id": []string{strconv.Itoa(task_id)}})
+	if err != nil {
+		return nil, err
+	}
+	task, err := decode_download_task(raw_data, task_id)
+	if err != nil {
+		return nil, err
+	}
+	if task == nil {
+		return nil, fmt.Errorf("下载任务不存在: %d", task_id)
+	}
+	return task, nil
 }
 
 func decode_download_task(raw_data json.RawMessage, task_id int) (*DownloadTask, error) {
@@ -180,15 +246,6 @@ func decode_download_task(raw_data json.RawMessage, task_id int) (*DownloadTask,
 		return nil, nil
 	}
 
-	var response task_list_response
-	if err := json.Unmarshal(raw_data, &response); err != nil {
-		return nil, fmt.Errorf("解析下载进度响应失败: %w", err)
-	}
-	for index := range response.List {
-		if task_id <= 0 || response.List[index].ID == task_id {
-			return &response.List[index], nil
-		}
-	}
 	return nil, nil
 }
 

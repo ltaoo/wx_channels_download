@@ -248,7 +248,7 @@ func (s *ToolSet) get_download_task_detail(ctx context.Context, raw_arguments js
 	if err != nil {
 		return nil, err
 	}
-	return successful_tool_result(raw_json_value(raw_response))
+	return successful_tool_result(raw_response)
 }
 
 func (s *ToolSet) delete_download_tasks(ctx context.Context, raw_arguments json.RawMessage) (map[string]any, error) {
