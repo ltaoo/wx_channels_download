@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"strings"
 	"testing"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -44,7 +45,7 @@ func TestAutomationMigrationsRoundTrip(t *testing.T) {
 			t.Fatalf("migrate up: %v", err)
 		}
 		version, dirty, err := migrator.Version()
-		if err != nil || version != 3 || dirty {
+		if err != nil || version != 4 || dirty {
 			t.Fatalf("migration state: version=%d dirty=%v err=%v", version, dirty, err)
 		}
 		var table_count, platform_count int
@@ -78,11 +79,43 @@ func TestAutomationMigrationsRoundTrip(t *testing.T) {
 		if _, err := sql_db.Exec("INSERT INTO user_flow (id, name) VALUES ('test-flow', 'Test flow')"); err != nil {
 			t.Fatal(err)
 		}
+		var plan_id, parent_id, unused int
+		var plan_detail string
+		if err := sql_db.QueryRow(`EXPLAIN QUERY PLAN SELECT * FROM flow_run_record
+			WHERE status = ? AND deadline_at > 0 AND deadline_at <= ? AND deleted_at IS NULL`,
+			"WAITING", 100).Scan(&plan_id, &parent_id, &unused, &plan_detail); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(plan_detail, "USING INDEX idx_flow_run_record_status_deleted_deadline") ||
+			!strings.Contains(plan_detail, "status=? AND deleted_at=? AND deadline_at>? AND deadline_at<?") {
+			t.Fatalf("expiry query must use the composite index for filtering: %s", plan_detail)
+		}
 		if err := migrator.Up(); err != migrate.ErrNoChange {
 			t.Fatalf("repeated migrate up: got %v, want ErrNoChange", err)
 		}
 		if err := migrator.Steps(-1); err != nil {
 			t.Fatalf("migrate down: %v", err)
+		}
+		version, dirty, err = migrator.Version()
+		if err != nil || version != 3 || dirty {
+			t.Fatalf("index rollback state: version=%d dirty=%v err=%v", version, dirty, err)
+		}
+		var index_count, run_count int
+		if err := sql_db.QueryRow(`SELECT COUNT(*) FROM sqlite_master
+			WHERE type = 'index' AND name = 'idx_flow_run_record_status_deleted_deadline'`).Scan(&index_count); err != nil {
+			t.Fatal(err)
+		}
+		if index_count != 0 {
+			t.Fatal("rollback left the expiry index")
+		}
+		if err := sql_db.QueryRow("SELECT COUNT(*) FROM flow_run_record WHERE id = 'test-run'").Scan(&run_count); err != nil {
+			t.Fatal(err)
+		}
+		if run_count != 1 {
+			t.Fatal("index rollback must preserve run history")
+		}
+		if err := migrator.Migrate(2); err != nil {
+			t.Fatalf("rollback automation tables: %v", err)
 		}
 		version, dirty, err = migrator.Version()
 		if err != nil || version != 2 || dirty {
