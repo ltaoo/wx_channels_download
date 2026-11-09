@@ -14,8 +14,10 @@ title: 指定下载的文件名
 
 不建议通过全局脚本修改文件名，请在工作目录 `workdir` 下创建 `hooks.js`，并定义 `onFilename`：
 
+`onFilename` 兼容旧写法，不加 `export` 也会生效；同时存在命名导出与旧函数时，优先调用命名导出。其他任务生命周期 Hook 仍必须显式导出。
+
 ```js
-function onFilename(meta) {
+export function onFilename(meta) {
   return {
     directories: [meta.author],
     name: [meta.title, meta.spec, meta.idx].filter(Boolean).join("_"),
@@ -41,7 +43,7 @@ function secondsToYMD(seconds, startTimestamp = 0) {
   return `${year}${month}${day}`;
 }
 
-function onFilename(meta) {
+export function onFilename(meta) {
   const t = secondsToYMD(meta.created_at);
   return {
     directories: [],

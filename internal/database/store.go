@@ -482,18 +482,25 @@ func (s *DBTaskStore) DeactivateConnections(task_id int) error {
 
 func (s *DBTaskStore) FinishTask(task_id int) error {
 	now := time.Now().UnixMilli()
-	s.db.Model(&model.DownloadTask{}).Where("id = ?", task_id).
-		Updates(map[string]any{"status": model.TaskStatusFinished, "updated_at": now})
-	s.db.Exec(`UPDATE download_segment SET downloaded = CASE WHEN size > 0 THEN size ELSE downloaded END, status = 2, updated_at = ?
-		WHERE resource_id IN (SELECT id FROM download_resource WHERE task_id = ?)`, now, task_id)
-	s.db.Exec(`UPDATE download_connection SET speed = 0, status = 2, updated_at = ?
-		WHERE endpoint_id IN (
-			SELECT id FROM download_endpoint WHERE resource_id IN (
-				SELECT id FROM download_resource WHERE task_id = ?
-			)
-		)`, now, task_id)
-	s.db.Exec(`UPDATE download_resource SET status = 2, updated_at = ? WHERE task_id = ?`, now, task_id)
-	return nil
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.DownloadTask{}).Where("id = ?", task_id).
+			Updates(map[string]any{"status": model.TaskStatusFinished, "updated_at": now}).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(`UPDATE download_segment SET downloaded = CASE WHEN size > 0 THEN size ELSE downloaded END, status = 2, updated_at = ?
+			WHERE resource_id IN (SELECT id FROM download_resource WHERE task_id = ?)`, now, task_id).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(`UPDATE download_connection SET speed = 0, status = 2, updated_at = ?
+			WHERE endpoint_id IN (
+				SELECT id FROM download_endpoint WHERE resource_id IN (
+					SELECT id FROM download_resource WHERE task_id = ?
+				)
+			)`, now, task_id).Error; err != nil {
+			return err
+		}
+		return tx.Exec(`UPDATE download_resource SET status = 2, speed = 0, updated_at = ? WHERE task_id = ?`, now, task_id).Error
+	})
 }
 
 func (s *DBTaskStore) RecordError(task_id int, err_msg string) error {
