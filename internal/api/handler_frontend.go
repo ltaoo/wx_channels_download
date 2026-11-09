@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/fatih/color"
@@ -595,91 +594,11 @@ func setFrontendHTMLCacheHeaders(header http.Header) {
 	header.Set("Expires", "0")
 }
 
-// FrontendLogLimiter controls rate-limiting and deduplication of frontend log submissions.
-type FrontendLogLimiter struct {
-	mu         sync.Mutex
-	lastSeen   map[string]time.Time
-	cooldown   time.Duration
-	tokens     float64
-	maxTokens  float64
-	refillRate float64 // tokens per second
-	lastRefill time.Time
-	maxEntries int
-}
-
-// NewFrontendLogLimiter creates a new frontend log rate limiter.
-func NewFrontendLogLimiter(cooldown time.Duration, maxTokens, refillRate float64) *FrontendLogLimiter {
-	return &FrontendLogLimiter{
-		lastSeen:   make(map[string]time.Time),
-		cooldown:   cooldown,
-		tokens:     maxTokens,
-		maxTokens:  maxTokens,
-		refillRate: refillRate,
-		lastRefill: time.Now(),
-		maxEntries: 2000,
-	}
-}
-
-// Allow reports whether a log entry with the given key is allowed to proceed.
-func (l *FrontendLogLimiter) Allow(key string) bool {
-	if l == nil {
-		return true
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	now := time.Now()
-
-	// Token bucket refill
-	elapsed := now.Sub(l.lastRefill).Seconds()
-	l.lastRefill = now
-	l.tokens += elapsed * l.refillRate
-	if l.tokens > l.maxTokens {
-		l.tokens = l.maxTokens
-	}
-
-	// Check token availability
-	if l.tokens < 1.0 {
+func (c *APIClient) isLoggingEnabled() bool {
+	if c.cfg == nil || c.cfg.Original == nil {
 		return false
 	}
-
-	// Check deduplication cooldown
-	if t, exists := l.lastSeen[key]; exists {
-		if now.Sub(t) < l.cooldown {
-			return false
-		}
-	}
-
-	l.tokens -= 1.0
-	l.lastSeen[key] = now
-
-	// Memory bounded pruning
-	if len(l.lastSeen) > l.maxEntries {
-		for k, v := range l.lastSeen {
-			if now.Sub(v) > l.cooldown*2 {
-				delete(l.lastSeen, k)
-			}
-		}
-		if len(l.lastSeen) > l.maxEntries {
-			l.lastSeen = make(map[string]time.Time)
-		}
-	}
-
-	return true
-}
-
-func buildFrontendLogKey(level, msg string, extraFields map[string]interface{}) string {
-	if extraFields != nil {
-		taskID := extraFields["task_id"]
-		if taskID == nil {
-			taskID = extraFields["id"]
-		}
-		nextStatus := extraFields["next_status"]
-		if taskID != nil || nextStatus != nil {
-			return fmt.Sprintf("task:%v:%v:%s:%s", taskID, nextStatus, level, msg)
-		}
-	}
-	return fmt.Sprintf("report:%s:%s", level, msg)
+	return c.cfg.Original.LogPath() != "" || c.cfg.Original.GetBool("log.enabled")
 }
 
 // handleFrontendTip handles frontend log/tip messages posted from injected pages.
@@ -694,14 +613,14 @@ func (c *APIClient) handleFrontendTip(ctx *gin.Context) {
 		result.Err(ctx, 400, err.Error())
 		return
 	}
+	if !c.isLoggingEnabled() {
+		result.Ok(ctx, nil)
+		return
+	}
 	prefixText := "[FRONTEND]"
 	prefix := data.Prefix
 	if prefix == nil {
 		prefix = &prefixText
-	}
-	if c.frontend_log_limiter != nil && !c.frontend_log_limiter.Allow(fmt.Sprintf("tip:%s:%s", *prefix, data.Msg)) {
-		result.Ok(ctx, nil)
-		return
 	}
 	if data.End == 1 {
 		fmt.Println()
@@ -725,10 +644,6 @@ func (c *APIClient) handleFrontendError(ctx *gin.Context) {
 	var data FrontendErrorTip
 	if err := json.Unmarshal(body, &data); err != nil {
 		result.Err(ctx, 400, err.Error())
-		return
-	}
-	if c.frontend_log_limiter != nil && !c.frontend_log_limiter.Allow(fmt.Sprintf("error:%s", data.Msg)) {
-		result.Ok(ctx, nil)
 		return
 	}
 	color.Red(fmt.Sprintf("[FRONTEND ERROR]%s\n", data.Msg))
@@ -801,20 +716,14 @@ func (c *APIClient) handle_frontend_report(ctx *gin.Context) {
 		}
 		evt.Msg(report_message)
 
-		// Suppress debug and trace logs from stdout/terminal display
-		if lvl < zerolog.InfoLevel {
-			continue
-		}
-
-		// Rate limiting and deduplication for terminal display
-		logKey := buildFrontendLogKey(data.Level, report_message, extra_fields)
-		if c.frontend_log_limiter != nil && !c.frontend_log_limiter.Allow(logKey) {
-			continue
-		}
-
-		// Terminal display
+		// Terminal display: errors are always displayed
 		if data.Level == "error" {
 			color.Red(fmt.Sprintf("[FRONTEND ERROR]%s\n", report_message))
+			continue
+		}
+
+		// Non-error logs are only displayed if logging is explicitly enabled
+		if !c.isLoggingEnabled() || data.Level == "debug" || data.Level == "trace" {
 			continue
 		}
 		prefix_text := "[FRONTEND]"

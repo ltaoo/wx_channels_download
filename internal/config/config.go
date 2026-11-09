@@ -431,6 +431,14 @@ func (c *Config) LoadConfig() error {
 		HotReload:   true,
 	})
 	Register(ConfigField{
+		Key:         "log.enabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否开启日志记录，默认关闭。开启时单个日志上限 50MB",
+		Title:       "启用日志",
+		Group:       "Log",
+	})
+	Register(ConfigField{
 		Key:          "inject.globalScript",
 		Type:         ConfigTypeString,
 		Default:      "global.js",

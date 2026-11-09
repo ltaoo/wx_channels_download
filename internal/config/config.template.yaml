@@ -2,6 +2,9 @@ debug:
   error: false
   echolog: false
 
+log:
+  enabled: false
+
 workdir: ""
 
 download:

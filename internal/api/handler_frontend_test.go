@@ -3,129 +3,31 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
+
+	"wx_channel/internal/config"
 )
 
-func TestFrontendLogLimiter_Deduplication(t *testing.T) {
-	limiter := NewFrontendLogLimiter(100*time.Millisecond, 10, 10)
-
-	key := "task:100:downloading:info:update - check whether the task is completed"
-
-	// First call should be allowed
-	if !limiter.Allow(key) {
-		t.Fatalf("expected first call with key to be allowed")
-	}
-
-	// Immediate repeat should be suppressed by cooldown
-	if limiter.Allow(key) {
-		t.Fatalf("expected immediate duplicate call to be suppressed by cooldown")
-	}
-
-	// A different key should be allowed immediately
-	differentKey := "task:101:downloading:info:update - check whether the task is completed"
-	if !limiter.Allow(differentKey) {
-		t.Fatalf("expected different key to be allowed")
-	}
-
-	// After cooldown, original key should be allowed again
-	time.Sleep(120 * time.Millisecond)
-	if !limiter.Allow(key) {
-		t.Fatalf("expected key to be allowed after cooldown expired")
-	}
-}
-
-func TestFrontendLogLimiter_BurstRateLimit(t *testing.T) {
-	// Limiter with 5 tokens and 0 refill
-	limiter := NewFrontendLogLimiter(1*time.Millisecond, 5, 0)
-
-	for i := 0; i < 5; i++ {
-		key := "key-" + string(rune('a'+i))
-		if !limiter.Allow(key) {
-			t.Fatalf("expected token %d to be allowed", i)
-		}
-	}
-
-	// 6th call should be rejected due to token exhaustion
-	if limiter.Allow("key-exhausted") {
-		t.Fatalf("expected call to be rejected when token bucket is exhausted")
-	}
-}
-
-func TestFrontendLogLimiter_Concurrency(t *testing.T) {
-	limiter := NewFrontendLogLimiter(50*time.Millisecond, 100, 100)
-	var wg sync.WaitGroup
-
-	for i := 0; i < 20; i++ {
-		wg.Add(1)
-		go func(id int) {
-			defer wg.Done()
-			for j := 0; j < 10; j++ {
-				_ = limiter.Allow("concurrent-key")
-			}
-		}(i)
-	}
-
-	wg.Wait()
-}
-
-func TestFrontendLogLimiter_MemoryPrune(t *testing.T) {
-	limiter := NewFrontendLogLimiter(10*time.Millisecond, 1000, 1000)
-	limiter.maxEntries = 5
-
-	for i := 0; i < 10; i++ {
-		limiter.Allow("entry-" + string(rune('a'+i)))
-	}
-
-	time.Sleep(25 * time.Millisecond)
-	limiter.Allow("trigger-prune")
-
-	limiter.mu.Lock()
-	count := len(limiter.lastSeen)
-	limiter.mu.Unlock()
-
-	if count > 5 {
-		t.Errorf("expected pruned entries to not exceed maxEntries, got %d", count)
-	}
-}
-
-func TestBuildFrontendLogKey(t *testing.T) {
-	extra := map[string]interface{}{
-		"task_id":     123,
-		"next_status": "completed",
-	}
-	key := buildFrontendLogKey("info", "done", extra)
-	expected := "task:123:completed:info:done"
-	if key != expected {
-		t.Errorf("expected %q, got %q", expected, key)
-	}
-
-	keyNoTask := buildFrontendLogKey("info", "generic", nil)
-	expectedNoTask := "report:info:generic"
-	if keyNoTask != expectedNoTask {
-		t.Errorf("expected %q, got %q", expectedNoTask, keyNoTask)
-	}
-}
-
-func TestHandlerFrontendReport_LevelFiltering(t *testing.T) {
+func TestHandlerFrontendReport_DefaultDisabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
 	nopLogger := zerolog.Nop()
 	client := &APIClient{
-		logger:               &nopLogger,
-		frontend_log_limiter: NewFrontendLogLimiter(time.Second, 10, 10),
+		logger: &nopLogger,
+		cfg:    &APIConfig{},
 	}
 	engine.POST("/report", client.handle_frontend_report)
 
-	// Test debug level report
+	// When logging is disabled by default, debug log should not cause an error
 	debugReport := map[string]interface{}{
 		"level":   "debug",
 		"message": "polling debug log",
@@ -141,7 +43,7 @@ func TestHandlerFrontendReport_LevelFiltering(t *testing.T) {
 		t.Fatalf("expected 200 OK, got %d", w.Code)
 	}
 
-	// Test info level report
+	// Info report should also return 200 without outputting
 	infoReport := map[string]interface{}{
 		"level":   "info",
 		"message": "task starting",
@@ -156,46 +58,217 @@ func TestHandlerFrontendReport_LevelFiltering(t *testing.T) {
 	if wInfo.Code != http.StatusOK {
 		t.Fatalf("expected 200 OK, got %d", wInfo.Code)
 	}
+
+	// Error report is always handled
+	errorReport := map[string]interface{}{
+		"level":   "error",
+		"message": "download failed",
+		"task_id": 1001,
+	}
+	bodyErr, _ := json.Marshal(errorReport)
+	reqErr := httptest.NewRequest(http.MethodPost, "/report", bytes.NewReader(bodyErr))
+	reqErr.Header.Set("Content-Type", "application/json")
+	wErr := httptest.NewRecorder()
+	engine.ServeHTTP(wErr, reqErr)
+
+	if wErr.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", wErr.Code)
+	}
 }
 
-func TestLogRotation_InPlaceTruncation(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "rotatetest")
+func TestHandlerFrontendReport_LoggingEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+
+	var buf bytes.Buffer
+	testLogger := zerolog.New(&buf)
+	baseCfg := config.New("test", "debug", &testLogger, nil, "/tmp/test.log")
+
+	client := &APIClient{
+		logger: &testLogger,
+		cfg: &APIConfig{
+			Original: baseCfg,
+		},
+	}
+	engine.POST("/report", client.handle_frontend_report)
+
+	if !client.isLoggingEnabled() {
+		t.Fatalf("expected logging to be enabled when LogPath is non-empty")
+	}
+
+	report := map[string]interface{}{
+		"level":   "info",
+		"message": "enabled task completed",
+		"task_id": 1002,
+	}
+	body, _ := json.Marshal(report)
+	req := httptest.NewRequest(http.MethodPost, "/report", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", w.Code)
+	}
+
+	if !bytes.Contains(buf.Bytes(), []byte("enabled task completed")) {
+		t.Errorf("expected log buffer to contain message, got: %s", buf.String())
+	}
+}
+
+func TestHandlerFrontendTip_Disabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	nopLogger := zerolog.Nop()
+	client := &APIClient{
+		logger: &nopLogger,
+		cfg:    &APIConfig{},
+	}
+	engine.POST("/tip", client.handleFrontendTip)
+
+	tip := map[string]interface{}{
+		"msg": "test tip",
+	}
+	body, _ := json.Marshal(tip)
+	req := httptest.NewRequest(http.MethodPost, "/tip", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", w.Code)
+	}
+}
+
+func TestHandlerFrontendError_AlwaysHandled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	nopLogger := zerolog.Nop()
+	client := &APIClient{
+		logger: &nopLogger,
+		cfg:    &APIConfig{},
+	}
+	engine.POST("/error", client.handleFrontendError)
+
+	errTip := map[string]interface{}{
+		"msg": "error detail",
+	}
+	body, _ := json.Marshal(errTip)
+	req := httptest.NewRequest(http.MethodPost, "/error", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", w.Code)
+	}
+}
+
+func TestLogRotation_InPlaceTruncation_50MB(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "rotatetest50mb")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
 	logFile := filepath.Join(tmpDir, "wx_video_download.out.log")
-	dummyData := make([]byte, 10485760+100) // 10MB + 100 bytes
+	// Simulate file reaching 50MB (52428800 bytes)
+	const maxBytes = int64(52428800)
+	dummyData := make([]byte, 1024)
 	if err := os.WriteFile(logFile, dummyData, 0644); err != nil {
 		t.Fatalf("failed to write dummy log: %v", err)
 	}
 
-	// Verify initial size exceeds 10MB
-	info, err := os.Stat(logFile)
+	// Helper function mimicking the shell script log rotation
+	rotate := func(path string, limit int64) error {
+		info, err := os.Stat(path)
+		if err != nil {
+			return err
+		}
+		if info.Size() >= limit {
+			f, err := os.OpenFile(path, os.O_TRUNC|os.O_WRONLY, 0644)
+			if err != nil {
+				return err
+			}
+			return f.Close()
+		}
+		return nil
+	}
+
+	// Below limit, should not truncate
+	if err := rotate(logFile, maxBytes); err != nil {
+		t.Fatalf("rotate failed: %v", err)
+	}
+	info, _ := os.Stat(logFile)
+	if info.Size() != 1024 {
+		t.Fatalf("expected size 1024, got %d", info.Size())
+	}
+
+	// Set limit to 1024 to simulate exceeding 50MB
+	if err := rotate(logFile, 1024); err != nil {
+		t.Fatalf("rotate failed: %v", err)
+	}
+	infoAfter, _ := os.Stat(logFile)
+	if infoAfter.Size() != 0 {
+		t.Errorf("expected size 0 after in-place truncation, got %d", infoAfter.Size())
+	}
+}
+
+type mockSizeLimitedWriter struct {
+	file         *os.File
+	maxBytes     int64
+	currentBytes int64
+	mu           sync.Mutex
+}
+
+func (w *mockSizeLimitedWriter) Write(p []byte) (n int, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.currentBytes+int64(len(p)) > w.maxBytes {
+		_ = w.file.Truncate(0)
+		_, _ = w.file.Seek(0, io.SeekStart)
+		w.currentBytes = 0
+	}
+	n, err = w.file.Write(p)
+	w.currentBytes += int64(n)
+	return n, err
+}
+
+func TestSizeLimitedWriter_InPlaceTruncation(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "sizelimitedtest")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	filePath := filepath.Join(tmpDir, "test.log")
+	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC|os.O_APPEND, 0666)
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer f.Close()
+
+	writer := &mockSizeLimitedWriter{
+		file:     f,
+		maxBytes: 100,
+	}
+
+	data := make([]byte, 60)
+	n, err := writer.Write(data)
+	if err != nil || n != 60 {
+		t.Fatalf("write failed: %v", err)
+	}
+
+	n, err = writer.Write(data)
+	if err != nil || n != 60 {
+		t.Fatalf("write after truncate failed: %v", err)
+	}
+
+	info, err := os.Stat(filePath)
 	if err != nil {
 		t.Fatalf("stat failed: %v", err)
 	}
-	if info.Size() <= 10485760 {
-		t.Fatalf("expected size > 10MB, got %d", info.Size())
-	}
-
-	// Execute in-place truncation
-	maxBytes := int64(10485760)
-	if info.Size() >= maxBytes {
-		f, err := os.OpenFile(logFile, os.O_TRUNC|os.O_WRONLY, 0644)
-		if err != nil {
-			t.Fatalf("failed to truncate file: %v", err)
-		}
-		_ = f.Close()
-	}
-
-	// Verify truncated size
-	infoAfter, err := os.Stat(logFile)
-	if err != nil {
-		t.Fatalf("stat after failed: %v", err)
-	}
-	if infoAfter.Size() != 0 {
-		t.Errorf("expected size 0 after in-place truncation, got %d", infoAfter.Size())
+	if info.Size() != 60 {
+		t.Errorf("expected file size to be 60 after in-place truncation, got %d", info.Size())
 	}
 }

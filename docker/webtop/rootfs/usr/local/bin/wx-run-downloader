@@ -10,6 +10,9 @@ LOG_FILE="${LOG_DIR}/wx_video_download.out.log"
 WX_BIN="${WX_HOME}/wx_video_download"
 RUN_AS_ROOT="${WX_VIDEO_RUN_AS_ROOT:-auto}"
 
+ENABLE_LOG="${ENABLE_LOG:-${WX_ENABLE_LOG:-false}}"
+LOG_MAX_BYTES="${WX_LOG_MAX_BYTES:-52428800}"
+
 export HOME="${HOME:-/config}"
 export DISPLAY="${DISPLAY:-:1}"
 
@@ -33,7 +36,7 @@ if [ "$(id -u)" -ne 0 ] && [ "$RUN_AS_ROOT" != "false" ]; then
     fi
 
     if [ "$need_root" = "true" ] && command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
-        exec sudo -n env HOME=/config DISPLAY="${DISPLAY:-:1}" WX_VIDEO_HOME="$WX_HOME" WX_VIDEO_SEED_HOME="$WX_SEED_HOME" WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH="$WX_CONFIG" WX_LOG_DIR="$LOG_DIR" WX_VIDEO_RUN_AS_ROOT=true "$0" "$@"
+        exec sudo -n env HOME=/config DISPLAY="${DISPLAY:-:1}" WX_VIDEO_HOME="$WX_HOME" WX_VIDEO_SEED_HOME="$WX_SEED_HOME" WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH="$WX_CONFIG" WX_LOG_DIR="$LOG_DIR" WX_VIDEO_RUN_AS_ROOT=true ENABLE_LOG="$ENABLE_LOG" WX_LOG_MAX_BYTES="$LOG_MAX_BYTES" "$0" "$@"
     fi
 fi
 
@@ -50,21 +53,24 @@ if [ "$(id -u)" -eq 0 ] && [ "$RUN_AS_ROOT" != "true" ] && id abc >/dev/null 2>&
     fi
 
     if [ "$drop_privileges" = "true" ]; then
-        exec s6-setuidgid abc env HOME=/config DISPLAY="${DISPLAY:-:1}" WX_VIDEO_HOME="$WX_HOME" WX_VIDEO_SEED_HOME="$WX_SEED_HOME" WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH="$WX_CONFIG" WX_LOG_DIR="$LOG_DIR" WX_VIDEO_RUN_AS_ROOT="$RUN_AS_ROOT" "$0" "$@"
+        exec s6-setuidgid abc env HOME=/config DISPLAY="${DISPLAY:-:1}" WX_VIDEO_HOME="$WX_HOME" WX_VIDEO_SEED_HOME="$WX_SEED_HOME" WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH="$WX_CONFIG" WX_LOG_DIR="$LOG_DIR" WX_VIDEO_RUN_AS_ROOT="$RUN_AS_ROOT" ENABLE_LOG="$ENABLE_LOG" WX_LOG_MAX_BYTES="$LOG_MAX_BYTES" "$0" "$@"
     fi
 fi
 
 if pgrep -af "^${WX_BIN}( |$)" >/dev/null 2>&1; then
-    echo "wx_video_download is already running. Showing logs."
-    touch "$LOG_FILE"
-    exec tail -n 120 -F "$LOG_FILE"
+    echo "wx_video_download is already running."
+    if [ "$ENABLE_LOG" = "true" ] || [ "$ENABLE_LOG" = "1" ]; then
+        if [ -f "$LOG_FILE" ]; then
+            echo "Showing logs."
+            exec tail -n 120 -F "$LOG_FILE"
+        fi
+    fi
+    exit 0
 fi
 
 cd "$WX_HOME"
 umask 0002
 echo "$$" >"$PID_FILE"
-
-LOG_MAX_BYTES="${WX_LOG_MAX_BYTES:-10485760}"
 
 rotate_log_if_needed() {
     if [ -f "$LOG_FILE" ]; then
@@ -75,8 +81,6 @@ rotate_log_if_needed() {
         fi
     fi
 }
-
-rotate_log_if_needed
 
 rotator_pid=""
 start_log_rotator() {
@@ -98,11 +102,16 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-start_log_rotator
-
 set +e
-"$WX_BIN" --config "$WX_CONFIG" > >(tee -a "$LOG_FILE") 2>&1
-status=$?
+if [ "$ENABLE_LOG" = "true" ] || [ "$ENABLE_LOG" = "1" ]; then
+    rotate_log_if_needed
+    start_log_rotator
+    "$WX_BIN" --config "$WX_CONFIG" > >(tee -a "$LOG_FILE") 2>&1
+    status=$?
+else
+    "$WX_BIN" --config "$WX_CONFIG"
+    status=$?
+fi
 set -e
 
 cleanup
