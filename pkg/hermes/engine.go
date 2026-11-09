@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+
+	"wx_channel/pkg/dm"
 )
 
 // Task status values maintain stable mapping with the persistence layer's download_task status values.
@@ -343,23 +345,24 @@ type Postprocessor interface {
 // HermesEngine is a protocol-agnostic finite resource download scheduler.
 // FILE and COLLECTION are scheduled by the same task, STREAM is handled by the recording scheduler.
 type HermesEngine struct {
-	mu             sync.Mutex
-	event_mu       sync.RWMutex
-	sem            chan struct{}
-	resource_sem   chan struct{}
-	connection_sem chan struct{}
-	jobs           map[int]*TaskJob
-	store          Store
-	logger         zerolog.Logger
-	on_event       EventHandler
-	event_history  []event_record
-	replay_events  bool
-	drivers        map[string]ProtocolDriver
-	hooks          *HookManager
-	postprocessor  Postprocessor
-	progress_mu    sync.RWMutex
-	progress_cache map[int]*progress_tracker // keyed by task ID
-	cfg            HermesEngineConfig
+	mu                   sync.Mutex
+	event_mu             sync.RWMutex
+	sem                  chan struct{}
+	resource_sem         chan struct{}
+	connection_sem       chan struct{}
+	jobs                 map[int]*TaskJob
+	store                Store
+	logger               zerolog.Logger
+	on_event             EventHandler
+	event_history        []event_record
+	replay_events        bool
+	drivers              map[string]ProtocolDriver
+	hooks                *HookManager
+	postprocessor        Postprocessor
+	task_detail_provider func(int, []TaskFinishedResource) (*dm.DownloadTask, error)
+	progress_mu          sync.RWMutex
+	progress_cache       map[int]*progress_tracker // keyed by task ID
+	cfg                  HermesEngineConfig
 }
 
 // progressTracker holds in-memory progress for all resources of a task.
@@ -517,6 +520,11 @@ func New(opt HermesNewConfig) *HermesEngine {
 // SetHooks sets the JS hook manager. Pass nil to disable hooks.
 func (d *HermesEngine) SetHooks(h *HookManager) {
 	d.hooks = h
+}
+
+// SetTaskDetailProvider supplies the application's shared terminal task projection.
+func (d *HermesEngine) SetTaskDetailProvider(provider func(int, []TaskFinishedResource) (*dm.DownloadTask, error)) {
+	d.task_detail_provider = provider
 }
 
 // SetPostprocessor registers platform-specific post-processing.
