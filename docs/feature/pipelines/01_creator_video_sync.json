@@ -43,10 +43,62 @@
           "label": "备注",
           "type": "string",
           "required": false
+        },
+        {
+          "key": "url",
+          "label": "列表接口 URL",
+          "description": "完整 HTTP(S) 地址；留空使用 http://127.0.0.1:2022/api/channels/contact/feed/list。",
+          "type": "string",
+          "required": false
+        },
+        {
+          "key": "method",
+          "label": "列表接口 method",
+          "description": "HTTP 请求方法；留空使用 GET。GET/HEAD 使用查询参数，其他方法还会发送包含 username 和 next_marker 的 JSON 请求体。",
+          "type": "string",
+          "required": false,
+          "options": [
+            {
+              "label": "GET",
+              "value": "GET"
+            },
+            {
+              "label": "POST",
+              "value": "POST"
+            },
+            {
+              "label": "PUT",
+              "value": "PUT"
+            },
+            {
+              "label": "PATCH",
+              "value": "PATCH"
+            },
+            {
+              "label": "DELETE",
+              "value": "DELETE"
+            },
+            {
+              "label": "HEAD",
+              "value": "HEAD"
+            },
+            {
+              "label": "OPTIONS",
+              "value": "OPTIONS"
+            }
+          ]
+        },
+        {
+          "key": "token",
+          "label": "列表接口 token",
+          "description": "可选 Bearer token，只填写令牌本身；留空不发送认证头。",
+          "type": "string",
+          "required": false,
+          "secret": true
         }
       ],
       "config": {
-        "code": "(function () {\nif (typeof config.username !== 'string') throw new Error('必须配置字符串 username');\nvar username = config.username.trim().replace(/^wxchannels:/, '').trim();\nif (!username || username.indexOf('REPLACE_') >= 0) throw new Error('请在自动化配置中填写创作者 username');\nif (!/@finder$/.test(username)) username += '@finder';\nreturn {username: username};\n})()",
+        "code": "(function () {\nif (typeof config.username !== 'string') throw new Error('必须配置字符串 username');\nvar username = config.username.trim().replace(/^wxchannels:/, '').trim();\nif (!username || username.indexOf('REPLACE_') >= 0) throw new Error('请在自动化配置中填写创作者 username');\nif (!/@finder$/.test(username)) username += '@finder';\nvar url = (config.url || '').trim() || 'http://127.0.0.1:2022/api/channels/contact/feed/list';\nvar method = (config.method || 'GET').trim().toUpperCase() || 'GET';\nif (['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].indexOf(method) < 0) throw new Error('列表接口 method 不支持');\nvar token = (config.token || '').trim();\nreturn {username: username, url: url, method: method, authentication: {type: token ? 'bearer' : 'none', token: token}};\n})()",
         "output_key": "creator"
       },
       "next_node_ids": [
@@ -112,6 +164,21 @@
             {
               "key": "next_marker",
               "type": "string",
+              "required": true
+            },
+            {
+              "key": "url",
+              "type": "string",
+              "required": true
+            },
+            {
+              "key": "method",
+              "type": "string",
+              "required": true
+            },
+            {
+              "key": "authentication",
+              "type": "object",
               "required": true
             },
             {
@@ -194,12 +261,15 @@
                       "type": "ServiceNode",
                       "name": "创建下载任务，竞争时跳过已有任务",
                       "config": {
-                        "tool_name": "download_wxchannels_video",
+                        "tool_name": "create_download_task",
                         "arguments": {
-                          "oid": "{{input.item.oid}}",
-                          "nid": "{{input.item.nid}}",
+                          "platform": "wxchannels",
+                          "content": "{{input.item.content}}",
                           "download_dir": "{{input.download_dir}}",
-                          "existing_action": "skip"
+                          "config": {
+                            "existing_action": "skip"
+                          },
+                          "auto_start": true
                         },
                         "output_key": "download_result",
                         "timeout_seconds": 120
@@ -303,6 +373,21 @@
                       "key": "next_marker",
                       "type": "string",
                       "required": true
+                    },
+                    {
+                      "key": "url",
+                      "type": "string",
+                      "required": true
+                    },
+                    {
+                      "key": "method",
+                      "type": "string",
+                      "required": true
+                    },
+                    {
+                      "key": "authentication",
+                      "type": "object",
+                      "required": true
                     }
                   ],
                   "nodes": {
@@ -321,16 +406,25 @@
                     },
                     "fetch_list": {
                       "id": "fetch_list",
-                      "type": "ServiceNode",
+                      "type": "APICallNode",
                       "name": "获取创作者视频列表",
                       "config": {
-                        "tool_name": "get_wxchannels_account_videos",
-                        "arguments": {
+                        "url": "{{input.url}}",
+                        "method": "{{input.method}}",
+                        "query": {
                           "username": "{{input.username}}",
                           "next_marker": "{{input.next_marker}}"
                         },
+                        "authentication": {
+                          "type": "{{input.authentication.type}}",
+                          "token": "{{input.authentication.token}}"
+                        },
                         "output_key": "list_response",
-                        "timeout_seconds": 120
+                        "timeout_seconds": 120,
+                        "body": {
+                          "username": "{{input.username}}",
+                          "next_marker": "{{input.next_marker}}"
+                        }
                       },
                       "next_node_ids": [
                         "end"
@@ -355,7 +449,10 @@
                 },
                 "arguments": {
                   "username": "{{input.username}}",
-                  "next_marker": "{{input.next_marker}}"
+                  "next_marker": "{{input.next_marker}}",
+                  "url": "{{input.url}}",
+                  "authentication": "{{input.authentication}}",
+                  "method": "{{input.method}}"
                 },
                 "output_key": "list_result"
               },
@@ -414,10 +511,13 @@
         },
         "arguments": {
           "username": "{{output.validate.creator.username}}",
+          "url": "{{output.validate.creator.url}}",
+          "authentication": "{{output.validate.creator.authentication}}",
           "next_marker": "{{global.scan_state.cursor}}",
           "pending": "{{global.scan_state.pending}}",
           "download_dir": "{{global.download_dir}}",
-          "fetch_enabled": "{{global.scan_state.fetch_enabled}}"
+          "fetch_enabled": "{{global.scan_state.fetch_enabled}}",
+          "method": "{{output.validate.creator.method}}"
         },
         "output_key": "page_execution"
       },
@@ -495,7 +595,7 @@
       "type": "JSCodeNode",
       "name": "解析当前页响应并筛选视频",
       "config": {
-        "code": "(function () {\nif (!(global.max_pages > 0) || Math.floor(global.max_pages) !== global.max_pages || !(global.max_videos > 0) || Math.floor(global.max_videos) !== global.max_videos) throw new Error('max_pages 和 max_videos 必须为正整数');\nvar response = global.page_response;\nif (!response || (response.errCode !== undefined && Number(response.errCode) !== 0) || (response.code !== undefined && Number(response.code) !== 0)) throw new Error('获取视频列表失败');\nvar data = response.data;\nif (!data || !Array.isArray(data.object)) throw new Error('视频列表响应缺少 data.object');\nif (data.BaseResponse && Number(data.BaseResponse.ret || 0) !== 0) throw new Error('视频列表 BaseResponse 返回错误');\nif (data.continueFlag === undefined || data.continueFlag === null || !isFinite(Number(data.continueFlag))) throw new Error('视频列表缺少有效 continueFlag');\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nstate.page += 1;\nif (state.page > global.max_pages) throw new Error('超过 max_pages，本次同步未完成');\nstate.items = []; state.pending = []; state.all_existing = false;\nvar page_ids = {};\nfunction id_string(value) {\n  if (typeof value === 'number' && (!isFinite(value) || Math.floor(value) !== value || Math.abs(value) > 9007199254740991)) throw new Error('平台返回不安全的数字 ID，需要字符串 ID');\n  return value === undefined || value === null ? '' : String(value);\n}\nfor (var i = 0; i < data.object.length; i++) {\n  var item = data.object[i], desc = item.objectDesc || {}, media = desc.media || [];\n  if (Number(desc.mediaType) !== 4 && !media.some(function (m) { return Number(m.mediaType) === 4; })) continue;\n  var oid = id_string(item.id), nid = id_string(item.objectNonceId);\n  if (!oid || !nid) throw new Error('视频缺少 id 或 objectNonceId');\n  if (page_ids[oid]) continue;\n  page_ids[oid] = true; state.seen_ids[oid] = true;\n  state.items.push({oid: oid, nid: nid, title: String(desc.description || '')});\n}\nif (Object.keys(state.seen_ids).length > global.max_videos) throw new Error('超过 max_videos，本次扫描未完成');\nstate.has_more = Number(data.continueFlag) !== 0;\nstate.next_cursor = data.lastBuffer || '';\nreturn state;\n})()",
+        "code": "(function () {\nif (!(global.max_pages > 0) || Math.floor(global.max_pages) !== global.max_pages || !(global.max_videos > 0) || Math.floor(global.max_videos) !== global.max_videos) throw new Error('max_pages 和 max_videos 必须为正整数');\nvar response = global.page_response;\nif (!response) throw new Error('列表 HTTP 接口返回错误');\nif (response.code !== undefined) {\n  if (Number(response.code) !== 0) throw new Error('列表 HTTP 接口返回错误');\n  response = response.data;\n}\nif (!response || (response.errCode !== undefined && Number(response.errCode) !== 0) || (response.code !== undefined && Number(response.code) !== 0)) throw new Error('获取视频列表失败');\nvar data = response.data || response;\nif (!data || !Array.isArray(data.object)) throw new Error('视频列表响应缺少 data.object');\nif (data.BaseResponse && Number(data.BaseResponse.Ret || data.BaseResponse.ret || 0) !== 0) throw new Error('视频列表 BaseResponse 返回错误');\nvar continue_flag = data.continueFlag !== undefined ? data.continueFlag : data.continue_flag;\nif (continue_flag === undefined || continue_flag === null || !isFinite(Number(continue_flag))) throw new Error('视频列表缺少有效 continueFlag');\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nstate.page += 1;\nif (state.page > global.max_pages) throw new Error('超过 max_pages，本次同步未完成');\nstate.items = []; state.pending = []; state.all_existing = false;\nvar page_ids = {};\nfunction id_string(value) {\n  if (typeof value === 'number' && (!isFinite(value) || Math.floor(value) !== value || Math.abs(value) > 9007199254740991)) throw new Error('平台返回不安全的数字 ID，需要字符串 ID');\n  return value === undefined || value === null ? '' : String(value);\n}\nfunction canonical_fields(value, keys) {\n  var result = Object.assign({}, value);\n  keys.forEach(function (key) {\n    var snake = key.replace(/[A-Z]/g, function (letter) { return '_' + letter.toLowerCase(); });\n    if (result[key] === undefined && result[snake] !== undefined) result[key] = result[snake];\n    delete result[snake];\n  });\n  return result;\n}\nfor (var i = 0; i < data.object.length; i++) {\n  var item = data.object[i], desc = item.objectDesc || item.object_desc || {}, media = desc.media || [];\n  if (Number(desc.mediaType !== undefined ? desc.mediaType : desc.media_type) !== 4 && !media.some(function (m) { return Number(m.mediaType !== undefined ? m.mediaType : m.media_type) === 4; })) continue;\n  var oid = id_string(item.id), nid = id_string(item.objectNonceId || item.object_nonce_id);\n  if (!oid || !nid) throw new Error('视频缺少 id 或 objectNonceId');\n  if (page_ids[oid]) continue;\n  page_ids[oid] = true; state.seen_ids[oid] = true;\n  var content = canonical_fields(item, ['objectNonceId', 'objectDesc', 'anchorContact']);\n  content.id = oid; content.objectNonceId = nid;\n  content.contact = canonical_fields(item.contact || data.contact || {}, ['headUrl', 'coverImgUrl', 'liveStatus']);\n  if (!content.contact.username) content.contact.username = output.validate.creator.username;\n  content.objectDesc = canonical_fields(desc, ['mediaType']);\n  content.objectDesc.media = media.map(function (entry) {\n    return canonical_fields(entry, ['mediaType', 'thumbUrl', 'coverUrl', 'decodeKey', 'urlToken', 'videoPlayLen', 'fileSize']);\n  });\n  if (content.createtime === undefined) content.createtime = item.createTime || item.create_time || 0;\n  state.items.push({oid: oid, nid: nid, title: String(desc.description || ''), content: content});\n}\nif (Object.keys(state.seen_ids).length > global.max_videos) throw new Error('超过 max_videos，本次扫描未完成');\nstate.has_more = Number(continue_flag) !== 0;\nstate.next_cursor = data.lastBuffer || data.last_buffer || '';\nreturn state;\n})()",
         "output_key": "page_state"
       },
       "next_node_ids": [

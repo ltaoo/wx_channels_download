@@ -37,11 +37,17 @@ func TestImportCreatorVideoSyncSchedule(t *testing.T) {
 		t.Fatal(err)
 	}
 	schema := definition.Nodes["validate"].ConfigSchema
-	if len(definition.ContextSchema) != 0 || len(schema) != 2 || schema[0].Key != "username" || schema[0].Label != "username" || schema[0].Type != "string" || !schema[0].Required {
+	if len(definition.ContextSchema) != 0 || len(schema) != 5 || schema[0].Key != "username" || schema[0].Label != "username" || schema[0].Type != "string" || !schema[0].Required {
 		t.Fatalf("import lost required creator configuration: %+v", schema)
 	}
 	if schema[1].Key != "remark" || schema[1].Label != "备注" || schema[1].Type != "string" || schema[1].Required {
 		t.Fatalf("import lost optional remark configuration: %+v", schema)
+	}
+	if schema[2].Key != "url" || schema[2].Type != "string" || schema[2].Required || schema[4].Key != "token" || schema[4].Type != "string" || schema[4].Required || !schema[4].Secret {
+		t.Fatalf("import lost optional HTTP configuration: %+v", schema)
+	}
+	if schema[3].Key != "method" || schema[3].Type != "string" || schema[3].Required || len(schema[3].Options) != 7 {
+		t.Fatalf("import lost HTTP method choices: %+v", schema[3])
 	}
 	// Check both daily fire times and rollover using the real scheduler parser.
 	location := time.FixedZone("UTC+8", 8*60*60)
