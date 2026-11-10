@@ -635,6 +635,42 @@ img.dm-lazy-img-image[data-lazy-img-state] {
   box-shadow: none;
 }
 
+.dm-automation-running-border {
+  position: absolute;
+  inset: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  overflow: visible;
+  pointer-events: none;
+  color: var(--dm-color-warning);
+}
+
+.dm-automation-running-border__track {
+  x: 1px;
+  y: 1px;
+  width: calc(100% - 2px);
+  height: calc(100% - 2px);
+  rx: var(--dm-radius-card);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2px;
+  stroke-linecap: round;
+  stroke-dasharray: 6 6;
+  filter: drop-shadow(0 0 2px currentColor);
+  animation: dm-automation-running-border 1.2s linear infinite;
+}
+
+@keyframes dm-automation-running-border {
+  to { stroke-dashoffset: -24px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dm-automation-running-border__track {
+    animation: none;
+    stroke-dasharray: none;
+  }
+}
+
 .dm-button {
   position: relative;
   min-height: var(--dm-control-height-md);
@@ -1454,6 +1490,10 @@ img.dm-lazy-img-image[data-lazy-img-state] {
   background: transparent;
   border: 0;
   outline: 0;
+}
+
+.dm-input[type="secret"] {
+  -webkit-text-security: disc;
 }
 
 .dm-input:disabled {

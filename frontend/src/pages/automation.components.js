@@ -215,6 +215,45 @@ export function AutomationPipelineLink(props) {
   );
 }
 
+export function AutomationImportPipelineDialog(props) {
+  const vm$ = props.store;
+  const is_edit = vm$.state.view_mode.value === "edit";
+  return Dialog({
+    store: vm$.ui.import_dialog$,
+    class: "automation-form-dialog",
+    attributes: { n: "automation-import-dialog" },
+  }, [
+    DialogHeader({ attributes: { n: "automation-import-header" } }, [
+      DialogTitle({ attributes: { n: "automation-import-title" } }, [is_edit ? "导入到当前流程" : "导入 Pipeline"]),
+      DialogDescription({ attributes: { n: "automation-import-description" } }, [is_edit
+        ? "JSON 将替换当前未保存的标题、节点和输入参数，保存后生效。保留流程 ID 和兼容的已填配置；包含 triggers 时替换触发器，否则保留现有规则。"
+        : "粘贴流程定义 JSON（含 name、start_node、context_schema、nodes），导入后自动创建 Pipeline。"]),
+    ]),
+    DialogBody({ attributes: { n: "automation-import-body" } }, [
+      View({ class: "flex flex-col gap-3", attributes: { n: "automation-import-fields" } }, [
+        Label({ class: "text-color-text-secondary text-xs font-semibold", attributes: { n: "automation-import-label", for: "automation-import-json" } }, ["流程定义 JSON"]),
+        Textarea({
+          store: vm$.ui.input_import_json$,
+          class: "min-h-220px font-mono text-xs",
+          attributes: {
+            n: "automation-import-json", id: "automation-import-json", rows: "16", spellcheck: "false",
+            placeholder: '{"name":"...","start_node":"start","context_schema":[],"nodes":{...}}',
+            "aria-label": "流程定义 JSON",
+          },
+        }),
+        Show({
+          when: computed(vm$.state.import_error, Boolean),
+          ok: () => View({ class: "text-color-danger text-sm", attributes: { n: "automation-import-error", role: "alert" } }, [vm$.state.import_error]),
+        }),
+      ]),
+    ]),
+    DialogFooter({ attributes: { n: "automation-import-footer" } }, [
+      Button({ store: vm$.ui.btn_import_cancel$, attributes: { n: "automation-import-cancel", type: "button" } }, ["取消"]),
+      Button({ store: vm$.ui.btn_import_submit$, attributes: { n: "automation-import-submit", type: "button" } }, [is_edit ? "导入到草稿" : "导入"]),
+    ]),
+  ]);
+}
+
 export function AutomationWorkspaceToolbar(props) {
   const vm$ = props.store;
   const is_edit = props.mode === "edit";
@@ -252,6 +291,7 @@ export function AutomationWorkspaceToolbar(props) {
               store: vm$.ui.input_edit_name$,
               attributes: { n: "automation-pipeline-name", "aria-label": "Pipeline 标题" },
             }),
+            Button({ store: vm$.ui.btn_import_pipeline$, attributes: { n: "automation-edit-import-json", type: "button" } }, ["导入 JSON"]),
             Button(
               {
                 store: vm$.ui.btn_save_flow$,
@@ -1239,6 +1279,16 @@ export function AutomationFlowGraph(props) {
                       },
                     },
                     [
+                      inspectable && !editable ? Show({
+                        when: computed(execution_status, (status) => ["RUNNING", "RETRYING"].includes(String(status?.status || "").toUpperCase())),
+                        ok: () => SVG.SVG({
+                          class: "dm-automation-running-border",
+                          attributes: { n: `automation-flow-node-running-border-${node.id}`, "aria-hidden": "true" },
+                        }, [SVG.Rect({
+                          class: "dm-automation-running-border__track",
+                          attributes: { n: `automation-flow-node-running-track-${node.id}` },
+                        })]),
+                      }) : null,
                       View({
                         class: "flex items-center gap-1-5",
                         attributes: { n: `automation-flow-node-header-${node.id}` },
@@ -1727,6 +1777,8 @@ export function AutomationNodeExecutionWindows(props) {
 export function AutomationNodeExecutionWindow(props) {
   const vm$ = props.store;
   const node_id = props.node_id;
+  const is_detail = vm$.state.view_mode.value === "detail";
+  const detail_ = vm$.methods.nodeExecutionDetail(node_id);
   const node_id_ = ref(node_id);
   const node_ = computed(
     combine({ nodes: vm$.state.edit_nodes, node_id: node_id_ }, (v) => v),
@@ -1740,7 +1792,7 @@ export function AutomationNodeExecutionWindow(props) {
     ),
     ({ states, node_id: id }) => (states && states[id]) || null,
   );
-  const logs_ = computed(
+  const logs_ = is_detail ? computed(detail_, (detail) => detail.logs.slice().reverse()) : computed(
     combine({ logs: vm$.state.execution_logs, node_id: node_id_ }, (v) => v),
     ({ logs, node_id: id }) =>
       (logs || []).filter((entry) => entry.node_id === id).reverse(),
@@ -1763,8 +1815,7 @@ export function AutomationNodeExecutionWindow(props) {
     ),
     ({ active, node_id: id }) => active === id,
   );
-  const is_detail = vm$.state.view_mode.value === "detail";
-  const record_ = combine({ run: vm$.state.selected_run, states: vm$.state.node_execution_states, logs: vm$.state.execution_logs },
+  const record_ = combine(is_detail ? { detail: detail_, status: status_ } : { logs: logs_, status: status_ },
     () => vm$.methods.formatExecutionValue(vm$.methods.nodeExecutionRecord(node_id)));
 
   const position = vm$.methods.executionWindowPosition(node_id);
@@ -1839,10 +1890,16 @@ export function AutomationNodeExecutionWindow(props) {
         },
       })]),
       Show({
-        when: computed(logs_, (logs) => logs.length === 0),
+        when: computed(detail_, (detail) => is_detail && Boolean(detail.error)),
         ok() {
-          return View({ class: "text-color-text-secondary text-sm" }, [
-            "本次执行暂无该节点的日志。",
+          return View({ class: "text-color-danger text-sm", attributes: { n: `automation-node-log-load-error-${node_id}`, role: "alert" } }, [computed(detail_, (detail) => detail.error)]);
+        },
+      }),
+      Show({
+        when: is_detail ? computed(detail_, (detail) => detail.loading || !detail.logs.length) : computed(logs_, (logs) => logs.length === 0),
+        ok() {
+          return View({ class: "text-color-text-secondary text-sm", attributes: { n: `automation-node-log-load-status-${node_id}`, role: "status" } }, [
+            computed(detail_, (detail) => detail.loading ? "正在加载节点日志…" : "本次执行暂无该节点的日志。"),
           ]);
         },
       }),
@@ -1892,7 +1949,10 @@ export function AutomationRunHistory(props) {
   return View({ class: "dm-panel h-full flex flex-col min-h-0 min-w-0 overflow-hidden shadow-md", attributes: { n: "automation-run-history" } }, [
     View({ class: "flex items-center justify-between gap-2 p-3 border-bottom-[var(--dm-border-width)_solid_var(--dm-color-border)]" }, [
       View({ class: "font-semibold text-color-text-primary" }, ["执行记录"]),
-      Button({ store: vm$.ui.btn_refresh_runs$, attributes: { type: "button", "aria-label": "刷新运行记录" } }, ["刷新"]),
+      View({ class: "flex items-center gap-2", attributes: { n: "automation-run-history-actions" } }, [
+        Button({ store: vm$.ui.btn_clear_runs$, attributes: { n: "automation-clear-runs", type: "button", title: "清除当前流程已结束的执行记录，保留排队、运行中及等待确认的记录", "aria-label": "清除已结束的执行记录" } }, ["清除"]),
+        Button({ store: vm$.ui.btn_refresh_runs$, attributes: { n: "automation-refresh-runs", type: "button", "aria-label": "刷新运行记录" } }, ["刷新"]),
+      ]),
     ]),
     View({ class: "flex-1 min-h-0 overflow-auto p-2 grid gap-2 content-start", attributes: { n: "automation-run-list", "aria-label": "选择执行记录" } }, [
       For({ each: vm$.state.runs, key: "id", render(value) {

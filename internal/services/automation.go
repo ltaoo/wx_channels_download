@@ -86,8 +86,6 @@ func NewAutomationService(
 	}
 	if flow_engine != nil {
 		flow_engine.SetNodeExecutionLogHandler(service.log_node_execution)
-	}
-	if flow_engine != nil && event_bus != nil {
 		flow_engine.SetNodeExecutionStatusHandler(service.publish_node_execution_status)
 	}
 	if flow_engine != nil {
@@ -222,6 +220,7 @@ type ListSchedulesInput struct {
 
 // ListRunsInput filters and paginates run history listings.
 type ListRunsInput struct {
+	Summary    bool
 	Page       int
 	PageSize   int
 	ScheduleID string
@@ -569,7 +568,12 @@ func (s *AutomationService) ListRuns(input ListRunsInput) ([]model.FlowRunRecord
 	}
 	runs := make([]model.FlowRunRecord, 0, page_size)
 	if total > 0 {
-		if err := query.Omit("checkpoint", "definition", "initial_data", "node_logs", "node_outputs", "node_attempts").Order("created_at DESC").
+		if input.Summary {
+			query = query.Select("id", "created_at", "status")
+		} else {
+			query = query.Omit("checkpoint", "definition", "initial_data", "node_logs", "node_outputs", "node_attempts")
+		}
+		if err := query.Order("created_at DESC").
 			Offset((page - 1) * page_size).
 			Limit(page_size).
 			Find(&runs).Error; err != nil {
@@ -577,6 +581,26 @@ func (s *AutomationService) ListRuns(input ListRunsInput) ([]model.FlowRunRecord
 		}
 	}
 	return runs, total, nil
+}
+
+// ClearRuns soft-deletes finished runs of one flow without interrupting active runs.
+func (s *AutomationService) ClearRuns(flow_id string) (int64, error) {
+	if s == nil || s.db == nil {
+		return 0, fmt.Errorf("自动化服务未初始化")
+	}
+	flow_id = strings.TrimSpace(flow_id)
+	if flow_id == "" {
+		return 0, fmt.Errorf("flow_id 不能为空")
+	}
+	now := time.Now().UnixMilli()
+	result := s.db.Model(&model.FlowRunRecord{}).
+		Where("flow_id = ? AND deleted_at IS NULL AND status IN ?", flow_id, []string{
+			model.FlowRunStatusCompleted, model.FlowRunStatusFailed, model.FlowRunStatusCancelled,
+		}).Updates(map[string]interface{}{"deleted_at": now, "updated_at": now})
+	if result.Error != nil {
+		return 0, fmt.Errorf("清除执行记录失败: %w", result.Error)
+	}
+	return result.RowsAffected, nil
 }
 
 // GetRun loads a single run record by id.
@@ -593,6 +617,121 @@ func (s *AutomationService) GetRun(id string) (*model.FlowRunRecord, error) {
 		return nil, fmt.Errorf("运行记录不存在: %s", id)
 	}
 	return &run, nil
+}
+
+// GetRunNodeStates returns only node IDs and statuses for the execution canvas.
+func (s *AutomationService) GetRunNodeStates(id string) (map[string]string, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("自动化服务未初始化")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, fmt.Errorf("id 不能为空")
+	}
+	var run model.FlowRunRecord
+	if err := s.db.Select("id", "flow_id", "definition", "node_attempts", "node_logs", "status", "current_node").Where("id = ? AND deleted_at IS NULL", id).First(&run).Error; err != nil {
+		return nil, fmt.Errorf("运行记录不存在: %s", id)
+	}
+	var logs []struct {
+		NodeStates map[string]string `json:"node_states"`
+		FlowID     string            `json:"flow_id"`
+		NodeID     string            `json:"node_id"`
+		Outcome    string            `json:"outcome"`
+		Success    bool              `json:"success"`
+		Error      string            `json:"error,omitempty"`
+	}
+	var definition struct {
+		ID    string              `json:"id"`
+		Nodes map[string]struct{} `json:"nodes"`
+	}
+	_ = json.Unmarshal([]byte(run.Definition), &definition)
+	states := make(map[string]string, len(definition.Nodes))
+	for node_id := range definition.Nodes {
+		states[node_id] = "PENDING"
+	}
+	var attempts map[string]int
+	_ = json.Unmarshal([]byte(run.NodeAttempts), &attempts)
+	for node_id, attempt := range attempts {
+		if attempt > 0 {
+			states[node_id] = "UNKNOWN"
+		}
+	}
+	// Legacy malformed traces remain readable as a run with missing node logs.
+	if json.Unmarshal([]byte(run.NodeLogs), &logs) == nil {
+		for _, entry := range logs {
+			if entry.FlowID != "" && entry.FlowID != run.FlowID && entry.FlowID != definition.ID {
+				continue
+			}
+			if entry.NodeStates != nil {
+				states = entry.NodeStates
+				continue
+			}
+			if entry.NodeID == "" {
+				continue
+			}
+			status := strings.ToUpper(entry.Outcome)
+			switch status {
+			case "WAITING":
+				status = "WAITING_FOR_USER"
+			case "COMPLETED", "FAILED", "RETRYING":
+			default:
+				status = "COMPLETED"
+				if entry.Error != "" || !entry.Success {
+					status = "FAILED"
+				}
+			}
+			states[entry.NodeID] = status
+		}
+	}
+	if run.CurrentNode != "" {
+		active := map[string]string{"QUEUED": "PENDING", "RUNNING": "RUNNING", "WAITING": "WAITING_FOR_USER", "FAILED": "FAILED", "CANCELLED": "CANCELLED"}[run.Status]
+		if active != "" {
+			states[run.CurrentNode] = active
+		}
+	}
+	return states, nil
+}
+
+// GetRunNodeLogs loads detailed payloads only for the requested parent-flow node.
+func (s *AutomationService) GetRunNodeLogs(id, node_id string) ([]json.RawMessage, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("自动化服务未初始化")
+	}
+	id, node_id = strings.TrimSpace(id), strings.TrimSpace(node_id)
+	if id == "" || node_id == "" {
+		return nil, fmt.Errorf("id 和 node_id 不能为空")
+	}
+	var run model.FlowRunRecord
+	if err := s.db.Select("id", "flow_id", "definition", "node_logs").Where("id = ? AND deleted_at IS NULL", id).First(&run).Error; err != nil {
+		return nil, fmt.Errorf("运行记录不存在: %s", id)
+	}
+	var definition struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal([]byte(run.Definition), &definition)
+	logs := make([]json.RawMessage, 0)
+	var entries []json.RawMessage
+	if json.Unmarshal([]byte(run.NodeLogs), &entries) != nil {
+		return logs, nil
+	}
+	for _, raw := range entries {
+		var entry struct {
+			NodeStates map[string]string `json:"node_states"`
+			FlowID     string            `json:"flow_id"`
+			NodeID     string            `json:"node_id"`
+		}
+		if json.Unmarshal(raw, &entry) != nil || (entry.FlowID != "" && entry.FlowID != run.FlowID && entry.FlowID != definition.ID) {
+			continue
+		}
+		if entry.NodeStates != nil {
+			logs = logs[:0]
+			continue
+		}
+		if entry.NodeID == node_id {
+			logs = append(logs, raw)
+		}
+	}
+	return logs, nil
 }
 
 // CancelRun cancels node I/O and marks a terminal state which completion cannot overwrite.
@@ -807,6 +946,12 @@ func (s *AutomationService) log_node_execution(entry flowengine.NodeExecutionLog
 }
 
 func (s *AutomationService) publish_node_execution_status(status flowengine.NodeExecutionStatus) {
+	if status.NodeStates != nil {
+		s.persist_node_log(flowengine.NodeExecutionLog{
+			Timestamp: status.Timestamp, FlowID: status.FlowID, RunID: status.RunID,
+			Outcome: "reset", NodeStates: status.NodeStates,
+		})
+	}
 	s.publish(events.AutomationNodeStatusChanged{Node: status})
 }
 

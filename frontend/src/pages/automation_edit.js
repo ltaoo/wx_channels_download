@@ -5,6 +5,7 @@ import {
   AutomationFlowGraph,
   AutomationNodeExecutionWindows,
   AutomationRunPipelineDialog,
+  AutomationImportPipelineDialog,
   AutomationWorkspaceToolbar,
   AutomationStartTriggers,
 } from "./automation.components.js";
@@ -539,6 +540,7 @@ function FlowEditPageView(props) {
         },
       }),
       AutomationAddNodeDialog({ store: vm$ }),
+      AutomationImportPipelineDialog({ store: vm$ }),
       AutomationRunPipelineDialog({ store: vm$ }),
       AutomationNodeExecutionWindows({ store: vm$ }),
     ],

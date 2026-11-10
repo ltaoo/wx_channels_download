@@ -82,6 +82,8 @@ description: 自动化流程的节点配置、触发、取消、恢复与重试�
 
 「所需配置声明 JSON」中只填写上例的 `config_schema` 数组，节点参数仍填在「节点配置 JSON」。回到 `/automation`，点击对应行的「配置」，填写按节点分组的表单并保存。
 
+「配置」旁的下拉菜单支持「导入 JSON」和「导出 JSON」。文件内容为按节点 ID 分组的配置对象，例如 `{"request":{"apikey":"your-key"}}`。导出读取当前已保存的配置，包含密钥原文；导入只填入配置表单，未提供的字段保留原值，点击「保存配置」后生效。未知节点、未知字段或类型不符时拒绝导入，不应用部分值。
+
 支持 `string`、`number`、`integer`、`boolean`、`object`、`array`。字符串使用输入框，数字使用数字输入框，布尔值使用复选框，对象和数组使用 JSON 文本框。`secret: true` 仅用于字符串，将输入框显示为密码框；数据库和执行快照仍按普通配置值存储，未加密。
 
 非密钥字符串可声明 `multiline: true` 使用多行输入框，或者声明 `options: [{"label":"企业微信","value":"wecom"},{"label":"Webhook","value":"webhook"}]` 使用下拉选择。保存配置和开始运行都会校验选择值属于声明的选项。`multiline`、`options`、`secret` 互不组合。
@@ -135,7 +137,7 @@ API 通过 `update_flow` 的 `node_configs` 对象保存配置；省略该属性
 
 导入使用项目自己的 `FlowDefinition`：顶层 `start_node`、`context_schema`、`nodes` 对象。保存 API 使用 `start_node_id`、节点数组和 `next_ids`。这些格式不是 n8n JSON 或 Dify DSL，不能直接互导。
 
-导入生成新流程 ID；JSON 顶层声明了 `triggers` 时，会一并创建触发规则。创作者视频同步、直播录制和新增视频通知示例见[流程示例](./pipelines/)，可直接在示例页面复制完整 JSON。
+列表页导入生成新流程 ID；JSON 顶层声明了 `triggers` 时，会一并创建触发规则。编辑页 `/automation/edit` 的「导入 JSON」会替换当前草稿的标题、节点和输入参数，点击「保存」后更新当前流程，保留流程 ID 及兼容的已填节点配置。JSON 包含 `triggers` 时替换当前触发器，省略时保留现有规则；空数组表示清空。创作者视频同步、直播录制和新增视频通知示例见[流程示例](./pipelines/)，可直接在示例页面复制完整 JSON。
 
 `get_pipeline_editor` / `update_pipeline_editor` 读取或修改已连接页面的实时草稿，包含执行策略；修改必须携带 `revision`，旧版本会被拒绝。它只更新草稿，不自动保存或运行。更新请求体上限 1 MiB。待应用的节点配置或执行策略文本必须先处理。
 

@@ -152,10 +152,7 @@ func (pool *automation_ws_pool) remove(client *automation_ws_client) {
 }
 
 func (pool *automation_ws_pool) broadcast(message automation_ws_message) {
-	data, err := json.Marshal(message)
-	if err != nil {
-		return
-	}
+	var data, summary_data []byte
 	pool.mu.RLock()
 	clients := make([]*automation_ws_client, 0, len(pool.clients))
 	for client := range pool.clients {
@@ -164,7 +161,25 @@ func (pool *automation_ws_pool) broadcast(message automation_ws_message) {
 	pool.mu.RUnlock()
 	for _, client := range clients {
 		if client.matches(message.FlowID, message.RunID) {
-			client.enqueue(data)
+			if client.summary && message.ExecutionLog != nil {
+				if summary_data == nil {
+					summary := message
+					entry := *message.ExecutionLog
+					entry.Input, entry.Behavior, entry.Output = nil, nil, nil
+					summary.ExecutionLog = &entry
+					summary_data, _ = json.Marshal(summary)
+				}
+				client.enqueue(summary_data)
+			} else {
+				if data == nil {
+					var err error
+					data, err = json.Marshal(message)
+					if err != nil {
+						return
+					}
+				}
+				client.enqueue(data)
+			}
 		}
 	}
 }
@@ -174,6 +189,7 @@ type automation_ws_client struct {
 	send        chan []byte
 	flow_id     string
 	run_id      string
+	summary     bool
 	send_mu     sync.RWMutex
 	send_closed bool
 }
@@ -220,6 +236,7 @@ func (c *APIClient) handle_automation_ws(ctx *gin.Context) {
 		send:    make(chan []byte, 256),
 		flow_id: strings.TrimSpace(ctx.Query("flow_id")),
 		run_id:  strings.TrimSpace(ctx.Query("run_id")),
+		summary: ctx.Query("summary") == "1",
 	}
 	automation_ws_bridge.add(client)
 	go client.write_pump()

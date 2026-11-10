@@ -757,6 +757,7 @@ export function Input(props) {
     prefix,
     suffix,
     attributes,
+    onMounted,
     onUnmounted,
     onChange,
     onKeyDown,
@@ -822,6 +823,13 @@ export function Input(props) {
         store,
         class: class_names(["dm-input", extra_class]),
         attributes: { n: "input", ...(attributes || {}) },
+        onMounted(event) {
+          // The runtime renderer overwrites autocomplete with its default state.
+          if (typeof attributes?.autocomplete === "string") {
+            event.target.get$elm().setAttribute("autocomplete", attributes.autocomplete);
+          }
+          if (typeof onMounted === "function") return onMounted(event);
+        },
         onChange(event) {
           store.handleChange(event);
           if (typeof onChange === "function") onChange(event);

@@ -3,6 +3,7 @@ import {
   AutomationPipelineLink,
   AutomationPipelineTriggerBadges,
   AutomationRunPipelineDialog,
+  AutomationImportPipelineDialog,
 } from "./automation.components.js";
 
 function AutomationPageView(props) {
@@ -202,7 +203,14 @@ function AutomationPipelineList(props) {
                   return View({ class: "overflow-hidden text-color-text-primary text-sm text-ellipsis whitespace-nowrap", attributes: { title: text } }, [text]);
                 }),
               ]))) : null,
-            Button({ store: vm$.ui.btn_pipeline_config$.bind(pipeline), class: "flex-none", attributes: { n: `automation-pipeline-config-${pipeline.id}`, type: "button", "aria-label": `配置 ${pipeline.name || pipeline.id}` } }, ["配置"]),
+            View({ class: "flex items-center gap-1", attributes: { n: `automation-pipeline-config-actions-${pipeline.id}` } }, [
+              Button({ store: vm$.ui.btn_pipeline_config$.bind(pipeline), class: "flex-none", attributes: { n: `automation-pipeline-config-${pipeline.id}`, type: "button", "aria-label": `配置 ${pipeline.name || pipeline.id}` } }, ["配置"]),
+              DropdownMenu({ store: vm$.methods.pipelineConfigMenu(pipeline), attributes: { n: `automation-pipeline-config-menu-${pipeline.id}` } }, [
+                Button({ store: vm$.ui.btn_pipeline_config_menu$.bind(pipeline), attributes: { n: `automation-pipeline-config-menu-trigger-${pipeline.id}`, type: "button", "aria-label": `${pipeline.name || pipeline.id} 配置导入导出` } }, [
+                  Timeless.Icon({ name: "chevron-down", size: 14, attributes: { n: `automation-pipeline-config-menu-icon-${pipeline.id}` } }),
+                ]),
+              ]),
+            ]),
           ].filter(Boolean);
         },
       },
@@ -320,7 +328,7 @@ function AutomationConfigDialog(props) {
                 ? Select({ store: field.input$, attributes })
               : field.multiline || field.type === "array" || field.type === "object"
                 ? Textarea({ store: field.input$, onChange, class: "font-mono text-xs", attributes: { ...attributes, rows: "4", spellcheck: "false" } })
-                : Input({ store: field.input$, onChange, attributes: { ...attributes, type: field.secret ? "password" : field.type === "number" || field.type === "integer" ? "number" : "text", step: field.type === "number" ? "any" : undefined, autocomplete: field.secret ? "new-password" : "off" } });
+                : Input({ store: field.input$, onChange, attributes: { ...attributes, type: field.secret ? "secret" : field.type === "number" || field.type === "integer" ? "number" : "text", step: field.type === "number" ? "any" : undefined, autocomplete: "off", spellcheck: field.secret ? "false" : undefined } });
             return View({ class: "min-w-0 flex flex-col gap-1" }, [
               field.type !== "boolean" ? Label({ class: "text-color-text-secondary text-xs font-semibold", attributes: { for: id } }, [`${field.label || field.key}${field.required ? " *" : ""}`]) : null,
               input,
@@ -443,59 +451,6 @@ function AutomationCreatePipelineDialog(props) {
   );
 }
 
-function AutomationImportPipelineDialog(props) {
-  const vm$ = props.store;
-  return Dialog(
-    {
-      store: vm$.ui.import_dialog$,
-      class: "automation-form-dialog",
-      attributes: { n: "automation-import-dialog" },
-    },
-    [
-      DialogHeader({}, [
-        DialogTitle({}, ["导入 Pipeline"]),
-        DialogDescription({}, [
-          "粘贴流程定义 JSON（含 name、start_node、context_schema、nodes），导入后自动创建 Pipeline。",
-        ]),
-      ]),
-      DialogBody({}, [
-        View({ class: "flex flex-col gap-3" }, [
-          View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
-            Label({ class: "text-color-text-secondary text-xs font-semibold" }, ["流程定义 JSON"]),
-            Textarea({
-              store: vm$.ui.input_import_json$,
-              class: "min-h-220px font-mono text-xs",
-              attributes: {
-                n: "automation-import-json",
-                rows: "16",
-                spellcheck: "false",
-                placeholder:
-                  '{"name":"...","start_node":"start","context_schema":[],"nodes":{...}}',
-                "aria-label": "流程定义 JSON",
-              },
-            }),
-          ]),
-        ]),
-      ]),
-      DialogFooter({}, [
-        Button(
-          {
-            store: vm$.ui.btn_import_cancel$,
-            attributes: { n: "automation-import-cancel", type: "button" },
-          },
-          ["取消"],
-        ),
-        Button(
-          {
-            store: vm$.ui.btn_import_submit$,
-            attributes: { n: "automation-import-submit", type: "button" },
-          },
-          ["导入"],
-        ),
-      ]),
-    ],
-  );
-}
 
 function AutomationDeletePipelineDialog(props) {
   const vm$ = props.store;
