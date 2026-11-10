@@ -68,7 +68,7 @@ func NewAPIClient(
 	engine := gin.New()
 	engine.Use(
 		gin.LoggerWithConfig(gin.LoggerConfig{
-			SkipPaths: []string{"/report"},
+			SkipPaths: []string{"/report", "/api/status"},
 		}),
 		gin.Recovery(),
 	)

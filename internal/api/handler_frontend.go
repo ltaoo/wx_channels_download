@@ -594,6 +594,13 @@ func setFrontendHTMLCacheHeaders(header http.Header) {
 	header.Set("Expires", "0")
 }
 
+func (c *APIClient) isLoggingEnabled() bool {
+	if c.cfg == nil || c.cfg.Original == nil {
+		return false
+	}
+	return c.cfg.Original.LogPath() != "" || c.cfg.Original.GetBool("log.enabled")
+}
+
 // handleFrontendTip handles frontend log/tip messages posted from injected pages.
 func (c *APIClient) handleFrontendTip(ctx *gin.Context) {
 	body, err := io.ReadAll(ctx.Request.Body)
@@ -604,6 +611,10 @@ func (c *APIClient) handleFrontendTip(ctx *gin.Context) {
 	var data FrontendTip
 	if err := json.Unmarshal(body, &data); err != nil {
 		result.Err(ctx, 400, err.Error())
+		return
+	}
+	if !c.isLoggingEnabled() {
+		result.Ok(ctx, nil)
 		return
 	}
 	prefixText := "[FRONTEND]"
@@ -694,7 +705,8 @@ func (c *APIClient) handle_frontend_report(ctx *gin.Context) {
 		if report_message == "" {
 			report_message = "frontend report"
 		}
-		evt := c.logger.WithLevel(zerologLevel(data.Level)).
+		lvl := zerologLevel(data.Level)
+		evt := c.logger.WithLevel(lvl).
 			Str("component", "frontend")
 		if data.Time != nil {
 			evt.Ctx(logtime.WithTimestamp(ctx.Request.Context(), data.Time.In(time.Local)))
@@ -704,9 +716,14 @@ func (c *APIClient) handle_frontend_report(ctx *gin.Context) {
 		}
 		evt.Msg(report_message)
 
-		// Terminal display
+		// Terminal display: errors are always displayed
 		if data.Level == "error" {
 			color.Red(fmt.Sprintf("[FRONTEND ERROR]%s\n", report_message))
+			continue
+		}
+
+		// Non-error logs are only displayed if logging is explicitly enabled
+		if !c.isLoggingEnabled() || data.Level == "debug" || data.Level == "trace" {
 			continue
 		}
 		prefix_text := "[FRONTEND]"

@@ -210,6 +210,7 @@ docker run -d \
 - `CONFIG_DIR=/host/path`
 - `CONTAINER_HOSTNAME=wx-linux`
 - `WEB_PORT=3100`
+- `ENABLE_LOG=false`（是否开启日志记录，默认关闭；开启时单个日志上限 50MB）
 
 ## 检查运行状态
 
