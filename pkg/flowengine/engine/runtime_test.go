@@ -21,6 +21,79 @@ func runtime_node(id, node_type string, config map[string]interface{}, next ...s
 	return flowengine.NodeDefinition{ID: id, Type: node_type, Config: config, NextNodeIDs: next, NextNodes: targets}
 }
 
+func TestSubflowReentryResetsAllNodeStates(t *testing.T) {
+	for _, shared := range []bool{false, true} {
+		t.Run(fmt.Sprintf("shared=%v", shared), func(t *testing.T) {
+			flow_engine := flowengine.NewWorkflowEngine()
+			states := map[string]flowengine.NodeState{}
+			resets := 0
+			flow_engine.SetNodeExecutionStatusHandler(func(status flowengine.NodeExecutionStatus) {
+				if status.FlowID != "child" || status.RunID != "run-reset" {
+					t.Fatalf("wrong reset scope: %+v", status)
+				}
+				if status.NodeStates != nil {
+					resets++
+					if len(status.NodeStates) != 3 {
+						t.Fatalf("incomplete reset: %v", status.NodeStates)
+					}
+					for node_id, state := range status.NodeStates {
+						if state != flowengine.StatePending {
+							t.Fatalf("node %s retained previous state %s", node_id, state)
+						}
+					}
+					states = status.NodeStates
+					return
+				}
+				if status.Status == flowengine.StateRunning && status.Attempt != 1 {
+					t.Fatalf("previous invocation attempt retained: %+v", status)
+				}
+				states[status.NodeID] = status.Status
+			})
+			child := flowengine.FlowDefinition{ID: "child", StartNodeID: "gate", ContextSchema: []flowengine.FieldSchema{{Key: "round", Type: "number", Required: true}}, Nodes: map[string]flowengine.NodeDefinition{
+				"gate": runtime_node("gate", "GatewayNode", map[string]interface{}{"gateway_type": "Exclusive", "condition_language": "js", "rules": []map[string]interface{}{
+					{"condition": "input.round == 1", "target_id": "first"}, {"condition": "true", "target_id": "second"},
+				}}),
+				"first": runtime_node("first", "EndNode", nil), "second": runtime_node("second", "EndNode", nil),
+			}}
+			parent := &flowengine.ProcessContext{Context: context.Background(), InstanceID: "run-reset", EngineRef: flow_engine,
+				NodeStates: map[string]flowengine.NodeState{"outside": flowengine.StateCompleted}}
+			for round := 1; round <= 2; round++ {
+				input := map[string]interface{}{"round": round}
+				var err error
+				if shared {
+					parent.Data = input
+					err = flow_engine.ExecuteSharedSubflow(parent, child)
+				} else {
+					_, err = flow_engine.ExecuteSubflow(parent, child, input)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if resets != 2 || states["first"] != flowengine.StatePending || states["second"] != flowengine.StateCompleted || parent.NodeStates["outside"] != flowengine.StateCompleted {
+				t.Fatalf("reentry retained skipped nodes or cleared parent: resets=%d, states=%v, parent=%v", resets, states, parent.NodeStates)
+			}
+		})
+	}
+}
+
+func TestSubflowResetPreservesParallelJoinState(t *testing.T) {
+	flow_engine := flowengine.NewWorkflowEngine()
+	child := flowengine.FlowDefinition{ID: "parallel-child", StartNodeID: "fork", Nodes: map[string]flowengine.NodeDefinition{
+		"fork": runtime_node("fork", "GatewayNode", map[string]interface{}{"gateway_type": "Parallel", "join_node_id": "join"}, "a", "b"),
+		"a":    runtime_node("a", "StartNode", nil, "join"),
+		"b":    runtime_node("b", "StartNode", nil, "join"),
+		"join": runtime_node("join", "GatewayNode", map[string]interface{}{"gateway_type": "Parallel", "is_joining": true, "wait_for_incoming": []string{"a", "b"}}, "end"),
+		"end":  runtime_node("end", "EndNode", nil),
+	}}
+	parent := &flowengine.ProcessContext{Context: context.Background(), InstanceID: "run-parallel-reset", EngineRef: flow_engine}
+	for round := 0; round < 2; round++ {
+		if _, err := flow_engine.ExecuteSubflow(parent, child, nil); err != nil {
+			t.Fatalf("subflow round %d did not reach its join: %v", round, err)
+		}
+	}
+}
+
 func TestWorkflowCancelsJavaScriptAndSkipsSuccessors(t *testing.T) {
 	engine := flowengine.NewWorkflowEngine()
 	var called atomic.Int32

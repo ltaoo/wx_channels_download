@@ -252,10 +252,11 @@ func (e *FlowEngine) ExecuteSubflow(parent *ProcessContext, definition FlowDefin
 	parent.Mu.Unlock()
 	child := &ProcessContext{Context: parent.ExecutionContext(), Definition: &definition, ValidateSchemas: parent.ValidateSchemas,
 		InstanceID: parent.InstanceID, FlowID: definition.ID, EngineRef: e,
-		Data: snapshot_map(input), NodeStates: map[string]NodeState{}, NodeAttempts: map[string]int{},
+		Data: snapshot_map(input), NodeAttempts: map[string]int{},
 		NodeOutputs: map[string]map[string]interface{}{}, Globals: map[string]interface{}{},
 		InputKeys: ContextSchemaKeys(definition.ContextSchema), MaxSteps: parent.MaxSteps,
 		Depth: parent.Depth + 1, step_count: parent.step_count, checkpoint_disabled: true}
+	e.reset_subflow_states(child)
 	if err := e.driveFlow(child, []string{definition.StartNodeID}); err != nil {
 		return nil, err
 	}
@@ -264,6 +265,19 @@ func (e *FlowEngine) ExecuteSubflow(parent *ProcessContext, definition FlowDefin
 	}
 	result := map[string]interface{}{"data": child.SnapshotData(), "output": child.NodeOutputs, "global": child.Globals}
 	return result, nil
+}
+
+func (e *FlowEngine) reset_subflow_states(ctx *ProcessContext) {
+	// Keep execution states sparse so sibling branches do not merge unvisited nodes.
+	ctx.NodeStates = map[string]NodeState{}
+	states := make(map[string]NodeState, len(ctx.Definition.Nodes))
+	for node_id := range ctx.Definition.Nodes {
+		states[node_id] = StatePending
+	}
+	e.emit_node_execution_status(NodeExecutionStatus{
+		Timestamp: time.Now(), FlowID: ctx.FlowID, RunID: ctx.InstanceID,
+		Status: StatePending, NodeStates: states,
+	})
 }
 
 // Parallel branches work on isolated snapshots. A configured join is executed
@@ -424,9 +438,10 @@ func (e *FlowEngine) ExecuteSharedSubflow(parent *ProcessContext, definition Flo
 	}
 	child := &ProcessContext{Context: parent.ExecutionContext(), Definition: &definition, ValidateSchemas: parent.ValidateSchemas,
 		InstanceID: parent.InstanceID, FlowID: definition.ID, EngineRef: e, Data: parent.Data,
-		NodeStates: map[string]NodeState{}, NodeAttempts: map[string]int{}, NodeOutputs: parent.NodeOutputs,
+		NodeAttempts: map[string]int{}, NodeOutputs: parent.NodeOutputs,
 		Globals: parent.Globals, InputKeys: ContextSchemaKeys(definition.ContextSchema),
 		MaxSteps: parent.MaxSteps, Depth: parent.Depth + 1, step_count: parent.step_count, checkpoint_disabled: true}
+	e.reset_subflow_states(child)
 	if err := e.driveFlow(child, []string{definition.StartNodeID}); err != nil {
 		return err
 	}
