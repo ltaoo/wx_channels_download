@@ -76,11 +76,13 @@ func validate_automation_node_config(node_type string, config map[string]interfa
 			return fmt.Errorf("url 不能为空")
 		}
 		method, _ := config["method"].(string)
-		method = strings.ToUpper(method)
+		method = strings.ToUpper(strings.TrimSpace(method))
 		switch method {
 		case "", "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS":
 		default:
-			return fmt.Errorf("HTTP method 不支持: %s", method)
+			if !strings.Contains(method, "{{") {
+				return fmt.Errorf("HTTP method 不支持: %s", method)
+			}
 		}
 		for _, key := range []string{"headers", "query", "authentication", "keys"} {
 			if raw, exists := config[key]; exists && raw != nil {

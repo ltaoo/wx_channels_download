@@ -39,7 +39,11 @@ func (n *APICallNode) Execute(ctx *engine.ProcessContext) (bool, []string, error
 	if err != nil || (parsed_url.Scheme != "http" && parsed_url.Scheme != "https") {
 		return false, nil, fmt.Errorf("url must be an absolute HTTP(S) URL")
 	}
-	method, _ := n.Config["method"].(string)
+	resolved_method, err := resolve_service_template(n.Config["method"], ctx)
+	if err != nil {
+		return false, nil, err
+	}
+	method, _ := resolved_method.(string)
 	method = strings.ToUpper(strings.TrimSpace(method))
 	if method == "" {
 		method = "GET"
