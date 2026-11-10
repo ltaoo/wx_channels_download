@@ -45,8 +45,15 @@ func TestHTTPNodeRequestConfigurationAndStatusHandling(t *testing.T) {
 		t.Fatal("failed response not exposed to recovery path")
 	}
 	config["fail_on_status"] = false
+	config["method"] = "{{input.method}}"
+	ctx.Data["method"] = " patch "
+	ctx.InputKeys = append(ctx.InputKeys, "method")
 	if success, _, err := node.Execute(ctx); err != nil || !success {
 		t.Fatalf("explicit status handling failed: %v", err)
+	}
+	ctx.Data["method"] = "TRACE"
+	if _, _, err := node.Execute(ctx); err == nil || !strings.Contains(err.Error(), "unsupported HTTP method") {
+		t.Fatalf("unsupported templated method was accepted: %v", err)
 	}
 }
 
