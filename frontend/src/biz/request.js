@@ -83,9 +83,24 @@ export function fetchPipelineRunList(body) {
   return request.post("/api/v1/automation/list_runs", body);
 }
 
+/** 清除当前自动化流程已结束的执行记录。 */
+export function clearPipelineRuns(body) {
+  return request.post("/api/v1/automation/clear_runs", body);
+}
+
 /** 获取自动化流程执行记录详情。 */
 export function fetchPipelineRunDetail(body) {
   return request.post("/api/v1/automation/get_run", body);
+}
+
+/** 按需获取一个节点的执行日志。 */
+export function fetchPipelineRunNodeLogs(body) {
+  return request.post("/api/v1/automation/get_run_node_logs", body);
+}
+
+/** 获取执行记录的节点状态 map。 */
+export function fetchPipelineRunNodeStates(body) {
+  return request.post("/api/v1/automation/get_run_node_states", body);
 }
 
 /** 取消自动化流程执行。 */

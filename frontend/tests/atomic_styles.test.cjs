@@ -141,6 +141,25 @@ function styles(node, { width = 1440, reduced = false } = {}) {
   return Object.fromEntries([...result].map(([key, value]) => [key, value.value]));
 }
 
+test("secret inputs mask their contents without password input semantics", () => {
+  const secret = new Element("input", { class: "dm-input", type: "secret" }, []);
+  const text = new Element("input", { class: "dm-input", type: "text" }, []);
+  assert.equal(styles(secret)["-webkit-text-security"], "disc");
+  assert.equal(styles(text)["-webkit-text-security"], undefined);
+});
+
+test("running node borders animate without blocking interaction and respect reduced motion", () => {
+  const border = element("dm-automation-running-border");
+  const track = element("dm-automation-running-border__track", border);
+  assert.equal(styles(border)["pointer-events"], "none");
+  assert.equal(styles(border).color, "var(--dm-color-warning)");
+  assert.match(styles(track).animation, /^dm-automation-running-border .*linear infinite$/);
+  assert.equal(styles(track).fill, "none");
+  assert.equal(styles(track).rx, "var(--dm-radius-card)");
+  assert.equal(styles(track, { reduced: true }).animation, "none");
+  assert.equal(styles(track, { reduced: true })["stroke-dasharray"], "none");
+});
+
 test("page utilities declare one property and have valid, consumed class names", () => {
   const used = new Set();
   function scan(directory) {
