@@ -425,9 +425,24 @@ func Start(cfg *config.Config) error {
 	}
 	api_started = true
 	api_url := http_service_url(api_srv.Addr())
-	color.Green(fmt.Sprintf("API service started successfully, address: %v", api_url))
+	remote_server_enabled := cfg.GetBool("download.remoteServer.enabled")
+	if remote_server_enabled {
+		color.Green(fmt.Sprintf("Local API service started successfully, address: %v", api_url))
+		api_url = config.APIClientOrigin(
+			cfg.GetString("download.remoteServer.protocol"),
+			cfg.GetString("download.remoteServer.hostname"),
+			cfg.GetInt("download.remoteServer.port"),
+		)
+		color.Green(fmt.Sprintf("Remote API service address: %v", api_url))
+	} else {
+		color.Green(fmt.Sprintf("API service started successfully, address: %v", api_url))
+	}
 	if service_mcp.Enabled() {
-		color.Green(fmt.Sprintf("MCP server started successfully, address: %v/mcp", api_url))
+		if remote_server_enabled {
+			color.Green(fmt.Sprintf("Remote MCP server address: %v/mcp", api_url))
+		} else {
+			color.Green(fmt.Sprintf("MCP server started successfully, address: %v/mcp", api_url))
+		}
 	}
 
 	if proxy_enabled {
@@ -457,7 +472,11 @@ func Start(cfg *config.Config) error {
 			cleanup()
 			return fmt.Errorf("failed to start proxy service: %w", err)
 		}
-		color.Green(fmt.Sprintf("Proxy service started successfully, address: %v", http_service_url(interceptor_srv.Addr())))
+		proxy_message := fmt.Sprintf("Proxy service started successfully, address: %v", http_service_url(interceptor_srv.Addr()))
+		if remote_server_enabled {
+			proxy_message += fmt.Sprintf(", remote server: %v", api_url)
+		}
+		color.Green(proxy_message)
 
 		if !buildtags.UsingSunnyNet {
 			if interceptor_srv.ProxyTun() {
