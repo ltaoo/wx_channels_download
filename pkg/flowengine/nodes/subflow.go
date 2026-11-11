@@ -20,26 +20,27 @@ func (n *WorkflowNode) Type() string { return "WorkflowNode" }
 
 func configured_workflow(config map[string]interface{}, ctx *engine.ProcessContext) (engine.FlowDefinition, error) {
 	if flow_id, _ := config["flow_id"].(string); flow_id != "" {
-		definition, ok := ctx.EngineRef.GetFlowDefinition(flow_id)
+		definition, ok := ctx.EngineRef.GetSubflowDefinition(ctx, flow_id)
 		if !ok {
 			return definition, fmt.Errorf("subflow not found: %s", flow_id)
 		}
-		return definition, nil
+		return decode_workflow(definition)
 	}
 	return decode_workflow(config["workflow"])
 }
 
 func decode_workflow(raw interface{}) (engine.FlowDefinition, error) {
-	if definition, ok := raw.(engine.FlowDefinition); ok {
-		return definition, nil
-	}
 	definition := engine.FlowDefinition{}
-	encoded, err := json.Marshal(raw)
-	if err != nil {
-		return definition, err
-	}
-	if err := json.Unmarshal(encoded, &definition); err != nil {
-		return definition, err
+	if typed, ok := raw.(engine.FlowDefinition); ok {
+		definition = typed
+	} else {
+		encoded, err := json.Marshal(raw)
+		if err != nil {
+			return definition, err
+		}
+		if err := json.Unmarshal(encoded, &definition); err != nil {
+			return definition, err
+		}
 	}
 	if definition.StartNodeID == "" || len(definition.Nodes) == 0 {
 		return definition, fmt.Errorf("workflow must contain start_node and nodes")

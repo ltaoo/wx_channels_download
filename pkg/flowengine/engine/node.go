@@ -16,6 +16,7 @@ type NodeConfigField struct {
 	Description string             `json:"description,omitempty"`
 	Type        string             `json:"type"`
 	Required    bool               `json:"required"`
+	Default     interface{}        `json:"default,omitempty"`
 	Secret      bool               `json:"secret,omitempty"`
 	Multiline   bool               `json:"multiline,omitempty"`
 	Options     []NodeConfigOption `json:"options,omitempty"`

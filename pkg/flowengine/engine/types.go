@@ -65,7 +65,7 @@ type RunRecord struct {
 // the node configuration/routing, and Output contains only context values that
 // were added or changed by that attempt.
 type NodeExecutionLog struct {
-	// NodeStates marks the boundary of a new subflow invocation.
+	// NodeStates replaces all states when NodeID is empty, or patches them otherwise.
 	NodeStates        map[string]NodeState   `json:"node_states,omitempty"`
 	Timestamp         time.Time              `json:"timestamp"`
 	FlowID            string                 `json:"flow_id"`
@@ -92,7 +92,7 @@ type NodeExecutionLogHandler func(NodeExecutionLog)
 // NodeExecutionStatus is a lightweight live update emitted before and after a
 // node attempt. Detailed input, behavior, and output stay in NodeExecutionLog.
 type NodeExecutionStatus struct {
-	// NodeStates resets the whole subflow; NodeID is empty for this update.
+	// NodeStates resets the whole subflow when NodeID is empty, or patches downstream states otherwise.
 	NodeStates map[string]NodeState `json:"node_states,omitempty"`
 	Timestamp  time.Time            `json:"timestamp"`
 	FlowID     string               `json:"flow_id"`

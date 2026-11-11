@@ -31,6 +31,7 @@ type StartFlowOptions struct {
 }
 
 type FlowDefinition struct {
+	Subflows      map[string]FlowDefinition `json:"subflows,omitempty"`
 	ID            string                    `json:"id"`
 	Name          string                    `json:"name"`
 	StartNodeID   string                    `json:"start_node"`
@@ -236,7 +237,8 @@ func (e *FlowEngine) StartFlowWithOptions(flow_id string, initial_data map[strin
 		max_steps = 10000
 	}
 	ctx := &ProcessContext{
-		Context: run_context, cancel: cancel, Definition: &definition, ValidateSchemas: options.ValidateSchemas,
+		subflows: definition.Subflows,
+		Context:  run_context, cancel: cancel, Definition: &definition, ValidateSchemas: options.ValidateSchemas,
 		MaxSteps: max_steps, step_count: &atomic.Int64{},
 		InstanceID:   instanceID,
 		FlowID:       flow_id,
@@ -504,9 +506,16 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 				return fmt.Errorf("workflow step limit exceeded: %d", limit)
 			}
 			visit_attempt++
+			var reset_states map[string]NodeState
 			ctx.Mu.Lock()
+			if visit_attempt == 1 && ctx.NodeAttempts[node_id] > 0 && node_def.Type == "WorkflowNode" {
+				reset_states = reset_downstream_states(ctx, flow_def, node_id)
+			}
 			ctx.CurrentNode = node_id
 			ctx.NodeStates[node_id] = StateRunning
+			if reset_states != nil {
+				reset_states[node_id] = StateRunning
+			}
 			ctx.NodeAttempts[node_id]++
 			attempt := ctx.NodeAttempts[node_id]
 			ctx.ExecutionDetails = nil
@@ -521,14 +530,15 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 			input_snapshot := ctx.SnapshotData()
 			started_at := time.Now()
 			e.emit_node_execution_status(NodeExecutionStatus{
-				Timestamp: started_at,
-				FlowID:    ctx.FlowID,
-				RunID:     ctx.InstanceID,
-				NodeID:    node_id,
-				NodeName:  node_def.Name,
-				NodeType:  node_impl.Type(),
-				Attempt:   attempt,
-				Status:    StateRunning,
+				NodeStates: reset_states,
+				Timestamp:  started_at,
+				FlowID:     ctx.FlowID,
+				RunID:      ctx.InstanceID,
+				NodeID:     node_id,
+				NodeName:   node_def.Name,
+				NodeType:   node_impl.Type(),
+				Attempt:    attempt,
+				Status:     StateRunning,
 			})
 			var success bool
 			var next_node_ids []string
@@ -538,6 +548,12 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 			}
 			if err == nil {
 				success, next_node_ids, err = execute_node_safely(node_impl, ctx)
+			}
+			if remaining := 800*time.Millisecond - time.Since(started_at); remaining > 0 {
+				if delay_err := SleepContext(ctx.ExecutionContext(), remaining); delay_err != nil {
+					err = delay_err
+					success = false
+				}
 			}
 			if context_err := ctx.ExecutionContext().Err(); context_err != nil {
 				err = context_err

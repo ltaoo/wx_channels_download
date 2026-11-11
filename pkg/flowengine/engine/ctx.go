@@ -30,6 +30,7 @@ type ProcessContext struct {
 	// Context is shared by node I/O and bounded JavaScript execution.
 	Context             context.Context
 	Definition          *FlowDefinition
+	subflows            map[string]FlowDefinition
 	PendingNodes        []string
 	MaxSteps            int
 	Depth               int
