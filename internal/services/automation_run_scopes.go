@@ -56,7 +56,7 @@ func (s *AutomationService) persist_node_status(status flowengine.NodeExecutionS
 	s.log_mu.Lock()
 	defer s.log_mu.Unlock()
 	var run model.FlowRunRecord
-	if err := s.db.Select("id", "flow_id", "definition", "node_states").Where("id = ? AND deleted_at IS NULL", status.RunID).First(&run).Error; err != nil {
+	if err := s.db.Select("id", "flow_id", "node_states").Where("id = ? AND deleted_at IS NULL", status.RunID).First(&run).Error; err != nil {
 		s.log_error(err, "load automation node states")
 		return
 	}
@@ -77,6 +77,10 @@ func (s *AutomationService) persist_node_status(status flowengine.NodeExecutionS
 	}
 	states[status.FlowID] = current
 	if status.NodeStates != nil {
+		if err := s.db.Select("definition").Where("id=?", run.ID).First(&run).Error; err != nil {
+			s.log_error(err, "load reset scope")
+			return
+		}
 		if definition, _, _, err := automation_run_scope(run, []string{status.FlowID}); err == nil {
 			var reset_children func(*automation_run_scope_definition)
 			reset_children = func(child *automation_run_scope_definition) {

@@ -18,7 +18,7 @@ func new_trigger_test_service(t *testing.T) *AutomationService {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.UserFlow{}, &model.FlowSchedule{}, &model.FlowRunRecord{}); err != nil {
+	if err := db.AutoMigrate(&model.UserFlowDefinition{}, &model.UserFlowInstance{}, &model.FlowSchedule{}, &model.FlowRunRecord{}, &model.FlowRunNodeLog{}); err != nil {
 		t.Fatal(err)
 	}
 	sql_db, err := db.DB()
@@ -29,9 +29,9 @@ func new_trigger_test_service(t *testing.T) *AutomationService {
 	return NewAutomationService(db, nil, flowengine.NewWorkflowEngine(), nil)
 }
 
-func trigger_test_flow(t *testing.T, service *AutomationService) *model.UserFlow {
+func trigger_test_flow(t *testing.T, service *AutomationService) *model.UserFlowInstance {
 	t.Helper()
-	flow, err := service.CreateUserFlow(CreateUserFlowInput{Name: "test", TriggerType: "Manual"})
+	flow, err := service.CreateUserFlowWithInstance(CreateUserFlowInput{Name: "test", TriggerType: "Manual"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func trigger_test_flow(t *testing.T, service *AutomationService) *model.UserFlow
 
 func trigger_test_rules(t *testing.T, service *AutomationService, flow_id string) []model.FlowSchedule {
 	t.Helper()
-	rules, _, err := service.ListSchedules(ListSchedulesInput{FlowID: flow_id})
+	rules, _, err := service.ListSchedules(ListSchedulesInput{InstanceID: flow_id})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func trigger_test_rules(t *testing.T, service *AutomationService, flow_id string
 func TestUserFlowMultipleTriggers(t *testing.T) {
 	service := new_trigger_test_service(t)
 	flow := trigger_test_flow(t, service)
-	_, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{Triggers: []UserFlowTriggerInput{
+	_, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{Triggers: []UserFlowTriggerInput{
 		{Type: "Cron", Name: "morning", CronExpr: "0 8 * * *", Enabled: true},
 		{Type: "Cron", Name: "evening", CronExpr: "0 20 * * *", Enabled: false},
 		{Type: "Event", Name: "new video", EventKey: "video.created", InitialData: map[string]interface{}{"url": "example"}},
@@ -91,7 +91,7 @@ func TestUserFlowMultipleTriggers(t *testing.T) {
 		t.Fatal("event input was lost")
 	}
 	// The same graph also runs through the existing manual entry.
-	if _, err := service.TriggerFlowDirect(flow.ID, nil); err != nil {
+	if _, err := service.TriggerFlowInstance(flow.ID, nil); err != nil {
 		t.Fatal(err)
 	}
 	service.wg.Wait()
@@ -112,17 +112,17 @@ func TestUserFlowTriggerSavePreservesAndRemovesRules(t *testing.T) {
 	service := new_trigger_test_service(t)
 	flow := trigger_test_flow(t, service)
 	rule, err := service.CreateSchedule(CreateScheduleInput{
-		Name: "legacy cron", FlowID: flow.ID, CronExpr: "@daily", TimeoutSec: 120,
+		Name: "legacy cron", InstanceID: flow.ID, CronExpr: "@daily", TimeoutSec: 120,
 		InitialData: map[string]interface{}{"url": "original"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Older clients omit triggers; their graph saves must preserve the rules.
-	if _, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{}); err != nil {
+	if _, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{Triggers: []UserFlowTriggerInput{
+	if _, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{Triggers: []UserFlowTriggerInput{
 		{ID: rule.ID, Type: "Cron", Name: "renamed", CronExpr: "@daily", Enabled: true},
 	}}); err != nil {
 		t.Fatal(err)
@@ -131,7 +131,7 @@ func TestUserFlowTriggerSavePreservesAndRemovesRules(t *testing.T) {
 	if err != nil || saved.ID != rule.ID || saved.TimeoutSec != 120 || flow_initial_data(*saved)["url"] != "original" || *saved.NextRunAt != *rule.NextRunAt {
 		t.Fatalf("existing rule was not preserved: %+v, err=%v", saved, err)
 	}
-	if _, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{Triggers: []UserFlowTriggerInput{}}); err != nil {
+	if _, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{Triggers: []UserFlowTriggerInput{}}); err != nil {
 		t.Fatal(err)
 	}
 	if rules := trigger_test_rules(t, service, flow.ID); len(rules) != 0 {
@@ -143,7 +143,7 @@ func TestUserFlowTriggerSaveRollsBack(t *testing.T) {
 	service := new_trigger_test_service(t)
 	flow := trigger_test_flow(t, service)
 	other_flow := trigger_test_flow(t, service)
-	foreign_rule, err := service.CreateSchedule(CreateScheduleInput{Name: "other", FlowID: other_flow.ID, CronExpr: "@daily"})
+	foreign_rule, err := service.CreateSchedule(CreateScheduleInput{Name: "other", InstanceID: other_flow.ID, CronExpr: "@daily"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,13 +154,13 @@ func TestUserFlowTriggerSaveRollsBack(t *testing.T) {
 		{ID: foreign_rule.ID, Type: "Cron", Name: "foreign", CronExpr: "@daily"},
 	} {
 		name := "should roll back"
-		_, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{Name: &name, Triggers: []UserFlowTriggerInput{
+		_, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{Name: &name, Triggers: []UserFlowTriggerInput{
 			{Type: "Cron", Name: "valid first", CronExpr: "@daily", Enabled: true}, invalid_rule,
 		}})
 		if err == nil {
 			t.Fatalf("accepted invalid rule %+v", invalid_rule)
 		}
-		saved, err := service.GetUserFlow(flow.ID)
+		saved, err := service.GetUserFlowInstance(flow.ID)
 		if err != nil || saved.Name != flow.Name || len(trigger_test_rules(t, service, flow.ID)) != 0 {
 			t.Fatalf("partial save after invalid rule: flow=%+v err=%v", saved, err)
 		}
@@ -172,18 +172,18 @@ func TestUserFlowTriggerSaveRollsBack(t *testing.T) {
 
 func TestUserFlowLegacyEventAndDelete(t *testing.T) {
 	service := new_trigger_test_service(t)
-	flow, err := service.CreateUserFlow(CreateUserFlowInput{Name: "legacy", TriggerType: "Event", EventKey: "old.event"})
+	flow, err := service.CreateUserFlowWithInstance(CreateUserFlowInput{Name: "legacy", TriggerType: "Event", EventKey: "old.event"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{Triggers: []UserFlowTriggerInput{
+	saved, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{Triggers: []UserFlowTriggerInput{
 		{Type: "Event", Name: "event", EventKey: flow.EventKey},
 		{Type: "Cron", Name: "cron", CronExpr: "@daily", Enabled: true},
 	}})
 	if err != nil || saved.EventKey != "" || saved.TriggerType != "Manual" {
 		t.Fatalf("legacy event not migrated: flow=%+v err=%v", saved, err)
 	}
-	if err := service.DeleteUserFlow(flow.ID); err != nil {
+	if err := service.DeleteUserFlowInstance(flow.ID); err != nil {
 		t.Fatal(err)
 	}
 	if rules := trigger_test_rules(t, service, flow.ID); len(rules) != 0 {

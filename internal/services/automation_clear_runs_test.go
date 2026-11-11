@@ -11,12 +11,12 @@ func TestAutomationClearRuns(t *testing.T) {
 	service := new_trigger_test_service(t)
 	runs := make([]model.FlowRunRecord, 0, 30)
 	for index := 0; index < 25; index++ {
-		runs = append(runs, model.FlowRunRecord{ID: fmt.Sprintf("finished-%d", index), FlowID: "target", Status: []string{
+		runs = append(runs, model.FlowRunRecord{ID: fmt.Sprintf("finished-%d", index), InstanceID: "target", Status: []string{
 			model.FlowRunStatusCompleted, model.FlowRunStatusFailed, model.FlowRunStatusCancelled,
 		}[index%3]})
 	}
 	for _, status := range []string{model.FlowRunStatusQueued, model.FlowRunStatusRunning, model.FlowRunStatusWaiting} {
-		runs = append(runs, model.FlowRunRecord{ID: status, FlowID: "target", Status: status})
+		runs = append(runs, model.FlowRunRecord{ID: status, InstanceID: "target", Status: status})
 	}
 	runs = append(runs, model.FlowRunRecord{ID: "other", FlowID: "other-flow", Status: model.FlowRunStatusCompleted})
 	if err := service.db.Create(&runs).Error; err != nil {
@@ -29,7 +29,7 @@ func TestAutomationClearRuns(t *testing.T) {
 	if err != nil || cleared != 25 {
 		t.Fatalf("clear all pages: cleared=%d, err=%v", cleared, err)
 	}
-	remaining, total, err := service.ListRuns(ListRunsInput{FlowID: "target"})
+	remaining, total, err := service.ListRuns(ListRunsInput{InstanceID: "target"})
 	if err != nil || total != 3 || len(remaining) != 3 {
 		t.Fatalf("active runs were removed: %+v, total=%d, err=%v", remaining, total, err)
 	}

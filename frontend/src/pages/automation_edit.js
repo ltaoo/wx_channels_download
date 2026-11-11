@@ -30,7 +30,7 @@ function AutomationNodeInspector(props) {
       onKeyDown(event) {
         if (event.key !== "Escape") return;
         vm$.methods.closeNodeInspector();
-        document.querySelector(".group-automation-flow-node.is-selected")?.focus();
+        document.querySelector(".group-automation-flow-node.is-selected, [aria-pressed='true'][n^='automation-subflow-node-'], [aria-pressed='true'][n^='automation-subflow-heading-']")?.focus();
       },
     },
     [
@@ -47,14 +47,7 @@ function AutomationNodeInspector(props) {
         }, ["关闭"]),
       ]),
       (() => {
-        const node = combine(
-          { selected_id: vm$.state.selected_edit_node_id, nodes: vm$.state.edit_nodes },
-          ({ selected_id, nodes }) => {
-            return (nodes || []).find(
-              (item) => item.id === selected_id,
-            );
-          },
-        );
+        const node = vm$.state.selected_edit_node;
         return View({ class: "flex-1 min-h-0 overflow-auto", attributes: { n: "automation-node-inspector-body" } }, [Show({
           when: computed(node, (t) => !t),
           ok() {
@@ -66,11 +59,11 @@ function AutomationNodeInspector(props) {
             });
           },
         }), For({
-          each: computed(node, (value) => value ? [value] : []),
-          key: "id",
+          each: computed(node, (value) => value ? [{ ...value, selection_key: value.edit_key || value.id }] : []),
+          key: "selection_key",
           render(value) {
             const current_node = value && value.value !== undefined ? value.value : value;
-            const is_start = current_node.id === vm$.state.edit_start_node_id.value;
+            const is_start = !current_node.edit_key && current_node.id === vm$.state.edit_start_node_id.value;
             return View(
               { class: "flex flex-col gap-3 p-3", attributes: { n: "automation-node-inspector-fields" } },
               [
@@ -132,14 +125,14 @@ function AutomationNodeInspector(props) {
                   },
                   ["应用节点配置"],
                 ) : null,
-                is_start ? AutomationStartTriggers({ store: vm$ }) : null,
+                is_start && !vm$.state.selected_pipeline.value?.is_flow_definition ? AutomationStartTriggers({ store: vm$ }) : null,
                 View({ class: "pt-3 border-top-[var(--dm-border-width)_solid_var(--dm-color-border)]", attributes: { n: "automation-inspector-next-nodes" } }, [
                   View({ class: "block mb-1 text-color-text-secondary text-xs font-medium", attributes: { n: "automation-inspector-next-nodes-label" } }, ["后续节点"]),
                   View({ class: "group-automation-code font-mono text-sm overflow-visible text-overflow-initial whitespace-pre-wrap word-break-break-all", attributes: { n: "automation-inspector-next-nodes-value" } }, [
                     computed(node, (value) => (value && value.next_ids || []).join("、") || "无"),
                   ]),
                 ]),
-                !is_start
+                !is_start && !current_node.edit_key
                   ? Button(
                       {
                         store: vm$.ui.btn_remove_selected_node$,

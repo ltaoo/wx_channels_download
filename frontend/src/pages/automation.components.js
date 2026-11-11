@@ -264,10 +264,11 @@ export function AutomationWorkspaceToolbar(props) {
       : "group-content-toolbar flex items-center justify-between gap-3 max-760:flex-wrap min-w-0 max-900:items-stretch max-900:flex-col",
     attributes: { n: "automation-workspace-toolbar" },
   }, [
+    is_edit ? View({ class: "text-color-text-secondary text-xs", attributes: { n: "automation-shared-definition-notice" } }, [computed(vm$.state.selected_pipeline, (pipeline) => pipeline?.is_flow_definition ? "编辑共享流程；实例下次执行时使用保存后的流程与默认配置。" : "流程图由所有实例共用；实例名称、覆盖配置和触发器分别保存。")]) : null,
     !is_edit ? View({ class: "min-w-0 flex items-center gap-2", attributes: { n: "automation-workspace-heading" } }, [
       View({ class: "min-w-0", attributes: { n: "automation-workspace-title" } }, [
         View({ class: "text-color-text-secondary text-caption font-semibold text-transform-uppercase", attributes: { n: "automation-workspace-mode" } }, [
-          "Pipeline 详情",
+          "流程实例详情",
         ]),
         View({ class: "overflow-hidden text-color-text-primary font-display text-lg font-semibold text-ellipsis whitespace-nowrap", attributes: { n: "automation-workspace-name" } }, [
           computed(vm$.state.selected_pipeline, (flow) =>
@@ -319,7 +320,7 @@ export function AutomationWorkspaceToolbar(props) {
           : AutomationPipelineLink({
               flowId: vm$.state.selected_flow_id.value,
               mode: "edit",
-              label: "编辑 Pipeline",
+              label: "编辑实例与触发器",
               primary: true,
             }),
       ].filter(Boolean),
@@ -553,6 +554,10 @@ function automation_edge_labels(nodes, position_overrides, layout = automation_e
   return labels;
 }
 
+function automation_edge_label_class(label) {
+  return `absolute transform-[translate(-50%,_-50%)] max-w-160px overflow-hidden p-[0_var(--dm-space-1)] border-[var(--dm-border-width)_solid_var(--dm-color-border)] rounded-full bg-color-bg-surface text-color-text-secondary text-11px leading-16px text-ellipsis whitespace-nowrap [&.is-yes]:border-color-color-success [&.is-yes]:text-color-success [&.is-no]:border-color-color-border-strong [&.is-case]:border-color-color-info-border [&.is-case]:text-color-info [&.is-unconfigured]:border-color-color-danger-border [&.is-unconfigured]:text-color-danger [&.is-js]:font-mono [&.is-hidden]:hidden ${label ? `is-${label.kind}${label.is_js ? " is-js" : ""}` : "is-hidden"}`;
+}
+
 function automation_refresh_flow_canvas(canvas, nodes, position_overrides, layout = automation_edit_layout(nodes, position_overrides)) {
   if (!canvas) return;
   canvas.style.width = `${layout.width}px`;
@@ -586,6 +591,8 @@ const automation_flow_minimap_size = {
 
 function AutomationSubflowGroup({ group, store: vm$, inspectable = false, editable = false, parentGroup, selected, onSelect, onDrag, onNodeDrag }) {
   const positions = Object.fromEntries(group.nodes.map((node) => [node.id, { left: node.x, top: node.y, width: node.width, height: node.height }]));
+  const edges = automation_edit_edges(group.nodes).filter((edge) => positions[edge.to]);
+  const labels = automation_edge_labels(group.nodes, {}, { positions });
   function move_with_keyboard(event, group_id, node_id) {
     const delta = { ArrowLeft: { x: -10, y: 0 }, ArrowRight: { x: 10, y: 0 }, ArrowUp: { x: 0, y: -10 }, ArrowDown: { x: 0, y: 10 } }[event.key];
     if (!editable || !delta) return false;
@@ -630,19 +637,25 @@ function AutomationSubflowGroup({ group, store: vm$, inspectable = false, editab
     SVG.SVG({
       class: "absolute inset-0 w-full h-full overflow-visible text-color-border-strong pointer-events-none",
       attributes: { n: `automation-subflow-edges-${group.id}`, "aria-hidden": "true" },
-    }, group.nodes.flatMap((node) => node.next_ids.filter((id) => positions[id]).map((id) => SVG.Path({
-      d: automation_edge_path({ from: node.id, to: id }, positions), stroke: "currentColor", "stroke-width": "2", fill: "none",
-      attributes: { n: `automation-subflow-edge-${group.id}-${node.id}-${id}`, "data-flow-edge": JSON.stringify({ from: node.id, to: id }) },
-    })))),
+    }, edges.map((edge) => SVG.Path({
+      d: automation_edge_path(edge, positions), stroke: "currentColor", "stroke-width": "2", fill: "none",
+      attributes: { n: `automation-subflow-edge-${group.id}-${edge.from}-${edge.to}`, "data-flow-edge": JSON.stringify(edge) },
+    }))),
+    ...Object.entries(labels).map(([id, label]) => View({
+      class: `${automation_edge_label_class(label)} pointer-events-none`,
+      style: { left: `${label.left}px`, top: `${label.top}px` },
+      attributes: { n: `automation-subflow-edge-label-${group.id}-${id}`, "data-subflow-edge-label": id, title: label.title },
+    }, [label.label])),
     ...group.nodes.filter((node) => !group.groups.some((child) => child.owner_id === node.id)).map((node) => {
       const status_ = computed(vm$.state.node_execution_states, (states) => states[node.execution_key]?.status || "PENDING");
+      const selected_ = computed(vm$.state.selected_edit_node_id, (id) => editable && id === node.edit_key);
       return View({
-      class: computed(status_, (status) => `dm-panel absolute box-sizing-border-box p-3 overflow-hidden text-color-text-primary ${editable ? "cursor-grab" : inspectable ? "cursor-pointer" : ""} [&.is-running]:border-color-color-warning [&.is-retrying]:border-color-color-warning [&.is-completed]:border-color-color-success [&.is-failed]:border-color-color-danger-border is-${automation_execution_status_class(status)}`),
+      class: combine({ status: status_, selected: selected_ }, ({ status, selected }) => `dm-panel absolute box-sizing-border-box p-3 overflow-hidden text-color-text-primary ${editable ? "cursor-grab" : inspectable ? "cursor-pointer" : ""} [&.is-running]:border-color-color-warning [&.is-retrying]:border-color-color-warning [&.is-completed]:border-color-color-success [&.is-failed]:border-color-color-danger-border [&.is-selected]:bg-color-selection-surface [&.is-selected]:border-color-selection-border [&.is-selected]:shadow-selection is-${automation_execution_status_class(status)}${selected ? " is-selected" : ""}`),
       style: { left: `${node.x}px`, top: `${node.y}px`, width: "180px", height: "104px" },
-      attributes: { n: `automation-subflow-node-${group.id}-${node.id}`, title: node.name, role: editable || inspectable ? "button" : undefined, tabindex: editable || inspectable ? "0" : undefined, "aria-label": editable ? `${node.name}，方向键移动` : undefined },
+      attributes: { n: `automation-subflow-node-${group.id}-${node.id}`, title: node.name, role: editable || inspectable ? "button" : undefined, tabindex: editable || inspectable ? "0" : undefined, "aria-label": editable ? `${node.name}，方向键移动` : undefined, "aria-pressed": editable ? computed(selected_, String) : undefined },
       onMouseDown(event) { if (editable) onNodeDrag(event, group, node); else if (inspectable) event.stopPropagation(); },
-      onClick(event) { if (editable || inspectable) event.stopPropagation(); if (inspectable) vm$.methods.openNodeExecutionWindow(node.execution_key, { x: event.clientX, y: event.clientY }); },
-      onKeyDown(event) { if (move_with_keyboard(event, group.id, node.id)) return; if (inspectable) automation_activate(event, () => vm$.methods.openNodeExecutionWindow(node.execution_key)); },
+      onClick(event) { if (editable || inspectable) event.stopPropagation(); if (editable) vm$.methods.selectEditNode(node.edit_key); else if (inspectable) vm$.methods.openNodeExecutionWindow(node.execution_key, { x: event.clientX, y: event.clientY }); },
+      onKeyDown(event) { if (move_with_keyboard(event, group.id, node.id)) return; if (editable || inspectable) automation_activate(event, () => editable ? vm$.methods.selectEditNode(node.edit_key) : vm$.methods.openNodeExecutionWindow(node.execution_key)); },
     }, [
       inspectable ? Show({ when: computed(status_, (status) => ["RUNNING", "RETRYING"].includes(status)), ok: () => SVG.SVG({
         class: "dm-automation-running-border", attributes: { n: `automation-subflow-running-border-${group.id}-${node.id}`, "aria-hidden": "true" },
@@ -661,6 +674,8 @@ function AutomationSubflowGroup({ group, store: vm$, inspectable = false, editab
     }),
     ...group.groups.map((nested) => AutomationSubflowGroup({
       group: nested, store: vm$, inspectable, editable, parentGroup: group, onNodeDrag,
+      selected: editable ? computed(vm$.state.selected_edit_node_id, (id) => id === group.nodes.find((node) => node.id === nested.owner_id).edit_key) : undefined,
+      onSelect: editable ? () => vm$.methods.selectEditNode(group.nodes.find((node) => node.id === nested.owner_id).edit_key) : undefined,
       onDrag: editable ? (event) => onNodeDrag(event, group, group.nodes.find((node) => node.id === nested.owner_id), true) : undefined,
     })),
   ]);
@@ -1009,14 +1024,6 @@ export function AutomationFlowGraph(props) {
     if (!shell_element || !canvas_element) return;
 
     stop_active_pointer();
-    const original_position = calculate_pipeline_node_positions(vm$.state.edit_nodes.value)[node.id];
-    const displayed_position = { ...flow_node.position };
-    function saved_position() {
-      return {
-        x: original_position.x + flow_node.position.x - displayed_position.x,
-        y: original_position.y + flow_node.position.y - displayed_position.y,
-      };
-    }
     flow_node.pointerDown(event.clientX, event.clientY);
     shell_element.classList.add("is-dragging");
     let has_moved = false;
@@ -1031,7 +1038,7 @@ export function AutomationFlowGraph(props) {
       has_moved = true;
       flow_node.position = { x: position.left, y: position.top };
       position_overrides[node.id] = position;
-      vm$.methods.stageEditNodePosition(node.id, saved_position());
+      vm$.methods.stageEditNodePosition(node.id, flow_node.position);
       shell_element.style.left = `${position.left}px`;
       shell_element.style.top = `${position.top}px`;
       automation_refresh_flow_canvas(
@@ -1047,7 +1054,7 @@ export function AutomationFlowGraph(props) {
       flow_node.pointerUp(up_event.clientX, up_event.clientY);
       if (has_moved) {
         delete position_overrides[node.id];
-        vm$.methods.moveEditNode(node.id, saved_position());
+        vm$.methods.moveEditNode(node.id, flow_node.position);
       }
       stop_active_pointer();
     };
@@ -1067,15 +1074,24 @@ export function AutomationFlowGraph(props) {
     event.stopPropagation();
     stop_active_pointer();
     const element = container ? event.currentTarget.parentElement : event.currentTarget;
+    if (vm$.state.selected_edit_node_id.value !== node.edit_key) vm$.methods.selectEditNode(node.edit_key);
     const positions = Object.fromEntries(group.nodes.map((entry) => [entry.id, { left: entry.x, top: entry.y, width: entry.width, height: entry.height }]));
     const edges = [...element.parentElement.querySelectorAll(":scope > svg > [data-flow-edge]")]
       .map((path) => ({ path, edge: JSON.parse(path.getAttribute("data-flow-edge")) }))
       .filter(({ edge }) => edge.from === node.id || edge.to === node.id);
+    const labels = element.parentElement.querySelectorAll(":scope > [data-subflow-edge-label]");
     function render_position(position) {
       element.style.left = `${position.x}px`;
       element.style.top = `${position.y}px`;
       const displayed_positions = { ...positions, [node.id]: { ...positions[node.id], left: position.x, top: position.y } };
       edges.forEach(({ path, edge }) => path.setAttribute("d", automation_edge_path(edge, displayed_positions)));
+      const label_positions = automation_edge_labels(group.nodes, {}, { positions: displayed_positions });
+      labels.forEach((element) => {
+        const label = label_positions[element.getAttribute("data-subflow-edge-label")];
+        if (!label) return;
+        element.style.left = `${label.left}px`;
+        element.style.top = `${label.top}px`;
+      });
     }
     const flow_node = new Timeless.vm.FlowNodeModel({ id: node.execution_key, position: { x: node.x, y: node.y } });
     flow_node.setCanvas$(flow$);
@@ -1297,11 +1313,7 @@ export function AutomationFlowGraph(props) {
                 );
                 return View(
                   {
-                    class: computed(label_, (label) =>
-                      label
-                        ? `group-automation-flow-edge-label absolute transform-[translate(-50%,_-50%)] max-w-160px overflow-hidden p-[0_var(--dm-space-1)] border-[var(--dm-border-width)_solid_var(--dm-color-border)] rounded-full bg-color-bg-surface text-color-text-secondary text-11px leading-16px text-ellipsis whitespace-nowrap [&.is-yes]:border-color-color-success [&.is-yes]:text-color-success [&.is-no]:border-color-color-border-strong [&.is-case]:border-color-color-info-border [&.is-case]:text-color-info [&.is-unconfigured]:border-color-color-danger-border [&.is-unconfigured]:text-color-danger [&.is-js]:font-mono [&.is-hidden]:hidden is-${label.kind}${label.is_js ? " is-js" : ""}`
-                        : "group-automation-flow-edge-label absolute transform-[translate(-50%,_-50%)] max-w-160px overflow-hidden p-[0_var(--dm-space-1)] border-[var(--dm-border-width)_solid_var(--dm-color-border)] rounded-full bg-color-bg-surface text-color-text-secondary text-11px leading-16px text-ellipsis whitespace-nowrap [&.is-yes]:border-color-color-success [&.is-yes]:text-color-success [&.is-no]:border-color-color-border-strong [&.is-case]:border-color-color-info-border [&.is-case]:text-color-info [&.is-unconfigured]:border-color-color-danger-border [&.is-unconfigured]:text-color-danger [&.is-js]:font-mono [&.is-hidden]:hidden is-hidden",
-                    ),
+                    class: computed(label_, (label) => `group-automation-flow-edge-label ${automation_edge_label_class(label)}`),
                     style: computed(label_, (label) => ({
                       left: `${label ? label.left : 0}px`,
                       top: `${label ? label.top : 0}px`,
@@ -2066,6 +2078,7 @@ export function AutomationNodeExecutionWindow(props) {
       is_detail ? View({ class: "grid gap-2 min-w-0", attributes: { n: `automation-node-record-${node_id}` } }, [
         View({ class: "text-color-text-secondary text-caption font-semibold" }, ["执行记录 JSON"]),
         View({ as: "pre", class: "m-0 p-2 overflow-auto font-mono text-xs whitespace-pre-wrap word-break-break-all bg-color-bg-subtle rounded-content", attributes: { n: `automation-node-record-json-${node_id}` } }, [record_]),
+        Show({ when: computed(detail_, (detail) => Boolean(detail.next_before_id)), ok: () => Button({ store: vm$.ui.btn_node_logs_more$.bind({ id: node_id }), attributes: { n: `automation-node-logs-more-${node_id}`, type: "button" } }, ["加载更早的执行尝试"]) }),
       ]) : For({
         each: logs_,
         key: "_execution_key",

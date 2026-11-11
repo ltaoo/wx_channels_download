@@ -1,4 +1,5 @@
 import { AutomationPageViewModel } from "./automation.model.js";
+import { DrawerHeader, DrawerTitle, DrawerDescription, DrawerBody } from "@/dmui.js";
 import {
   AutomationPipelineLink,
   AutomationPipelineTriggerBadges,
@@ -37,6 +38,7 @@ function AutomationPageView(props) {
     },
     [
       AutomationListPage({ store: vm$ }),
+      AutomationDefinitionsDrawer({ store: vm$ }),
       AutomationCreatePipelineDialog({ store: vm$ }),
       AutomationImportPipelineDialog({ store: vm$ }),
       AutomationDeletePipelineDialog({ store: vm$ }),
@@ -49,8 +51,8 @@ function AutomationPageView(props) {
 
 function AutomationListPage(props) {
   const vm$ = props.store;
-  return View({ class: "automation-list-page flex flex-col flex-[1_1_auto] min-h-0 [&_>_.group-content-main]:min-h-0 [&_>_.group-content-main]:flex [&_>_.group-content-main]:flex-col [&_>_.dm-pagination]:flex-[0_0_auto]" }, [
-    View({ class: "group-content-toolbar-wrap p-[var(--dm-space-4)_var(--dm-space-4)_0] " }, [
+  return View({ class: "automation-list-page flex flex-col flex-[1_1_auto] min-h-0 [&_>_.group-content-main]:min-h-0 [&_>_.group-content-main]:flex [&_>_.group-content-main]:flex-col [&_>_.dm-pagination]:flex-[0_0_auto]", attributes: { n: "automation-instance-list-page" } }, [
+    View({ class: "group-content-toolbar-wrap p-[var(--dm-space-4)_var(--dm-space-4)_0]", attributes: { n: "automation-instance-toolbar-wrap" } }, [
       AutomationPageToolbar({ store: vm$ }),
     ]),
     AutomationPipelineList({ store: vm$ }),
@@ -62,12 +64,13 @@ function AutomationPageToolbar(props) {
   return View({
     type: "form",
     class: "group-content-toolbar flex items-center justify-between gap-3 max-760:flex-wrap group-automation-toolbar",
-    attributes: { role: "search" },
+    attributes: { n: "automation-instance-toolbar", role: "search" },
     onSubmit(event) {
       event.preventDefault();
       vm$.methods.search();
     },
   }, [
+    View({ type: "h1", class: "flex-none text-lg font-semibold text-color-text-primary", attributes: { n: "automation-instance-heading" } }, ["配置实例"]),
     View({
       class: "min-w-0 flex-[1_1_0] max-760:flex-[1_1_100%]",
       attributes: { n: "automation-search-field" },
@@ -85,11 +88,11 @@ function AutomationPageToolbar(props) {
           name: "keyword",
           type: "text",
           autocomplete: "off",
-          "aria-label": "搜索 Pipeline 名称",
+          "aria-label": "搜索配置实例或所属流程",
         },
       }),
     ]),
-    View({ class: "flex-[0_0_auto] flex-wrap max-760:ml-auto max-520:w-full max-520:ml-0 max-520:[&_>_.dm-button]:flex-[1_1_0] dm-flex dm-items-center dm-gap-2" }, [
+    View({ class: "flex-[0_0_auto] flex-wrap max-760:ml-auto max-520:w-full max-520:ml-0 max-520:[&_>_.dm-button]:flex-[1_1_0] dm-flex dm-items-center dm-gap-2", attributes: { n: "automation-instance-toolbar-actions" } }, [
       Button(
         {
           store: vm$.ui.btn_search$,
@@ -114,17 +117,17 @@ function AutomationPageToolbar(props) {
       ),
       Button(
         {
-          store: vm$.ui.btn_import_pipeline$,
-          attributes: { n: "automation-import-pipeline", type: "button" },
+          store: vm$.ui.btn_definitions$,
+          attributes: { n: "automation-open-definitions", type: "button" },
         },
-        ["导入 JSON"],
+        ["自动化流程"],
       ),
       Button(
         {
-          store: vm$.ui.btn_create_pipeline$,
-          attributes: { n: "automation-create-pipeline", type: "button" },
+          store: vm$.ui.btn_create_instance$,
+          attributes: { n: "automation-create-instance", type: "button" },
         },
-        ["创建自动化"],
+        ["新增配置实例"],
       ),
     ]),
   ]);
@@ -133,15 +136,15 @@ function AutomationPageToolbar(props) {
 function AutomationPipelineList(props) {
   const vm$ = props.store;
   return Table({
-    name: "automation-pipeline-table",
+    name: "automation-instance-table",
     containerClass: "group-content-main flex-[1_1_auto] min-w-0 p-4  automation-index",
     containerAttributes: { n: "automation-pipeline-table-container" },
     panelAttributes: { n: "automation-pipeline-table-panel" },
-    rowKey: (pipeline) => `${pipeline.id}:${pipeline.updated_at || pipeline.created_at || 0}:${pipeline.active_run_id || ""}`,
+    rowKey: (pipeline) => `${pipeline.id}:${pipeline.updated_at || pipeline.created_at || 0}:${pipeline.active_run_id || ""}:${vm$.methods.pipelineDefinitionLabel(pipeline)}`,
     columns: [
       {
         name: "name",
-        title: "名称",
+        title: "配置实例",
         width: 240,
         cellClass: "min-w-0 grid gap-0-5 justify-items-start",
         render(pipeline) {
@@ -153,6 +156,7 @@ function AutomationPipelineList(props) {
               },
               [pipeline.name || pipeline.id],
             ),
+            View({ class: "text-color-text-secondary text-xs", attributes: { n: `automation-pipeline-definition-${pipeline.id}` } }, [vm$.methods.pipelineInstanceDescription(pipeline)]),
             pipeline.description
               ? View(
                   {
@@ -183,7 +187,6 @@ function AutomationPipelineList(props) {
         cellClass: "min-w-0 flex flex-col items-start gap-3",
         render(pipeline) {
           const groups = vm$.methods.pipelineConfigGroups(pipeline);
-          if (!groups.length) return [];
           const configured_groups = groups.map((group) => ({
             ...group,
             fields: group.fields.filter((field) => field.filled),
@@ -226,15 +229,11 @@ function AutomationPipelineList(props) {
         cellClass: "flex flex-nowrap items-center justify-end gap-1-5 max-900:justify-start",
         render(pipeline) {
           return [
+            Button({ store: vm$.methods.pipelineActionButton("trigger", pipeline), attributes: { n: `automation-instance-run-${pipeline.id}`, type: "button", "aria-label": `执行配置实例 ${pipeline.name || pipeline.id}` } }, ["执行"]),
             AutomationPipelineLink({
               flowId: pipeline.id,
               mode: "detail",
               label: "详情",
-            }),
-            AutomationPipelineLink({
-              flowId: pipeline.id,
-              mode: "edit",
-              label: "编辑",
             }),
             DropdownMenu(
               {
@@ -272,31 +271,79 @@ function AutomationPipelineList(props) {
     emptyTitle: combine(
       { loading: vm$.state.loading, keyword: vm$.state.search_keyword },
       ({ loading, keyword }) =>
-        loading ? "正在加载 Pipeline…" : keyword ? "没有匹配的 Pipeline" : "暂无 Pipeline",
+        loading ? "正在加载配置实例…" : keyword ? "没有匹配的配置实例" : "暂无配置实例",
     ),
     emptyDescription: combine(
       { loading: vm$.state.loading, keyword: vm$.state.search_keyword },
       ({ loading, keyword }) =>
         loading
-          ? "正在获取最新的流程配置。"
+          ? "正在获取配置实例。"
           : keyword
             ? "请尝试其他名称或重置搜索条件。"
-            : "点击右上角「创建自动化」开始搭建流程。",
+            : "点击「新增配置实例」选择自动化流程；也可在流程抽屉中创建或导入流程。",
     ),
   });
+}
+
+function AutomationDefinitionsDrawer(props) {
+  const vm$ = props.store;
+  return Drawer({
+    store: vm$.ui.definitions_drawer$,
+    class: "dm-drawer--wide",
+    attributes: { n: "automation-definitions-drawer", "aria-labelledby": "automation-definitions-title" },
+  }, () => [
+    DrawerHeader({ attributes: { n: "automation-definitions-header" } }, [
+      DrawerTitle({ attributes: { n: "automation-definitions-title", id: "automation-definitions-title" } }, ["自动化流程"]),
+      DrawerDescription({ attributes: { n: "automation-definitions-description" } }, ["维护共享流程与默认配置，选择流程新增配置实例。"]),
+    ]),
+    DrawerBody({ class: "flex flex-col gap-3 overflow-hidden", style: { padding: 0 }, attributes: { n: "automation-definitions-body" } }, [
+      View({ class: "flex flex-wrap items-center gap-2 px-4", attributes: { n: "automation-definitions-toolbar" } }, [
+        Input({ store: vm$.ui.input_definition_keyword$, rootClass: "flex-1 min-w-0", attributes: { n: "automation-definitions-search", "aria-label": "搜索自动化流程" } }),
+        Button({ store: vm$.ui.btn_import_pipeline$, attributes: { n: "automation-import-pipeline", type: "button" } }, ["导入 JSON"]),
+        Button({ store: vm$.ui.btn_create_pipeline$, attributes: { n: "automation-create-pipeline", type: "button" } }, ["创建流程"]),
+      ]),
+      Table({
+        name: "automation-definition-table",
+        containerClass: "flex-1 min-h-0 min-w-0 px-4 pb-4 flex flex-col",
+        containerAttributes: { n: "automation-definition-table-container" },
+        panelAttributes: { n: "automation-definition-table-panel" },
+        rowKey: (definition) => `${definition.id}:${definition.updated_at}:${definition.instance_count}:${definition.id}`,
+        rows: vm$.state.filtered_definitions,
+        loading: vm$.state.loading,
+        status: computed(vm$.state.filtered_definitions, (definitions) => definitions.length ? "normal" : "empty"),
+        emptyTitle: "暂无匹配的自动化流程",
+        emptyDescription: "创建或导入一个流程，再添加配置实例。",
+        columns: [
+          { name: "name", title: "自动化流程", width: "minmax(180px, 1fr)", render(definition) {
+            return [View({ class: "font-semibold text-color-text-primary overflow-wrap-anywhere", attributes: { n: `automation-definition-name-${definition.id}` } }, [definition.name])];
+          } },
+          { name: "instances", title: "配置实例", width: 95, render(definition) { return [String(definition.instance_count)]; } },
+          { name: "actions", title: "操作", width: 340, cellClass: "flex flex-wrap justify-end gap-2", render(definition) {
+            return [
+              Button({ store: vm$.ui.btn_definition_instance$.bind(definition), attributes: { n: `automation-definition-create-instance-${definition.id}`, type: "button" } }, ["新增配置实例"]),
+              Button({ store: vm$.ui.btn_definition_config$.bind(definition), attributes: { n: `automation-definition-defaults-${definition.id}`, type: "button" } }, ["默认配置"]),
+              AutomationPipelineLink({ flowId: definition.id, mode: "edit", label: "编辑流程" }),
+            ];
+          } },
+        ],
+      }),
+    ]),
+  ]);
 }
 
 function AutomationConfigDialog(props) {
   const vm$ = props.store;
   return Dialog({ store: vm$.ui.config_dialog$, class: "automation-form-dialog", attributes: { n: "automation-config-dialog" } }, [
     DialogHeader({}, [
-      DialogTitle({}, ["自动化配置"]),
-      DialogDescription({}, [computed(vm$.state.config_pipeline, (pipeline) => `${pipeline ? pipeline.name || pipeline.id : ""} · 按节点填写，所有触发方式共用。`)]),
+      DialogTitle({}, [computed(vm$.state.config_defaults, (defaults) => defaults ? "流程默认配置" : "实例覆盖配置")]),
+      DialogDescription({}, [computed(vm$.state.config_defaults, (defaults) => defaults ? "修改后，所有未覆盖相应配置项的实例在下次执行时使用新值。" : "勾选继承的配置项在执行时读取流程的最新配置；取消勾选后可为当前实例填写覆盖值。")]),
     ]),
     DialogBody({}, [
+      Label({ attributes: { n: "automation-config-name-label", for: "automation-config-name" } }, [computed(vm$.state.config_defaults, (defaults) => defaults ? "流程名称" : "配置实例名称")]),
+      Input({ store: vm$.ui.input_config_name$, attributes: { n: "automation-config-name", id: "automation-config-name", "aria-label": computed(vm$.state.config_defaults, (defaults) => defaults ? "流程名称" : "配置实例名称") } }),
       Show({ when: vm$.state.config_loading, ok: () => View({ class: "text-color-text-secondary" }, ["正在加载配置…"]) }),
       Show({ when: computed(vm$.state.config_error, Boolean), ok: () => View({ class: "text-color-danger text-sm", attributes: { role: "alert" } }, [vm$.state.config_error]) }),
-      Show({ when: combine({ groups: vm$.state.config_groups, loading: vm$.state.config_loading, error: vm$.state.config_error }, ({ groups, loading, error }) => !loading && !error && !groups.length), ok: () => View({ class: "text-color-text-secondary text-sm" }, ["此自动化暂无所需配置。在编辑页选择节点，声明所需配置后保存。"]) }),
+      Show({ when: combine({ groups: vm$.state.config_groups, loading: vm$.state.config_loading, error: vm$.state.config_error }, ({ groups, loading, error }) => !loading && !error && !groups.length), ok: () => View({ class: "text-color-text-secondary text-sm" }, ["此流程尚未声明配置项；可先修改实例名称，配置项在共享流程中声明。"]) }),
       View({ class: "flex flex-col gap-4" }, [For({ each: vm$.state.config_groups, key: "id", render(group_) {
         const group = group_ && group_.value !== undefined ? group_.value : group_;
         return View({ class: "flex flex-col gap-3" }, [
@@ -314,7 +361,8 @@ function AutomationConfigDialog(props) {
                 : Input({ store: field.input$, onChange, attributes: { ...attributes, type: field.secret ? "secret" : field.type === "number" || field.type === "integer" ? "number" : "text", step: field.type === "number" ? "any" : undefined, autocomplete: "off", spellcheck: field.secret ? "false" : undefined } });
             return View({ class: "min-w-0 flex flex-col gap-1" }, [
               field.type !== "boolean" ? Label({ class: "text-color-text-secondary text-xs font-semibold", attributes: { for: id } }, [`${field.label || field.key}${field.required ? " *" : ""}`]) : null,
-              input,
+              field.inherit$ ? Checkbox({ store: field.inherit$, attributes: { n: `${id}-inherit`, "aria-label": `${field.label || field.key} 继承流程配置` } }, ["继承流程配置"]) : null,
+              field.inherited ? Show({ when: field.inherited, ok: () => View({ class: "text-color-text-secondary text-sm", attributes: { n: `${id}-inherited-value` } }, [field.inherited_text]), else: () => input }) : input,
               field.description ? View({ class: "text-color-text-secondary text-caption", attributes: { id: `${id}-help` } }, [field.description]) : null,
             ].filter(Boolean));
           }),
@@ -357,16 +405,16 @@ function AutomationCreatePipelineDialog(props) {
     },
     [
       DialogHeader({}, [
-        DialogTitle({}, ["创建自动化"]),
+        DialogTitle({}, ["创建自动化流程"]),
         DialogDescription({}, [
-          "为开始节点声明接收参数；创建后在编辑器中添加节点，并配置定时或事件触发器。",
+          "为开始节点声明接收参数；创建后编辑共享流程，再新增配置实例并设置触发器。",
         ]),
       ]),
       DialogBody({}, [
         View({ class: "flex flex-col gap-3" }, [
           View({ class: "grid grid-cols-[repeat(2,_minmax(0,_1fr))] gap-3 [&_.dm-button]:align-self-flex-end max-900:grid-cols-1fr" }, [
             View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
-              View({ class: "text-color-text-secondary text-xs font-semibold" }, ["Pipeline 名称"]),
+              View({ class: "text-color-text-secondary text-xs font-semibold" }, ["流程名称"]),
               Input({
                 store: vm$.ui.input_create_name$,
                 attributes: { n: "automation-create-name" },
@@ -446,7 +494,7 @@ function AutomationCreatePipelineDialog(props) {
             store: vm$.ui.btn_create_submit$,
             attributes: { n: "automation-create-submit", type: "button" },
           },
-          ["创建自动化"],
+          ["创建流程"],
         ),
       ]),
     ],
@@ -460,18 +508,18 @@ function AutomationDeletePipelineDialog(props) {
     store: vm$.ui.delete_dialog$,
     class: "dm-dialog--sm",
     name: "automation-delete-pipeline",
-    title: "删除 Pipeline",
+    title: "删除流程实例",
     description: combine(
       { flow_id: vm$.state.delete_flow_id, pipelines: vm$.state.pipelines },
       ({ flow_id, pipelines }) => {
         const flow = (pipelines || []).find((item) => item.id === flow_id);
         return flow
-          ? `确定删除「${flow.name || flow.id}」？删除后不可恢复。`
-          : "确定删除当前 Pipeline？删除后不可恢复。";
+          ? `确定删除配置实例「${flow.name || flow.id}」？其他实例不受影响，删除后不可恢复。`
+          : "确定删除当前流程实例？删除后不可恢复。";
       },
     ),
     cancelText: "取消",
-    okText: "删除 Pipeline",
+    okText: "删除流程实例",
   });
 }
 

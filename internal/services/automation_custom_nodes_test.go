@@ -49,13 +49,13 @@ func custom_node_test_service(t *testing.T) (*AutomationService, string) {
 	return service, directory
 }
 
-func configure_qiniu_test_node(t *testing.T, service *AutomationService, flow_id, upload_url string) *model.UserFlow {
+func configure_qiniu_test_node(t *testing.T, service *AutomationService, flow_id, upload_url string) *model.UserFlowInstance {
 	t.Helper()
 	settings := map[string]any{"access_key": "test-access-key", "secret_key": "test-secret-key", "bucket": "test-bucket", "domain": "https://cdn.example.com"}
 	if upload_url != "" {
 		settings["upload_url"] = upload_url
 	}
-	flow, err := service.UpdateUserFlow(flow_id, UpdateUserFlowInput{NodeConfigs: map[string]map[string]any{"upload": settings}})
+	flow, err := service.UpdateUserFlowInstance(flow_id, UpdateUserFlowInput{NodeConfigs: map[string]map[string]any{"upload": settings}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestAutomationCustomQiniuWorkflow(t *testing.T) {
 				t.Fatal(err)
 			}
 			raw = bytes.ReplaceAll(raw, []byte("http://localhost:8080/webhook/download_task/success"), []byte(server.URL+"/webhook"))
-			flow, err := service.ImportUserFlow(string(raw))
+			flow, err := service.ImportUserFlowWithInstance(string(raw))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -160,7 +160,7 @@ func TestAutomationCustomQiniuWorkflow(t *testing.T) {
 			service.HandleEvent(events.DownloadTaskFinished{TaskID: task.ID, Task: task, DownloadDir: directory})
 			service.wg.Wait()
 			var runs []model.FlowRunRecord
-			if err := service.db.Where("flow_id = ?", flow.ID).Find(&runs).Error; err != nil || len(runs) != 1 {
+			if err := service.db.Where("instance_id = ?", flow.ID).Find(&runs).Error; err != nil || len(runs) != 1 {
 				t.Fatalf("event did not create one run: %+v %v", runs, err)
 			}
 			run := runs[0]
@@ -247,34 +247,41 @@ func TestCustomNodeEditorAndValidation(t *testing.T) {
 		}
 	}
 	flow := trigger_test_flow(t, service)
-	flow, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{Nodes: draft.Nodes, StartNodeID: "start"})
+	flow, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{Nodes: draft.Nodes, StartNodeID: "start"})
 	if err != nil {
 		t.Fatalf("editor cannot save custom node: %v", err)
 	}
-	if _, err := service.TriggerFlowDirect(flow.ID, nil); err == nil || !strings.Contains(err.Error(), "access_key") {
+	if _, err := service.TriggerFlowInstance(flow.ID, nil); err == nil || !strings.Contains(err.Error(), "access_key") {
 		t.Fatalf("unconfigured custom node ran: %v", err)
 	}
 	for _, missing := range []string{"access_key", "secret_key", "bucket", "domain"} {
 		settings := map[string]any{"access_key": "key", "secret_key": "secret", "bucket": "bucket", "domain": "https://cdn.example.com"}
 		delete(settings, missing)
-		if _, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{NodeConfigs: map[string]map[string]any{"upload": settings}}); err == nil || !strings.Contains(err.Error(), missing) {
+		if _, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{NodeConfigs: map[string]map[string]any{"upload": settings}}); err == nil || !strings.Contains(err.Error(), missing) {
 			t.Fatalf("missing %s was accepted: %v", missing, err)
 		}
 	}
 	configured := configure_qiniu_test_node(t, service, flow.ID, "")
-	if decode_node_configs(configured.NodeConfigs)["upload"]["upload_url"] != "https://upload-z2.qiniup.com" || strings.Contains(configured.Definition, "test-secret-key") {
-		t.Fatal("default not applied or secrets entered reusable definition")
+	configured_definition, err := decode_user_flow_definition(configured.Definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.bind_node_configs(configured_definition, configured.ID); err != nil {
+		t.Fatal(err)
+	}
+	if configured_definition.Nodes["upload"].ConfigValues["upload_url"] != "https://upload-z2.qiniup.com" || decode_node_configs(configured.NodeConfigs)["upload"]["upload_url"] != nil || strings.Contains(configured.Definition, "test-secret-key") {
+		t.Fatal("declared defaults must resolve at execution without becoming stored overrides or exposing secrets")
 	}
 	// Simulate an older persisted flow and ensure startup refreshes its declarations.
 	stored, _ := decode_user_flow_definition(configured.Definition)
 	old_node := stored.Nodes["upload"]
 	old_node.ConfigSchema = nil
 	stored.Nodes["upload"] = old_node
-	if err := service.db.Model(&model.UserFlow{}).Where("id = ?", flow.ID).Update("definition", marshal_json(stored)).Error; err != nil {
+	if err := service.db.Model(&model.UserFlowDefinition{}).Where("id = ?", flow.FlowID).Update("definition", marshal_json(stored)).Error; err != nil {
 		t.Fatal(err)
 	}
 	service.load_user_flows()
-	loaded, _ := service.GetUserFlow(flow.ID)
+	loaded, _ := service.GetUserFlowInstance(flow.ID)
 	refreshed, _ := decode_user_flow_definition(loaded.Definition)
 	if len(refreshed.Nodes["upload"].ConfigSchema) != 5 || !strings.Contains(loaded.NodeConfigs, "test-secret-key") {
 		t.Fatal("startup did not refresh schema or lost settings")
@@ -307,7 +314,7 @@ func TestDownloadCompletionEventsWaitInsteadOfDroppingBusyTasks(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw = bytes.ReplaceAll(raw, []byte("http://localhost:8080/webhook/download_task/success"), []byte(server.URL))
-	flow, err := service.ImportUserFlow(string(raw))
+	flow, err := service.ImportUserFlowWithInstance(string(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +329,7 @@ func TestDownloadCompletionEventsWaitInsteadOfDroppingBusyTasks(t *testing.T) {
 	release()
 	service.wg.Wait()
 	var completed int64
-	if err := service.db.Model(&model.FlowRunRecord{}).Where("flow_id = ? AND status = ?", flow.ID, "COMPLETED").Count(&completed).Error; err != nil || completed != 2 || !reflect.DeepEqual(task_ids, []int{1, 2}) {
+	if err := service.db.Model(&model.FlowRunRecord{}).Where("instance_id = ? AND status = ?", flow.ID, "COMPLETED").Count(&completed).Error; err != nil || completed != 2 || !reflect.DeepEqual(task_ids, []int{1, 2}) {
 		t.Fatalf("busy task dropped or reordered: runs=%d tasks=%v error=%v", completed, task_ids, err)
 	}
 }

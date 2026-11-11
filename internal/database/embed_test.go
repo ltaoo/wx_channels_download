@@ -53,8 +53,8 @@ func TestAutomationMigrationsRoundTrip(t *testing.T) {
 			WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'`).Scan(&table_count); err != nil {
 			t.Fatal(err)
 		}
-		if table_count != 55 {
-			t.Fatalf("got %d business tables, want 55", table_count)
+		if table_count != 57 {
+			t.Fatalf("got %d business tables, want 57", table_count)
 		}
 		if err := sql_db.QueryRow("SELECT COUNT(*) FROM platform").Scan(&platform_count); err != nil {
 			t.Fatal(err)
@@ -72,15 +72,18 @@ func TestAutomationMigrationsRoundTrip(t *testing.T) {
 			t.Fatalf("got %d migrated content tags, want 1", tag_count)
 		}
 		if _, err := sql_db.Exec(`INSERT INTO flow_run_record
-			(id, flow_id, status, definition, initial_data, checkpoint, node_logs, timeout_sec, deadline_at, retry_of)
-			VALUES ('test-run', 'test-flow', 'completed', '{}', '{}', '{}', '[]', 60, 100, '')`); err != nil {
+			(id, flow_id, instance_id, status, definition, initial_data, checkpoint, timeout_sec, deadline_at, retry_of)
+			VALUES ('test-run', 'test-flow', 'test-instance', 'completed', '{}', '{}', '{}', 60, 100, '')`); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := sql_db.Exec("INSERT INTO user_flow (id, name) VALUES ('test-flow', 'Test flow')"); err != nil {
+		if _, err := sql_db.Exec("INSERT INTO user_flow (id,name,definition) VALUES ('test-flow','Test flow','{}')"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := sql_db.Exec("INSERT INTO user_flow_instance (id, name, flow_id) VALUES ('test-instance', 'Test instance', 'test-flow')"); err != nil {
 			t.Fatal(err)
 		}
 		var node_configs string
-		if err := sql_db.QueryRow("SELECT node_configs FROM user_flow WHERE id = 'test-flow'").Scan(&node_configs); err != nil {
+		if err := sql_db.QueryRow("SELECT node_configs FROM user_flow_instance WHERE id = 'test-instance'").Scan(&node_configs); err != nil {
 			t.Fatal(err)
 		}
 		if node_configs != "{}" {
@@ -97,6 +100,13 @@ func TestAutomationMigrationsRoundTrip(t *testing.T) {
 			!strings.Contains(plan_detail, "status=? AND deleted_at=? AND deadline_at>? AND deadline_at<?") {
 			t.Fatalf("expiry query must use the composite index for filtering: %s", plan_detail)
 		}
+		if err := sql_db.QueryRow(`EXPLAIN QUERY PLAN SELECT id, created_at, status FROM flow_run_record
+			WHERE instance_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 20`, "test-instance").Scan(&plan_id, &parent_id, &unused, &plan_detail); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(plan_detail, "idx_flow_run_record_instance_history") {
+			t.Fatalf("instance history must use its pagination index: %s", plan_detail)
+		}
 		if err := migrator.Up(); err != migrate.ErrNoChange {
 			t.Fatalf("repeated migrate up: got %v, want ErrNoChange", err)
 		}
@@ -108,7 +118,7 @@ func TestAutomationMigrationsRoundTrip(t *testing.T) {
 			t.Fatalf("rollback state: version=%d dirty=%v err=%v", version, dirty, err)
 		}
 		if err := sql_db.QueryRow(`SELECT COUNT(*) FROM sqlite_master
-			WHERE name IN ('flow_schedule', 'flow_run_record', 'tag', 'content_tag', 'account_tag', 'user_flow')`).Scan(&table_count); err != nil {
+			WHERE name IN ('flow_schedule', 'flow_run_record', 'tag', 'content_tag', 'account_tag', 'user_flow', 'user_flow_instance', 'flow_run_node_log')`).Scan(&table_count); err != nil {
 			t.Fatal(err)
 		}
 		if table_count != 0 {
@@ -161,26 +171,29 @@ func TestSubflowStateMigrationPreservesRunHistory(t *testing.T) {
 	if err := migrator.Migrate(3); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sql_db.Exec(`INSERT INTO flow_run_record (id, flow_id, status, node_logs) VALUES ('existing', 'flow', 'COMPLETED', '[{"node_id":"first"}]')`); err != nil {
+	if _, err := sql_db.Exec(`INSERT INTO flow_run_record (id, flow_id, instance_id, status) VALUES ('existing', 'flow', 'instance', 'COMPLETED')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sql_db.Exec(`INSERT INTO flow_run_node_log (run_id,flow_id,node_id,entry) VALUES ('existing','flow','first','{"node_id":"first"}')`); err != nil {
 		t.Fatal(err)
 	}
 	if err := migrator.Up(); err != nil {
 		t.Fatal(err)
 	}
 	var states, logs, status string
-	if err := sql_db.QueryRow(`SELECT node_states, node_logs, status FROM flow_run_record WHERE id = 'existing'`).Scan(&states, &logs, &status); err != nil {
+	if err := sql_db.QueryRow(`SELECT r.node_states,l.entry,r.status FROM flow_run_record r JOIN flow_run_node_log l ON l.run_id=r.id WHERE r.id='existing'`).Scan(&states, &logs, &status); err != nil {
 		t.Fatal(err)
 	}
-	if states != "{}" || logs != `[{"node_id":"first"}]` || status != "COMPLETED" {
+	if states != "{}" || logs != `{"node_id":"first"}` || status != "COMPLETED" {
 		t.Fatalf("upgrade changed history: states=%s logs=%s status=%s", states, logs, status)
 	}
 	if err := migrator.Migrate(3); err != nil {
 		t.Fatal(err)
 	}
-	if err := sql_db.QueryRow(`SELECT node_logs, status FROM flow_run_record WHERE id = 'existing'`).Scan(&logs, &status); err != nil {
+	if err := sql_db.QueryRow(`SELECT l.entry,r.status FROM flow_run_record r JOIN flow_run_node_log l ON l.run_id=r.id WHERE r.id='existing'`).Scan(&logs, &status); err != nil {
 		t.Fatal(err)
 	}
-	if logs != `[{"node_id":"first"}]` || status != "COMPLETED" {
+	if logs != `{"node_id":"first"}` || status != "COMPLETED" {
 		t.Fatal("rollback changed run history")
 	}
 }

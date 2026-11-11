@@ -9,6 +9,7 @@ import (
 
 // AutomationScheduleSummary is the compact schedule view returned by listings.
 type AutomationScheduleSummary struct {
+	InstanceID    string `json:"instance_id"`
 	ID            string `json:"id"`
 	Name          string `json:"name"`
 	Description   string `json:"description,omitempty"`
@@ -32,6 +33,7 @@ type AutomationScheduleDetail struct {
 
 // AutomationRunSummary is one execution attempt of a schedule.
 type AutomationRunSummary struct {
+	InstanceID  string `json:"instance_id"`
 	ID          string `json:"id"`
 	ScheduleID  string `json:"schedule_id,omitempty"`
 	FlowID      string `json:"flow_id"`
@@ -45,6 +47,7 @@ type AutomationRunSummary struct {
 
 // AutomationCreateScheduleInput describes a new schedule created through MCP.
 type AutomationCreateScheduleInput struct {
+	InstanceID  string
 	Name        string
 	Description string
 	CronExpr    string
@@ -78,6 +81,7 @@ type get_automation_schedule_arguments struct {
 }
 
 type create_automation_schedule_arguments struct {
+	InstanceID  string                 `json:"instance_id"`
 	Name        string                 `json:"name"`
 	Description string                 `json:"description"`
 	CronExpr    string                 `json:"cron_expr"`
@@ -129,6 +133,7 @@ func (s *ToolSet) create_automation_schedule_tool(ctx context.Context, raw_argum
 		return nil, err
 	}
 	schedule, err := s.automation.CreateSchedule(ctx, AutomationCreateScheduleInput{
+		InstanceID:  arguments.InstanceID,
 		Name:        arguments.Name,
 		Description: arguments.Description,
 		CronExpr:    arguments.CronExpr,
@@ -221,7 +226,7 @@ var tools_automation = []tool{
 		name:         create_automation_schedule_tool_name,
 		title:        `创建定时任务`,
 		description:  `创建一个按 cron 表达式周期性执行工作流的定时任务。cron_expr 支持标准 5 字段表达式，也支持 @every 1m、@daily 等简写。创建前应先获得用户确认。`,
-		input_schema: json.RawMessage(`{"additionalProperties":false,"properties":{"cron_expr":{"description":"cron 表达式，例如 \"0 9 * * *\" 表示每天 9 点，\"@every 30m\" 表示每 30 分钟。","type":"string"},"description":{"description":"定时任务说明。","type":"string"},"enabled":{"description":"创建后是否立即启用，默认 true。","type":"boolean"},"flow_id":{"description":"要执行的工作流 ID，必须已在流程引擎中注册。","type":"string"},"initial_data":{"additionalProperties":true,"description":"传给工作流的初始上下文数据。","type":"object"},"name":{"description":"定时任务名称。","type":"string"},"timeout_sec":{"description":"单次执行的超时秒数，默认 3600。","type":"integer"}},"required":["name","cron_expr","flow_id"],"type":"object"}`),
+		input_schema: json.RawMessage(`{"additionalProperties":false,"properties":{"cron_expr":{"description":"cron 表达式，例如 \"0 9 * * *\" 表示每天 9 点，\"@every 30m\" 表示每 30 分钟。","type":"string"},"description":{"description":"定时任务说明。","type":"string"},"enabled":{"description":"创建后是否立即启用，默认 true。","type":"boolean"},"instance_id":{"description":"要执行的自动化流程实例 ID。","type":"string"},"flow_id":{"description":"所属流程 ID，可省略；由实例确定。","type":"string"},"initial_data":{"additionalProperties":true,"description":"传给工作流的初始上下文数据。","type":"object"},"name":{"description":"定时任务名称。","type":"string"},"timeout_sec":{"description":"单次执行的超时秒数，默认 3600。","type":"integer"}},"required":["name","cron_expr","instance_id"],"type":"object"}`),
 		annotations:  json.RawMessage(`{"destructiveHint":false,"idempotentHint":false,"openWorldHint":false,"readOnlyHint":false}`),
 		supports:     supports_automation,
 		handle:       (*ToolSet).create_automation_schedule_tool,

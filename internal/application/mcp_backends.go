@@ -548,6 +548,7 @@ func (b *mcp_automation_backend) CreateSchedule(
 		return nil, err
 	}
 	schedule, err := b.automation_service.CreateSchedule(services.CreateScheduleInput{
+		InstanceID:  input.InstanceID,
 		Name:        input.Name,
 		Description: input.Description,
 		CronExpr:    input.CronExpr,
@@ -627,6 +628,7 @@ func mcp_automation_schedule_summary(schedule model.FlowSchedule) mcpserver.Auto
 		Description:   schedule.Description,
 		CronExpr:      schedule.CronExpr,
 		FlowID:        schedule.FlowID,
+		InstanceID:    schedule.InstanceID,
 		Enabled:       schedule.Enabled,
 		NextRunAt:     schedule.NextRunAt,
 		LastRunID:     schedule.LastRunID,
@@ -655,6 +657,7 @@ func mcp_automation_run_summary(run *model.FlowRunRecord) *mcpserver.AutomationR
 		ID:          run.ID,
 		ScheduleID:  run.ScheduleID,
 		FlowID:      run.FlowID,
+		InstanceID:  run.InstanceID,
 		TriggerType: run.TriggerType,
 		Status:      run.Status,
 		CurrentNode: run.CurrentNode,

@@ -9,16 +9,6 @@
       "required": true
     }
   ],
-  "triggers": [
-    {
-      "type": "Event",
-      "name": "下载任务完成",
-      "event_key": "downloadtask.finished",
-      "active": true,
-      "enabled": false,
-      "timeout_sec": 600
-    }
-  ],
   "nodes": {
     "start": {
       "type": "StartNode",

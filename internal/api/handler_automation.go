@@ -13,6 +13,7 @@ import (
 )
 
 type automation_schedule_create_body struct {
+	InstanceID  string                 `json:"instance_id"`
 	Name        string                 `json:"name"`
 	Description string                 `json:"description"`
 	CronExpr    string                 `json:"cron_expr"`
@@ -23,11 +24,12 @@ type automation_schedule_create_body struct {
 }
 
 type automation_schedule_list_body struct {
-	Page     int    `json:"page"`
-	PageSize int    `json:"page_size"`
-	FlowID   string `json:"flow_id"`
-	Keyword  string `json:"keyword"`
-	Enabled  *bool  `json:"enabled"`
+	InstanceID string `json:"instance_id"`
+	Page       int    `json:"page"`
+	PageSize   int    `json:"page_size"`
+	FlowID     string `json:"flow_id"`
+	Keyword    string `json:"keyword"`
+	Enabled    *bool  `json:"enabled"`
 }
 
 type automation_id_body struct {
@@ -41,6 +43,7 @@ type automation_schedule_trigger_body struct {
 }
 
 type automation_schedule_update_body struct {
+	InstanceID  *string                `json:"instance_id"`
 	ID          string                 `json:"id"`
 	Name        *string                `json:"name"`
 	Description *string                `json:"description"`
@@ -52,6 +55,7 @@ type automation_schedule_update_body struct {
 }
 
 type automation_run_list_body struct {
+	InstanceID string `json:"instance_id"`
 	Summary    bool   `json:"summary"`
 	Page       int    `json:"page"`
 	PageSize   int    `json:"page_size"`
@@ -90,11 +94,12 @@ func (c *APIClient) handle_list_automation_schedules(ctx *gin.Context) {
 		return
 	}
 	input := services.ListSchedulesInput{
-		Page:     body.Page,
-		PageSize: body.PageSize,
-		FlowID:   strings.TrimSpace(body.FlowID),
-		Keyword:  strings.TrimSpace(body.Keyword),
-		Enabled:  body.Enabled,
+		InstanceID: body.InstanceID,
+		Page:       body.Page,
+		PageSize:   body.PageSize,
+		FlowID:     strings.TrimSpace(body.FlowID),
+		Keyword:    strings.TrimSpace(body.Keyword),
+		Enabled:    body.Enabled,
 	}
 	schedules, total, err := service.ListSchedules(input)
 	if err != nil {
@@ -115,6 +120,7 @@ func (c *APIClient) handle_create_automation_schedule(ctx *gin.Context) {
 		return
 	}
 	schedule, err := service.CreateSchedule(services.CreateScheduleInput{
+		InstanceID:  body.InstanceID,
 		Name:        body.Name,
 		Description: body.Description,
 		CronExpr:    body.CronExpr,
@@ -159,6 +165,7 @@ func (c *APIClient) handle_update_automation_schedule(ctx *gin.Context) {
 		return
 	}
 	schedule, err := service.UpdateSchedule(strings.TrimSpace(body.ID), services.UpdateScheduleInput{
+		InstanceID:  body.InstanceID,
 		Name:        body.Name,
 		Description: body.Description,
 		CronExpr:    body.CronExpr,
@@ -243,6 +250,7 @@ func (c *APIClient) handle_list_automation_runs(ctx *gin.Context) {
 		return
 	}
 	input := services.ListRunsInput{
+		InstanceID: body.InstanceID,
 		Summary:    body.Summary,
 		Page:       body.Page,
 		PageSize:   body.PageSize,
@@ -277,13 +285,13 @@ func (c *APIClient) handle_clear_automation_runs(ctx *gin.Context) {
 		return
 	}
 	var body struct {
-		FlowID string `json:"flow_id"`
+		InstanceID string `json:"instance_id"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, api_code_invalid_params, "请求参数无效")
 		return
 	}
-	cleared, err := service.ClearRuns(body.FlowID)
+	cleared, err := service.ClearRuns(body.InstanceID)
 	if err != nil {
 		result.Err(ctx, api_code_invalid_params, err.Error())
 		return
@@ -345,20 +353,22 @@ func (c *APIClient) handle_get_automation_run_node_logs(ctx *gin.Context) {
 		return
 	}
 	var body struct {
-		ID     string `json:"id"`
-		NodeID string `json:"node_id"`
-		FlowID string `json:"flow_id"`
+		BeforeID int64  `json:"before_id"`
+		PageSize int    `json:"page_size"`
+		ID       string `json:"id"`
+		NodeID   string `json:"node_id"`
+		FlowID   string `json:"flow_id"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, api_code_invalid_params, "请求参数无效")
 		return
 	}
-	logs, err := service.GetRunNodeLogs(body.ID, body.NodeID, body.FlowID)
+	logs, err := service.GetRunNodeLogPage(body.ID, body.NodeID, body.FlowID, body.BeforeID, body.PageSize)
 	if err != nil {
 		result.Err(ctx, api_code_invalid_params, err.Error())
 		return
 	}
-	result.Ok(ctx, gin.H{"list": logs})
+	result.Ok(ctx, logs)
 }
 
 func (c *APIClient) handle_cancel_automation_run(ctx *gin.Context) {

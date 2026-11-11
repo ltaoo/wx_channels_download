@@ -28,7 +28,7 @@ type UserFlowTriggerInput struct {
 // history, input parameters, and unchanged next-fire times for existing rules.
 func (s *AutomationService) replace_user_flow_triggers(tx *gorm.DB, flow_id string, start_node_id string, inputs []UserFlowTriggerInput) error {
 	var schedules []model.FlowSchedule
-	if err := tx.Where("flow_id = ? AND deleted_at IS NULL", flow_id).Find(&schedules).Error; err != nil {
+	if err := tx.Where("instance_id = ? AND deleted_at IS NULL", flow_id).Find(&schedules).Error; err != nil {
 		return err
 	}
 	existing := make(map[string]model.FlowSchedule, len(schedules))
@@ -90,7 +90,7 @@ func (s *AutomationService) replace_user_flow_triggers(tx *gorm.DB, flow_id stri
 				timeout_sec = *input.TimeoutSec
 			}
 			if _, err := scoped_service.CreateSchedule(CreateScheduleInput{
-				Name: name, FlowID: flow_id, CronExpr: cron_expr, InitialData: initial_data,
+				Name: name, InstanceID: flow_id, CronExpr: cron_expr, InitialData: initial_data,
 				Enabled: &enabled, TimeoutSec: timeout_sec,
 			}); err != nil {
 				return fmt.Errorf("触发器 %d: %w", index+1, err)

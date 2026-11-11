@@ -1,0 +1,70 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "更新流程实例",
+    "description": "node_configs 仅保存显式覆盖值；{} 清空全部覆盖。触发规则属于实例。",
+    "operationId": "post_api_v1_automation_update_flow_instance",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "node_configs": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "triggers": {
+                "type": "array",
+                "items": {
+                  "$ref": "../components.json#/schemas/services_UserFlowTriggerInput"
+                }
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "code=0 表示成功。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/model_UserFlowInstance"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

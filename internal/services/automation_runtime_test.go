@@ -11,14 +11,14 @@ import (
 	"wx_channel/pkg/flowengine"
 )
 
-func import_runtime_flow(t *testing.T, service *AutomationService, nodes map[string]flowengine.NodeDefinition, schema ...flowengine.FieldSchema) *model.UserFlow {
+func import_runtime_flow(t *testing.T, service *AutomationService, nodes map[string]flowengine.NodeDefinition, schema ...flowengine.FieldSchema) *model.UserFlowInstance {
 	t.Helper()
 	definition := flowengine.FlowDefinition{ID: "template", Name: t.Name(), StartNodeID: "start", ContextSchema: schema, Nodes: nodes}
 	raw, err := json.Marshal(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
-	flow, err := service.ImportUserFlow(string(raw))
+	flow, err := service.ImportUserFlowWithInstance(string(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestAutomationCancellationAndDeadlineStopJS(t *testing.T) {
 		"forever": runtime_test_node("forever", "JSCodeNode", map[string]interface{}{"code": "while (true) {}", "output_key": "never"}, "after"),
 		"after":   runtime_test_node("after", "FailNode", map[string]interface{}{"message": "must not run"}),
 	})
-	run, err := service.TriggerFlowDirect(flow.ID, nil)
+	run, err := service.TriggerFlowInstance(flow.ID, nil)
 	if err != nil || run.ID == "" {
 		t.Fatalf("run not durably allocated: %+v %v", run, err)
 	}
@@ -66,7 +66,7 @@ func TestAutomationCancellationAndDeadlineStopJS(t *testing.T) {
 	if saved.Status != "CANCELLED" || saved.CurrentNode != "forever" {
 		t.Fatalf("cancel overwritten: %+v", saved)
 	}
-	rule, err := service.CreateSchedule(CreateScheduleInput{Name: "deadline", FlowID: flow.ID, CronExpr: "@daily", TimeoutSec: 1})
+	rule, err := service.CreateSchedule(CreateScheduleInput{Name: "deadline", InstanceID: flow.ID, CronExpr: "@daily", TimeoutSec: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestAutomationManualResumeSurvivesRestartAndGraphEdit(t *testing.T) {
 		"confirm": {ID: "confirm", Type: "ManualNode", InputSchema: []flowengine.FieldSchema{{Key: "approved", Type: "boolean", Required: true}}, NextNodeIDs: []string{"result"}},
 		"result":  runtime_test_node("result", "JSCodeNode", map[string]interface{}{"code": "global.state + ':' + output.confirm.response.approved", "output_key": "result_value"}),
 	})
-	run, err := first.TriggerFlowDirect(flow.ID, nil)
+	run, err := first.TriggerFlowInstance(flow.ID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestAutomationManualResumeSurvivesRestartAndGraphEdit(t *testing.T) {
 	if waiting.Status != "WAITING" || waiting.Checkpoint == "" {
 		t.Fatalf("not recoverable: %+v", waiting)
 	}
-	if _, err := first.TriggerFlowDirect(flow.ID, nil); err == nil {
+	if _, err := first.TriggerFlowInstance(flow.ID, nil); err == nil {
 		t.Fatal("waiting run allowed duplicate execution")
 	}
 	if _, err := first.ResumeRun(run.ID, "confirm", map[string]interface{}{"approved": "bad type"}); err == nil {
@@ -105,7 +105,7 @@ func TestAutomationManualResumeSurvivesRestartAndGraphEdit(t *testing.T) {
 	result.Config["code"] = "'changed graph'"
 	definition.Nodes["result"] = result
 	raw, _ := json.Marshal(definition)
-	if err := first.db.Model(&model.UserFlow{}).Where("id = ?", flow.ID).Update("definition", string(raw)).Error; err != nil {
+	if err := first.db.Model(&model.UserFlowDefinition{}).Where("id = ?", flow.FlowID).Update("definition", string(raw)).Error; err != nil {
 		t.Fatal(err)
 	}
 	first.Stop()
@@ -137,7 +137,7 @@ func TestAutomationRetryUsesRecordedDefinitionAndInput(t *testing.T) {
 		"start": runtime_test_node("start", "StartNode", nil, "fail"),
 		"fail":  runtime_test_node("fail", "FailNode", map[string]interface{}{"message": "old {{input.value}}"}),
 	}, flowengine.FieldSchema{Key: "value", Type: "string", Required: true})
-	run, err := service.TriggerFlowDirect(flow.ID, map[string]interface{}{"value": "input"})
+	run, err := service.TriggerFlowInstance(flow.ID, map[string]interface{}{"value": "input"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,6 +146,9 @@ func TestAutomationRetryUsesRecordedDefinitionAndInput(t *testing.T) {
 	node := definition.Nodes["fail"]
 	node.Config["message"] = "new {{input.value}}"
 	definition.Nodes["fail"] = node
+	if err := service.db.Model(&model.UserFlowDefinition{}).Where("id = ?", flow.FlowID).Update("definition", marshal_json(definition)).Error; err != nil {
+		t.Fatal(err)
+	}
 	service.register_user_flow(*definition)
 	original, err := service.RetryRun(run.ID, false)
 	if err != nil {
@@ -174,7 +177,7 @@ func TestAutomationEventMatchingAndAuthenticatedWebhook(t *testing.T) {
 		"start": runtime_test_node("start", "StartNode", nil, "read"),
 		"read":  runtime_test_node("read", "JSCodeNode", map[string]interface{}{"code": "input.event.data.value", "output_key": "event_value"}),
 	}, flowengine.FieldSchema{Key: "event", Type: "object"})
-	_, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{Triggers: []UserFlowTriggerInput{
+	_, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{Triggers: []UserFlowTriggerInput{
 		{Type: "Event", Name: "event", EventKey: "custom.created"}, {Type: "Webhook", Name: "hook"},
 	}})
 	if err != nil {
@@ -235,7 +238,7 @@ func TestAutomationExecutionPolicySurvivesLegacySave(t *testing.T) {
 	for _, node := range definition.Nodes {
 		inputs = append(inputs, UserFlowNodeInput{ID: node.ID, Type: node.Type, Config: node.Config, NextIDs: node.NextNodeIDs})
 	}
-	saved, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{Nodes: inputs})
+	saved, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{Nodes: inputs})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +246,7 @@ func TestAutomationExecutionPolicySurvivesLegacySave(t *testing.T) {
 	if definition.Nodes["fail"].RetryPolicy.MaxAttempts != 3 || definition.Nodes["fail"].ErrorNextNodeID != "recover" {
 		t.Fatal("legacy save dropped execution policy")
 	}
-	run, err := service.TriggerFlowDirect(flow.ID, nil)
+	run, err := service.TriggerFlowInstance(flow.ID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

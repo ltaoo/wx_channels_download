@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS `flow_schedule` (
   `description` TEXT,
   `cron_expr` TEXT NOT NULL,
   `flow_id` TEXT NOT NULL,
+  `instance_id` TEXT NOT NULL REFERENCES user_flow_instance(id),
   `initial_data` TEXT,
   `enabled` INTEGER NOT NULL DEFAULT 1,
   `timeout_sec` INTEGER NOT NULL DEFAULT 3600,
@@ -28,6 +29,7 @@ CREATE TABLE IF NOT EXISTS `flow_run_record` (
   `id` TEXT PRIMARY KEY,
   `schedule_id` TEXT,
   `flow_id` TEXT NOT NULL,
+  `instance_id` TEXT NOT NULL REFERENCES user_flow_instance(id),
   `trigger_type` TEXT,
   `trigger_key` TEXT,
   `status` TEXT NOT NULL,
@@ -43,7 +45,6 @@ CREATE TABLE IF NOT EXISTS `flow_run_record` (
   `definition` TEXT,
   `initial_data` TEXT,
   `checkpoint` TEXT,
-  `node_logs` TEXT,
   `timeout_sec` INTEGER NOT NULL DEFAULT 3600,
   `deadline_at` INTEGER NOT NULL DEFAULT 0,
   `retry_of` TEXT
@@ -103,23 +104,30 @@ JOIN `tag` ON tag.name = j.value
 WHERE content.tags IS NOT NULL AND content.tags != '' AND content.tags != '[]'
     AND json_valid(content.tags) = 1;
 
--- User-defined pipelines: JSON flow definitions that are registered into the
--- shared flow engine so schedules can trigger them like built-in flows.
-CREATE TABLE IF NOT EXISTS `user_flow` (
-  `id` TEXT PRIMARY KEY,
-  `name` TEXT NOT NULL,
-  `description` TEXT,
-  `trigger_type` TEXT NOT NULL DEFAULT 'Cron',
-  `event_key` TEXT,
-  `definition` TEXT,
-  `node_configs` TEXT NOT NULL DEFAULT '{}',
-  `created_at` INTEGER NOT NULL DEFAULT 0,
-  `updated_at` INTEGER NOT NULL DEFAULT 0,
-  `deleted_at` INTEGER
+-- A flow can exist without any instances. Only instances are executable.
+CREATE TABLE `user_flow` (
+ `id` TEXT PRIMARY KEY, `name` TEXT NOT NULL, `description` TEXT,
+ `definition` TEXT NOT NULL, `default_node_configs` TEXT NOT NULL DEFAULT '{}',
+ `created_at` INTEGER NOT NULL DEFAULT 0, `updated_at` INTEGER NOT NULL DEFAULT 0, `deleted_at` INTEGER
 );
-
-CREATE INDEX IF NOT EXISTS `idx_user_flow_deleted_at`
-ON `user_flow` (`deleted_at`);
+CREATE INDEX `idx_user_flow_deleted_at` ON `user_flow` (`deleted_at`);
+CREATE TABLE `user_flow_instance` (
+ `id` TEXT PRIMARY KEY, `flow_id` TEXT NOT NULL REFERENCES user_flow(id),
+ `name` TEXT NOT NULL, `description` TEXT,
+ `node_configs` TEXT NOT NULL DEFAULT '{}',
+ `trigger_type` TEXT NOT NULL DEFAULT 'Manual', `event_key` TEXT,
+ `created_at` INTEGER NOT NULL DEFAULT 0, `updated_at` INTEGER NOT NULL DEFAULT 0, `deleted_at` INTEGER
+);
+CREATE INDEX `idx_user_flow_instance_flow_id` ON `user_flow_instance` (`flow_id`, `deleted_at`);
+CREATE INDEX `idx_flow_schedule_instance_id` ON `flow_schedule` (`instance_id`, `deleted_at`);
+CREATE INDEX `idx_flow_run_record_instance_history` ON `flow_run_record` (`instance_id`, `deleted_at`, `created_at` DESC);
+CREATE INDEX `idx_flow_run_record_instance_active` ON `flow_run_record` (`instance_id`, `deleted_at`, `status`);
+CREATE TABLE `flow_run_node_log` (
+ `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+ `run_id` TEXT NOT NULL REFERENCES flow_run_record(id),
+ `flow_id` TEXT NOT NULL, `node_id` TEXT NOT NULL, `entry` TEXT NOT NULL
+);
+CREATE INDEX `idx_flow_run_node_log_node` ON `flow_run_node_log` (`run_id`, `flow_id`, `node_id`, `id`);
 
 -- Reuse content + content_video (movie subtype), content_series,
 -- content_episode, content_relation and the existing resource/asset catalog.

@@ -9,13 +9,13 @@ import (
 
 func TestCopyUserFlowIncludesConfigurationAndTriggers(t *testing.T) {
 	service := new_trigger_test_service(t)
-	source, err := service.ImportUserFlow(`{"name":"creator","start_node":"start","nodes":{"start":{"id":"start","type":"StartNode","next_node_ids":["validate"]},"validate":{"id":"validate","type":"JSCodeNode","config":{"code":"config.username","output_key":"creator"},"config_schema":[{"key":"username","type":"string"},{"key":"token","type":"string","secret":true}]}}}`)
+	source, err := service.ImportUserFlowWithInstance(`{"name":"creator","start_node":"start","nodes":{"start":{"id":"start","type":"StartNode","next_node_ids":["validate"]},"validate":{"id":"validate","type":"JSCodeNode","config":{"code":"config.username","output_key":"creator"},"config_schema":[{"key":"username","type":"string"},{"key":"token","type":"string","secret":true}]}}}`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	description := "creator sync"
 	active := false
-	source, err = service.UpdateUserFlow(source.ID, UpdateUserFlowInput{
+	source, err = service.UpdateUserFlowInstance(source.ID, UpdateUserFlowInput{
 		Description: &description,
 		NodeConfigs: map[string]map[string]interface{}{"validate": {"username": "creator@finder", "token": "saved-token"}},
 		Triggers: []UserFlowTriggerInput{
@@ -27,10 +27,10 @@ func TestCopyUserFlowIncludesConfigurationAndTriggers(t *testing.T) {
 		t.Fatal(err)
 	}
 	original_rules := trigger_test_rules(t, service, source.ID)
-	if err := service.db.Model(&model.FlowSchedule{}).Where("flow_id = ?", source.ID).Updates(map[string]interface{}{"last_run_id": "old-run", "last_run_status": "COMPLETED"}).Error; err != nil {
+	if err := service.db.Model(&model.FlowSchedule{}).Where("instance_id = ?", source.ID).Updates(map[string]interface{}{"last_run_id": "old-run", "last_run_status": "COMPLETED"}).Error; err != nil {
 		t.Fatal(err)
 	}
-	copied, err := service.CopyUserFlow(source.ID)
+	copied, err := service.CopyUserFlowInstance(source.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestCopyUserFlowIncludesConfigurationAndTriggers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if copied_definition.ID != copied.ID || copied_definition.Name != copied.Name {
+	if copied_definition.ID != source.FlowID || copied.FlowID != source.FlowID {
 		t.Fatal("copied definition kept source identity")
 	}
 	copied_definition.ID, copied_definition.Name = original_definition.ID, original_definition.Name
@@ -60,7 +60,7 @@ func TestCopyUserFlowIncludesConfigurationAndTriggers(t *testing.T) {
 				original = rule
 			}
 		}
-		if copied_rule.ID == original.ID || copied_rule.FlowID != copied.ID || copied_rule.CronExpr != original.CronExpr || copied_rule.Enabled != original.Enabled || copied_rule.TimeoutSec != original.TimeoutSec || copied_rule.LastRunID != "" || copied_rule.LastRunStatus != "" {
+		if copied_rule.ID == original.ID || copied_rule.InstanceID != copied.ID || copied_rule.CronExpr != original.CronExpr || copied_rule.Enabled != original.Enabled || copied_rule.TimeoutSec != original.TimeoutSec || copied_rule.LastRunID != "" || copied_rule.LastRunStatus != "" {
 			t.Fatalf("incorrect copied trigger: %+v", copied_rule)
 		}
 		original_data, copied_data := decode_initial_data(original.InitialData), decode_initial_data(copied_rule.InitialData)
@@ -77,10 +77,10 @@ func TestCopyUserFlowIncludesConfigurationAndTriggers(t *testing.T) {
 			t.Fatal("trigger parameters differ")
 		}
 	}
-	if _, err := service.UpdateUserFlow(copied.ID, UpdateUserFlowInput{NodeConfigs: map[string]map[string]interface{}{"validate": {"username": "other@finder"}}}); err != nil {
+	if _, err := service.UpdateUserFlowInstance(copied.ID, UpdateUserFlowInput{NodeConfigs: map[string]map[string]interface{}{"validate": {"username": "other@finder"}}}); err != nil {
 		t.Fatal(err)
 	}
-	unchanged, err := service.GetUserFlow(source.ID)
+	unchanged, err := service.GetUserFlowInstance(source.ID)
 	if err != nil || unchanged.NodeConfigs != source.NodeConfigs || unchanged.Definition != source.Definition || unchanged.Name != source.Name {
 		t.Fatalf("copy modified source: %v", err)
 	}
@@ -89,18 +89,18 @@ func TestCopyUserFlowIncludesConfigurationAndTriggers(t *testing.T) {
 func TestCopyUserFlowRollbackAndMissingSource(t *testing.T) {
 	service := new_trigger_test_service(t)
 	source := trigger_test_flow(t, service)
-	if _, err := service.UpdateUserFlow(source.ID, UpdateUserFlowInput{Triggers: []UserFlowTriggerInput{{Type: "Cron", Name: "daily", CronExpr: "0 12 * * *", Enabled: true}}}); err != nil {
+	if _, err := service.UpdateUserFlowInstance(source.ID, UpdateUserFlowInput{Triggers: []UserFlowTriggerInput{{Type: "Cron", Name: "daily", CronExpr: "0 12 * * *", Enabled: true}}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.db.Model(&model.FlowSchedule{}).Where("flow_id = ?", source.ID).Update("cron_expr", "invalid").Error; err != nil {
+	if err := service.db.Model(&model.FlowSchedule{}).Where("instance_id = ?", source.ID).Update("cron_expr", "invalid").Error; err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{source.ID, "missing", ""} {
-		if _, err := service.CopyUserFlow(id); err == nil {
+		if _, err := service.CopyUserFlowInstance(id); err == nil {
 			t.Fatalf("copied invalid source %q", id)
 		}
 	}
-	flows, err := service.ListUserFlows()
+	flows, err := service.ListUserFlowInstances()
 	if err != nil || len(flows) != 1 || len(service.flow_engine.FlowDefinitions) != 1 {
 		t.Fatalf("failed copy left partial data: %v", err)
 	}

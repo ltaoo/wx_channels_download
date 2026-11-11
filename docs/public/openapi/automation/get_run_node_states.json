@@ -1,0 +1,55 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "读取轻量节点状态",
+    "description": "只读取持久化的节点状态，不加载完整执行快照或日志。",
+    "operationId": "post_api_v1_automation_get_run_node_states",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "flow_id": {
+                "type": "string",
+                "description": "可选的子流程作用域。"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "code=0 表示成功。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
