@@ -31,12 +31,12 @@ export default function SiderLayoutView(props) {
       View(
         {
           as: "aside",
-          class: "relative z-raised flex flex-col text-brand-sidebar-text bg-brand-sidebar border-right-[var(--dm-border-width)_solid_var(--dm-color-sidebar-border)] gap-4-5 p-[var(--dm-space-4)_var(--dm-space-3)] shadow-[1px_0_0_var(--dm-color-border-translucent)] max-640:grid-row-2 max-640:grid-column-1 max-640:p-[var(--dm-space-1-5)_var(--dm-space-2)] max-640:border-top-[var(--dm-border-width)_solid_var(--dm-color-sidebar-border)] max-640:border-right-0 dm-flex dm-flex-col",
+          class: "relative z-raised flex flex-col min-h-0 min-w-0 overflow-hidden [&_.dm-button--sidebar-nav]:flex-col [&_.dm-button--sidebar-nav]:items-center [&_.dm-button--sidebar-nav]:justify-center [&_.dm-button--sidebar-nav]:gap-2 [&_.dm-button--sidebar-nav]:min-h-16 [&_.dm-button--sidebar-nav]:p-[var(--dm-space-1-5)_var(--dm-space-1)] [&_.dm-button--sidebar-nav]:text-sm [&_.dm-button--sidebar-nav]:font-semibold [&_.dm-button--sidebar-nav]:leading-snug [&_.dm-button--sidebar-nav]:text-center text-brand-sidebar-text bg-brand-sidebar border-right-[var(--dm-border-width)_solid_var(--dm-color-sidebar-border)] gap-4-5 p-[var(--dm-space-4)_var(--dm-space-3)] shadow-[1px_0_0_var(--dm-color-border-translucent)] max-640:!flex-row max-640:gap-1 max-640:grid-row-2 max-640:grid-column-1 max-640:p-[var(--dm-space-1-5)_var(--dm-space-2)] max-640:border-top-[var(--dm-border-width)_solid_var(--dm-color-sidebar-border)] max-640:border-right-0 dm-flex dm-flex-col",
           attributes: { n: "app-sider" },
         },
         [
           View(
-            { class: "flex items-center flex-col border-bottom-[var(--dm-border-width)_solid_var(--dm-color-sidebar-border)] gap-2 p-[0_var(--dm-space-2)_var(--dm-space-4)_var(--dm-space-2)] max-640:!hidden", attributes: { n: "app-brand" } },
+            { class: "flex-none flex items-center flex-col border-bottom-[var(--dm-border-width)_solid_var(--dm-color-sidebar-border)] gap-2 p-[0_var(--dm-space-2)_var(--dm-space-4)_var(--dm-space-2)] max-640:!hidden", attributes: { n: "app-brand" } },
             [
               View(
                 {
@@ -121,7 +121,7 @@ export default function SiderLayoutView(props) {
         View(
           {
             as: "nav",
-            class: "flex flex-col gap-2 p-1 overflow-y-auto [&_.dm-button--sidebar-nav]:flex-col [&_.dm-button--sidebar-nav]:items-center [&_.dm-button--sidebar-nav]:justify-center [&_.dm-button--sidebar-nav]:gap-2 [&_.dm-button--sidebar-nav]:min-h-16 [&_.dm-button--sidebar-nav]:p-[var(--dm-space-1-5)_var(--dm-space-1)] [&_.dm-button--sidebar-nav]:text-sm [&_.dm-button--sidebar-nav]:font-semibold [&_.dm-button--sidebar-nav]:leading-snug [&_.dm-button--sidebar-nav]:text-center min-h-0 flex-[1_1_auto] max-640:w-full max-640:min-h-auto max-640:flex-[1_1_auto] max-640:!flex-row max-640:gap-1 max-640:overflow-x-auto",
+            class: "flex flex-col gap-2 p-1 mx--3 px-4 overflow-y-auto overflow-x-hidden min-w-0 min-h-0 flex-[1_1_auto] max-640:w-full max-640:min-h-auto max-640:flex-[1_1_auto] max-640:!flex-row max-640:gap-1 max-640:overflow-x-auto max-640:overflow-y-hidden max-640:mx-0 max-640:p-1",
             ariaLabel: "页面导航",
             attributes: { n: "app-menu" },
           },
@@ -134,7 +134,7 @@ export default function SiderLayoutView(props) {
                   {
                     store: item.button$,
                     class: Timeless.classNames([
-                      "dm-button--sidebar-nav",
+                      "dm-button--sidebar-nav shrink-0 max-640:w-auto max-640:min-w-52px",
                       Timeless.computed(
                         model.models.menu.cur,
                         function (current) {
@@ -166,32 +166,32 @@ export default function SiderLayoutView(props) {
                 );
               },
             }),
-            View(
+          ],
+        ),
+        View(
+          {
+            class: "flex flex-none p-1 [&_>_.dm-button--sidebar-nav]:w-full max-640:min-w-52px max-640:[&_>_.dm-button--sidebar-nav]:w-auto",
+            attributes: { n: "app-settings-action-container" },
+          },
+          [
+            Button(
               {
-                class: "flex mt-auto [&_>_.dm-button--sidebar-nav]:w-full max-640:min-w-52px max-640:flex-[1_1_0] max-640:mt-0 max-640:[&_>_.dm-button--sidebar-nav]:w-auto",
-                attributes: { n: "app-settings-action-container" },
+                store: model.ui.settings_button$,
+                class: "dm-button--sidebar-nav",
+                attributes: {
+                  n: "app-settings-action",
+                  "aria-haspopup": "dialog",
+                  "aria-label": "打开设置",
+                  title: "打开设置",
+                },
               },
               [
-                Button(
+                View(
                   {
-                    store: model.ui.settings_button$,
-                    class: "dm-button--sidebar-nav",
-                    attributes: {
-                      n: "app-settings-action",
-                      "aria-haspopup": "dialog",
-                      "aria-label": "打开设置",
-                      title: "打开设置",
-                    },
+                    class: "grid place-items-center w-6 h-6 shrink-0 text-currentColor",
+                    attributes: { n: "app-settings-action-icon", "aria-hidden": "true" },
                   },
-                  [
-                    View(
-                      {
-                        class: "grid place-items-center w-6 h-6 shrink-0 text-currentColor",
-                        attributes: { n: "app-settings-action-icon", "aria-hidden": "true" },
-                      },
-                      [Timeless.Icon({ name: "settings", size: 24 })],
-                    ),
-                  ],
+                  [Timeless.Icon({ name: "settings", size: 24 })],
                 ),
               ],
             ),

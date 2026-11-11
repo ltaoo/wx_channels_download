@@ -659,9 +659,6 @@ body {
   .max-640\:min-w-52px {
     min-width: 52px;
   }
-  .max-640\:flex-\[1_1_0\] {
-    flex: 1 1 0;
-  }
   .max-640\:grid-row-1 {
     grid-row: 1;
   }
@@ -5965,12 +5962,6 @@ body {
   border-color: color-mix(in srgb, var(--dm-color-warning) 34%, transparent);
 }
 
-@media (max-width: 640px) {
-  .max-640\:mt-0 {
-    margin-top: 0;
-  }
-}
-
 .\[\&\.is-no\]\:border-color-color-border-strong.is-no {
   border-color: var(--dm-color-border-strong);
 }
@@ -6732,4 +6723,27 @@ body {
 
 .\[\&\.is-pending\]\:border-color-color-border.is-pending {
   border-color: var(--dm-color-border);
+}
+
+.mx--3 {
+  margin-inline: calc(-1 * var(--dm-space-3));
+}
+
+.px-4 {
+  padding-inline: var(--dm-space-4);
+}
+
+@media (max-width: 640px) {
+  .max-640\:mx-0 {
+    margin-inline: 0;
+  }
+  .max-640\:p-1 {
+    padding: var(--dm-space-1);
+  }
+  .max-640\:overflow-y-hidden {
+    overflow-y: hidden;
+  }
+  .max-640\:w-auto {
+    width: auto;
+  }
 }
