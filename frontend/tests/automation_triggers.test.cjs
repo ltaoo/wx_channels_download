@@ -7,7 +7,7 @@ const { test } = require("node:test");
 const frontend = path.join(__dirname, "..");
 const source = fs.readFileSync(path.join(frontend, "src/pages/automation.model.js"), "utf8");
 
-function setup({ legacy_event = false, schedules = [], reject_save = false, reject_trigger = false, trigger_wait = null, live_channel = null, flows = null, runs = [], run_detail_handler = null, node_logs_handler = null, clear_runs_handler = null, mode = "edit" } = {}) {
+function setup({ legacy_event = false, schedules = [], reject_save = false, reject_trigger = false, trigger_wait = null, copy_handler = null, live_channel = null, flows = null, runs = [], run_detail_handler = null, node_logs_handler = null, clear_runs_handler = null, catalog = [], mode = "edit" } = {}) {
   const timers = new Map();
   const context = vm.createContext({ setTimeout, clearTimeout, setInterval(fn, delay) {
     const id = timers.size + 1;
@@ -34,12 +34,18 @@ function setup({ legacy_event = false, schedules = [], reject_save = false, reje
     fs.readFileSync(path.join(frontend, "src/biz/request.js"), "utf8").replace(/^export /gm, ""),
     context,
   );
+  const actual_request_core = context.Timeless.kit.RequestCore;
   const TestRequestCore = class {
     constructor(fn) { this.fn = fn; }
     async run(params) {
       const { url, body } = this.fn(params);
       calls.push({ url, body: JSON.parse(JSON.stringify(body)) });
       if (url.endsWith("list_runs")) return { data: { list: body.summary ? runs.map(({ id, created_at, status }) => ({ id, created_at, status })) : runs, total: runs.length } };
+      if (url.endsWith("get_run")) {
+        assert.equal(body.metadata_only, true);
+        const { definition, initial_data, node_logs, node_outputs, node_attempts, ...metadata } = runs.find((run) => run.id === body.id) || {};
+        return { data: metadata };
+      }
       if (url.endsWith("clear_runs")) {
         if (clear_runs_handler) return clear_runs_handler(body);
         runs = runs.filter((run) => run.flow_id !== body.flow_id || !["COMPLETED", "FAILED", "CANCELLED"].includes(run.status));
@@ -73,6 +79,12 @@ function setup({ legacy_event = false, schedules = [], reject_save = false, reje
       if (url.endsWith("resume_run")) { runs = runs.map((run) => run.id === body.id ? { ...run, status: "RUNNING" } : run); return { data: runs.find((run) => run.id === body.id) }; }
       if (url.endsWith("cancel_run")) { runs = runs.map((run) => run.id === body.id ? { ...run, status: "CANCELLED" } : run); return { data: { id: body.id } }; }
       if (url.endsWith("list_flows")) return { data: { list: flows || [flow] } };
+      if (url.endsWith("copy_flow")) {
+        if (copy_handler) return copy_handler(body);
+        const copied = { ...flow, id: "flow-copy", name: `${flow.name}（副本）` };
+        flows = [...(flows || [flow]), copied];
+        return { data: copied };
+      }
       if (url.endsWith("trigger_flow")) {
         if (trigger_wait) await trigger_wait;
         if (reject_trigger) return { error: new Error("trigger rejected") };
@@ -81,7 +93,7 @@ function setup({ legacy_event = false, schedules = [], reject_save = false, reje
         return { data: run };
       }
       if (url.endsWith("get_flow")) return { data: flow };
-      if (url.endsWith("list_flow_nodes")) return { data: { nodes: [] } };
+      if (url.endsWith("list_flow_nodes")) return { data: { nodes: catalog } };
       if (url.endsWith("import_flow")) {
         const definition = JSON.parse(body.definition);
         const imported = { ...flow, id: "flow-imported", name: definition.name, definition: body.definition };
@@ -99,6 +111,7 @@ function setup({ legacy_event = false, schedules = [], reject_save = false, reje
         if (body.name !== undefined) definition.name = body.name;
         if (body.start_node_id !== undefined) definition.start_node = body.start_node_id;
         if (body.context_schema !== undefined) definition.context_schema = body.context_schema;
+        if (body.subflows !== undefined) definition.subflows = body.subflows;
         if (body.nodes !== undefined) definition.nodes = Object.fromEntries(body.nodes.map((node) => [node.id, { ...node, next_node_ids: node.next_ids }]));
         flow.definition = JSON.stringify(definition);
         if (body.node_configs !== undefined) flow.node_configs = JSON.stringify(body.node_configs);
@@ -119,8 +132,11 @@ function setup({ legacy_event = false, schedules = [], reject_save = false, reje
   const executable = source.replace(/^import[\s\S]*?;\n/gm, "");
   vm.runInContext(executable.slice(0, executable.lastIndexOf("\nexport {")), context);
   const tips = [];
-  const model = context.AutomationPageViewModel({ client: {}, tip(message) { tips.push(message); }, view: { query: { id: flow.id } } }, { mode });
-  return { model, calls, context, flow, timers, tips };
+  const copied_texts = [];
+  const app = { copy(text) { copied_texts.push(text); } };
+  const client = {};
+  const model = context.AutomationPageViewModel({ client, app, tip(message) { tips.push(message); }, view: { query: { id: flow.id } } }, { mode });
+  return { model, calls, context, flow, timers, tips, copied_texts, app, client, actual_request_core };
 }
 
 function load_canvas_components(context) {
@@ -133,6 +149,44 @@ function load_canvas_components(context) {
     .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export /gm, ""), context);
 }
 
+test("custom JS node metadata populates the picker, configuration and saved graph", async () => {
+  const defaults = { arguments: { task: "{{input.event.data.task}}" }, output_key: "uploaded", timeout_seconds: 600 };
+  const schema = [
+    { key: "access_key", type: "string", required: true, secret: true },
+    { key: "secret_key", type: "string", required: true, secret: true },
+    { key: "bucket", type: "string", required: true },
+    { key: "domain", type: "string", required: true },
+    { key: "upload_url", type: "string", default: "https://upload-z2.qiniup.com" },
+  ];
+  const { model, calls, flow } = setup({ catalog: [{ type: "QiniuUploadNode", name: "上传到七牛云", default_config: defaults, config_schema: schema }] });
+  await model.methods.refresh();
+  model.methods.openAddDialog("QiniuUploadNode", "start", "end");
+  assert.equal(model.state.add_name.value, "上传到七牛云");
+  assert.deepEqual(JSON.parse(model.state.add_config.value), defaults);
+  assert.equal(model.methods.flowLabel("QiniuUploadNode"), "上传到七牛云");
+  await model.ui.btn_add_submit$.click();
+  const node = model.state.edit_nodes.value.find((item) => item.type === "QiniuUploadNode");
+  assert.ok(node);
+  assert.equal(node.name, "上传到七牛云");
+  assert.deepEqual(JSON.parse(JSON.stringify(node.config)), defaults);
+  assert.deepEqual(JSON.parse(JSON.stringify(node.config_schema)), schema);
+  await model.methods.saveFlow();
+  const saved = calls.find((call) => call.url.endsWith("update_flow"));
+  assert.ok(saved.body.nodes.some((item) => item.id === node.id && item.type === "QiniuUploadNode"));
+  await model.methods.openPipelineConfig(flow);
+  const fields = model.state.config_groups.value.find((item) => item.id === node.id).fields;
+  assert.equal(fields[4].input$.state.value, "https://upload-z2.qiniup.com");
+  await model.methods.savePipelineConfig();
+  assert.match(model.state.config_error.value, /不能为空/);
+  fields.slice(0, 4).forEach((field) => field.input$.setValue(`test-${field.key}`));
+  fields[4].input$.setValue("");
+  await model.methods.savePipelineConfig();
+  const settings = calls.filter((call) => call.url.endsWith("update_flow") && call.body.node_configs).pop().body.node_configs[node.id];
+  assert.equal(settings.upload_url, "https://upload-z2.qiniup.com");
+  assert.equal(settings.secret_key, "test-secret_key");
+  model.methods.destroy();
+});
+
 function find_view(node, name) {
   if (node.state?.attributes?.n === name) return node;
   for (const child of node.children || []) {
@@ -142,6 +196,27 @@ function find_view(node, name) {
   }
   return null;
 }
+
+test("dropdown content animates on its root and unmounts when the exit animation ends", () => {
+  const { context, model } = setup();
+  load_canvas_components(context);
+  const menu = new context.Timeless.vm.DropdownMenuCore();
+  menu.show();
+  const tree = context.DropdownMenu({ store: menu, attributes: { n: "animated-menu" } });
+  const content = find_view(tree, "animated-menu");
+  assert.ok(content.state.styleSet.includes("dm-dropdown-content"));
+  assert.ok(content.state.styleSet.includes("is-entering"));
+  const element = {};
+  content.events.onAnimationEnd({ target: element, currentTarget: element });
+  assert.equal(menu.state.enter, false);
+  menu.hide();
+  assert.equal(menu.state.visible, true);
+  content.events.onAnimationEnd({ target: {}, currentTarget: element });
+  assert.equal(menu.state.visible, true);
+  content.events.onAnimationEnd({ target: element, currentTarget: element });
+  assert.equal(menu.state.visible, false);
+  model.methods.destroy();
+});
 
 test("editing the pipeline title marks the draft dirty and saves the trimmed name", async () => {
   const { model, calls } = setup();
@@ -371,8 +446,8 @@ test("automation search and reset return to page one and paginate the matching n
   model.methods.destroy();
 });
 
-test("the automation list renders a trigger button in its actions column and mounts the run dialog", async () => {
-  const { model, context } = setup({ mode: "list" });
+test("the automation list groups trigger, copy and delete under more and mounts the run dialog", async () => {
+  const { model, context, calls } = setup({ mode: "list" });
   await model.methods.refresh();
   context.Table = (props) => props;
   context.View = (props, children) => ({ props, children });
@@ -386,14 +461,23 @@ test("the automation list renders a trigger button in its actions column and mou
     .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export default .*;$/gm, ""), context);
   const table = context.AutomationPipelineList({ store: model });
   const pipeline = model.state.pipelines.value[0];
+  assert.notEqual(table.rowKey({ ...pipeline, updated_at: 1 }), table.rowKey({ ...pipeline, updated_at: 2 }), "saved configurations must rerender the row");
   const trigger_cell = table.columns.find((column) => column.name === "trigger").render(pipeline);
   assert.equal(trigger_cell.length, 1);
   assert.equal(trigger_cell[0].component, "badges");
   const cell = table.columns.find((column) => column.name === "actions").render(pipeline);
-  const action = cell.find((item) => item.props?.attributes?.n === `automation-pipeline-trigger-${pipeline.id}`);
-  assert.ok(action);
-  assert.equal(action.children[0], "触发");
-  assert.equal(action.props.attributes["aria-label"], "触发 test");
+  const more_menu = cell.find((item) => item.props?.attributes?.n === `automation-pipeline-more-menu-${pipeline.id}`);
+  assert.equal(cell.length, 3);
+  const more_button = more_menu.children[0];
+  assert.equal(more_button.props.store.state.variant, "outline");
+  assert.equal(more_button.props.store.state.size, "sm");
+  assert.equal(cell.some((item) => item.children?.some((label) => ["触发", "复制", "删除"].includes(label))), false);
+  const menu_items = more_menu.props.store.state.items;
+  assert.deepEqual(Array.from(menu_items, (item) => item.label), ["触发", "复制", "删除"]);
+  const delete_item = menu_items.find((item) => item.label === "删除");
+  delete_item.click();
+  assert.equal(model.ui.delete_dialog$.state.visible, true);
+  assert.equal(calls.filter((call) => call.url.endsWith("delete_flow")).length, 0);
   assert.equal(cell.some((item) => item.props?.attributes?.n === `automation-pipeline-config-${pipeline.id}`), false);
   const config_column = table.columns.find((column) => column.name === "config");
   assert.equal(config_column.render(pipeline).length, 0, "no declared fields should leave the cell empty");
@@ -406,7 +490,7 @@ test("the automation list renders a trigger button in its actions column and mou
   assert.ok(config_button);
   assert.equal(config_button.children[0], "配置");
   const config_menu = config_cell[0].children.find((item) => item.props?.attributes?.n === `automation-pipeline-config-menu-${pipeline.id}`);
-  assert.deepEqual(Array.from(config_menu.props.store.state.items, (item) => item.label), ["导入 JSON", "导出 JSON"]);
+  assert.deepEqual(Array.from(config_menu.props.store.state.items, (item) => item.label), ["复制JSON", "粘贴JSON"]);
   pipeline.node_configs = { [pipeline.nodes[0].id]: { count: 0, enabled: false } };
   const configured_cell = config_column.render(pipeline);
   assert.equal(configured_cell.length, 2);
@@ -417,7 +501,7 @@ test("the automation list renders a trigger button in its actions column and mou
   assert.ok(!configured_content.includes("未填写"));
   assert.ok(!configured_content.includes("暂无配置"));
   context.AutomationPageViewModel = () => model;
-  for (const name of ["AutomationListPage", "AutomationCreatePipelineDialog", "AutomationImportPipelineDialog", "AutomationDeletePipelineDialog", "AutomationConfigDialog"]) {
+  for (const name of ["AutomationListPage", "AutomationCreatePipelineDialog", "AutomationImportPipelineDialog", "AutomationDeletePipelineDialog", "AutomationConfigDialog", "AutomationPasteConfigDialog"]) {
     context[name] = () => ({ component: name });
   }
   const page = context.AutomationPageView({});
@@ -425,15 +509,137 @@ test("the automation list renders a trigger button in its actions column and mou
   model.methods.destroy();
 });
 
+test("copying a pipeline refreshes the list and prevents duplicate submissions", async () => {
+  let resolve_copy;
+  const pending = new Promise((resolve) => { resolve_copy = resolve; });
+  const { model, calls, flow, tips } = setup({ mode: "list", copy_handler: () => pending });
+  await model.methods.refresh();
+  const copying = model.methods.copyPipeline(flow);
+  assert.equal(model.ui.btn_pipeline_copy$.bind(flow).state.loading, true);
+  await model.methods.copyPipeline(flow);
+  assert.equal(calls.filter((call) => call.url.endsWith("copy_flow")).length, 1);
+  assert.deepEqual(calls.find((call) => call.url.endsWith("copy_flow")).body, { id: flow.id });
+  const lists_before = calls.filter((call) => call.url.endsWith("list_flows")).length;
+  resolve_copy({ data: { id: "flow-copy" } });
+  await copying;
+  assert.equal(model.ui.btn_pipeline_copy$.bind(flow).state.loading, false);
+  assert.equal(calls.filter((call) => call.url.endsWith("list_flows")).length, lists_before + 1);
+  assert.equal(tips.at(-1).type, "success");
+  model.methods.destroy();
+});
+
+test("copy failures retain the source and report the error", async () => {
+  const { model, flow, calls } = setup({ mode: "list", copy_handler: () => ({ error: new Error("copy rejected") }) });
+  await model.methods.refresh();
+  const lists_before = calls.filter((call) => call.url.endsWith("list_flows")).length;
+  await model.methods.copyPipeline(flow);
+  assert.match(model.state.error.value, /copy rejected/);
+  assert.equal(model.ui.btn_pipeline_copy$.bind(flow).state.loading, false);
+  assert.equal(calls.filter((call) => call.url.endsWith("list_flows")).length, lists_before);
+  assert.equal(model.state.pipelines.value[0].id, flow.id);
+  model.methods.destroy();
+});
+
+test("more menu actions close immediately, including when triggering or copying fails", async () => {
+  for (const label of ["触发", "复制", "删除"]) {
+    const { model, calls } = setup({ mode: "list", reject_trigger: true,
+      copy_handler: async () => ({ error: new Error("copy rejected") }),
+    });
+    await model.methods.refresh();
+    const menu = model.methods.pipelineActionsMenu(model.state.pipelines.value[0]);
+    menu.show();
+    assert.equal(menu.state.visible, true);
+    assert.equal(menu.state.exit, false);
+    menu.state.items.find((item) => item.label === label).click();
+    assert.equal(menu.state.exit, true, `${label} must close the menu before the action finishes`);
+    await new Promise(setImmediate);
+    assert.equal(menu.state.exit, true);
+    if (label === "删除") {
+      assert.equal(model.ui.delete_dialog$.state.visible, true);
+      assert.equal(calls.filter((call) => call.url.endsWith("delete_flow")).length, 0);
+    } else {
+      assert.match(model.state.error.value, /rejected/);
+    }
+    model.methods.destroy();
+  }
+});
+
+test("the more menu copies its own pipeline and lists the new record", async () => {
+  const { model, flow, calls } = setup({ mode: "list" });
+  await model.methods.refresh();
+  model.methods.pipelineActionsMenu(model.state.pipelines.value[0]).state.items.find((item) => item.label === "复制").click();
+  await new Promise(setImmediate);
+  assert.deepEqual(calls.find((call) => call.url.endsWith("copy_flow")).body, { id: flow.id });
+  assert.ok(model.state.pipelines.value.some((pipeline) => pipeline.id === "flow-copy"));
+  model.methods.destroy();
+});
+
 test("triggering a parameterless list row executes that row's pipeline", async () => {
   const { model, calls, tips } = setup({ mode: "list", flows: [{ id: "row-target", name: "目标任务" }] });
   await model.methods.refresh();
   const pipeline = model.state.pipelines.value[0];
-  await model.ui.btn_pipeline_trigger$.bind(pipeline).click();
+  model.methods.pipelineActionsMenu(pipeline).state.items.find((item) => item.label === "触发").click();
   await new Promise(setImmediate);
   assert.deepEqual(calls.find((call) => call.url.endsWith("trigger_flow")).body, { id: "row-target", initial_data: {} });
   assert.equal(model.state.run_open.value, false);
   assert.match(tips.at(-1).msg[0], /已触发执行/);
+  model.methods.destroy();
+});
+
+test("active list rows disable manual triggering without blocking other pipelines", async () => {
+  const { model, calls } = setup({ mode: "list", flows: [
+    { id: "active", active_run_id: "cron-run", context_schema: [{ key: "username", required: true }] },
+    { id: "other" },
+  ] });
+  await model.methods.refresh();
+  const [active, other] = model.state.pipelines.value;
+  assert.equal(model.methods.pipelineActionsMenu(active).state.items[0].state.disabled, true);
+  await model.ui.btn_pipeline_trigger$.bind(active).click();
+  assert.equal(model.state.run_open.value, false);
+  assert.equal(calls.filter((call) => call.url.endsWith("trigger_flow")).length, 0);
+  assert.match(model.state.error.value, /已有进行中的执行/);
+  await model.ui.btn_pipeline_trigger$.bind(other).click();
+  assert.deepEqual(calls.find((call) => call.url.endsWith("trigger_flow")).body, { id: "other", initial_data: {} });
+  assert.equal(model.methods.pipelineActionsMenu(other).state.items[0].state.disabled, true);
+  model.methods.destroy();
+});
+
+test("run lifecycle events update trigger availability for every list row", async () => {
+  const channel = test_editor_channel();
+  const { model } = setup({ mode: "list", live_channel: channel, flows: [{ id: "target" }] });
+  await model.methods.ready();
+  const pipeline = model.state.pipelines.value[0];
+  const disabled = () => model.methods.pipelineActionsMenu(pipeline).state.items[0].state.disabled;
+  assert.equal(disabled(), false);
+  await channel.receive({ type: "automation_run_started", flow_id: "target", run_id: "cron-run" });
+  assert.equal(disabled(), true);
+  await channel.receive({ type: "automation_run_waiting", flow_id: "target", run_id: "cron-run" });
+  assert.equal(disabled(), true);
+  await channel.receive({ type: "automation_run_completed", flow_id: "target", run_id: "old-run" });
+  assert.equal(disabled(), true, "an old completion must not unlock the active execution");
+  await channel.receive({ type: "automation_run_failed", flow_id: "target", run_id: "cron-run", run_status: "CANCELLED" });
+  assert.equal(disabled(), false);
+  model.methods.destroy();
+});
+
+test("an execution starting while parameters are entered blocks submitting another run", async () => {
+  const channel = test_editor_channel();
+  const { model, calls } = setup({ mode: "list", live_channel: channel, flows: [
+    { id: "target", context_schema: [{ key: "username", type: "string", required: true }] },
+  ] });
+  await model.methods.ready();
+  await model.ui.btn_pipeline_trigger$.bind(model.state.pipelines.value[0]).click();
+  model.state.run_params.value[0].input$.setValue("creator");
+  await channel.receive({ type: "automation_run_started", flow_id: "target", run_id: "scheduled" });
+  assert.equal(model.ui.btn_run_flow$.state.disabled, true);
+  assert.equal(model.ui.btn_run_submit$.state.disabled, true);
+  await model.methods.submitRun();
+  assert.equal(calls.filter((call) => call.url.endsWith("trigger_flow")).length, 0);
+  assert.match(model.state.run_error.value, /已有进行中的执行/);
+  await channel.receive({ type: "automation_run_completed", flow_id: "target", run_id: "scheduled" });
+  assert.equal(model.ui.btn_run_submit$.state.disabled, false);
+  await model.methods.submitRun();
+  assert.equal(calls.filter((call) => call.url.endsWith("trigger_flow")).length, 1);
   model.methods.destroy();
 });
 
@@ -690,6 +896,40 @@ test("live node log refreshes coalesce requests and fetch the final pending upda
   model.methods.destroy();
 });
 
+test("a reentered workflow resets downstream states without clearing upstream states or node history", async () => {
+  const channel = test_editor_channel();
+  let delay = false, release;
+  const { model, calls } = setup({ mode: "detail", live_channel: channel,
+    runs: [{ id: "active", flow_id: "flow-test", status: "RUNNING" }],
+    run_detail_handler: () => delay ? new Promise((resolve) => { release = resolve; })
+      : { data: { before: "COMPLETED", start: "COMPLETED", end: "COMPLETED" } },
+    node_logs_handler: () => ({ data: { list: [{ node_id: "end", outcome: "completed", attempt: 1 }] } }),
+  });
+  await model.methods.ready();
+  model.methods.openNodeExecutionWindow("end");
+  await new Promise(setImmediate);
+  const detail = model.methods.nodeExecutionDetail("end");
+  delay = true;
+  const selection = model.methods.selectRun("active");
+  await channel.receive({ type: "automation_node_status", run_id: "active", node_status: {
+    node_id: "start", status: "RUNNING", attempt: 2, node_states: { start: "RUNNING", end: "PENDING" },
+  } });
+  assert.equal(model.state.node_execution_states.value.before.status, "COMPLETED");
+  assert.equal(model.state.node_execution_states.value.start.status, "RUNNING");
+  assert.equal(model.state.node_execution_states.value.end.status, "PENDING");
+  assert.equal(detail.value.logs.length, 1);
+  assert.equal(model.state.selected_run.value.current_node, "start");
+  release({ data: { before: "COMPLETED", start: "COMPLETED", end: "COMPLETED" } });
+  await selection;
+  assert.equal(model.state.node_execution_states.value.start.status, "RUNNING");
+  assert.equal(model.state.node_execution_states.value.end.status, "PENDING");
+  assert.equal(model.state.node_execution_states.value.start.attempt, 2);
+  assert.equal(model.methods.nodeExecutionDetail("end"), detail);
+  assert.equal(detail.value.logs.length, 1);
+  assert.equal(calls.filter((call) => call.url.endsWith("get_run_node_logs")).length, 1);
+  model.methods.destroy();
+});
+
 test("subflow reentry clears states and cached logs without fetching payloads or accepting an older response", async () => {
   const channel = test_editor_channel();
   const releases = [];
@@ -730,8 +970,8 @@ test("subflow reset rejects a status map requested before reentry", async () => 
   const { model } = setup({ mode: "detail", live_channel: channel, runs: [{ id: "active", flow_id: "flow-test", status: "RUNNING" }],
     run_detail_handler: () => new Promise((resolve) => { release = resolve; }),
   });
-  await model.methods.ready();
-  const selection = model.methods.selectRun("active");
+  const selection = model.methods.ready();
+  await new Promise(setImmediate);
   await channel.receive({ type: "automation_node_status", run_id: "active", node_status: { node_states: { start: "PENDING", end: "PENDING" } } });
   release({ data: { start: "COMPLETED", end: "FAILED" } });
   await selection;
@@ -822,7 +1062,7 @@ test("clearing history keeps active runs available for selection and control", a
   await model.ui.btn_clear_runs$.click();
   await new Promise(setImmediate);
   assert.deepEqual(Array.from(model.state.runs.value, (run) => run.id), ["waiting"]);
-  assert.equal(model.state.selected_run.value, null);
+  assert.equal(model.state.selected_run.value.id, "waiting");
   await model.methods.selectRun("waiting");
   assert.equal(model.state.selected_run.value.id, "waiting");
   await model.methods.actOnRun("cancel");
@@ -867,6 +1107,26 @@ test("clearing history ignores an older detail response and duplicate clicks", a
   model.methods.destroy();
 });
 
+test("validation failure without a started event appears in history and retains historical selection", async () => {
+  for (const historical of [false, true]) {
+    const channel = test_editor_channel();
+    const runs = historical ? [{ id: "old", flow_id: "flow-test", status: "COMPLETED", node_logs: "[]" }] : [];
+    const { model } = setup({ mode: "detail", runs, live_channel: channel });
+    await model.methods.ready();
+    if (historical) await model.methods.selectRun("old");
+    const error = "启动校验失败: 节点 上传到七牛云 的配置项 access_key 不能为空";
+    runs.unshift({ id: "rejected", flow_id: "flow-test", status: "FAILED", error, trigger_type: "Event", trigger_key: "downloadtask.finished", node_logs: "[]" });
+    await channel.receive({ type: "automation_run_failed", flow_id: "flow-test", run_id: "rejected", run_status: "FAILED", error });
+    await new Promise(setImmediate);
+    assert.ok(model.state.runs.value.some((run) => run.id === "rejected" && run.status === "FAILED"));
+    if (historical) assert.equal(model.state.selected_run_id.value, "old");
+    await model.methods.selectRun("rejected");
+    assert.equal(model.state.selected_run.value.error, error);
+    assert.equal(model.state.selected_run.value.trigger_key, "downloadtask.finished");
+    model.methods.destroy();
+  }
+});
+
 test("historical selection survives manual refresh and ignores other runs on the live channel", async () => {
   const channel = test_editor_channel();
   const runs = [
@@ -875,7 +1135,8 @@ test("historical selection survives manual refresh and ignores other runs on the
   ];
   const { model } = setup({ mode: "detail", runs, live_channel: channel });
   await model.methods.ready();
-  assert.equal(model.state.selected_run_id.value, "");
+  assert.equal(model.state.selected_run_id.value, "latest");
+  assert.equal(model.state.node_execution_states.value.end.status, "RUNNING");
   await model.methods.selectRun("old");
   await model.methods.refreshRuns();
   assert.equal(model.state.selected_run_id.value, "old");
@@ -907,6 +1168,69 @@ test("a slower run detail response cannot replace the newly selected record", as
   model.methods.destroy();
 });
 
+test("refresh and reconnect recover the selected run's node states without loading payloads", async () => {
+  const channel = test_editor_channel();
+  const runs = [{ id: "active", flow_id: "flow-test", status: "RUNNING", current_node: "start" }];
+  const { model, calls } = setup({ mode: "detail", runs, live_channel: channel });
+  await model.methods.ready();
+  assert.equal(model.state.selected_run_id.value, "active");
+  assert.equal(model.state.node_execution_states.value.start.status, "RUNNING");
+  runs[0].current_node = "end";
+  runs[0].node_logs = JSON.stringify([{ node_id: "start", outcome: "completed" }]);
+  await model.methods.refreshRuns();
+  assert.equal(model.state.node_execution_states.value.start.status, "COMPLETED");
+  assert.equal(model.state.node_execution_states.value.end.status, "RUNNING");
+  channel.changeState(false);
+  runs[0].status = "COMPLETED";
+  runs[0].node_logs = JSON.stringify([{ node_id: "start", outcome: "completed" }, { node_id: "end", outcome: "completed" }]);
+  channel.changeState(true);
+  await new Promise(setImmediate);
+  assert.equal(model.state.selected_run_id.value, "active");
+  assert.equal(model.state.execution_run_status.value, "COMPLETED");
+  assert.equal(model.state.node_execution_states.value.end.status, "COMPLETED");
+  assert.equal(calls.filter((call) => call.url.endsWith("get_run_node_logs")).length, 0);
+  const requests = calls.length;
+  model.methods.destroy();
+  channel.changeState(false);
+  channel.changeState(true);
+  await new Promise(setImmediate);
+  assert.equal(calls.length, requests);
+});
+
+test("a run starting on an idle detail page is selected from its persisted states", async () => {
+  const channel = test_editor_channel();
+  const runs = [];
+  const { model } = setup({ mode: "detail", runs, live_channel: channel });
+  await model.methods.ready();
+  assert.equal(model.state.selected_run_id.value, "");
+  runs.push({ id: "active", flow_id: "flow-test", status: "RUNNING", current_node: "end" });
+  await channel.receive({ type: "automation_run_started", run_id: "active", run_status: "RUNNING" });
+  assert.equal(model.state.selected_run_id.value, "active");
+  assert.equal(model.state.node_execution_states.value.end.status, "RUNNING");
+  model.methods.destroy();
+});
+
+test("live node and run statuses received during selection override an older state response", async () => {
+  const channel = test_editor_channel();
+  let release;
+  const { model } = setup({ mode: "detail", live_channel: channel,
+    runs: [{ id: "active", flow_id: "flow-test", status: "RUNNING" }],
+    run_detail_handler: () => new Promise((resolve) => { release = resolve; }),
+  });
+  const ready = model.methods.ready();
+  await new Promise(setImmediate);
+  await channel.receive({ type: "automation_node_status", run_id: "active", node_status: { node_id: "end", status: "WAITING_FOR_USER", attempt: 2 } });
+  await channel.receive({ type: "automation_run_waiting", run_id: "active", run_status: "WAITING" });
+  release({ data: { start: "COMPLETED", end: "PENDING" } });
+  await ready;
+  assert.equal(model.state.node_execution_states.value.start.status, "COMPLETED");
+  assert.equal(model.state.node_execution_states.value.end.status, "WAITING_FOR_USER");
+  assert.equal(model.state.node_execution_states.value.end.attempt, 2);
+  assert.equal(model.state.selected_run.value.current_node, "end");
+  assert.equal(model.state.selected_run.value.status, "WAITING");
+  model.methods.destroy();
+});
+
 test("missing legacy traces remain readable and do not imply successful execution", async () => {
   const { model } = setup({ mode: "detail", runs: [{ id: "legacy", flow_id: "flow-test", status: "WAITING", current_node: "end", node_logs: "malformed", node_attempts: '{"start":1}' }] });
   await model.methods.refresh();
@@ -914,6 +1238,185 @@ test("missing legacy traces remain readable and do not imply successful executio
   assert.equal(model.state.node_execution_states.value.start.status, "UNKNOWN");
   assert.equal(model.state.node_execution_states.value.end.status, "WAITING_FOR_USER");
   assert.equal(model.methods.nodeExecutionRecord("end").executions.length, 0);
+  model.methods.destroy();
+});
+
+test("reusable subflow containers restore real states, isolate duplicate node IDs, and open scoped logs", async () => {
+  const channel = test_editor_channel();
+  const { model, flow, calls, context, client, actual_request_core } = setup({ mode: "detail", live_channel: channel,
+    runs: [{ id: "active", flow_id: "flow-test", status: "RUNNING" }],
+    run_detail_handler: (id, body) => ({ data: body.flow_id ? { start: "COMPLETED", end: "RUNNING" } : { start: "RUNNING", end: "PENDING" } }),
+    node_logs_handler: (body) => ({ data: { list: [{ node_id: body.node_id, flow_id: body.flow_id, attempt: 1, output: { scope: body.flow_id || "root" } }] } }),
+  });
+  flow.definition = JSON.stringify({ start_node: "start", subflows: { reusable: {
+    id: "child-flow", name: "可复用子流程", start_node: "start", nodes: {
+      start: { type: "WaitNode", next_node_ids: ["end"] }, end: { type: "WaitNode", name: "子流程结束" },
+    },
+  } }, nodes: {
+    start: { type: "WorkflowNode", name: "调用子流程", config: { flow_id: "reusable", output_key: "result" }, next_node_ids: ["end"] },
+    end: { type: "EndNode" },
+  } });
+  await model.methods.ready();
+  const group = model.state.subflow_groups.value[0];
+  const child_end = group.nodes.find((node) => node.id === "end");
+  assert.equal(model.state.node_execution_states.value.end.status, "PENDING");
+  assert.equal(model.state.node_execution_states.value[child_end.execution_key].status, "RUNNING");
+  assert.deepEqual(calls.find((call) => call.url.endsWith("get_run_node_states") && call.body.flow_id).body, { id: "active", flow_id: "child-flow" });
+  load_canvas_components(context);
+  const graph = context.AutomationFlowGraph({ store: model, editable: false, executionLogs: true });
+  assert.equal(find_view(graph, "automation-flow-node-start"), null, "the invocation card must become the actual container");
+  const node_view = find_view(graph, `automation-subflow-node-${group.id}-end`);
+  assert.ok(node_view);
+  assert.ok(find_view(graph, `automation-subflow-running-border-${group.id}-end`));
+  node_view.events.onClick({ clientX: 300, clientY: 200, stopPropagation() {} });
+  await new Promise(setImmediate);
+  assert.deepEqual(calls.find((call) => call.url.endsWith("get_run_node_logs")).body, { id: "active", node_id: "end", flow_id: "child-flow" });
+  assert.equal(model.methods.nodeExecutionRecord(child_end.execution_key).node_id, "end");
+  assert.equal(model.methods.nodeExecutionRecord(child_end.execution_key).flow_id, "child-flow");
+  await channel.receive({ type: "automation_node_status", flow_id: "child-flow", run_id: "active", node_status: { node_states: { start: "PENDING", end: "PENDING" } } });
+  assert.equal(model.state.node_execution_states.value[child_end.execution_key].status, "PENDING");
+  assert.equal(model.state.node_execution_states.value.start.status, "RUNNING");
+  assert.equal(model.methods.nodeExecutionDetail(child_end.execution_key).value.logs.length, 0);
+  await channel.receive({ type: "automation_node_status", flow_id: "child-flow", run_id: "other", node_status: { node_id: "end", status: "FAILED" } });
+  assert.equal(model.state.node_execution_states.value[child_end.execution_key].status, "PENDING");
+
+  // The bundled request core coalesces calls on one instance: scopes need independent instances.
+  context.Timeless.kit.RequestCore = actual_request_core;
+  const requests = [];
+  client.post = async (url, body) => {
+    requests.push({ url, body });
+    await Promise.resolve();
+    const data = url.endsWith("get_run_node_logs") ? { list: [{ node_id: body.node_id, output: { scope: body.flow_id || "root" } }] }
+      : body.flow_id ? { start: "RUNNING", end: "PENDING" } : { start: "RUNNING", end: "COMPLETED" };
+    return { data: { code: 0, data } };
+  };
+  await model.methods.selectRun("active");
+  assert.equal(requests.filter((request) => request.url.endsWith("get_run_node_states")).length, 2);
+  assert.equal(model.state.node_execution_states.value.end.status, "COMPLETED");
+  assert.equal(model.state.node_execution_states.value[child_end.execution_key].status, "PENDING");
+  model.methods.openNodeExecutionWindow("end");
+  model.methods.openNodeExecutionWindow(child_end.execution_key);
+  await new Promise(setImmediate);
+  assert.equal(model.methods.nodeExecutionRecord("end").executions[0].output.scope, "root");
+  assert.equal(model.methods.nodeExecutionRecord(child_end.execution_key).executions[0].output.scope, "child-flow");
+  model.methods.destroy();
+});
+
+test("subflow containers enclose negative positions and resize with their child nodes", () => {
+  const { context, model } = setup();
+  const workflow = { name: "子流程", start_node: "a", nodes: {
+    a: { type: "WaitNode", position: { x: -120, y: -60 }, next_node_ids: ["b"] },
+    b: { type: "WaitNode", position: { x: 200, y: 140 } },
+  } };
+  const nodes = [{ id: "child", type: "WorkflowNode", name: "调用子流程", position: { x: -40, y: 10 }, config: { workflow } }];
+  const first = context.calculate_pipeline_subflow_groups(nodes)[0];
+  assert.equal(first.x, -40);
+  assert.equal(first.width, 548);
+  assert.equal(first.height, 376);
+  assert.equal(first.nodes[0].x, 24);
+  assert.equal(first.nodes[0].y, 48);
+  for (const node of first.nodes) {
+    assert.ok(node.x >= 24 && node.x + 180 <= first.width - 24);
+    assert.ok(node.y >= 48 && node.y + 104 <= first.height - 24);
+  }
+  workflow.nodes.b.position.x += 300;
+  workflow.nodes.b.position.y += 200;
+  const expanded = context.calculate_pipeline_subflow_groups(nodes)[0];
+  assert.equal(expanded.width, first.width + 300);
+  assert.equal(expanded.height, first.height + 200);
+  model.methods.destroy();
+});
+
+test("edit and detail share the expanded subflow graph and preserve invocation editing", async () => {
+  const { context, model, flow } = setup();
+  const nested = { name: "内层流程", start_node: "wait", nodes: { wait: { type: "WaitNode", name: "内部等待" } } };
+  flow.definition = JSON.stringify({ name: "主流程", start_node: "child", nodes: {
+    child: { type: "WorkflowNode", name: "外层调用", config: { workflow: { name: "外层流程", start_node: "nested", nodes: {
+      nested: { type: "WorkflowNode", name: "内层调用", config: { workflow: nested } },
+    } } } },
+  } });
+  await model.methods.refresh();
+  const original = JSON.stringify(model.state.edit_nodes.value);
+  load_canvas_components(context);
+  const graph = context.AutomationFlowGraph({ store: model, editable: true });
+  const detail = context.AutomationFlowGraph({ store: model, editable: false, executionLogs: true });
+  const outer = find_view(graph, "automation-subflow-group-child");
+  const inner = find_view(outer, "automation-subflow-group-child/nested");
+  assert.ok(outer && inner);
+  assert.ok(find_view(inner, "automation-subflow-node-child/nested-wait"));
+  assert.equal(find_view(graph, "automation-flow-node-child"), null);
+  assert.equal(find_view(graph, "automation-subflow-node-child-nested"), null, "a nested invocation is represented by its container");
+  for (const name of ["automation-subflow-group-child", "automation-subflow-group-child/nested", "automation-subflow-node-child/nested-wait"]) {
+    for (const property of ["left", "top", "width", "height"]) {
+      assert.equal(find_view(graph, name).state.style[property], find_view(detail, name).state.style[property]);
+    }
+  }
+  const heading = find_view(outer, "automation-subflow-heading-child");
+  assert.equal(heading.state.attributes.role, "button");
+  model.methods.closeNodeInspector();
+  heading.events.onClick({ stopPropagation() {} });
+  assert.equal(model.state.selected_edit_node_id.value, "child");
+  assert.equal(model.state.node_inspector_open.value, true);
+  assert.ok(find_view(graph, "automation-flow-connectors-child"));
+  assert.equal(find_view(detail, "automation-flow-connectors-child"), null);
+  assert.ok(find_view(graph, "automation-subflow-minimap-child"));
+  assert.equal(JSON.stringify(model.state.edit_nodes.value), original);
+  const group = model.state.subflow_groups.value[0];
+  assert.ok(group.groups[0].x + group.groups[0].width <= group.width - 24);
+  assert.ok(group.groups[0].y + group.groups[0].height <= group.height - 24);
+  const bounds = context.automation_edit_layout(model.state.edit_nodes.value, {}, [group]);
+  assert.ok(bounds.height >= group.y + group.height);
+  assert.ok(bounds.width >= group.x + group.width);
+  const referenced = context.calculate_pipeline_subflow_groups([
+    { id: "reference", type: "WorkflowNode", config: { flow_id: "saved" } },
+  ], [{ id: "saved", definition: JSON.stringify(nested) }]);
+  assert.equal(referenced[0].nodes[0].name, "内部等待");
+  const moved = JSON.parse(original);
+  moved[0].position.x += 300;
+  model.state.edit_nodes.as(moved, { reset: true });
+  await new Promise(setImmediate);
+  assert.equal(model.state.subflow_groups.value[0].x, group.x + 300);
+  assert.ok(find_view(graph, "automation-subflow-group-child"));
+  const layout = context.calculate_execution_layout(model.state.edit_nodes.value, model.state.subflow_groups.value, { child: { left: -100, top: 400 } });
+  assert.equal(layout.groups[0].x, -100);
+  assert.equal(layout.groups[0].y, 400);
+  assert.ok(layout.height >= 400 + layout.groups[0].height);
+  assert.equal(layout.min_left, -100);
+  model.methods.destroy();
+});
+
+test("dragging expanded graph nodes saves their movement without including automatic subflow spacing", async () => {
+  const { context, model, flow, calls } = setup();
+  flow.definition = JSON.stringify({ start_node: "start", nodes: {
+    start: { type: "StartNode", position: { x: 0, y: 0 }, next_node_ids: ["child"] },
+    child: { type: "WorkflowNode", position: { x: 260, y: 0 }, next_node_ids: ["end"], config: { workflow: {
+      start_node: "wait", nodes: { wait: { type: "WaitNode" } },
+    } } },
+    end: { type: "EndNode", position: { x: 520, y: 0 } },
+  } });
+  await model.methods.refresh();
+  load_canvas_components(context);
+  const listeners = new Map();
+  context.document = {
+    addEventListener(name, handler) { listeners.set(name, handler); },
+    removeEventListener(name) { listeners.delete(name); },
+  };
+  const graph = context.AutomationFlowGraph({ store: model, editable: true });
+  const canvas = { style: {}, querySelectorAll: () => [] };
+  const shell = { style: {}, classList: { add() {}, remove() {} } };
+  const target = { closest: (selector) => selector.includes("node-shell") ? shell : canvas };
+  const event = { button: 0, clientX: 100, clientY: 100, currentTarget: target, preventDefault() {}, stopPropagation() {} };
+  find_view(graph, "automation-flow-node-end").events.onMouseDown(event);
+  listeners.get("mousemove")({ clientX: 130, clientY: 100 });
+  listeners.get("mouseup")({ clientX: 130, clientY: 100 });
+  assert.equal(model.state.edit_nodes.value.find((node) => node.id === "end").position.x, 550);
+  find_view(graph, "automation-subflow-heading-child").events.onMouseDown(event);
+  listeners.get("mousemove")({ clientX: 140, clientY: 120 });
+  listeners.get("mouseup")({ clientX: 140, clientY: 120 });
+  assert.deepEqual(JSON.parse(JSON.stringify(model.state.edit_nodes.value.find((node) => node.id === "child").position)), { x: 300, y: 20 });
+  await model.methods.saveFlow();
+  const saved = calls.find((call) => call.url.endsWith("update_flow"));
+  assert.deepEqual(saved.body.nodes.find((node) => node.id === "child").position, { x: 300, y: 20 });
   model.methods.destroy();
 });
 
@@ -1105,6 +1608,7 @@ function test_editor_channel() {
     sent: [],
     onMessage(fn) { listeners.push(fn); return () => {}; },
     onStateChange(fn) { states.push(fn); return () => {}; },
+    changeState(connected) { states.forEach((fn) => fn({ connected })); },
     async connect() { states.forEach((fn) => fn({ connected: true })); return { data: true }; },
     async send(raw) { this.sent.push(JSON.parse(raw)); return { data: true }; },
     destroy() {},
@@ -1207,37 +1711,44 @@ function add_config_declarations(flow) {
   flow.node_configs = JSON.stringify({ start: { apikey: "entry-key" }, end: { apikey: "request-key", count: 0, enabled: false, options: { test: true } } });
 }
 
-test("configuration JSON export downloads saved values and imports them into a draft before saving", async () => {
-  const { model, flow, context, calls, tips } = setup({ mode: "list" });
+test("configuration JSON is copied and pasted into a dialog that saves only the current configuration", async () => {
+  const { model, flow, calls, copied_texts } = setup({ mode: "list" });
   add_config_declarations(flow);
   const original = flow.node_configs;
-  let blob, downloaded = false, removed = false, revoked = false;
-  const anchor = { setAttribute() {}, click() { downloaded = true; }, remove() { removed = true; } };
-  context.Blob = Blob;
-  context.URL = { createObjectURL(value) { blob = value; return "blob:config"; }, revokeObjectURL(url) { assert.equal(url, "blob:config"); revoked = true; } };
-  context.document = { createElement(type) { assert.equal(type, "a"); return anchor; }, body: { appendChild(value) { assert.equal(value, anchor); } } };
-  await model.methods.exportPipelineConfig(flow);
-  assert.equal(downloaded, true);
-  assert.equal(removed, true);
-  assert.equal(anchor.download, "flow-test-config.json");
-  assert.equal(blob.type, "application/json;charset=utf-8");
-  const text = await blob.text();
-  assert.deepEqual(JSON.parse(text), JSON.parse(original), "exports retain secrets and false/zero values");
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(revoked, true);
+  const original_definition = flow.definition;
+  const original_name = flow.name;
+  await model.methods.copyPipelineConfig(flow);
+  const text = copied_texts[0];
+  assert.deepEqual(JSON.parse(text), JSON.parse(original), "copies retain secrets and false/zero values");
+  assert.deepEqual(calls.find((call) => call.url.endsWith("get_flow")).body, { id: flow.id });
   flow.node_configs = JSON.stringify({ start: { apikey: "different" } });
-  await model.methods.importPipelineConfig(flow, { text: async () => `\uFEFF${text}` });
-  assert.equal(model.state.config_groups.value[0].fields[0].input$.state.value, "entry-key");
-  assert.equal(model.state.config_groups.value[1].fields[2].input$.state.checked, false);
+  const config_menu = model.methods.pipelineConfigMenu(flow);
+  let menu_closed = false;
+  config_menu.hide = () => {
+    assert.equal(model.ui.config_json_dialog$.state.visible, false, "close the menu before opening the paste dialog");
+    menu_closed = true;
+  };
+  config_menu.state.items.find((item) => item.label === "粘贴JSON").click();
+  assert.equal(menu_closed, true);
+  assert.equal(model.ui.config_json_dialog$.state.visible, true);
+  assert.equal(model.ui.input_config_json$.state.value, "");
+  model.ui.input_config_json$.setValue(`\uFEFF${text}`);
   assert.equal(calls.filter((call) => call.url.endsWith("update_flow")).length, 0);
-  assert.match(tips.at(-1).msg[0], /保存配置后生效/);
-  await model.methods.savePipelineConfig();
+  await model.methods.savePastedPipelineConfig();
+  assert.equal(model.ui.config_dialog$.state.visible, false);
+  assert.equal(model.state.config_error.value, "");
+  assert.equal(model.ui.config_json_dialog$.state.exit, true);
   assert.deepEqual(JSON.parse(flow.node_configs), JSON.parse(original));
-  assert.deepEqual(Object.keys(calls.find((call) => call.url.endsWith("update_flow")).body).sort(), ["id", "node_configs"]);
+  const saved = calls.find((call) => call.url.endsWith("update_flow")).body;
+  assert.deepEqual(Object.keys(saved).sort(), ["id", "node_configs"]);
+  assert.equal(saved.id, flow.id);
+  assert.equal(flow.definition, original_definition);
+  assert.equal(flow.name, original_name);
+  assert.equal(calls.some((call) => /\/(create_flow|import_flow)$/.test(call.url)), false);
   model.methods.destroy();
 });
 
-test("configuration JSON imports merge partial typed values and reject invalid input without partial updates", async () => {
+test("pasted configuration JSON merges partial values and rejects invalid input without saving", async () => {
   const { model, flow, calls } = setup({ mode: "list" });
   add_config_declarations(flow);
   const definition = JSON.parse(flow.definition);
@@ -1246,25 +1757,71 @@ test("configuration JSON imports merge partial typed values and reject invalid i
     { key: "method", type: "string", options: [{ label: "GET", value: "GET" }] },
   );
   flow.definition = JSON.stringify(definition);
-  for (const values of [[], null, { missing: {} }, { end: [] }, { end: { missing: "x" } },
+  for (const values of [[], null, JSON.parse(flow.definition), { ...flow }, { missing: {} }, { end: [] }, { end: { missing: "x" } },
     { start: { apikey: "changed" }, end: { count: 0.5 } }, { end: { enabled: "false" } },
     { end: { count: "1" } }, { end: { apikey: 1 } }, { end: { options: [] } },
     { end: { list: {} } }, { end: { method: "POST" } }]) {
-    await model.methods.importPipelineConfig(flow, { text: async () => JSON.stringify(values) });
+    model.methods.openPastePipelineConfig(flow);
+    model.ui.input_config_json$.setValue(JSON.stringify(values));
+    await model.methods.savePastedPipelineConfig();
     assert.ok(model.state.config_error.value, JSON.stringify(values));
     if (model.state.config_groups.value.length) assert.equal(model.state.config_groups.value[0].fields[0].input$.state.value, "entry-key");
   }
-  await model.methods.importPipelineConfig(flow, { text: async () => "{" });
+  model.ui.input_config_json$.setValue("{");
+  await model.methods.savePastedPipelineConfig();
   assert.ok(model.state.config_error.value);
-  await model.methods.importPipelineConfig(flow, { text: async () => { throw new Error("read failed"); } });
-  assert.match(model.state.config_error.value, /read failed/);
-  await model.methods.importPipelineConfig(flow, { text: async () => JSON.stringify({ end: { enabled: true, count: 3, options: { nested: [false, 0] }, list: ["x"], method: "GET" } }) });
+  assert.equal(calls.filter((call) => call.url.endsWith("update_flow")).length, 0);
+  model.ui.input_config_json$.setValue(JSON.stringify({ end: { enabled: true, count: 3, options: { nested: [false, 0] }, list: ["x"], method: "GET" } }));
+  await model.methods.savePastedPipelineConfig();
   assert.equal(model.state.config_error.value, "");
   assert.equal(model.state.config_groups.value[0].fields[0].input$.state.value, "entry-key");
   assert.equal(model.state.config_groups.value[1].fields[2].input$.state.checked, true);
-  assert.equal(calls.filter((call) => call.url.endsWith("update_flow")).length, 0);
-  await model.methods.savePipelineConfig();
+  assert.equal(calls.filter((call) => call.url.endsWith("update_flow")).length, 1);
   assert.deepEqual(JSON.parse(flow.node_configs).end, { apikey: "request-key", count: 3, enabled: true, options: { nested: [false, 0] }, list: ["x"], method: "GET" });
+  model.methods.destroy();
+});
+
+test("paste save failures retain the textarea and the original configuration", async () => {
+  const { model, flow } = setup({ mode: "list", reject_save: true });
+  add_config_declarations(flow);
+  const original = flow.node_configs;
+  const text = JSON.stringify({ end: { count: 5 } });
+  model.methods.openPastePipelineConfig(flow);
+  model.ui.input_config_json$.setValue(text);
+  await model.methods.savePastedPipelineConfig();
+  assert.match(model.state.config_error.value, /invalid Cron/);
+  assert.equal(flow.node_configs, original);
+  assert.equal(model.ui.input_config_json$.state.value, text);
+  assert.equal(model.ui.config_json_dialog$.state.visible, true);
+  assert.equal(model.ui.config_json_dialog$.state.exit, false);
+  assert.equal(model.ui.btn_config_json_save$.state.loading, false);
+  model.methods.destroy();
+});
+
+test("the paste dialog renders a textarea and saves its input directly", async () => {
+  const { model, flow, context, calls } = setup({ mode: "list" });
+  add_config_declarations(flow);
+  model.methods.openPastePipelineConfig(flow);
+  load_canvas_components(context);
+  vm.runInContext(fs.readFileSync(path.join(frontend, "src/pages/automation.js"), "utf8")
+    .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export default .*;$/gm, ""), context);
+  const dialog = context.AutomationPasteConfigDialog({ store: model });
+  const textarea = find_view(dialog, "automation-paste-config-json");
+  assert.ok(textarea);
+  assert.equal(textarea.t, "textarea");
+  textarea.events.onChange({ target: { value: JSON.stringify({ end: { count: 7 } }) } });
+  await model.methods.savePastedPipelineConfig();
+  assert.equal(calls.find((call) => call.url.endsWith("update_flow")).body.node_configs.end.count, 7);
+  assert.equal(model.ui.config_dialog$.state.visible, false);
+  model.methods.destroy();
+});
+
+test("copying configuration reports clipboard errors without a success notice", async () => {
+  const { model, flow, app, tips } = setup({ mode: "list" });
+  app.copy = () => { throw new Error("clipboard denied"); };
+  await model.methods.copyPipelineConfig(flow);
+  assert.equal(tips.at(-1).type, "error");
+  assert.match(tips.at(-1).msg[0], /clipboard denied/);
   model.methods.destroy();
 });
 

@@ -2,6 +2,7 @@ import { ErrorMessage } from "@/dmui.js";
 import {
   calculate_flow_minimap_geometry,
   calculate_pipeline_node_positions,
+  calculate_execution_layout,
 } from "./automation.model.js";
 
 export function automation_trigger_badge(props) {
@@ -333,7 +334,7 @@ export function automation_execution_status_class(status) {
     .replaceAll("_", "-");
 }
 
-function automation_edit_layout(nodes, position_overrides) {
+function automation_edit_layout(nodes, position_overrides, groups = []) {
   const by_id = {};
   (nodes || []).forEach((node) => {
     by_id[node.id] = node;
@@ -350,24 +351,24 @@ function automation_edit_layout(nodes, position_overrides) {
       top: Number(position.top) || 0,
     };
   });
-  const width = Object.values(positions).reduce(
+  const width = Math.max(...groups.map((group) => group.x + group.width + 24), Object.values(positions).reduce(
     (max, position) => Math.max(max, position.left + 270),
     350,
-  );
-  const max_bottom = Object.values(positions).reduce(
+  ));
+  const max_bottom = Math.max(...groups.map((group) => group.y + group.height), Object.values(positions).reduce(
     (max, position) => Math.max(max, position.top + 110),
     160,
-  );
+  ));
   // 节点可以拖到画布原点左上（负坐标），画布原点仍是 0,0，
   // 这里只把负向边界一起返回，供缩略图/世界范围使用
-  const min_left = Object.values(positions).reduce(
+  const min_left = Math.min(...groups.map((group) => group.x), Object.values(positions).reduce(
     (min, position) => Math.min(min, position.left),
     0,
-  );
-  const min_top = Object.values(positions).reduce(
+  ));
+  const min_top = Math.min(...groups.map((group) => group.y), Object.values(positions).reduce(
     (min, position) => Math.min(min, position.top),
     0,
-  );
+  ));
   return {
     positions,
     width,
@@ -514,7 +515,7 @@ function automation_edge_path(edge, positions) {
   const from = positions[edge.from];
   const to = positions[edge.to];
   if (!from || !to) return "";
-  const x1 = from.left + 180;
+  const x1 = from.left + (from.width || 180);
   // 第 index 条出边对齐到第 index 个连接圆点（绿点是「新增」，排在所有出边之后）
   const y1 =
     from.top +
@@ -527,9 +528,8 @@ function automation_edge_path(edge, positions) {
 }
 
 // 条件分支出边的分支标签：按 edge id 给出「是 / 否 / case 值」和标签要贴的曲线中点
-function automation_edge_labels(nodes, position_overrides) {
+function automation_edge_labels(nodes, position_overrides, layout = automation_edit_layout(nodes, position_overrides)) {
   const labels = {};
-  const layout = automation_edit_layout(nodes, position_overrides);
   automation_edit_edges(nodes).forEach((edge) => {
     const source = (nodes || []).find((item) => item.id === edge.from);
     const branch = automation_gateway_branch(source, edge.to);
@@ -537,7 +537,7 @@ function automation_edge_labels(nodes, position_overrides) {
     const from = layout.positions[edge.from];
     const to = layout.positions[edge.to];
     if (!from || !to) return;
-    const x1 = from.left + 180;
+    const x1 = from.left + (from.width || 180);
     const y1 =
       from.top +
       automation_flow_connector_anchor +
@@ -553,9 +553,8 @@ function automation_edge_labels(nodes, position_overrides) {
   return labels;
 }
 
-function automation_refresh_flow_canvas(canvas, nodes, position_overrides) {
+function automation_refresh_flow_canvas(canvas, nodes, position_overrides, layout = automation_edit_layout(nodes, position_overrides)) {
   if (!canvas) return;
-  const layout = automation_edit_layout(nodes, position_overrides);
   canvas.style.width = `${layout.width}px`;
   canvas.style.height = `${layout.height}px`;
   canvas.querySelectorAll(".group-automation-flow-edge").forEach((path) => {
@@ -567,7 +566,7 @@ function automation_refresh_flow_canvas(canvas, nodes, position_overrides) {
     path.setAttribute("d", automation_edge_path(edge, layout.positions));
   });
   // 拖动节点时 edit_nodes 还没提交，标签位置得跟连线一样手动刷新，否则会滞后到松手才跳
-  const labels = automation_edge_labels(nodes, position_overrides);
+  const labels = automation_edge_labels(nodes, position_overrides, layout);
   canvas.querySelectorAll(".group-automation-flow-edge-label").forEach((element) => {
     const label = labels[element.getAttribute("data-flow-edge")];
     if (!label) return;
@@ -585,10 +584,80 @@ const automation_flow_minimap_size = {
   padding: 8,
 };
 
+function AutomationSubflowGroup({ group, store: vm$, inspectable = false, selected, onSelect, onDrag }) {
+  const positions = Object.fromEntries(group.nodes.map((node) => [node.id, { left: node.x, top: node.y, width: node.width, height: node.height }]));
+  return View({
+    class: "absolute box-sizing-border-box rounded-content border-[var(--dm-border-width)_solid_var(--dm-color-info-border)]",
+    style: {
+      left: `${group.x}px`, top: `${group.y}px`, width: `${group.width}px`, height: `${group.height}px`,
+      "background-color": group.depth % 2 ? "var(--dm-color-primary-soft)" : "var(--dm-color-info-soft)",
+      "border-color": selected ? computed(selected, (value) => value ? "var(--dm-color-selection-border)" : "var(--dm-color-info-border)") : undefined,
+      "box-shadow": selected ? computed(selected, (value) => value ? "var(--dm-shadow-selection)" : "none") : undefined,
+    },
+    attributes: { n: `automation-subflow-group-${group.id}`, role: "group", "aria-label": `子流程：${group.name}` },
+  }, [
+    View({
+      class: "absolute top-3 left-3 right-3 flex items-center gap-2 min-w-0 text-sm text-color-info font-semibold",
+      style: { width: `${group.width - 24}px`, cursor: onDrag ? "grab" : inspectable ? "pointer" : undefined },
+      attributes: {
+        n: `automation-subflow-heading-${group.id}`, title: group.name,
+        role: inspectable || onSelect ? "button" : undefined, tabindex: inspectable || onSelect ? "0" : undefined,
+        "aria-label": onSelect ? `编辑子流程调用：${group.name}` : inspectable ? `查看子流程调用日志：${group.name}` : undefined,
+        "aria-pressed": onSelect ? computed(selected, String) : undefined,
+      },
+      onMouseDown(event) { if (onDrag) onDrag(event); },
+      onClick(event) {
+        event.stopPropagation();
+        if (onSelect) onSelect();
+        else if (inspectable) vm$.methods.openNodeExecutionWindow(group.owner_key, { x: event.clientX, y: event.clientY });
+      },
+      onKeyDown(event) { if (onSelect || inspectable) automation_activate(event, () => onSelect ? onSelect() : vm$.methods.openNodeExecutionWindow(group.owner_key)); },
+    }, [
+      Timeless.Icon({ name: "git-fork", size: 16, attributes: { n: `automation-subflow-icon-${group.id}`, "aria-hidden": "true" } }),
+      View({ class: "overflow-hidden text-ellipsis whitespace-nowrap", attributes: { n: `automation-subflow-title-${group.id}` } }, [`子流程：${group.workflow_name}`]),
+    ]),
+    SVG.SVG({
+      class: "absolute inset-0 w-full h-full overflow-visible text-color-border-strong pointer-events-none",
+      attributes: { n: `automation-subflow-edges-${group.id}`, "aria-hidden": "true" },
+    }, group.nodes.flatMap((node) => node.next_ids.filter((id) => positions[id]).map((id) => SVG.Path({
+      d: automation_edge_path({ from: node.id, to: id }, positions), stroke: "currentColor", "stroke-width": "2", fill: "none",
+      attributes: { n: `automation-subflow-edge-${group.id}-${node.id}-${id}` },
+    })))),
+    ...group.nodes.filter((node) => !group.groups.some((child) => child.owner_id === node.id)).map((node) => {
+      const status_ = computed(vm$.state.node_execution_states, (states) => states[node.execution_key]?.status || "PENDING");
+      return View({
+      class: computed(status_, (status) => `dm-panel absolute box-sizing-border-box p-3 overflow-hidden text-color-text-primary ${inspectable ? "cursor-pointer" : ""} [&.is-running]:border-color-color-warning [&.is-retrying]:border-color-color-warning [&.is-completed]:border-color-color-success [&.is-failed]:border-color-color-danger-border is-${automation_execution_status_class(status)}`),
+      style: { left: `${node.x}px`, top: `${node.y}px`, width: "180px", height: "104px" },
+      attributes: { n: `automation-subflow-node-${group.id}-${node.id}`, title: node.name, role: inspectable ? "button" : undefined, tabindex: inspectable ? "0" : undefined },
+      onMouseDown(event) { if (inspectable) event.stopPropagation(); },
+      onClick(event) { if (inspectable) { event.stopPropagation(); vm$.methods.openNodeExecutionWindow(node.execution_key, { x: event.clientX, y: event.clientY }); } },
+      onKeyDown(event) { if (inspectable) automation_activate(event, () => vm$.methods.openNodeExecutionWindow(node.execution_key)); },
+    }, [
+      inspectable ? Show({ when: computed(status_, (status) => ["RUNNING", "RETRYING"].includes(status)), ok: () => SVG.SVG({
+        class: "dm-automation-running-border", attributes: { n: `automation-subflow-running-border-${group.id}-${node.id}`, "aria-hidden": "true" },
+      }, [SVG.Rect({ class: "dm-automation-running-border__track", attributes: { n: `automation-subflow-running-track-${group.id}-${node.id}` } })]) }) : null,
+      View({ class: "flex items-center gap-2 text-color-primary text-caption", attributes: { n: `automation-subflow-node-type-${group.id}-${node.id}` } }, [
+        Timeless.Icon({ name: vm$.methods.flowIcon(node.type), size: 16, attributes: { n: `automation-subflow-node-icon-${group.id}-${node.id}`, "aria-hidden": "true" } }),
+        vm$.methods.flowLabel(node.type),
+      ]),
+      View({ class: "mt-2 text-sm font-semibold overflow-hidden text-ellipsis whitespace-nowrap", attributes: { n: `automation-subflow-node-name-${group.id}-${node.id}` } }, [node.name]),
+      View({ class: "mt-1 text-caption text-color-text-secondary font-mono overflow-hidden text-ellipsis whitespace-nowrap", attributes: { n: `automation-subflow-node-id-${group.id}-${node.id}` } }, [node.id]),
+      inspectable ? View({
+        class: computed(status_, (status) => `absolute right-2 bottom-2 text-caption bg-color-bg-surface px-1 [&.is-running]:text-color-warning [&.is-retrying]:text-color-warning [&.is-completed]:text-color-success [&.is-failed]:text-color-danger is-${automation_execution_status_class(status)}`),
+        attributes: { n: `automation-subflow-status-${group.id}-${node.id}` },
+      }, [computed(status_, (status) => vm$.methods.nodeExecutionStatusLabel(status))]) : null,
+    ]);
+    }),
+    ...group.groups.map((nested) => AutomationSubflowGroup({ group: nested, store: vm$, inspectable })),
+  ]);
+}
+
 export function AutomationFlowGraph(props) {
   const vm$ = props.store;
   const editable = Boolean(props.editable);
   const inspectable = Boolean(props.executionLogs);
+  const groups_ = computed(vm$.state.execution_layout, (layout) => layout.groups);
+  const graph_nodes_ = computed(vm$.state.edit_nodes, (nodes) => nodes.filter((node) => !vm$.state.subflow_groups.value.some((group) => group.owner_id === node.id)));
   const FlowPrimitive = Timeless.ui.FlowPrimitive;
   const flow$ = new Timeless.vm.FlowCanvasModel({
     nodes: [],
@@ -600,6 +669,9 @@ export function AutomationFlowGraph(props) {
     maxZoom: automation_flow_max_zoom,
   });
   const position_overrides = {};
+  function graph_layout(nodes = vm$.state.edit_nodes.value, overrides = position_overrides) {
+    return calculate_execution_layout(nodes, vm$.state.subflow_groups.value, overrides);
+  }
   const flow_node_models = new Map();
   const viewport_ = refobj({ ...flow$.viewport });
   const minimap_geometry_ = refobj(
@@ -616,7 +688,7 @@ export function AutomationFlowGraph(props) {
   // 条件分支出边上的分支标签（是 / 否 / case 值）：一次算好所有边再按 id 取，
   // 每条边各建一个 computed 的话订阅者太多，某个订阅者出错会静默吞掉后面的通知
   const flow_edge_labels_ = computed(vm$.state.edit_nodes, (nodes) =>
-    automation_edge_labels(nodes, position_overrides),
+    automation_edge_labels(nodes, position_overrides, graph_layout(nodes)),
   );
   let root_element = null;
   let canvas_element = null;
@@ -629,6 +701,7 @@ export function AutomationFlowGraph(props) {
       refresh_minimap(nodes);
     },
   });
+  const stop_subflow_sync = groups_.subscribe({ onChange() { refresh_minimap(); } });
   const stop_viewport_sync = flow$.onViewportChange((viewport) => {
     viewport_.as({ ...viewport });
     refresh_minimap();
@@ -642,7 +715,7 @@ export function AutomationFlowGraph(props) {
   }
 
   function refresh_minimap(nodes = vm$.state.edit_nodes.value) {
-    const layout = automation_edit_layout(nodes, position_overrides);
+    const layout = graph_layout(nodes, position_overrides);
     const size = viewport_size();
     const zoom = Math.max(automation_flow_min_zoom, flow$.viewport.zoom || 1);
     if (canvas_element) {
@@ -692,7 +765,7 @@ export function AutomationFlowGraph(props) {
       flow$.resetView();
       return;
     }
-    const layout = automation_edit_layout(nodes, position_overrides);
+    const layout = graph_layout(nodes, position_overrides);
     const bounds = Object.values(layout.positions).reduce(
       (result, position) => ({
         min_x: Math.min(result.min_x, position.left),
@@ -707,6 +780,12 @@ export function AutomationFlowGraph(props) {
         max_y: -Infinity,
       },
     );
+    groups_.value.forEach((group) => {
+      bounds.min_x = Math.min(bounds.min_x, group.x);
+      bounds.min_y = Math.min(bounds.min_y, group.y);
+      bounds.max_x = Math.max(bounds.max_x, group.x + group.width);
+      bounds.max_y = Math.max(bounds.max_y, group.y + group.height);
+    });
     const size = viewport_size();
     const padding = 48;
     const content_width = Math.max(1, bounds.max_x - bounds.min_x);
@@ -736,8 +815,8 @@ export function AutomationFlowGraph(props) {
         id: node.id,
         type: node.type,
         position: { x: position.left, y: position.top },
-        width: 180,
-        height: 104,
+        width: position.width,
+        height: position.height,
         data: node,
       });
       flow_node.setCanvas$(flow$);
@@ -746,6 +825,8 @@ export function AutomationFlowGraph(props) {
     } else {
       flow_node.type = node.type;
       flow_node.data = node;
+      flow_node.width = position.width;
+      flow_node.height = position.height;
       if (!position_overrides[node.id]) {
         flow_node.position = { x: position.left, y: position.top };
       }
@@ -761,7 +842,7 @@ export function AutomationFlowGraph(props) {
       delete position_overrides[node_id];
       flow$.removeNode(node_id);
     });
-    const layout = automation_edit_layout(nodes, position_overrides);
+    const layout = graph_layout(nodes, position_overrides);
     // 布局会随 edit_nodes 变化（插入节点把后面的整体右移），模型里的坐标要一起走，
     // 否则下次从该节点开始拖拽会以旧坐标起算，节点会跳回老位置
     Object.entries(layout.positions).forEach(([node_id, position]) => {
@@ -914,6 +995,14 @@ export function AutomationFlowGraph(props) {
     if (!shell_element || !canvas_element) return;
 
     stop_active_pointer();
+    const original_position = calculate_pipeline_node_positions(vm$.state.edit_nodes.value)[node.id];
+    const displayed_position = { ...flow_node.position };
+    function saved_position() {
+      return {
+        x: original_position.x + flow_node.position.x - displayed_position.x,
+        y: original_position.y + flow_node.position.y - displayed_position.y,
+      };
+    }
     flow_node.pointerDown(event.clientX, event.clientY);
     shell_element.classList.add("is-dragging");
     let has_moved = false;
@@ -928,16 +1017,14 @@ export function AutomationFlowGraph(props) {
       has_moved = true;
       flow_node.position = { x: position.left, y: position.top };
       position_overrides[node.id] = position;
-      vm$.methods.stageEditNodePosition(node.id, {
-        x: position.left,
-        y: position.top,
-      });
+      vm$.methods.stageEditNodePosition(node.id, saved_position());
       shell_element.style.left = `${position.left}px`;
       shell_element.style.top = `${position.top}px`;
       automation_refresh_flow_canvas(
         canvas_element,
         vm$.state.edit_nodes.value,
         position_overrides,
+        graph_layout(),
       );
       refresh_minimap();
     };
@@ -945,10 +1032,7 @@ export function AutomationFlowGraph(props) {
     const handle_up = (up_event) => {
       flow_node.pointerUp(up_event.clientX, up_event.clientY);
       if (has_moved) {
-        vm$.methods.moveEditNode(node.id, {
-          x: flow_node.position.x,
-          y: flow_node.position.y,
-        });
+        vm$.methods.moveEditNode(node.id, saved_position());
       }
       stop_active_pointer();
     };
@@ -993,7 +1077,7 @@ export function AutomationFlowGraph(props) {
 
   function minimap_node_style(node) {
     return computed(minimap_geometry_, (geometry) => {
-      const layout = automation_edit_layout(
+      const layout = graph_layout(
         vm$.state.edit_nodes.value,
         position_overrides,
       );
@@ -1055,6 +1139,7 @@ export function AutomationFlowGraph(props) {
           root_element.removeEventListener("wheel", wheel_handler);
         }
         stop_edge_sync();
+        stop_subflow_sync();
         stop_viewport_sync();
       },
     },
@@ -1113,7 +1198,7 @@ export function AutomationFlowGraph(props) {
               key: "id",
               render(edge) {
                 const path_ = computed(vm$.state.edit_nodes, (nodes) => {
-                  const layout = automation_edit_layout(
+                  const layout = graph_layout(
                     nodes,
                     position_overrides,
                   );
@@ -1193,7 +1278,7 @@ export function AutomationFlowGraph(props) {
               // 插入节点会把 to 及其右侧的所有节点整体右移，连线（computed）跟着走，
               // 但节点壳停在原地 → 连线和节点脱节，必须再拖一下才恢复。
               const position_ = computed(vm$.state.edit_nodes, () => {
-                const layout = automation_edit_layout(
+                const layout = graph_layout(
                   vm$.state.edit_nodes.value,
                   position_overrides,
                 );
@@ -1223,14 +1308,17 @@ export function AutomationFlowGraph(props) {
                 return automation_node_connectors(current, nodes);
               });
               const flow_node = ensure_flow_node(node, position);
+              const group_ = computed(groups_, (groups) => groups.find((group) => group.owner_id === node.id));
               return FlowPrimitive.Node(
                 {
                   store: flow$,
                   nodeId: node.id,
-                  class: "group-automation-flow-node-shell absolute w-180px min-h-104px [&.is-dragging]:z-raised",
+                  class: "group-automation-flow-node-shell absolute min-h-104px [&.is-dragging]:z-raised",
                   style: computed(position_, (p) => ({
                     left: `${p.left}px`,
                     top: `${p.top}px`,
+                    width: `${p.width}px`,
+                    height: `${p.height}px`,
                   })),
                 },
                 [
@@ -1245,7 +1333,14 @@ export function AutomationFlowGraph(props) {
                         attributes: { n: "automation-run-flow", type: "button" },
                       }, ["手动执行"])])
                     : null,
-                  View(
+                  Show({ when: group_, ok: () => For({ each: computed(group_, (group) => [group]), key: "render_key", render(value) {
+                    const group = value && value.value !== undefined ? value.value : value;
+                    return AutomationSubflowGroup({
+                      group: { ...group, x: 0, y: 0 }, store: vm$, inspectable, selected: editable ? selected : undefined,
+                      onSelect: editable ? () => vm$.methods.selectEditNode(node.id) : undefined,
+                      onDrag: editable ? (event) => start_node_drag(event, node, flow_node) : undefined,
+                    });
+                  } }), else: () => View(
                     {
                     class: combine(
                       { selected, execution_status },
@@ -1432,7 +1527,7 @@ export function AutomationFlowGraph(props) {
                       },
                     }),
                     ],
-                  ),
+                  ) }),
                   editable && !is_end
                     ? View(
                         {
@@ -1574,8 +1669,20 @@ export function AutomationFlowGraph(props) {
         },
         [
           View({ class: "absolute inset-0 pointer-events-none" }, [
+            For({ each: groups_, key: "render_key", render(value) {
+              const group = value && value.value !== undefined ? value.value : value;
+              return View({
+                class: "absolute box-sizing-border-box bg-color-info-soft border-[var(--dm-border-width)_solid_var(--dm-color-info-border)] rounded-xs",
+                style: computed(minimap_geometry_, (geometry) => ({
+                  left: `${geometry.offset_x + (graph_layout().positions[group.owner_id].left - geometry.world_left) * geometry.scale}px`,
+                  top: `${geometry.offset_y + (graph_layout().positions[group.owner_id].top - geometry.world_top) * geometry.scale}px`,
+                  width: `${group.width * geometry.scale}px`, height: `${group.height * geometry.scale}px`,
+                })),
+                attributes: { n: `automation-subflow-minimap-${group.id}`, "aria-hidden": "true" },
+              });
+            } }),
             For({
-              each: vm$.state.edit_nodes,
+              each: graph_nodes_,
               key: "id",
               render(node_) {
                 const node =
@@ -1781,9 +1888,9 @@ export function AutomationNodeExecutionWindow(props) {
   const detail_ = vm$.methods.nodeExecutionDetail(node_id);
   const node_id_ = ref(node_id);
   const node_ = computed(
-    combine({ nodes: vm$.state.edit_nodes, node_id: node_id_ }, (v) => v),
+    combine({ nodes: vm$.state.execution_nodes, node_id: node_id_ }, (v) => v),
     ({ nodes, node_id: id }) =>
-      (nodes || []).find((item) => item.id === id) || null,
+      (nodes || []).find((item) => item.execution_key === id) || null,
   );
   const status_ = computed(
     combine(
@@ -1972,13 +2079,14 @@ export function AutomationRunHistory(props) {
       } }),
       Show({ when: computed(vm$.state.runs, (runs) => !runs.length), ok() { return View({ class: "text-color-text-secondary text-sm p-2" }, [computed(vm$.state.runs_loading, (loading) => loading ? "正在加载执行记录…" : "暂无执行记录，点击顶部「手动执行」开始。")]); } }),
     ]),
-    For({ each: computed(vm$.state.selected_run, (run) => run ? [{ ...run, render_key: `${run.id}-${run.status}-${run.updated_at}` }] : []), key: "render_key", render(value) {
+    For({ each: computed(vm$.state.selected_run, (run) => run ? [{ ...run, render_key: `${run.id}-${run.status}-${run.updated_at}-${run.current_node}` }] : []), key: "render_key", render(value) {
       const run = value && value.value !== undefined ? value.value : value;
       return View({ class: "grid gap-2 min-w-0 max-h-60vh overflow-auto border-top-[var(--dm-border-width)_solid_var(--dm-color-border)] p-3" }, [
         View({ class: "flex flex-wrap gap-2 items-center text-sm min-w-0" }, [
           automation_status_badge(run.status), View({ class: "font-mono text-xs word-break-break-all" }, [run.id]),
-          View({ class: "text-color-text-secondary" }, [`当前节点：${run.current_node || "等待执行"}`]),
+          View({ class: "text-color-text-secondary", attributes: { n: "automation-run-current-node" } }, [`当前节点：${run.current_node || (run.status === "FAILED" ? "未进入节点执行" : "等待执行")}`]),
         ]),
+        run.trigger_type ? View({ class: "text-color-text-secondary text-xs", attributes: { n: "automation-run-trigger-source" } }, [`触发来源：${vm$.methods.triggerLabel(run.trigger_type)}${run.trigger_key ? `（${run.trigger_key}）` : ""}`]) : null,
         run.error ? ErrorMessage({ tip: vm$.methods.tip, error: run.error }) : null,
         run.retry_of ? View({ class: "text-color-text-secondary text-xs" }, [`重试来源：${run.retry_of}`]) : null,
         run.status === "WAITING" ? View({ class: "grid gap-2 min-w-0" }, [

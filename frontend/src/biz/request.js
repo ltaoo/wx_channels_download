@@ -38,6 +38,11 @@ export function createPipeline(body) {
   return request.post("/api/v1/automation/create_flow", body);
 }
 
+/** 复制自动化流程及配置。 */
+export function copyPipeline(body) {
+  return request.post("/api/v1/automation/copy_flow", body);
+}
+
 /** 更新自动化流程及触发器配置。 */
 export function updatePipeline(body) {
   return request.post("/api/v1/automation/update_flow", body);

@@ -42,6 +42,7 @@ function AutomationPageView(props) {
       AutomationDeletePipelineDialog({ store: vm$ }),
       AutomationRunPipelineDialog({ store: vm$ }),
       AutomationConfigDialog({ store: vm$ }),
+      AutomationPasteConfigDialog({ store: vm$ }),
     ],
   );
 }
@@ -136,28 +137,21 @@ function AutomationPipelineList(props) {
     containerClass: "group-content-main flex-[1_1_auto] min-w-0 p-4  automation-index",
     containerAttributes: { n: "automation-pipeline-table-container" },
     panelAttributes: { n: "automation-pipeline-table-panel" },
-    rowKey: "id",
+    rowKey: (pipeline) => `${pipeline.id}:${pipeline.updated_at || pipeline.created_at || 0}:${pipeline.active_run_id || ""}`,
     columns: [
       {
         name: "name",
         title: "名称",
-        width: "minmax(240px, 2fr)",
+        width: 240,
         cellClass: "min-w-0 grid gap-0-5 justify-items-start",
         render(pipeline) {
           return [
             View(
               {
-                class: "min-w-0 max-w-full overflow-hidden text-color-text-primary text-base font-semibold text-ellipsis whitespace-nowrap",
-                attributes: { title: pipeline.name || pipeline.id },
+                class: "min-w-0 max-w-full text-color-text-primary text-base font-semibold overflow-wrap-anywhere",
+                attributes: { n: `automation-pipeline-name-${pipeline.id}`, title: pipeline.name || pipeline.id },
               },
               [pipeline.name || pipeline.id],
-            ),
-            View(
-              {
-                class: "min-w-0 max-w-full overflow-hidden text-color-text-secondary font-mono text-xs text-ellipsis whitespace-nowrap",
-                attributes: { title: pipeline.id },
-              },
-              [pipeline.id],
             ),
             pipeline.description
               ? View(
@@ -206,7 +200,7 @@ function AutomationPipelineList(props) {
             View({ class: "flex items-center gap-1", attributes: { n: `automation-pipeline-config-actions-${pipeline.id}` } }, [
               Button({ store: vm$.ui.btn_pipeline_config$.bind(pipeline), class: "flex-none", attributes: { n: `automation-pipeline-config-${pipeline.id}`, type: "button", "aria-label": `配置 ${pipeline.name || pipeline.id}` } }, ["配置"]),
               DropdownMenu({ store: vm$.methods.pipelineConfigMenu(pipeline), attributes: { n: `automation-pipeline-config-menu-${pipeline.id}` } }, [
-                Button({ store: vm$.ui.btn_pipeline_config_menu$.bind(pipeline), attributes: { n: `automation-pipeline-config-menu-trigger-${pipeline.id}`, type: "button", "aria-label": `${pipeline.name || pipeline.id} 配置导入导出` } }, [
+                Button({ store: vm$.ui.btn_pipeline_config_menu$.bind(pipeline), attributes: { n: `automation-pipeline-config-menu-trigger-${pipeline.id}`, type: "button", "aria-label": `${pipeline.name || pipeline.id} 复制或粘贴配置 JSON` } }, [
                   Timeless.Icon({ name: "chevron-down", size: 14, attributes: { n: `automation-pipeline-config-menu-icon-${pipeline.id}` } }),
                 ]),
               ]),
@@ -229,22 +223,9 @@ function AutomationPipelineList(props) {
         name: "actions",
         title: "操作",
         width: 230,
-        cellClass: "flex flex-wrap items-center justify-end gap-1-5 max-900:justify-start",
+        cellClass: "flex flex-nowrap items-center justify-end gap-1-5 max-900:justify-start",
         render(pipeline) {
           return [
-            vm$.methods.pipelineTriggerTypes(pipeline).includes("Manual")
-              ? Button(
-                  {
-                    store: vm$.ui.btn_pipeline_trigger$.bind(pipeline),
-                    attributes: {
-                      n: `automation-pipeline-trigger-${pipeline.id}`,
-                      type: "button",
-                      "aria-label": `触发 ${pipeline.name || pipeline.id}`,
-                    },
-                  },
-                  ["触发"],
-                )
-              : null,
             AutomationPipelineLink({
               flowId: pipeline.id,
               mode: "detail",
@@ -255,16 +236,18 @@ function AutomationPipelineList(props) {
               mode: "edit",
               label: "编辑",
             }),
-            Button(
+            DropdownMenu(
               {
-                store: vm$.ui.btn_pipeline_delete$.bind(pipeline),
-                attributes: {
-                  n: `automation-pipeline-delete-${pipeline.id}`,
-                  type: "button",
-                  title: "删除 Pipeline",
-                },
+                store: vm$.methods.pipelineActionsMenu(pipeline),
+                attributes: { n: `automation-pipeline-more-menu-${pipeline.id}` },
               },
-              ["删除"],
+              [Button({
+                store: vm$.methods.pipelineActionButton("more", pipeline),
+                attributes: { n: `automation-pipeline-more-${pipeline.id}`, type: "button", "aria-label": `${pipeline.name || pipeline.id} 更多操作` },
+              }, [
+                "更多",
+                Timeless.Icon({ name: "chevron-down", size: 14, attributes: { n: `automation-pipeline-more-icon-${pipeline.id}`, "aria-hidden": "true" } }),
+              ])],
             ),
           ].filter(Boolean);
         },
@@ -341,6 +324,25 @@ function AutomationConfigDialog(props) {
     DialogFooter({}, [
       Button({ store: vm$.ui.btn_config_cancel$, attributes: { type: "button" } }, ["取消"]),
       Button({ store: vm$.ui.btn_config_save$, attributes: { n: "automation-config-save", type: "button" } }, [computed(vm$.state.config_saving, (saving) => saving ? "正在保存…" : "保存配置")]),
+    ]),
+  ]);
+}
+
+function AutomationPasteConfigDialog(props) {
+  const vm$ = props.store;
+  return Dialog({ store: vm$.ui.config_json_dialog$, class: "automation-form-dialog", attributes: { n: "automation-paste-config-dialog" } }, [
+    DialogHeader({ attributes: { n: "automation-paste-config-header" } }, [
+      DialogTitle({ attributes: { n: "automation-paste-config-title" } }, ["粘贴JSON"]),
+      DialogDescription({ attributes: { n: "automation-paste-config-description", id: "automation-paste-config-description" } }, ["输入当前记录的配置 JSON，点击保存后生效。"]),
+    ]),
+    DialogBody({ attributes: { n: "automation-paste-config-body" } }, [
+      Label({ attributes: { n: "automation-paste-config-label", for: "automation-paste-config-json" } }, ["配置 JSON"]),
+      Textarea({ store: vm$.ui.input_config_json$, class: "font-mono text-sm", onChange(event) { vm$.ui.input_config_json$.setValue(String(event.target.value)); }, attributes: { n: "automation-paste-config-json", id: "automation-paste-config-json", rows: "12", spellcheck: "false", "aria-label": "配置 JSON", "aria-describedby": "automation-paste-config-description" } }),
+      Show({ when: computed(vm$.state.config_error, Boolean), ok: () => View({ class: "text-color-danger text-sm", attributes: { n: "automation-paste-config-error", role: "alert" } }, [vm$.state.config_error]) }),
+    ]),
+    DialogFooter({ attributes: { n: "automation-paste-config-actions" } }, [
+      Button({ store: vm$.ui.btn_config_json_cancel$, attributes: { n: "automation-paste-config-cancel", type: "button" } }, ["取消"]),
+      Button({ store: vm$.ui.btn_config_json_save$, attributes: { n: "automation-paste-config-save", type: "button" } }, ["保存"]),
     ]),
   ]);
 }
