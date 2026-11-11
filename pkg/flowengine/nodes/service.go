@@ -43,7 +43,11 @@ func (n *ServiceNode) ID() string   { return n.node_id }
 func (n *ServiceNode) Type() string { return "ServiceNode" }
 
 func (n *ServiceNode) Execute(process_context *engine.ProcessContext) (bool, []string, error) {
-	if n.executor == nil {
+	return n.execute(process_context, n.executor)
+}
+
+func (n *ServiceNode) execute(process_context *engine.ProcessContext, executor ServiceToolExecutor) (bool, []string, error) {
+	if executor == nil {
 		return false, nil, fmt.Errorf("service executor is not configured")
 	}
 	tool_name, _ := n.Config["tool_name"].(string)
@@ -66,7 +70,7 @@ func (n *ServiceNode) Execute(process_context *engine.ProcessContext) (bool, []s
 	}
 	defer cancel()
 
-	result, err := n.executor(execution_context, tool_name, arguments)
+	result, err := executor(execution_context, tool_name, arguments)
 	if err != nil {
 		return false, nil, fmt.Errorf("service tool %s failed: %w", tool_name, err)
 	}

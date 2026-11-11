@@ -58,6 +58,12 @@ func (e *FlowEngine) RemoveFlow(flow_id string) {
 
 func clone_definition(definition FlowDefinition) FlowDefinition {
 	copied := definition
+	if definition.Subflows != nil {
+		copied.Subflows = make(map[string]FlowDefinition, len(definition.Subflows))
+		for id, child := range definition.Subflows {
+			copied.Subflows[id] = clone_definition(child)
+		}
+	}
 	copied.Nodes = make(map[string]NodeDefinition, len(definition.Nodes))
 	copied.ContextSchema = append([]FieldSchema(nil), definition.ContextSchema...)
 	for id, node := range definition.Nodes {
@@ -66,6 +72,7 @@ func clone_definition(definition FlowDefinition) FlowDefinition {
 		node.ConfigSchema = append([]NodeConfigField(nil), node.ConfigSchema...)
 		for index := range node.ConfigSchema {
 			node.ConfigSchema[index].Options = append([]NodeConfigOption(nil), node.ConfigSchema[index].Options...)
+			node.ConfigSchema[index].Default = clone_data(node.ConfigSchema[index].Default)
 		}
 		node.NextNodeIDs = append([]string(nil), node.NextNodeIDs...)
 		node.NextNodes = append([]TargetNode(nil), node.NextNodes...)
@@ -83,6 +90,24 @@ func (e *FlowEngine) definition_for(ctx *ProcessContext) (FlowDefinition, bool) 
 		return *ctx.Definition, true
 	}
 	return e.getFlowDefinition(ctx.FlowID)
+}
+
+func (e *FlowEngine) GetSubflowDefinition(ctx *ProcessContext, flow_id string) (FlowDefinition, bool) {
+	if definition, ok := ctx.subflows[flow_id]; ok {
+		return clone_definition(definition), true
+	}
+	return e.GetFlowDefinition(flow_id)
+}
+
+func inherit_subflows(parent *ProcessContext, definition FlowDefinition) map[string]FlowDefinition {
+	subflows := make(map[string]FlowDefinition, len(parent.subflows)+len(definition.Subflows))
+	for id, child := range parent.subflows {
+		subflows[id] = child
+	}
+	for id, child := range definition.Subflows {
+		subflows[id] = child
+	}
+	return subflows
 }
 
 func (ctx *ProcessContext) Checkpoint() *RunCheckpoint {
@@ -166,6 +191,7 @@ func (e *FlowEngine) ResumeCheckpoint(parent context.Context, checkpoint *RunChe
 	}
 	run_context, cancel := context.WithCancel(parent)
 	ctx := &ProcessContext{Context: run_context, cancel: cancel, Definition: &definition, ValidateSchemas: true,
+		subflows:   definition.Subflows,
 		InstanceID: checkpoint.RunID, FlowID: definition.ID, Data: snapshot_map(checkpoint.Data),
 		NodeOutputs: checkpoint.NodeOutputs, Globals: snapshot_map(checkpoint.Globals),
 		NodeStates: snapshotNodeStates(checkpoint.NodeStates), NodeAttempts: snapshotNodeAttempts(checkpoint.NodeAttempts),
@@ -251,6 +277,7 @@ func (e *FlowEngine) ExecuteSubflow(parent *ProcessContext, definition FlowDefin
 	}
 	parent.Mu.Unlock()
 	child := &ProcessContext{Context: parent.ExecutionContext(), Definition: &definition, ValidateSchemas: parent.ValidateSchemas,
+		subflows:   inherit_subflows(parent, definition),
 		InstanceID: parent.InstanceID, FlowID: definition.ID, EngineRef: e,
 		Data: snapshot_map(input), NodeAttempts: map[string]int{},
 		NodeOutputs: map[string]map[string]interface{}{}, Globals: map[string]interface{}{},
@@ -278,6 +305,37 @@ func (e *FlowEngine) reset_subflow_states(ctx *ProcessContext) {
 		Timestamp: time.Now(), FlowID: ctx.FlowID, RunID: ctx.InstanceID,
 		Status: StatePending, NodeStates: states,
 	})
+}
+
+// The caller holds ctx.Mu; loop back-edges must not reset the active node itself.
+func reset_downstream_states(ctx *ProcessContext, definition FlowDefinition, node_id string) map[string]NodeState {
+	var states map[string]NodeState
+	queue := []string{node_id}
+	seen := map[string]bool{}
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if state, exists := ctx.NodeStates[id]; id != node_id && exists && state != StatePending && state != StateRunning {
+			if states == nil {
+				states = map[string]NodeState{}
+			}
+			ctx.NodeStates[id] = StatePending
+			states[id] = StatePending
+		}
+		node := definition.Nodes[id]
+		queue = append(queue, node.NextNodeIDs...)
+		for _, target := range node.NextNodes {
+			queue = append(queue, target.TargetID)
+		}
+		if node.ErrorNextNodeID != "" {
+			queue = append(queue, node.ErrorNextNodeID)
+		}
+	}
+	return states
 }
 
 // Parallel branches work on isolated snapshots. A configured join is executed
@@ -328,7 +386,8 @@ func (e *FlowEngine) run_parallel(parent *ProcessContext, node NodeDefinition, s
 	var wg sync.WaitGroup
 	for index, start := range starts {
 		child := &ProcessContext{Context: run_context, Definition: parent.Definition, ValidateSchemas: parent.ValidateSchemas, InstanceID: parent.InstanceID,
-			FlowID: parent.FlowID, EngineRef: e, Data: parent.SnapshotData(),
+			subflows: parent.subflows,
+			FlowID:   parent.FlowID, EngineRef: e, Data: parent.SnapshotData(),
 			NodeStates: snapshotNodeStates(parent.NodeStates), NodeAttempts: snapshotNodeAttempts(parent.NodeAttempts),
 			NodeOutputs: map[string]map[string]interface{}{}, Globals: snapshot_map(parent.Globals),
 			InputKeys: parent.InputKeys, MaxSteps: parent.MaxSteps, Depth: parent.Depth,
@@ -437,6 +496,7 @@ func (e *FlowEngine) ExecuteSharedSubflow(parent *ProcessContext, definition Flo
 		parent.step_count = &atomic.Int64{}
 	}
 	child := &ProcessContext{Context: parent.ExecutionContext(), Definition: &definition, ValidateSchemas: parent.ValidateSchemas,
+		subflows:   inherit_subflows(parent, definition),
 		InstanceID: parent.InstanceID, FlowID: definition.ID, EngineRef: e, Data: parent.Data,
 		NodeAttempts: map[string]int{}, NodeOutputs: parent.NodeOutputs,
 		Globals: parent.Globals, InputKeys: ContextSchemaKeys(definition.ContextSchema),

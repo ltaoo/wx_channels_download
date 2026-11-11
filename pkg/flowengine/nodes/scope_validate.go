@@ -172,6 +172,10 @@ func (v *scope_validator) collect_references() {
 				v.validate_template_value(node_id, node.Config["items"], "items")
 			}
 			v.validate_sub_flow(node)
+		default:
+			for name, value := range scope_config_object(node.Config, "arguments") {
+				v.validate_template_value(node_id, value, fmt.Sprintf("arguments.%s", name))
+			}
 		}
 	}
 }
