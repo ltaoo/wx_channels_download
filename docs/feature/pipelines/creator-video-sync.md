@@ -11,9 +11,11 @@ description: 复制 Pipeline JSON，定时检查创作者视频并下载缺失�
 
 分页列表默认通过 GET 请求 `http://127.0.0.1:2022/api/channels/contact/feed/list`，自动携带 `username` 和 `next_marker` 查询参数。在同一配置中可填写 `url` 覆盖完整接口地址，并用 `method` 选择 GET、POST、PUT、PATCH、DELETE、HEAD 或 OPTIONS（留空使用 GET）。POST 等带请求体的方法还会发送 `{"username":"...","next_marker":"..."}` JSON，GET/HEAD 不发送请求体。可选 `token` 使用 secret 输入遮罩，只需填写令牌本身，填写后发送 `Authorization: Bearer <token>`，留空不发送认证头。
 
-列表响应兼容下载器的 `code/data` 包装，也支持直接返回包含 `BaseResponse`、`object` 的原始列表。分页字段可使用 `continueFlag/lastBuffer` 或 `continue_flag/last_buffer`；视频字段可使用 `objectDesc/objectNonceId/mediaType` 或对应的下划线命名。账号和分页游标都必须按接口约定使用字符串。
+列表响应直接返回包含 `BaseResponse`、`object` 的原始列表，分页字段为 `continue_flag/last_buffer`，视频字段为 `object_desc/object_nonce_id/media_type`。账号和分页游标都必须按接口约定使用字符串。
 
-下载直接复用列表返回的视频对象，通过 `create_download_task` 创建任务，不会再调用 `download_wxchannels_video` 查询详情，因此自定义 HTTP 列表接口不依赖本机视频号页面连接。接口需返回可下载的 `objectDesc.media`，包括媒体 URL、URL token 以及加密视频所需的解密 key；这些字段也兼容下划线命名。列表只返回 ID 时无法直接下载，需要由该 HTTP 接口补齐媒体数据。
+原始列表中 `object_desc.media[].spec` 的 `file_format`、`duration_ms`、`video_bitrate`、`level_order` 也会转换为下载器使用的画质字段，保留清晰度选项与默认画质选择。
+
+下载直接复用列表返回的视频对象，通过 `create_download_task` 创建任务，不会再调用 `download_wxchannels_video` 查询详情，因此自定义 HTTP 列表接口不依赖本机视频号页面连接。接口需返回可下载的 `object_desc.media`，包括媒体 URL、URL token 以及加密视频所需的解密 key；字段名使用 `url`、`url_token`、`decode_key`。列表只返回 ID 时无法直接下载，需要由该 HTTP 接口补齐媒体数据。
 
 已经导入的流程不会随模板文件自动更新。可在原流程编辑页导入此 JSON，核对接口地址、认证和创作者配置后保存；新导入的流程需重新填写配置。
 
