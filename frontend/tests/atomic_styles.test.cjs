@@ -309,6 +309,18 @@ test("compact navigation retains its bottom placement and hidden brand", () => {
   assert.equal(styles(brand, { width: 1440 }).display, "flex");
 });
 
+test("dropdowns fade in and close quickly without accepting exit clicks", () => {
+  const entering = styles(element("dm-dropdown-content is-entering"));
+  assert.match(entering.animation, /^dm-fade-in var\(--dm-duration-fast\)/);
+  const exiting = styles(element("dm-dropdown-content is-exiting"));
+  assert.match(exiting.animation, /^dm-fade-out /);
+  assert.equal(exiting["animation-duration"], "80ms");
+  assert.equal(exiting["pointer-events"], "none");
+  for (const state of ["is-entering", "is-exiting"]) {
+    assert.equal(styles(element(`dm-dropdown-content ${state}`), { reduced: true })["animation-duration"], "1ms");
+  }
+});
+
 test("sync status classes returned by the model retain their state variants", () => {
   const { text, ast } = source("pages/sync.model.js");
   let fn;

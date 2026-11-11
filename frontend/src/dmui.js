@@ -2398,18 +2398,17 @@ export function DropdownMenu(props, children = []) {
       children.length
         ? ui.DropdownMenuPrimitive.Trigger({ store }, children)
         : null,
-      ui.DropdownMenuPrimitive.Content({ ...rest, store }, () => [
-        View(
-          {
-            class: class_names(["dm-dropdown-content", extra_class]),
-          },
-          [
-            For({
-              each: computed(state_, (state) => state.items || []),
-              render: dropdown_entry,
-            }),
-          ],
-        ),
+      ui.DropdownMenuPrimitive.Content({
+        ...rest,
+        store,
+        class: class_names(["dm-dropdown-content", extra_class]),
+        attributes: { n: "dropdown-menu", ...(rest.attributes || {}) },
+        animation: { in: "is-entering", out: "is-exiting" },
+      }, () => [
+        For({
+          each: computed(state_, (state) => state.items || []),
+          render: dropdown_entry,
+        }),
       ]),
     ].filter(Boolean),
   );
