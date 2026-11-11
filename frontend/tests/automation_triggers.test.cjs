@@ -1420,6 +1420,137 @@ test("dragging expanded graph nodes saves their movement without including autom
   model.methods.destroy();
 });
 
+test("dragging a subflow node updates its container only on release and persists both positions", async () => {
+  const { context, model, flow, calls } = setup();
+  flow.definition = JSON.stringify({ start_node: "call", nodes: {
+    call: { type: "WorkflowNode", position: { x: 200, y: 100 }, config: { workflow: {
+      start_node: "a", nodes: {
+        a: { type: "WaitNode", position: { x: 0, y: 0 }, next_node_ids: ["b"] },
+        b: { type: "WaitNode", position: { x: 200, y: 100 } },
+      },
+    } } },
+  } });
+  await model.methods.refresh();
+  load_canvas_components(context);
+  const listeners = new Map();
+  context.document = {
+    addEventListener(name, handler) { listeners.set(name, handler); },
+    removeEventListener(name) { listeners.delete(name); },
+  };
+  let canvas_model;
+  const CanvasModel = context.Timeless.vm.FlowCanvasModel;
+  const DragCanvasModel = class extends CanvasModel {
+    constructor(options) { super(options); canvas_model = this; }
+  };
+  context.Timeless = { ...context.Timeless, vm: { ...context.Timeless.vm, FlowCanvasModel: DragCanvasModel } };
+  const graph = context.AutomationFlowGraph({ store: model, editable: true });
+  const first = model.state.execution_layout.value.groups[0];
+  canvas_model.setViewport({ x: 0, y: 0, zoom: 0.5 });
+  const element = { style: {} };
+  const event = { button: 0, clientX: 150, clientY: 150, currentTarget: element, preventDefault() {}, stopPropagation() {} };
+  const card = find_view(graph, "automation-subflow-node-call-a");
+  assert.equal(card.state.attributes.tabindex, "0");
+  card.events.onMouseDown(event);
+  listeners.get("mousemove")({ clientX: 100, clientY: 110 });
+  assert.equal(element.style.left, "-76px");
+  assert.equal(element.style.top, "-32px");
+  assert.equal(model.state.execution_layout.value.groups[0].width, first.width);
+  assert.equal(model.state.dirty.value, false);
+  listeners.get("mouseup")({ clientX: 100, clientY: 110 });
+  assert.equal(listeners.size, 0);
+  const moved = model.state.execution_layout.value.groups[0];
+  assert.equal(moved.x, first.x - 100);
+  assert.equal(moved.y, first.y - 80);
+  assert.equal(moved.width, first.width + 100);
+  assert.equal(moved.height, first.height + 80);
+  assert.equal(moved.x + moved.nodes[1].x, first.x + first.nodes[1].x, "the other node stays in place");
+  assert.equal(moved.y + moved.nodes[1].y, first.y + first.nodes[1].y);
+  assert.equal(find_view(graph, "automation-subflow-group-call").state.style.width, `${moved.width}px`);
+  assert.equal(model.state.dirty.value, true);
+  await model.methods.saveFlow();
+  const saved = calls.find((call) => call.url.endsWith("update_flow")).body.nodes[0];
+  assert.deepEqual(saved.position, { x: 100, y: 20 });
+  assert.deepEqual(saved.config.node_positions.call.a, { x: -100, y: -80 });
+  assert.deepEqual(saved.config.workflow.nodes.a.position, { x: 0, y: 0 });
+  assert.equal(model.state.execution_layout.value.groups[0].x, moved.x);
+  assert.equal(model.state.execution_layout.value.groups[0].width, moved.width);
+  const current = find_view(graph, "automation-subflow-node-call-a");
+  current.events.onKeyDown({ key: "ArrowRight", preventDefault() {}, stopPropagation() {} });
+  assert.equal(model.state.execution_layout.value.groups[0].width, moved.width - 10);
+  model.methods.destroy();
+});
+
+test("moving nested and reusable subflow nodes preserves declarations and ancestor bounds", async () => {
+  const { context, model, flow, calls } = setup();
+  flow.definition = JSON.stringify({ start_node: "call", subflows: { reusable: {
+    id: "reusable", start_node: "nested", nodes: {
+      nested: { type: "WorkflowNode", position: { x: 0, y: 0 }, config: { workflow: {
+        start_node: "a", nodes: { a: { type: "WaitNode", position: { x: 0, y: 0 } } },
+      } } },
+    },
+  } }, nodes: {
+    call: { type: "WorkflowNode", position: { x: 200, y: 100 }, config: { flow_id: "reusable" } },
+    again: { type: "WorkflowNode", position: { x: 900, y: 100 }, config: { flow_id: "reusable" } },
+  } });
+  await model.methods.refresh();
+  load_canvas_components(context);
+  const graph = context.AutomationFlowGraph({ store: model, editable: true });
+  const first = model.state.execution_layout.value.groups[0];
+  const untouched = model.state.execution_layout.value.groups[1];
+  const nested = first.groups[0];
+  const key_event = { key: "ArrowLeft", preventDefault() {}, stopPropagation() {} };
+  find_view(graph, `automation-subflow-node-${nested.id}-a`).events.onKeyDown(key_event);
+  const moved = model.state.execution_layout.value.groups[0];
+  assert.equal(moved.x + moved.groups[0].x + moved.groups[0].nodes[0].x,
+    first.x + nested.x + nested.nodes[0].x - 10);
+  assert.equal(moved.width, first.width, "moving the only child shifts its containers without changing their width");
+  const unchanged = model.state.execution_layout.value.groups[1];
+  for (const key of ["x", "y", "width", "height"]) assert.equal(unchanged[key], untouched[key], "another invocation retains its layout");
+  assert.deepEqual(JSON.parse(JSON.stringify(unchanged.node_positions)), JSON.parse(JSON.stringify(untouched.node_positions)));
+  const listeners = new Map();
+  context.document = {
+    addEventListener(name, handler) { listeners.set(name, handler); },
+    removeEventListener(name) { listeners.delete(name); },
+  };
+  const heading = find_view(graph, `automation-subflow-heading-${nested.id}`);
+  heading.events.onMouseDown({ button: 0, clientX: 0, clientY: 0,
+    currentTarget: { parentElement: { style: {} } }, preventDefault() {}, stopPropagation() {},
+  });
+  listeners.get("mousemove")({ clientX: 30, clientY: 20 });
+  listeners.get("mouseup")({ clientX: 30, clientY: 20 });
+  await model.methods.saveFlow();
+  const saved = calls.find((call) => call.url.endsWith("update_flow")).body;
+  assert.equal(saved.nodes[0].config.flow_id, "reusable");
+  assert.equal(saved.nodes[0].config.workflow, undefined);
+  assert.deepEqual(saved.nodes[0].position, { x: 220, y: 120 });
+  assert.deepEqual(saved.nodes[0].config.node_positions[nested.id].a, { x: -10, y: 0 });
+  assert.deepEqual(saved.subflows.reusable.nodes.nested.config.workflow.nodes.a.position, { x: 0, y: 0 });
+  assert.equal(saved.nodes[1].config.node_positions, undefined);
+  model.methods.destroy();
+});
+
+test("subflow dragging preserves pending inspector text and does not edit referenced pipelines", async () => {
+  const referenced = { id: "saved", name: "Shared", definition: JSON.stringify({ start_node: "a", nodes: { a: { type: "WaitNode" } } }) };
+  const flows = [referenced];
+  const { model, flow } = setup({ flows });
+  flow.definition = JSON.stringify({ start_node: "call", nodes: { call: { type: "WorkflowNode", config: { flow_id: "saved" } } } });
+  flows.push(flow);
+  await model.methods.refresh();
+  model.methods.selectEditNode("call");
+  model.ui.input_edit_node_config$.setValue('{"flow_id":"saved","output_key":"pending"}');
+  const group = model.state.subflow_groups.value[0];
+  assert.equal(model.methods.moveSubflowNode(group.id, "a", { x: 20, y: 10 }), null);
+  assert.match(model.state.error.value, /先应用/);
+  assert.match(model.ui.input_edit_node_config$.state.value, /pending/);
+  model.ui.input_edit_node_config$.setValue('{"flow_id":"saved"}');
+  assert.ok(model.methods.moveSubflowNode(group.id, "a", { x: 20, y: 10 }));
+  assert.equal(model.state.edit_nodes.value[0].config.flow_id, "saved");
+  assert.equal(model.state.edit_nodes.value[0].config.workflow, undefined);
+  assert.ok(model.state.edit_nodes.value[0].config.node_positions);
+  assert.equal(JSON.parse(referenced.definition).nodes.a.position, undefined);
+  model.methods.destroy();
+});
+
 test("running and retrying detail nodes show a reactive decorative border that stops on completion", async () => {
   const { model, context } = setup({ mode: "detail" });
   await model.methods.refresh();

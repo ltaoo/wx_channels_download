@@ -504,7 +504,7 @@ function calculate_execution_layout(nodes, groups, position_overrides = {}) {
   };
 }
 
-function calculate_pipeline_subflow_groups(nodes, pipelines = [], ancestors = [], depth = 0, parent_flow_id = "") {
+function calculate_pipeline_subflow_groups(nodes, pipelines = [], ancestors = [], depth = 0, parent_flow_id = "", node_positions = {}) {
   if (depth >= 16) return [];
   const positions = calculate_pipeline_node_positions(nodes);
   let next_top = Math.max(0, ...Object.values(positions).map((position) => position.y + 104)) + 64;
@@ -518,7 +518,10 @@ function calculate_pipeline_subflow_groups(nodes, pipelines = [], ancestors = []
     if (!child.nodes.length) return [];
     const path = [...ancestors, node.id, ...(config.flow_id ? [config.flow_id] : [])];
     const flow_id = child.id || config.flow_id || path.join("/");
-    const child_positions = calculate_pipeline_node_positions(child.nodes);
+    const layouts = { ...node_positions, ...config.node_positions };
+    const child_positions = calculate_pipeline_node_positions(child.nodes.map((entry) => ({
+      ...entry, position: layouts[path.join("/")]?.[entry.id] || entry.position,
+    })));
     const min_x = Math.min(...Object.values(child_positions).map((position) => position.x));
     const min_y = Math.min(...Object.values(child_positions).map((position) => position.y));
     const child_nodes = child.nodes.map((entry) => ({
@@ -531,7 +534,7 @@ function calculate_pipeline_subflow_groups(nodes, pipelines = [], ancestors = []
     const nested_nodes = child.nodes.map((entry) => ({ ...entry,
       position: { x: child_positions[entry.id].x - min_x + 24, y: child_positions[entry.id].y - min_y + 48 },
     }));
-    const groups = calculate_pipeline_subflow_groups(nested_nodes, pipelines, path, depth + 1, flow_id);
+    const groups = calculate_pipeline_subflow_groups(nested_nodes, pipelines, path, depth + 1, flow_id, layouts);
     const width = Math.max(...child_nodes.map((entry) => entry.x + 180), ...groups.map((group) => group.x + group.width)) + 24;
     const height = Math.max(...child_nodes.map((entry) => entry.y + 104), ...groups.map((group) => group.y + group.height)) + 24;
     const group = {
@@ -539,6 +542,7 @@ function calculate_pipeline_subflow_groups(nodes, pipelines = [], ancestors = []
       flow_id, owner_key: parent_flow_id ? subflow_node_key(parent_flow_id, node.id) : node.id,
       owner_id: node.id, x: positions[node.id].x, y: next_top, width, height,
       nodes: child_nodes, groups,
+      node_positions: child_positions,
     };
     next_top += height + 32;
     return [group];
@@ -2213,6 +2217,57 @@ function AutomationPageViewModel(props, options) {
     return staged_position;
   }
 
+  function move_subflow_node(group_id, node_id, delta) {
+    if (view_mode_.value !== "edit" || !delta || !Number.isFinite(delta.x) || !Number.isFinite(delta.y) || (!delta.x && !delta.y)) return null;
+    function find_path(groups) {
+      for (const group of groups) {
+        if (group.id === group_id) return [group];
+        const path = find_path(group.groups);
+        if (path) return [group, ...path];
+      }
+      return null;
+    }
+    const path = find_path(subflow_groups_.value);
+    if (!path || !path.at(-1).nodes.some((node) => node.id === node_id)) return null;
+    const original_owner = find_edit_node(path[0].owner_id);
+    const selected_owner = selected_edit_node_id_.value === original_owner.id;
+    if (selected_owner) {
+      try {
+        if (JSON.stringify(JSON.parse(ui.input_edit_node_config$.state.value)) !== JSON.stringify(original_owner.config)) throw new Error();
+      } catch {
+        set_error(new Error("请先应用或还原当前节点配置，再拖动子流程节点"));
+        return null;
+      }
+    }
+    let layouts = { ...original_owner.config.node_positions };
+    let moved_id = node_id;
+    let movement = delta;
+    for (const group of path.reverse()) {
+      const position = group.node_positions[moved_id];
+      const positions = { ...group.node_positions, [moved_id]: { x: position.x + movement.x, y: position.y + movement.y } };
+      layouts = { ...layouts, [group.id]: positions };
+      const offset = (values, coordinate) => Math.min(...Object.values(values).map((position) => position[coordinate]));
+      movement = {
+        x: offset(positions, "x") - offset(group.node_positions, "x"),
+        y: offset(positions, "y") - offset(group.node_positions, "y"),
+      };
+      moved_id = group.owner_id;
+    }
+    const position = calculate_pipeline_node_positions(edit_nodes_.value)[original_owner.id];
+    // Layout belongs to this invocation, including when it references a shared flow.
+    const owner = { ...original_owner, config: { ...original_owner.config, node_positions: layouts },
+      position: { x: position.x + movement.x, y: position.y + movement.y } };
+    staged_node_positions.set(owner.id, owner.position);
+    edit_nodes_.as(edit_nodes_.value.map((node) => node.id === owner.id ? owner : node), { reset: true });
+    if (selected_owner) {
+      const text = JSON.stringify(owner.config, null, 2);
+      edit_node_config_.as(text);
+      ui.input_edit_node_config$.setValue(text, { silence: true });
+    }
+    dirty_.as(true);
+    return owner;
+  }
+
   function apply_selected_node_config() {
     const node_id = selected_edit_node_id_.value;
     if (!node_id) return null;
@@ -3288,6 +3343,7 @@ function AutomationPageViewModel(props, options) {
     },
     stageEditNodePosition: stage_edit_node_position,
     moveEditNode: move_edit_node,
+    moveSubflowNode: move_subflow_node,
     applySelectedNodeConfig: apply_selected_node_config,
     removeNode: remove_node,
     saveFlow: save_flow,
