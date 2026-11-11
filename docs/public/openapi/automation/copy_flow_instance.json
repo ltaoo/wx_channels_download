@@ -1,0 +1,51 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "复制流程实例",
+    "description": "",
+    "operationId": "post_api_v1_automation_copy_flow_instance",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "code=0 表示成功。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/model_UserFlowInstance"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

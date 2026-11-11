@@ -43,6 +43,11 @@ export function copyPipeline(body) {
   return request.post("/api/v1/automation/copy_flow", body);
 }
 
+/** 新增共用流程定义的配置实例。 */
+export function createPipelineInstance(body) {
+  return request.post("/api/v1/automation/create_flow_instance", body);
+}
+
 /** 更新自动化流程及触发器配置。 */
 export function updatePipeline(body) {
   return request.post("/api/v1/automation/update_flow", body);
@@ -58,6 +63,13 @@ export function fetchPipelineDetail(body) {
   return request.post("/api/v1/automation/get_flow", body);
 }
 
+/** 配置实例列表和实例设置与共享流程使用不同接口。 */
+export function fetchPipelineInstanceList(body) { return request.post("/api/v1/automation/list_flow_instances", body); }
+export function fetchPipelineInstanceDetail(body) { return request.post("/api/v1/automation/get_flow_instance", body); }
+export function updatePipelineInstance(body) { return request.post("/api/v1/automation/update_flow_instance", body); }
+export function deletePipelineInstance(body) { return request.post("/api/v1/automation/delete_flow_instance", body); }
+export function copyPipelineInstance(body) { return request.post("/api/v1/automation/copy_flow_instance", body); }
+
 /** 获取自动化流程节点目录。 */
 export function fetchPipelineNodeCatalog(params) {
   return request.post("/api/v1/automation/list_flow_nodes", params);
@@ -65,7 +77,7 @@ export function fetchPipelineNodeCatalog(params) {
 
 /** 手动触发自动化流程。 */
 export function triggerPipeline(body) {
-  return request.post("/api/v1/automation/trigger_flow", body);
+  return request.post("/api/v1/automation/trigger_flow_instance", body);
 }
 
 /** 导入自动化流程。 */

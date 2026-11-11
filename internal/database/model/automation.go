@@ -26,6 +26,7 @@ type FlowSchedule struct {
 	Description   string `gorm:"type:text" json:"description"`
 	CronExpr      string `gorm:"column:cron_expr;not null" json:"cron_expr"`
 	FlowID        string `gorm:"column:flow_id;not null;index" json:"flow_id"`
+	InstanceID    string `gorm:"not null;index" json:"instance_id"`
 	InitialData   string `gorm:"column:initial_data;type:text" json:"initial_data"`
 	Enabled       bool   `gorm:"not null" json:"enabled"`
 	TimeoutSec    int    `gorm:"column:timeout_sec;not null;default:3600" json:"timeout_sec"`
@@ -43,7 +44,7 @@ type FlowRunRecord struct {
 	Definition  string `gorm:"type:text" json:"definition"`
 	InitialData string `gorm:"type:text" json:"initial_data"`
 	Checkpoint  string `gorm:"type:text" json:"-"`
-	NodeLogs    string `gorm:"type:text" json:"node_logs"`
+	NodeLogs    string `gorm:"-" json:"node_logs"`
 	NodeStates  string `gorm:"type:text;not null;default:{}" json:"-"`
 	TimeoutSec  int    `json:"timeout_sec"`
 	DeadlineAt  int64  `gorm:"index" json:"deadline_at"`
@@ -52,6 +53,7 @@ type FlowRunRecord struct {
 	ID           string `gorm:"primaryKey;size:96" json:"id"`
 	ScheduleID   string `gorm:"column:schedule_id;index" json:"schedule_id"`
 	FlowID       string `gorm:"column:flow_id;not null;index" json:"flow_id"`
+	InstanceID   string `gorm:"not null;index" json:"instance_id"`
 	TriggerType  string `gorm:"column:trigger_type" json:"trigger_type"`
 	TriggerKey   string `gorm:"column:trigger_key" json:"trigger_key"`
 	Status       string `gorm:"not null;index" json:"status"`

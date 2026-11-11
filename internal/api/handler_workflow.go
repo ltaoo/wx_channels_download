@@ -15,21 +15,20 @@ import (
 type user_flow_create_body struct {
 	Name          string               `json:"name"`
 	Description   string               `json:"description"`
-	TriggerType   string               `json:"trigger_type"`
-	EventKey      string               `json:"event_key"`
 	ContextSchema []engine.FieldSchema `json:"context_schema"`
 }
 
 type user_flow_update_body struct {
-	Subflows      map[string]engine.FlowDefinition  `json:"subflows"`
-	NodeConfigs   map[string]map[string]interface{} `json:"node_configs"`
-	ID            string                            `json:"id"`
-	Name          *string                           `json:"name"`
-	Description   *string                           `json:"description"`
-	ContextSchema []engine.FieldSchema              `json:"context_schema"`
-	StartNodeID   string                            `json:"start_node_id"`
-	Nodes         []services.UserFlowNodeInput      `json:"nodes"`
-	Triggers      []services.UserFlowTriggerInput   `json:"triggers"`
+	Subflows           map[string]engine.FlowDefinition  `json:"subflows"`
+	NodeConfigs        map[string]map[string]interface{} `json:"node_configs"`
+	DefaultNodeConfigs map[string]map[string]interface{} `json:"default_node_configs"`
+	ID                 string                            `json:"id"`
+	Name               *string                           `json:"name"`
+	Description        *string                           `json:"description"`
+	ContextSchema      []engine.FieldSchema              `json:"context_schema"`
+	StartNodeID        string                            `json:"start_node_id"`
+	Nodes              []services.UserFlowNodeInput      `json:"nodes"`
+	Triggers           []services.UserFlowTriggerInput   `json:"triggers"`
 }
 
 type user_flow_id_body struct {
@@ -46,7 +45,7 @@ func (c *APIClient) handle_copy_user_flow(ctx *gin.Context) {
 		result.Err(ctx, api_code_invalid_params, "请求参数无效")
 		return
 	}
-	flow, err := service.CopyUserFlow(body.ID)
+	flow, err := service.CopyFlowDefinition(body.ID)
 	if err != nil {
 		result.Err(ctx, api_code_invalid_params, err.Error())
 		return
@@ -72,7 +71,7 @@ func (c *APIClient) handle_list_user_flows(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	flows, err := service.ListUserFlows()
+	flows, err := service.ListFlowDefinitions()
 	if err != nil {
 		result.Err(ctx, api_code_invalid_params, err.Error())
 		return
@@ -90,11 +89,9 @@ func (c *APIClient) handle_create_user_flow(ctx *gin.Context) {
 		result.Err(ctx, api_code_invalid_params, "请求参数无效")
 		return
 	}
-	flow, err := service.CreateUserFlow(services.CreateUserFlowInput{
+	flow, err := service.CreateFlowDefinition(services.CreateUserFlowInput{
 		Name:          body.Name,
 		Description:   body.Description,
-		TriggerType:   body.TriggerType,
-		EventKey:      body.EventKey,
 		ContextSchema: body.ContextSchema,
 	})
 	if err != nil {
@@ -114,7 +111,7 @@ func (c *APIClient) handle_get_user_flow(ctx *gin.Context) {
 		result.Err(ctx, api_code_invalid_params, "请求参数无效")
 		return
 	}
-	flow, err := service.GetUserFlow(strings.TrimSpace(body.ID))
+	flow, err := service.GetFlowDefinition(strings.TrimSpace(body.ID))
 	if err != nil {
 		result.Err(ctx, api_code_invalid_params, err.Error())
 		return
@@ -132,15 +129,20 @@ func (c *APIClient) handle_update_user_flow(ctx *gin.Context) {
 		result.Err(ctx, api_code_invalid_params, "请求参数无效")
 		return
 	}
-	flow, err := service.UpdateUserFlow(strings.TrimSpace(body.ID), services.UpdateUserFlowInput{
-		Subflows:      body.Subflows,
-		NodeConfigs:   body.NodeConfigs,
-		Name:          body.Name,
-		Description:   body.Description,
-		ContextSchema: body.ContextSchema,
-		StartNodeID:   body.StartNodeID,
-		Nodes:         body.Nodes,
-		Triggers:      body.Triggers,
+	if body.Triggers != nil || body.NodeConfigs != nil {
+		result.Err(ctx, api_code_invalid_params, "流程只接收 default_node_configs；覆盖值和触发器请在实例中配置")
+		return
+	}
+	flow, err := service.UpdateFlowDefinition(strings.TrimSpace(body.ID), services.UpdateUserFlowInput{
+		Subflows:           body.Subflows,
+		NodeConfigs:        body.NodeConfigs,
+		DefaultNodeConfigs: body.DefaultNodeConfigs,
+		Name:               body.Name,
+		Description:        body.Description,
+		ContextSchema:      body.ContextSchema,
+		StartNodeID:        body.StartNodeID,
+		Nodes:              body.Nodes,
+		Triggers:           body.Triggers,
 	})
 	if err != nil {
 		result.Err(ctx, api_code_invalid_params, err.Error())
@@ -160,7 +162,7 @@ func (c *APIClient) handle_delete_user_flow(ctx *gin.Context) {
 		return
 	}
 	id := strings.TrimSpace(body.ID)
-	if err := service.DeleteUserFlow(id); err != nil {
+	if err := service.DeleteFlowDefinition(id); err != nil {
 		result.Err(ctx, api_code_invalid_params, err.Error())
 		return
 	}
@@ -209,7 +211,7 @@ func (c *APIClient) handle_trigger_user_flow(ctx *gin.Context) {
 	// This endpoint is an explicit manual/debug action. The persisted flow may
 	// still be configured for Cron or Event execution; that configuration must
 	// not restrict or change this one-off run.
-	run, err := service.TriggerFlowDirect(flow_id, body.InitialData)
+	run, err := service.TriggerFlowInstance(flow_id, body.InitialData)
 	if err != nil {
 		result.Err(ctx, api_code_invalid_params, err.Error())
 		return
@@ -228,7 +230,7 @@ func (c *APIClient) handle_import_user_flow(ctx *gin.Context) {
 		result.Err(ctx, api_code_invalid_params, "请求参数无效")
 		return
 	}
-	flow, err := service.ImportUserFlow(body.Definition)
+	flow, err := service.ImportFlowDefinition(body.Definition)
 	if err != nil {
 		result.Err(ctx, api_code_invalid_params, err.Error())
 		return

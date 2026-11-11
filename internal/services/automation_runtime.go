@@ -23,7 +23,12 @@ func (s *AutomationService) reserve_run(schedule model.FlowSchedule, trigger_typ
 	}
 	s.claim_mu.Lock()
 	defer s.claim_mu.Unlock()
-	query := s.db.Model(&model.FlowRunRecord{}).Where("flow_id = ? AND status IN ? AND deleted_at IS NULL", schedule.FlowID, []string{"QUEUED", "RUNNING", "WAITING"})
+	query := s.db.Model(&model.FlowRunRecord{}).Where("status IN ? AND deleted_at IS NULL", []string{"QUEUED", "RUNNING", "WAITING"})
+	if schedule.InstanceID != "" {
+		query = query.Where("instance_id=?", schedule.InstanceID)
+	} else {
+		query = query.Where("flow_id=? AND (instance_id IS NULL OR instance_id='')", schedule.FlowID)
+	}
 	var active int64
 	if err := query.Count(&active).Error; err != nil {
 		return nil, err
@@ -46,7 +51,7 @@ func (s *AutomationService) reserve_run(schedule model.FlowSchedule, trigger_typ
 		timeout_sec = max_schedule_timeout_sec
 	}
 	now := time.Now().UnixMilli()
-	run := &model.FlowRunRecord{ID: fmt.Sprintf("run-%d", time.Now().UnixNano()), FlowID: schedule.FlowID,
+	run := &model.FlowRunRecord{ID: fmt.Sprintf("run-%d", time.Now().UnixNano()), FlowID: schedule.FlowID, InstanceID: schedule.InstanceID,
 		ScheduleID: schedule.ID, TriggerType: trigger_type, TriggerKey: trigger_key, Status: model.FlowRunStatusQueued,
 		InitialData: marshal_json(flow_initial_data(schedule)),
 		TimeoutSec:  timeout_sec, DeadlineAt: now + int64(timeout_sec)*1000, RetryOf: retry_of, StartedAt: &now,
@@ -59,6 +64,18 @@ func (s *AutomationService) reserve_run(schedule model.FlowSchedule, trigger_typ
 
 // Persist receipt before validation so rejected starts remain visible in history.
 func (s *AutomationService) prepare_run(schedule model.FlowSchedule, trigger_type, trigger_key, retry_of, original_definition string) (prepared_run *model.FlowRunRecord, preparation_err error) {
+	if schedule.InstanceID != "" {
+		instance, err := s.GetUserFlowInstance(schedule.InstanceID)
+		if err != nil {
+			return nil, err
+		}
+		if schedule.FlowID != "" && schedule.FlowID != instance.FlowID {
+			return nil, fmt.Errorf("实例不属于指定流程")
+		}
+		schedule.FlowID = instance.FlowID
+	} else {
+		return nil, fmt.Errorf("请指定流程实例 instance_id")
+	}
 	run, err := s.reserve_run(schedule, trigger_type, trigger_key, retry_of)
 	if err != nil {
 		return nil, err
@@ -67,7 +84,7 @@ func (s *AutomationService) prepare_run(schedule model.FlowSchedule, trigger_typ
 		if preparation_err == nil {
 			return
 		}
-		if err := s.db.Model(&model.FlowRunRecord{}).Where("id = ?", run.ID).Update("definition", run.Definition).Error; err != nil {
+		if err := s.db.Model(&model.FlowRunRecord{}).Where("id = ?", run.ID).Updates(map[string]interface{}{"definition": run.Definition, "node_states": run.NodeStates}).Error; err != nil {
 			s.log_error(err, "save rejected automation definition")
 		}
 		prepared_run = s.finish_run(schedule, run, fmt.Errorf("启动校验失败: %w", preparation_err))
@@ -88,7 +105,7 @@ func (s *AutomationService) prepare_run(schedule model.FlowSchedule, trigger_typ
 	}
 	if strings.HasPrefix(schedule.FlowID, user_flow_id_prefix) {
 		if original_definition == "" {
-			if err := s.bind_node_configs(&definition); err != nil {
+			if err := s.bind_node_configs(&definition, schedule.InstanceID); err != nil {
 				return nil, err
 			}
 		}
@@ -96,7 +113,8 @@ func (s *AutomationService) prepare_run(schedule model.FlowSchedule, trigger_typ
 			return nil, err
 		}
 	}
-	if start := automation_schedule_metadata(schedule).StartNodeID; start != "" {
+	// User instances always enter the shared graph's current start node.
+	if start := automation_schedule_metadata(schedule).StartNodeID; start != "" && !strings.HasPrefix(schedule.FlowID, user_flow_id_prefix) {
 		definition.StartNodeID = start
 	}
 	raw_definition, err := json.Marshal(definition)
@@ -112,7 +130,24 @@ func (s *AutomationService) prepare_run(schedule model.FlowSchedule, trigger_typ
 		return nil, fmt.Errorf("timeout_sec 不能超过 %d", max_schedule_timeout_sec)
 	}
 	run.Definition = string(raw_definition)
-	result := s.db.Model(&model.FlowRunRecord{}).Where("id = ? AND status = ?", run.ID, model.FlowRunStatusQueued).Update("definition", run.Definition)
+	states := map[string]map[string]string{}
+	var initialize func(flowengine.FlowDefinition)
+	initialize = func(graph flowengine.FlowDefinition) {
+		current := map[string]string{}
+		for node_id, node := range graph.Nodes {
+			current[node_id] = "PENDING"
+			if child, ok := node.Config["workflow"]; ok {
+				var nested flowengine.FlowDefinition
+				if json.Unmarshal([]byte(marshal_json(child)), &nested) == nil {
+					initialize(nested)
+				}
+			}
+		}
+		states[graph.ID] = current
+	}
+	initialize(definition)
+	run.NodeStates = marshal_json(states)
+	result := s.db.Model(&model.FlowRunRecord{}).Where("id = ? AND status = ?", run.ID, model.FlowRunStatusQueued).Updates(map[string]interface{}{"definition": run.Definition, "node_states": run.NodeStates})
 	if result.Error != nil {
 		return nil, result.Error
 	}
@@ -153,30 +188,18 @@ func (s *AutomationService) save_run_checkpoint(checkpoint *flowengine.RunCheckp
 }
 
 func (s *AutomationService) persist_node_log(entry flowengine.NodeExecutionLog) {
-	if s.db == nil || !strings.HasPrefix(entry.RunID, "run-") {
+	if s.db == nil || !strings.HasPrefix(entry.RunID, "run-") || entry.NodeID == "" {
 		return
 	}
-	s.log_mu.Lock()
-	defer s.log_mu.Unlock()
-	var run model.FlowRunRecord
-	if err := s.db.Select("id", "node_logs").Where("id = ?", entry.RunID).First(&run).Error; err != nil {
-		s.log_error(err, "load automation node logs")
-		return
-	}
-	var logs []flowengine.NodeExecutionLog
-	_ = json.Unmarshal([]byte(run.NodeLogs), &logs)
-	logs = append(logs, entry)
-	if len(logs) > 1000 {
-		logs = logs[len(logs)-1000:]
-	}
-	if err := s.db.Model(&model.FlowRunRecord{}).Where("id = ?", run.ID).Update("node_logs", marshal_json(logs)).Error; err != nil {
-		s.log_error(err, "persist automation node logs")
+	row := model.FlowRunNodeLog{RunID: entry.RunID, FlowID: entry.FlowID, NodeID: entry.NodeID, Entry: marshal_json(entry)}
+	if err := s.db.Create(&row).Error; err != nil {
+		s.log_error(err, "persist automation node attempt")
 	}
 }
 
 // ResumeRun claims the existing waiting record before launching its continuation.
 func (s *AutomationService) ResumeRun(id, node_id string, input map[string]interface{}) (*model.FlowRunRecord, error) {
-	run, err := s.GetRun(id)
+	run, err := s.get_run(id, false, false)
 	if err != nil {
 		return nil, err
 	}
@@ -214,13 +237,13 @@ func (s *AutomationService) ResumeRun(id, node_id string, input map[string]inter
 		s.active_runs.Store(run.ID, context.CancelFunc(cancel))
 		defer s.active_runs.Delete(run.ID)
 		defer cancel()
-		current, err := s.GetRun(run.ID)
+		current, err := s.GetRunMetadata(run.ID)
 		if err != nil || current.Status == model.FlowRunStatusCancelled {
 			return
 		}
 		s.publish_run_started(run)
 		resume_err := s.flow_engine.ResumeCheckpoint(execution_context, checkpoint, node_id, input)
-		s.finish_run(model.FlowSchedule{ID: run.ScheduleID, FlowID: run.FlowID, CronExpr: "@daily"}, run, resume_err)
+		s.finish_run(model.FlowSchedule{ID: run.ScheduleID, FlowID: run.FlowID, InstanceID: run.InstanceID, CronExpr: "@daily"}, run, resume_err)
 	}()
 	return run, nil
 }
@@ -228,7 +251,7 @@ func (s *AutomationService) ResumeRun(id, node_id string, input map[string]inter
 // RetryRun creates a new execution from the recorded input and original graph,
 // or the currently saved graph if the caller explicitly chooses it.
 func (s *AutomationService) RetryRun(id string, use_current_definition bool) (*model.FlowRunRecord, error) {
-	previous, err := s.GetRun(id)
+	previous, err := s.get_run(id, false, false)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +264,7 @@ func (s *AutomationService) RetryRun(id string, use_current_definition bool) (*m
 	} else if definition == "" {
 		return nil, fmt.Errorf("原流程没有可重放的定义，请选择使用当前流程")
 	}
-	schedule := model.FlowSchedule{ID: previous.ScheduleID, FlowID: previous.FlowID, CronExpr: "@daily", InitialData: previous.InitialData, TimeoutSec: previous.TimeoutSec}
+	schedule := model.FlowSchedule{ID: previous.ScheduleID, FlowID: previous.FlowID, InstanceID: previous.InstanceID, CronExpr: "@daily", InitialData: previous.InitialData, TimeoutSec: previous.TimeoutSec}
 	run, err := s.prepare_run(schedule, model.FlowRunTriggerManual, "", previous.ID, definition)
 	if err != nil {
 		return nil, err
@@ -268,7 +291,7 @@ func (s *AutomationService) expire_waiting_runs() {
 	}
 	now := time.Now().UnixMilli()
 	var runs []model.FlowRunRecord
-	if err := s.db.Select("id", "schedule_id", "flow_id", "trigger_type").Where("status = ? AND deadline_at > 0 AND deadline_at <= ? AND deleted_at IS NULL", model.FlowRunStatusWaiting, now).Find(&runs).Error; err != nil {
+	if err := s.db.Select("id", "schedule_id", "flow_id", "instance_id", "trigger_type").Where("status = ? AND deadline_at > 0 AND deadline_at <= ? AND deleted_at IS NULL", model.FlowRunStatusWaiting, now).Find(&runs).Error; err != nil {
 		s.log_error(err, "query expired workflow waits")
 		return
 	}
@@ -284,5 +307,5 @@ func (s *AutomationService) expire_waiting_runs() {
 }
 
 func (s *AutomationService) publish_run_started(run *model.FlowRunRecord) {
-	s.publish(events.AutomationRunStarted{ScheduleID: run.ScheduleID, RunID: run.ID, FlowID: run.FlowID, Trigger: run.TriggerType})
+	s.publish(events.AutomationRunStarted{ScheduleID: run.ScheduleID, RunID: run.ID, FlowID: run.FlowID, InstanceID: run.InstanceID, Trigger: run.TriggerType})
 }

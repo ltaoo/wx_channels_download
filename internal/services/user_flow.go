@@ -125,7 +125,7 @@ func user_flow_node_catalog() []UserFlowNodeCatalogItem {
 
 // CreateUserFlowInput describes a new user pipeline. Creating a pipeline always
 // produces a flow with a single start node; subsequent nodes are added through
-// the editor (UpdateUserFlow).
+// the editor (UpdateUserFlowInstance).
 type CreateUserFlowInput struct {
 	Name          string
 	Description   string
@@ -137,13 +137,14 @@ type CreateUserFlowInput struct {
 // UpdateUserFlowInput replaces the editable parts of a user pipeline. Nodes is
 // the authoritative node list; edges are expressed as next_ids on each node.
 type UpdateUserFlowInput struct {
-	Subflows      map[string]engine.FlowDefinition
-	NodeConfigs   map[string]map[string]interface{}
-	Name          *string
-	Description   *string
-	ContextSchema []engine.FieldSchema
-	StartNodeID   string
-	Nodes         []UserFlowNodeInput
+	Subflows           map[string]engine.FlowDefinition
+	NodeConfigs        map[string]map[string]interface{}
+	DefaultNodeConfigs map[string]map[string]interface{}
+	Name               *string
+	Description        *string
+	ContextSchema      []engine.FieldSchema
+	StartNodeID        string
+	Nodes              []UserFlowNodeInput
 	// Nil preserves existing rules; an empty slice removes all extra triggers.
 	Triggers []UserFlowTriggerInput
 }
@@ -163,29 +164,28 @@ type UserFlowNodeInput struct {
 	NextIDs     []string               `json:"next_ids"`
 }
 
-func (s *AutomationService) load_user_flows() {
+func (s *AutomationService) load_user_flows(flow_ids ...string) {
 	if s == nil || s.db == nil || s.flow_engine == nil {
 		return
 	}
-	var flows []model.UserFlow
-	if err := s.db.Where("deleted_at IS NULL").Find(&flows).Error; err != nil {
-		s.log_error(err, "failed to load user flows")
+	var flows []model.UserFlowDefinition
+	query := s.db.Where("deleted_at IS NULL")
+	if len(flow_ids) > 0 {
+		query = query.Where("id IN ?", flow_ids)
+	}
+	if err := query.Find(&flows).Error; err != nil {
+		s.log_error(err, "load flow definitions")
 		return
 	}
-	for index := range flows {
-		definition, err := decode_user_flow_definition(flows[index].Definition)
+	for _, flow := range flows {
+		definition, err := decode_user_flow_definition(flow.Definition)
 		if err != nil {
-			s.log_error(err, "failed to decode user flow "+flows[index].ID)
+			s.log_error(err, "decode flow definition")
 			continue
 		}
 		if s.custom_nodes.ApplyConfigSchemas(definition) {
-			encoded, err := json.Marshal(definition)
-			if err != nil {
-				s.log_error(err, "failed to encode custom node configuration")
-				continue
-			}
-			if err := s.db.Model(&flows[index]).Update("definition", string(encoded)).Error; err != nil {
-				s.log_error(err, "failed to update custom node declarations")
+			if err := s.db.Model(&flow).Update("definition", marshal_json(definition)).Error; err != nil {
+				s.log_error(err, "refresh node schemas")
 				continue
 			}
 		}
@@ -233,9 +233,8 @@ func normalize_user_flow_trigger(trigger_type string, event_key string) (string,
 	return trigger_type, event_key, nil
 }
 
-// CreateUserFlow persists a new pipeline containing only a start node whose
-// input schema is the caller-declared context schema.
-func (s *AutomationService) CreateUserFlow(input CreateUserFlowInput) (*model.UserFlow, error) {
+// CreateFlowDefinition creates only a reusable flow, without an execution instance.
+func (s *AutomationService) CreateFlowDefinition(input CreateUserFlowInput) (*model.UserFlowDefinition, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("自动化服务未初始化")
 	}
@@ -243,52 +242,18 @@ func (s *AutomationService) CreateUserFlow(input CreateUserFlowInput) (*model.Us
 	if name == "" {
 		return nil, fmt.Errorf("name 不能为空")
 	}
-	trigger_type, event_key, err := normalize_user_flow_trigger(input.TriggerType, input.EventKey)
-	if err != nil {
-		return nil, err
-	}
 	now := time.Now().UnixMilli()
-	flow := model.UserFlow{
-		ID:          fmt.Sprintf("%s%d", user_flow_id_prefix, time.Now().UnixNano()),
-		Name:        name,
-		Description: strings.TrimSpace(input.Description),
-		TriggerType: trigger_type,
-		EventKey:    event_key,
-		Timestamps: model.Timestamps{
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-	}
-	start_node := engine.NodeDefinition{
-		ID:   user_flow_start_node_id,
-		Type: "StartNode",
-		Name: "开始",
-	}
-	definition := engine.FlowDefinition{
-		ID:            flow.ID,
-		Name:          name,
-		StartNodeID:   user_flow_start_node_id,
-		ContextSchema: input.ContextSchema,
-		Nodes:         map[string]engine.NodeDefinition{start_node.ID: start_node},
-	}
-	encoded, err := json.Marshal(definition)
-	if err != nil {
-		return nil, fmt.Errorf("流程定义无法序列化: %w", err)
-	}
-	flow.Definition = string(encoded)
+	flow := model.UserFlowDefinition{ID: fmt.Sprintf("%s%d", user_flow_id_prefix, time.Now().UnixNano()), Name: name, Description: strings.TrimSpace(input.Description), DefaultNodeConfigs: "{}", Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now}}
+	definition := engine.FlowDefinition{ID: flow.ID, Name: name, StartNodeID: user_flow_start_node_id, ContextSchema: input.ContextSchema, Nodes: map[string]engine.NodeDefinition{user_flow_start_node_id: {ID: user_flow_start_node_id, Type: "StartNode", Name: "开始"}}}
+	flow.Definition = marshal_json(definition)
 	if err := s.db.Create(&flow).Error; err != nil {
-		return nil, fmt.Errorf("创建流程失败: %w", err)
+		return nil, err
 	}
 	s.register_user_flow(definition)
 	return &flow, nil
 }
 
-// ImportUserFlow creates a new pipeline from a full flow definition JSON (the
-// same shape persisted in a UserFlow.Definition). Node ids, edges, context
-// schema and the start node are taken from the imported definition; a fresh
-// flow id is always generated so an import never overwrites an existing flow.
-// Optional top-level triggers are copied into new rules on the start node.
-func (s *AutomationService) ImportUserFlow(raw string) (*model.UserFlow, error) {
+func (s *AutomationService) ImportFlowDefinition(raw string) (*model.UserFlowDefinition, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("自动化服务未初始化")
 	}
@@ -299,47 +264,26 @@ func (s *AutomationService) ImportUserFlow(raw string) (*model.UserFlow, error) 
 	if err := normalize_user_flow_definition(definition, s.custom_nodes); err != nil {
 		return nil, err
 	}
-	var imported struct {
-		Triggers []UserFlowTriggerInput `json:"triggers"`
+	var envelope struct {
+		Triggers           []UserFlowTriggerInput            `json:"triggers"`
+		DefaultNodeConfigs map[string]map[string]interface{} `json:"default_node_configs"`
 	}
-	if err := json.Unmarshal([]byte(raw), &imported); err != nil {
-		return nil, fmt.Errorf("触发器配置无效: %w", err)
+	if err := json.Unmarshal([]byte(raw), &envelope); err != nil {
+		return nil, err
 	}
-	for index := range imported.Triggers {
-		// Imported rules always belong to the new flow and receive fresh IDs.
-		imported.Triggers[index].ID = ""
+	if len(envelope.Triggers) > 0 {
+		return nil, fmt.Errorf("触发器属于流程实例，请创建实例后配置")
+	}
+	defaults, err := normalize_node_configs(*definition, envelope.DefaultNodeConfigs, true, false)
+	if err != nil {
+		return nil, err
 	}
 	now := time.Now().UnixMilli()
-	flow := model.UserFlow{
-		ID:          fmt.Sprintf("%s%d", user_flow_id_prefix, time.Now().UnixNano()),
-		Name:        definition.Name,
-		TriggerType: model.FlowRunTriggerCron,
-		Timestamps: model.Timestamps{
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-	}
-	definition.ID = flow.ID
+	definition.ID = fmt.Sprintf("%s%d", user_flow_id_prefix, time.Now().UnixNano())
 	clear_runtime_node_configs(definition)
-	encoded, err := json.Marshal(definition)
-	if err != nil {
-		return nil, fmt.Errorf("流程定义无法序列化: %w", err)
-	}
-	flow.Definition = string(encoded)
-	err = s.db.Transaction(func(tx *gorm.DB) error {
-		if imported.Triggers != nil {
-			flow.TriggerType = model.FlowRunTriggerManual
-		}
-		if err := tx.Create(&flow).Error; err != nil {
-			return err
-		}
-		if imported.Triggers != nil {
-			return s.replace_user_flow_triggers(tx, flow.ID, definition.StartNodeID, imported.Triggers)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("导入流程失败: %w", err)
+	flow := model.UserFlowDefinition{ID: definition.ID, Name: definition.Name, Definition: marshal_json(definition), DefaultNodeConfigs: marshal_json(defaults), Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now}}
+	if err := s.db.Create(&flow).Error; err != nil {
+		return nil, err
 	}
 	s.register_user_flow(*definition)
 	return &flow, nil
@@ -507,97 +451,28 @@ func normalize_user_flow_definition_at_depth(definition *engine.FlowDefinition, 
 	return nodes.ValidateFlowScopes(*definition)
 }
 
-func (s *AutomationService) user_flow_query() *gorm.DB {
-	return s.db.Model(&model.UserFlow{}).Select("user_flow.*, COALESCE((SELECT id FROM flow_run_record WHERE flow_id = user_flow.id AND status IN ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1), '') AS active_run_id", []string{"QUEUED", "RUNNING", "WAITING"})
+func (s *AutomationService) flow_definition_query() *gorm.DB {
+	return s.db.Model(&model.UserFlowDefinition{}).Select("user_flow.*, (SELECT COUNT(*) FROM user_flow_instance WHERE flow_id=user_flow.id AND deleted_at IS NULL) AS instance_count")
 }
-
-// GetUserFlow loads one user pipeline by id.
-func (s *AutomationService) GetUserFlow(id string) (*model.UserFlow, error) {
+func (s *AutomationService) GetFlowDefinition(id string) (*model.UserFlowDefinition, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("自动化服务未初始化")
 	}
-	id = strings.TrimSpace(id)
-	var flow model.UserFlow
-	if err := s.user_flow_query().Where("id = ? AND deleted_at IS NULL", id).First(&flow).Error; err != nil {
+	var flow model.UserFlowDefinition
+	if err := s.flow_definition_query().Where("user_flow.id=? AND user_flow.deleted_at IS NULL", strings.TrimSpace(id)).First(&flow).Error; err != nil {
 		return nil, fmt.Errorf("流程不存在: %s", id)
 	}
 	return &flow, nil
 }
-
-func (s *AutomationService) CopyUserFlow(id string) (*model.UserFlow, error) {
-	if s == nil || s.db == nil {
-		return nil, fmt.Errorf("自动化服务未初始化")
-	}
-	var copied model.UserFlow
-	var definition *engine.FlowDefinition
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		scoped_service := &AutomationService{db: tx, cron_parser: s.cron_parser}
-		source, err := scoped_service.GetUserFlow(id)
-		if err != nil {
-			return err
-		}
-		definition, err = decode_user_flow_definition(source.Definition)
-		if err != nil {
-			return err
-		}
-		copied = *source
-		copied.ActiveRunID = ""
-		copied.ID = fmt.Sprintf("%s%d", user_flow_id_prefix, time.Now().UnixNano())
-		copied.Name += "（副本）"
-		now := time.Now().UnixMilli()
-		copied.Timestamps = model.Timestamps{CreatedAt: now, UpdatedAt: now}
-		definition.ID, definition.Name = copied.ID, copied.Name
-		encoded, err := json.Marshal(definition)
-		if err != nil {
-			return err
-		}
-		copied.Definition = string(encoded)
-		if err := tx.Create(&copied).Error; err != nil {
-			return err
-		}
-		var schedules []model.FlowSchedule
-		if err := tx.Where("flow_id = ? AND deleted_at IS NULL", source.ID).Find(&schedules).Error; err != nil {
-			return err
-		}
-		for _, schedule := range schedules {
-			initial_data := decode_initial_data(schedule.InitialData)
-			if metadata, ok := initial_data[automation_metadata_key].(map[string]interface{}); ok && metadata["type"] == model.FlowRunTriggerWebhook {
-				// A copied webhook gets its own URL and access token.
-				delete(metadata, "webhook_token")
-			}
-			if _, err := scoped_service.CreateSchedule(CreateScheduleInput{
-				Name: schedule.Name, Description: schedule.Description, FlowID: copied.ID,
-				CronExpr: schedule.CronExpr, InitialData: initial_data,
-				Enabled: &schedule.Enabled, TimeoutSec: schedule.TimeoutSec,
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("复制流程失败: %w", err)
-	}
-	s.register_user_flow(*definition)
-	return &copied, nil
-}
-
-// ListUserFlows returns all user pipelines ordered by creation time.
-func (s *AutomationService) ListUserFlows() ([]model.UserFlow, error) {
-	if s == nil || s.db == nil {
-		return nil, fmt.Errorf("自动化服务未初始化")
-	}
-	flows := make([]model.UserFlow, 0)
-	if err := s.user_flow_query().Where("deleted_at IS NULL").Order("created_at DESC").Find(&flows).Error; err != nil {
-		return nil, fmt.Errorf("查询流程失败: %w", err)
+func (s *AutomationService) ListFlowDefinitions() ([]model.UserFlowDefinition, error) {
+	flows := make([]model.UserFlowDefinition, 0)
+	if err := s.flow_definition_query().Where("user_flow.deleted_at IS NULL").Order("user_flow.created_at DESC").Find(&flows).Error; err != nil {
+		return nil, err
 	}
 	return flows, nil
 }
-
-// UpdateUserFlow replaces the flow definition from editor input, re-validates
-// the graph and re-registers it into the engine.
-func (s *AutomationService) UpdateUserFlow(id string, input UpdateUserFlowInput) (*model.UserFlow, error) {
-	flow, err := s.GetUserFlow(id)
+func (s *AutomationService) UpdateFlowDefinition(id string, input UpdateUserFlowInput) (*model.UserFlowDefinition, error) {
+	flow, err := s.GetFlowDefinition(id)
 	if err != nil {
 		return nil, err
 	}
@@ -606,12 +481,11 @@ func (s *AutomationService) UpdateUserFlow(id string, input UpdateUserFlowInput)
 		return nil, err
 	}
 	if input.Name != nil {
-		name := strings.TrimSpace(*input.Name)
-		if name == "" {
+		flow.Name = strings.TrimSpace(*input.Name)
+		if flow.Name == "" {
 			return nil, fmt.Errorf("name 不能为空")
 		}
-		flow.Name = name
-		definition.Name = name
+		definition.Name = flow.Name
 	}
 	if input.Description != nil {
 		flow.Description = strings.TrimSpace(*input.Description)
@@ -622,48 +496,218 @@ func (s *AutomationService) UpdateUserFlow(id string, input UpdateUserFlowInput)
 	if err := apply_user_flow_update(definition, input, s.custom_nodes); err != nil {
 		return nil, err
 	}
-	values := decode_node_configs(flow.NodeConfigs)
-	if input.NodeConfigs != nil {
-		values = input.NodeConfigs
+	defaults := decode_node_configs(flow.DefaultNodeConfigs)
+	if input.DefaultNodeConfigs != nil {
+		defaults = input.DefaultNodeConfigs
 	}
-	values, err = normalize_node_configs(*definition, values, input.NodeConfigs != nil)
+	defaults, err = normalize_node_configs(*definition, defaults, input.DefaultNodeConfigs != nil, false)
 	if err != nil {
 		return nil, err
 	}
-	flow.NodeConfigs = marshal_json(values)
 	clear_runtime_node_configs(definition)
-	encoded, err := json.Marshal(definition)
-	if err != nil {
-		return nil, fmt.Errorf("流程定义无法序列化: %w", err)
-	}
-	flow.Definition = string(encoded)
+	flow.Definition = marshal_json(definition)
+	flow.DefaultNodeConfigs = marshal_json(defaults)
 	flow.UpdatedAt = time.Now().UnixMilli()
 	err = s.db.Transaction(func(tx *gorm.DB) error {
-		if input.Triggers != nil {
-			if err := s.replace_user_flow_triggers(tx, flow.ID, definition.StartNodeID, input.Triggers); err != nil {
+		if err := tx.Model(flow).Updates(map[string]interface{}{"name": flow.Name, "description": flow.Description, "definition": flow.Definition, "default_node_configs": flow.DefaultNodeConfigs, "updated_at": flow.UpdatedAt}).Error; err != nil {
+			return err
+		}
+		var instances []model.UserFlowInstance
+		if err := tx.Where("flow_id=? AND deleted_at IS NULL", id).Find(&instances).Error; err != nil {
+			return err
+		}
+		for _, instance := range instances {
+			values, err := normalize_node_configs(*definition, decode_node_configs(instance.NodeConfigs), false, false)
+			if err != nil {
 				return err
 			}
-			// These legacy fields no longer select an exclusive trigger mode.
-			flow.TriggerType = model.FlowRunTriggerManual
-			flow.EventKey = ""
+			if err := tx.Model(&instance).Updates(map[string]interface{}{"node_configs": marshal_json(values), "updated_at": flow.UpdatedAt}).Error; err != nil {
+				return err
+			}
 		}
-		return tx.Model(&model.UserFlow{}).
-			Where("id = ? AND deleted_at IS NULL", id).
-			Updates(map[string]interface{}{
-				"name":         flow.Name,
-				"description":  flow.Description,
-				"definition":   flow.Definition,
-				"node_configs": flow.NodeConfigs,
-				"updated_at":   flow.UpdatedAt,
-				"trigger_type": flow.TriggerType,
-				"event_key":    flow.EventKey,
-			}).Error
+		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("更新流程失败: %w", err)
+		return nil, err
+	}
+	s.load_user_flows(flow.ID)
+	return s.GetFlowDefinition(flow.ID)
+}
+func (s *AutomationService) CopyFlowDefinition(id string) (*model.UserFlowDefinition, error) {
+	source, err := s.GetFlowDefinition(id)
+	if err != nil {
+		return nil, err
+	}
+	definition, err := decode_user_flow_definition(source.Definition)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UnixMilli()
+	source.ID = fmt.Sprintf("%s%d", user_flow_id_prefix, time.Now().UnixNano())
+	source.Name += "（副本）"
+	source.InstanceCount = 0
+	source.Timestamps = model.Timestamps{CreatedAt: now, UpdatedAt: now}
+	definition.ID, definition.Name = source.ID, source.Name
+	source.Definition = marshal_json(definition)
+	if err := s.db.Create(source).Error; err != nil {
+		return nil, err
 	}
 	s.register_user_flow(*definition)
-	return s.GetUserFlow(id)
+	return source, nil
+}
+func (s *AutomationService) DeleteFlowDefinition(id string) error {
+	flow, err := s.GetFlowDefinition(id)
+	if err != nil {
+		return err
+	}
+	if flow.InstanceCount > 0 {
+		return fmt.Errorf("请先删除此流程的实例")
+	}
+	now := time.Now().UnixMilli()
+	if err := s.db.Model(flow).Updates(map[string]interface{}{"deleted_at": now, "updated_at": now}).Error; err != nil {
+		return err
+	}
+	if s.flow_engine != nil {
+		s.flow_engine.RemoveFlow(flow.ID)
+	}
+	return nil
+}
+func (s *AutomationService) user_flow_query() *gorm.DB {
+	return s.db.Model(&model.UserFlowInstance{}).Joins("JOIN user_flow ON user_flow.id=user_flow_instance.flow_id AND user_flow.deleted_at IS NULL").Select("user_flow_instance.*,user_flow.definition,user_flow.name AS definition_name,user_flow.default_node_configs,COALESCE((SELECT id FROM flow_run_record WHERE instance_id=user_flow_instance.id AND deleted_at IS NULL AND status IN ('QUEUED','RUNNING','WAITING') ORDER BY created_at DESC LIMIT 1),'') AS active_run_id")
+}
+func (s *AutomationService) GetUserFlowInstance(id string) (*model.UserFlowInstance, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("自动化服务未初始化")
+	}
+	var instance model.UserFlowInstance
+	if err := s.user_flow_query().Where("user_flow_instance.id=? AND user_flow_instance.deleted_at IS NULL", strings.TrimSpace(id)).First(&instance).Error; err != nil {
+		return nil, fmt.Errorf("流程实例不存在: %s", id)
+	}
+	return &instance, nil
+}
+func (s *AutomationService) ListUserFlowInstances() ([]model.UserFlowInstance, error) {
+	instances := make([]model.UserFlowInstance, 0)
+	// Lists do not repeat the shared graph for every configuration instance.
+	if err := s.user_flow_query().Select("user_flow_instance.*,user_flow.name AS definition_name,user_flow.default_node_configs,COALESCE((SELECT id FROM flow_run_record WHERE instance_id=user_flow_instance.id AND deleted_at IS NULL AND status IN ('QUEUED','RUNNING','WAITING') ORDER BY created_at DESC LIMIT 1),'') AS active_run_id").Where("user_flow_instance.deleted_at IS NULL").Order("user_flow_instance.created_at DESC").Find(&instances).Error; err != nil {
+		return nil, err
+	}
+	return instances, nil
+}
+func (s *AutomationService) CreateUserFlowInstance(flow_id string) (*model.UserFlowInstance, error) {
+	flow, err := s.GetFlowDefinition(flow_id)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UnixMilli()
+	instance := model.UserFlowInstance{ID: fmt.Sprintf("instance-u-%d", time.Now().UnixNano()), FlowID: flow.ID, Name: flow.Name + "（实例）", NodeConfigs: "{}", TriggerType: model.FlowRunTriggerManual, Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now}}
+	if err := s.db.Create(&instance).Error; err != nil {
+		return nil, err
+	}
+	return s.GetUserFlowInstance(instance.ID)
+}
+func (s *AutomationService) CopyUserFlowInstance(id string) (*model.UserFlowInstance, error) {
+	var copied model.UserFlowInstance
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		scoped := &AutomationService{db: tx, cron_parser: s.cron_parser, custom_nodes: s.custom_nodes}
+		source, err := scoped.GetUserFlowInstance(id)
+		if err != nil {
+			return err
+		}
+		copied = *source
+		copied.ID = fmt.Sprintf("instance-u-%d", time.Now().UnixNano())
+		copied.Name += "（副本）"
+		copied.ActiveRunID = ""
+		now := time.Now().UnixMilli()
+		copied.Timestamps = model.Timestamps{CreatedAt: now, UpdatedAt: now}
+		if err := tx.Create(&copied).Error; err != nil {
+			return err
+		}
+		var schedules []model.FlowSchedule
+		if err := tx.Where("instance_id=? AND deleted_at IS NULL", id).Find(&schedules).Error; err != nil {
+			return err
+		}
+		for _, schedule := range schedules {
+			data := decode_initial_data(schedule.InitialData)
+			if metadata, ok := data[automation_metadata_key].(map[string]interface{}); ok && metadata["type"] == model.FlowRunTriggerWebhook {
+				delete(metadata, "webhook_token")
+			}
+			if _, err := scoped.CreateSchedule(CreateScheduleInput{Name: schedule.Name, Description: schedule.Description, InstanceID: copied.ID, CronExpr: schedule.CronExpr, InitialData: data, Enabled: &schedule.Enabled, TimeoutSec: schedule.TimeoutSec}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.GetUserFlowInstance(copied.ID)
+}
+
+// Instance settings and shared graph updates have separate persisted ownership.
+func (s *AutomationService) UpdateUserFlowInstance(id string, input UpdateUserFlowInput) (*model.UserFlowInstance, error) {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		scoped := &AutomationService{db: tx, cron_parser: s.cron_parser, custom_nodes: s.custom_nodes}
+		instance, err := scoped.GetUserFlowInstance(id)
+		if err != nil {
+			return err
+		}
+		if input.ContextSchema != nil || input.Subflows != nil || len(input.Nodes) > 0 || input.DefaultNodeConfigs != nil {
+			graph_input := input
+			graph_input.Name = nil
+			graph_input.Description = nil
+			graph_input.NodeConfigs = nil
+			graph_input.Triggers = nil
+			if _, err := scoped.UpdateFlowDefinition(instance.FlowID, graph_input); err != nil {
+				return err
+			}
+			instance, err = scoped.GetUserFlowInstance(id)
+			if err != nil {
+				return err
+			}
+		}
+		definition, err := decode_user_flow_definition(instance.Definition)
+		if err != nil {
+			return err
+		}
+		values := decode_node_configs(instance.NodeConfigs)
+		if input.NodeConfigs != nil {
+			values = input.NodeConfigs
+		}
+		values, err = normalize_node_configs(*definition, values, input.NodeConfigs != nil, false)
+		if err != nil {
+			return err
+		}
+		if input.NodeConfigs != nil {
+			if _, err := normalize_node_configs(*definition, merge_node_configs(decode_node_configs(instance.DefaultNodeConfigs), values), true, true); err != nil {
+				return err
+			}
+		}
+		if input.Name != nil {
+			instance.Name = strings.TrimSpace(*input.Name)
+			if instance.Name == "" {
+				return fmt.Errorf("name 不能为空")
+			}
+		}
+		if input.Description != nil {
+			instance.Description = strings.TrimSpace(*input.Description)
+		}
+		if input.Triggers != nil {
+			if err := scoped.replace_user_flow_triggers(tx, id, definition.StartNodeID, input.Triggers); err != nil {
+				return err
+			}
+			instance.TriggerType = model.FlowRunTriggerManual
+			instance.EventKey = ""
+		}
+		return tx.Model(instance).Updates(map[string]interface{}{"name": instance.Name, "description": instance.Description, "node_configs": marshal_json(values), "trigger_type": instance.TriggerType, "event_key": instance.EventKey, "updated_at": time.Now().UnixMilli()}).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	instance, err := s.GetUserFlowInstance(id)
+	if err == nil {
+		s.load_user_flows(instance.FlowID)
+	}
+	return instance, err
 }
 
 // apply_user_flow_update folds an editor save into definition: it rebuilds the
@@ -744,32 +788,18 @@ func apply_user_flow_update(definition *engine.FlowDefinition, input UpdateUserF
 	return normalize_user_flow_definition(definition, custom_nodes...)
 }
 
-// DeleteUserFlow soft-deletes a user pipeline and detaches it from the engine.
-func (s *AutomationService) DeleteUserFlow(id string) error {
-	flow, err := s.GetUserFlow(id)
-	if err != nil {
+// DeleteUserFlowInstance removes an instance and its trigger rules, retaining run history.
+func (s *AutomationService) DeleteUserFlowInstance(id string) error {
+	if _, err := s.GetUserFlowInstance(id); err != nil {
 		return err
 	}
 	now := time.Now().UnixMilli()
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&model.FlowSchedule{}).
-			Where("flow_id = ? AND deleted_at IS NULL", id).
-			Updates(map[string]interface{}{"deleted_at": now, "updated_at": now, "enabled": false, "next_run_at": nil}).Error; err != nil {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.FlowSchedule{}).Where("instance_id=? AND deleted_at IS NULL", id).Updates(map[string]interface{}{"deleted_at": now, "updated_at": now, "enabled": false, "next_run_at": nil}).Error; err != nil {
 			return err
 		}
-		return tx.Model(&model.UserFlow{}).
-			Where("id = ? AND deleted_at IS NULL", id).
-			Updates(map[string]interface{}{
-				"deleted_at": now,
-				"updated_at": now,
-			}).Error
-	}); err != nil {
-		return fmt.Errorf("删除流程失败: %w", err)
-	}
-	if s.flow_engine != nil {
-		s.flow_engine.RemoveFlow(flow.ID)
-	}
-	return nil
+		return tx.Model(&model.UserFlowInstance{}).Where("id=? AND deleted_at IS NULL", id).Updates(map[string]interface{}{"deleted_at": now, "updated_at": now}).Error
+	})
 }
 
 // UserFlowVisualization renders user pipelines in the same graph shape the
@@ -778,7 +808,7 @@ func (s *AutomationService) UserFlowVisualization(flow_id string) (*flowengine.F
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("自动化服务未初始化")
 	}
-	flows, err := s.ListUserFlows()
+	flows, err := s.ListFlowDefinitions()
 	if err != nil {
 		return nil, err
 	}
@@ -895,21 +925,21 @@ func (s *AutomationService) NodeCatalog() []UserFlowNodeCatalogItem {
 	return SortedUserFlowNodeCatalog(s.custom_nodes)
 }
 
-// TriggerFlowDirect starts any user pipeline immediately as a manual/debug
+// TriggerFlowInstance starts any user pipeline immediately as a manual/debug
 // execution. The flow's persisted Cron/Event trigger configuration remains
 // unchanged and continues to control automatic executions. initial_data, when
 // non-empty, seeds the flow context with the caller-supplied input parameters.
 //
 // The run is committed before launching the execution goroutine, so callers
 // receive the real run ID immediately and can query progress without a socket.
-func (s *AutomationService) TriggerFlowDirect(flow_id string, initial_data map[string]interface{}) (*model.FlowRunRecord, error) {
+func (s *AutomationService) TriggerFlowInstance(flow_id string, initial_data map[string]interface{}) (*model.FlowRunRecord, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("自动化服务未初始化")
 	}
 	if s.flow_engine == nil {
 		return nil, fmt.Errorf("流程引擎未初始化")
 	}
-	flow, err := s.GetUserFlow(flow_id)
+	flow, err := s.GetUserFlowInstance(flow_id)
 	if err != nil {
 		return nil, err
 	}
@@ -917,7 +947,7 @@ func (s *AutomationService) TriggerFlowDirect(flow_id string, initial_data map[s
 		return nil, err
 	}
 
-	schedule := model.FlowSchedule{FlowID: flow.ID, CronExpr: "@daily", InitialData: marshal_json(initial_data), TimeoutSec: default_schedule_timeout_sec}
+	schedule := model.FlowSchedule{FlowID: flow.FlowID, InstanceID: flow.ID, CronExpr: "@daily", InitialData: marshal_json(initial_data), TimeoutSec: default_schedule_timeout_sec}
 	run, err := s.prepare_run(schedule, model.FlowRunTriggerManual, "", "", "")
 	if err != nil {
 		return nil, err

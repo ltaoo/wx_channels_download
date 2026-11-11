@@ -73,6 +73,10 @@
               },
               "status": {
                 "type": "string"
+              },
+              "instance_id": {
+                "type": "string",
+                "description": "流程实例 ID；执行历史按实例过滤。"
               }
             }
           },

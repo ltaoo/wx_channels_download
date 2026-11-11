@@ -172,7 +172,7 @@ func TestNormalizeUserFlowDefinitionRejectsUnscopedReads(t *testing.T) {
 }
 
 // TestApplyUserFlowUpdateEnforcesScopeContract guards the hole where the editor
-// save path validated node configs but never the assembled graph. UpdateUserFlow
+// save path validated node configs but never the assembled graph. UpdateUserFlowInstance
 // itself needs a database, so the pure node-assembly helper it delegates to is
 // exercised directly.
 func TestApplyUserFlowUpdateEnforcesScopeContract(t *testing.T) {

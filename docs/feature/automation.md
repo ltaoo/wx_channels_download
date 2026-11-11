@@ -15,7 +15,7 @@ description: 自动化流程的节点配置、触发、取消、恢复与重试�
 - 每次运行冻结用户流程及引用的子流程定义，支持用原定义或当前已保存定义从头重试。
 - 节点重试、退避、错误分支、输入/输出 schema 可经过导入、画布、MCP 草稿和保存链路保留。
 - HTTP 支持请求头、查询参数、JSON/form/raw 请求体、Basic/Bearer 认证、动态模板及可配置超时。
-- 节点可声明所需配置，在自动化列表按节点生成动态表单；填写值保存在对应 `user_flow.node_configs`，所有触发方式共用。
+- 一个流程定义可关联多个配置实例。节点声明与流程默认配置共用，各实例仅保存显式覆盖值，同一实例的所有触发方式共用有效配置。
 - 专用数组迭代、子流程、延时、主动报错节点，以及隔离变量的并行分支与一次汇聚。
 - 应用事件桥接和带 Bearer 令牌的 Webhook；节点日志落库，页面刷新后仍可查看。
 
@@ -26,8 +26,9 @@ description: 自动化流程的节点配置、触发、取消、恢复与重试�
 ```text
 画布 / HTTP API / MCP 草稿工具
           │
-          ├── UserFlow.definition：用户流程定义
-          └── FlowSchedule：Cron / Event / Webhook 规则
+          ├── user_flow：共享图、参数声明和默认配置
+          └── user_flow_instance：实例名称、覆盖值和触发设置
+                    └── FlowSchedule：实例的 Cron / Event / Webhook 规则
                         │
       手动 / 到期扫描 / 事件总线 / Webhook
                         │
@@ -54,15 +55,33 @@ description: 自动化流程的节点配置、触发、取消、恢复与重试�
 
 应用内工具通过 `ServiceNode` 直接调用进程内 MCP 工具执行器。关闭对外 MCP 监听不影响这条内部执行路径。
 
-### 2.1 持久化对象
+### 2.1 流程、实例与执行记录
 
-| 表 | 内容 |
+三个实体独立存储：
+
+| 表 | 概念与主要字段 |
 | --- | --- |
-| `user_flow` | 名称、说明、流程定义 JSON；节点、边、坐标和 schema 都在定义内 |
-| `flow_schedule` | 流程 ID、Cron 表达式、初始参数、超时、下次时间和最近运行结果 |
-| `flow_run_record` | 真实运行 ID、触发来源、输入快照、定义快照、截止时间、恢复检查点、节点尝试次数/输出、日志及最终状态 |
+| `user_flow` | 自动化流程：`id`、`name`、`description`、`definition`（共享图与参数声明）、`default_node_configs`（默认配置） |
+| `user_flow_instance` | 自动化流程实例：`id`、`flow_id`、`name`、`description`、`node_configs`（显式覆盖值）；不保存共享图副本 |
+| `flow_run_record` | 一次实例执行：`id`、`instance_id`、`flow_id`、触发来源、状态、冻结的 `definition`（含实际配置）、输入输出、检查点、错误与起止时间 |
+| `flow_schedule` | 实例的 Cron / Event / Webhook 规则，通过 `instance_id` 关联实例 |
+| `flow_run_node_log` | 节点执行尝试明细：递增 `id`、`run_id`、`flow_id`（作用域）、`node_id`、JSON `entry` |
 
-新增字段通过 `000005_automation_runtime` 数据库迁移接入。`platform_workflow_run` 仍属于平台下载工作流，与 automation 运行记录分开。
+关系为 `user_flow 1 → N user_flow_instance 1 → N flow_run_record 1 → N flow_run_node_log`。创建或导入流程只创建流程，可以没有实例；用户显式创建实例后才能执行。流程没有“默认实例”，流程和实例也没有相等 ID 的特殊语义。删除仍被实例引用的流程会被拒绝，删除一个实例不影响其他实例或历史记录。
+
+新结构直接定义在 `000003_flow_schedule`；`000004_subflow_states` 添加轻量状态列。不提供旧数据库转换逻辑。
+
+`/automation` 主列表直接查询实例表；点击「自动化流程」或「新增配置实例」打开流程抽屉，直接查询流程表，没有从实例列表去重生成流程的逻辑。抽屉支持搜索、创建/导入流程、编辑共享流程、修改默认配置和新增实例，搜索独立于主列表。
+
+新实例的覆盖值为空。执行时实时读取「声明默认值 → 流程默认配置 → 实例显式覆盖」，后者优先；对象、数组按整个配置项替换，`false`、`0` 保留为覆盖值。配置表单中勾选「继承流程配置」会删除该项覆盖值；`node_configs: {}` 清空全部覆盖。修改共享流程或默认配置影响后续执行，已经开始的运行和按原快照重试保持原快照。
+
+### 2.1.1 执行详情的访问性能
+
+实例历史使用 `instance_id` 查询，每次仅取 20 条 `id`、时间、状态摘要；切换记录只读取元数据和该记录的简单节点状态，不读取完整流程快照、输入输出、检查点或日志来重建画布状态。历史索引为 `(instance_id, deleted_at, created_at DESC)`，进行中记录另有实例/状态索引。
+
+点击节点后才请求该节点在选定运行、选定子流程作用域下的日志。`get_run_node_logs` 默认返回最近 100 条执行尝试，响应包含 `list`、`has_more`、`next_before_id`；使用 `before_id` 继续向前翻页，`page_size` 可选 1～200。索引 `(run_id, flow_id, node_id, id)` 避免扫描整次执行的日志。
+
+同一节点可在同一次运行中执行多次；每次完成或重试都追加独立日志行。即使 `attempt`、时间戳相同，也由不同的 `log_id` 区分。循环或子流程重置不会删除此前明细，状态接口只展示当前/最近状态。窗口提供「加载更早的执行尝试」，实时刷新按日志 ID 合并，不覆盖已加载的旧尝试。
 
 ### 2.2 节点所需配置
 
@@ -88,13 +107,13 @@ description: 自动化流程的节点配置、触发、取消、恢复与重试�
 
 非密钥字符串可声明 `multiline: true` 使用多行输入框，或者声明 `options: [{"label":"企业微信","value":"wecom"},{"label":"Webhook","value":"webhook"}]` 使用下拉选择。保存配置和开始运行都会校验选择值属于声明的选项。`multiline`、`options`、`secret` 互不组合。
 
-每个节点的 `config.<key>` 只读取自己的配置，同名字段互不覆盖。模板使用 <code v-pre>{{config.apikey}}</code>；JS/表达式使用 `config.apikey`。声明和填写值分开保存，节点声明在流程定义内，填写值在 `user_flow.node_configs`（迁移 `000006_automation_node_configs`）：
+每个节点的 `config.<key>` 只读取自己的配置，同名字段互不覆盖。模板使用 <code v-pre>{{config.apikey}}</code>；JS/表达式使用 `config.apikey`。声明和填写值分开保存，节点声明在流程定义内，默认值保存在 `user_flow.default_node_configs`，实例覆盖值保存在 `user_flow_instance.node_configs`：
 
 ```json
 {"request_a":{"apikey":"key-a"},"request_b":{"apikey":"key-b"}}
 ```
 
-API 通过 `update_flow` 的 `node_configs` 对象保存配置；省略该属性会保留原值。保存配置或开始运行时校验必填及类型，编辑流程允许必填项暂未填写。移除节点或声明时清理对应填写值。引用其他自动化作为子流程时，使用子流程自己保存的配置。每次运行将配置冻结到定义快照，按原定义重试和恢复人工等待沿用原值，按当前定义重试读取最新值。
+API 通过 `update_flow` 的 `default_node_configs` 保存流程默认配置，通过 `update_flow_instance` 的 `node_configs` 保存实例覆盖值；省略相应属性会保留原值。保存实例配置或开始运行时校验必填及类型，编辑流程允许必填项暂未填写。移除节点或声明时清理对应填写值。引用其他自动化流程作为子流程时，使用子流程的默认配置。每次运行将配置冻结到定义快照，按原定义重试和恢复人工等待沿用原值，按当前定义重试读取最新值。
 
 触发器类型及扩展参数保存在规则的 `initial_data.__automation` 中：
 
@@ -114,7 +133,7 @@ API 通过 `update_flow` 的 `node_configs` 对象保存配置；省略该属性
 
 ## 3. 编辑与保存
 
-创建 Pipeline 时生成 `flow-u-...` ID 和开始节点。节点配置及执行策略先应用到画布草稿，再保存 Pipeline。一次保存同时更新流程图与触发器，数据库事务失败时全部回滚。
+创建流程时生成 `flow-u-...` ID 和开始节点。节点配置及执行策略先应用到画布草稿，再保存共享流程。流程编辑器保存流程图与默认配置，实例设置保存覆盖值与触发器；数据库事务失败时回滚相应保存。
 
 后端校验节点 ID、类型、边、分支目标、错误分支、并行汇聚目标、配置和作用域。单个流程最多 500 个节点，子流程最多嵌套 16 层。`retry`、`error_next_node`、`input_schema`、`output_schema` 均可往返保存；旧客户端省略执行策略时保留原值。关闭重试可设置 `max_attempts: 1`，清除错误分支可传空字符串。
 
@@ -131,13 +150,13 @@ API 通过 `update_flow` 的 `node_configs` 对象保存配置；省略该属性
 
 `max_attempts` 是总尝试次数，范围 1～20；首次失败后等待 `delay_ms`，后续按倍率退避，单次等待最多一小时且可取消。循环重访节点时重新计算本轮重试预算，累计尝试次数继续记录。错误分支可读取失败节点的 `output.<节点ID>.error.message`。
 
-触发器集合的更新语义：省略/null 保留，`[]` 删除全部附加规则，非空数组替换集合。同一 Pipeline 可以配置多个触发器。规则 ID 必须属于当前 Pipeline，保留规则沿用历史和未改变的参数。
+实例触发器集合的更新语义：省略/null 保留，`[]` 删除全部附加规则，非空数组替换集合。同一实例可以配置多个触发器。规则 ID 必须属于当前实例，保留规则沿用历史和未改变的参数。
 
 ### 3.1 导入与 MCP
 
 导入使用项目自己的 `FlowDefinition`：顶层 `start_node`、`context_schema`、`nodes` 对象。保存 API 使用 `start_node_id`、节点数组和 `next_ids`。这些格式不是 n8n JSON 或 Dify DSL，不能直接互导。
 
-列表页导入生成新流程 ID；JSON 顶层声明了 `triggers` 时，会一并创建触发规则。编辑页 `/automation/edit` 的「导入 JSON」会替换当前草稿的标题、节点和输入参数，点击「保存」后更新当前流程，保留流程 ID 及兼容的已填节点配置。JSON 包含 `triggers` 时替换当前触发器，省略时保留现有规则；空数组表示清空。创作者视频同步、直播录制和新增视频通知示例见[流程示例](./pipelines/)，可直接在示例页面复制完整 JSON。
+流程抽屉导入生成新流程 ID，不隐式创建实例。触发规则属于实例，流程导入的 JSON 不接受非空 `triggers`。编辑页 `/automation/edit` 的「导入 JSON」会替换当前草稿的标题、节点和输入参数，点击「保存」后更新当前流程，保留流程 ID 及兼容的已填节点配置。实例触发器需在实例设置中单独修改。创作者视频同步、直播录制和新增视频通知示例见[流程示例](./pipelines/)，可直接在示例页面复制完整 JSON。
 
 `get_pipeline_editor` / `update_pipeline_editor` 读取或修改已连接页面的实时草稿，包含执行策略；修改必须携带 `revision`，旧版本会被拒绝。它只更新草稿，不自动保存或运行。更新请求体上限 1 MiB。待应用的节点配置或执行策略文本必须先处理。
 
@@ -210,7 +229,7 @@ Parallel 网关在独立上下文中同时执行分支，最多 32 条。设置�
 
 | 入口 | 行为 |
 | --- | --- |
-| `trigger_flow` | 手动调试，接受 `initial_data`，立即返回已落库的真实运行 ID |
+| `trigger_flow_instance` | 执行指定实例，接受 `initial_data`，立即返回已落库的真实运行 ID |
 | `trigger_schedule` | 使用规则参数立即执行；Event 类型还校验 key 与 active |
 | Cron | 启动时扫描一次，之后每 30 秒查找到期规则，单轮最多 64 条 |
 | 应用事件 | 事件总线按 Event 规则的 key 匹配，转为后台执行 |
@@ -219,7 +238,7 @@ Parallel 网关在独立上下文中同时执行分支，最多 32 条。设置�
 
 Cron 支持五段表达式、`@daily`、`@every 1m` 等，默认进程时区，也可使用 `CRON_TZ=Asia/Shanghai 0 9 * * *`。有效扫描精度为 30 秒，积压会额外延迟；不支持秒级扫描保证。Cron 完成或进入人工等待后从当前时间计算下次时间，不补跑所有错过时刻。手动执行/重试不改变 Cron 计划。
 
-同一流程处于排队、执行或人工等待时，拒绝再次启动；应用内的下载完成事件会等待当前运行结束后处理。不同流程的变量互相隔离。当前使用单进程锁和数据库状态检查，没有分布式抢占机制。
+同一配置实例处于排队、执行或人工等待时，拒绝再次启动；不同配置实例可独立执行。应用内的下载完成事件会等待当前运行结束后处理。不同运行的变量互相隔离。当前使用单进程锁和数据库状态检查，没有分布式抢占机制。
 
 ### 5.1 事件载荷与 Webhook
 
@@ -250,7 +269,7 @@ QUEUED → RUNNING → COMPLETED
 
 规则整体超时默认 3600 秒，最大 86400 秒。截止时间在分配运行时确定，包含排队和人工等待；等待过期会被调度扫描标为失败，恢复接口也会立即检查截止时间。HTTP 与 JS 可主动中断，服务工具/内置 Go 回调是否及时退出还取决于其是否响应 context，无法强杀任意 Go 函数。
 
-节点执行前后保存检查点，包含原定义、上下文、节点输出、全局变量、状态、尝试次数、待执行节点和步骤计数。写入运行记录失败时不启动流程，检查点写入失败时停止后续执行。每次节点尝试记录输入、行为、输出差异、耗时及错误，数据库保留每条运行最近 1000 条节点日志。
+节点执行前后保存检查点，包含原定义、上下文、节点输出、全局变量、状态、尝试次数、待执行节点和步骤计数。写入运行记录失败时不启动流程，检查点写入失败时停止后续执行。每次节点尝试记录输入、行为、输出差异、耗时及错误，节点日志逐条追加保存，按节点游标分页读取，不使用整次运行最近 1000 条的截断。
 
 匹配到启用规则的事件在启动校验前先创建运行记录。即使缺少节点必填配置或引用的子流程不存在，运行历史也会显示“失败”和“启动校验失败”的具体原因，保留事件类型、载荷与流程快照，并推送失败状态；校验失败时不会执行节点或调用外部接口。修正配置后可选择使用当前定义重试。未匹配或已停用的规则不创建运行记录。
 
@@ -287,10 +306,11 @@ QUEUED → RUNNING → COMPLETED
 
 | 分组 | 端点 |
 | --- | --- |
-| 流程 | list_flows、create_flow、get_flow、update_flow、delete_flow、import_flow、list_flow_nodes、get_flow_graph |
+| 流程 | list_flows、create_flow、copy_flow、get_flow、update_flow、delete_flow、import_flow、list_flow_nodes、get_flow_graph |
+| 实例 | list_flow_instances、create_flow_instance、get_flow_instance、update_flow_instance、copy_flow_instance、delete_flow_instance、trigger_flow_instance |
 | 草稿 | get_editor、update_editor |
 | 规则 | list_schedules、create_schedule、get_schedule、update_schedule、delete_schedule、toggle_schedule、trigger_schedule |
-| 运行 | trigger_flow、list_runs、get_run、cancel_run、resume_run、retry_run |
+| 运行 | trigger_flow_instance、list_runs、get_run、cancel_run、resume_run、retry_run |
 | 事件 | dispatch_event、webhook/:id |
 
 `resume_run` 请求为 `{"id":"run-...","node_id":"confirm","input":{"approved":true}}`；`retry_run` 为 `{"id":"run-...","use_current_definition":false}`；`dispatch_event` 为 `{"event_key":"custom.created","data":{"value":"example"}}`。运行列表只返回摘要，详情和持久日志通过 get_run 取得。

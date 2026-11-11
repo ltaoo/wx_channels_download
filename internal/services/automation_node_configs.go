@@ -36,7 +36,7 @@ func clear_runtime_node_configs(definition *engine.FlowDefinition) {
 
 // normalize_node_configs prunes removed declarations and validates typed values.
 // Graph editing may leave required settings unfilled; saving settings and running may not.
-func normalize_node_configs(definition engine.FlowDefinition, values map[string]map[string]interface{}, require_complete bool) (map[string]map[string]interface{}, error) {
+func normalize_node_configs(definition engine.FlowDefinition, values map[string]map[string]interface{}, require_complete, apply_defaults bool) (map[string]map[string]interface{}, error) {
 	encoded, err := json.Marshal(values)
 	if err != nil {
 		return nil, fmt.Errorf("节点配置无法序列化: %w", err)
@@ -50,12 +50,12 @@ func normalize_node_configs(definition engine.FlowDefinition, values map[string]
 		for _, field := range node.ConfigSchema {
 			value, exists := values[node_id][field.Key]
 			text, is_text := value.(string)
-			if !exists || value == nil || (is_text && strings.TrimSpace(text) == "") {
+			if apply_defaults && (!exists || value == nil || (is_text && strings.TrimSpace(text) == "")) {
 				value, exists = field.Default, field.Default != nil
 			}
 			text, is_text = value.(string)
 			if !exists || value == nil || (is_text && strings.TrimSpace(text) == "") {
-				if require_complete && field.Required {
+				if require_complete && apply_defaults && field.Required {
 					return nil, fmt.Errorf("节点 %s 的配置项 %s 不能为空", node.Name, field.Key)
 				}
 				continue
@@ -78,12 +78,51 @@ func normalize_node_configs(definition engine.FlowDefinition, values map[string]
 	return normalized, nil
 }
 
-func (s *AutomationService) bind_node_configs(definition *engine.FlowDefinition) error {
-	flow, err := s.GetUserFlow(definition.ID)
+// Override fields replace default fields, including whole object/array values.
+func merge_node_configs(defaults, overrides map[string]map[string]interface{}) map[string]map[string]interface{} {
+	merged := map[string]map[string]interface{}{}
+	for _, layer := range []map[string]map[string]interface{}{defaults, overrides} {
+		for node_id, fields := range layer {
+			if merged[node_id] == nil {
+				merged[node_id] = map[string]interface{}{}
+			}
+			for key, value := range fields {
+				merged[node_id][key] = value
+			}
+		}
+	}
+	return merged
+}
+
+func (s *AutomationService) bind_node_configs(definition *engine.FlowDefinition, instance_ids ...string) error {
+	flow, err := s.GetFlowDefinition(definition.ID)
 	if err != nil {
 		return err
 	}
-	values, err := normalize_node_configs(*definition, decode_node_configs(flow.NodeConfigs), true)
+	current, err := decode_user_flow_definition(flow.Definition)
+	if err != nil {
+		return err
+	}
+	*definition = *current
+	overrides := map[string]map[string]interface{}{}
+	if len(instance_ids) > 0 && instance_ids[0] != "" {
+		instance, err := s.GetUserFlowInstance(instance_ids[0])
+		if err != nil {
+			return err
+		}
+		if instance.FlowID != flow.ID {
+			return fmt.Errorf("实例不属于指定流程")
+		}
+		// The instance view reads the graph and defaults from the same database snapshot.
+		current, err = decode_user_flow_definition(instance.Definition)
+		if err != nil {
+			return err
+		}
+		*definition = *current
+		flow.DefaultNodeConfigs = instance.DefaultNodeConfigs
+		overrides = decode_node_configs(instance.NodeConfigs)
+	}
+	values, err := normalize_node_configs(*definition, merge_node_configs(decode_node_configs(flow.DefaultNodeConfigs), overrides), true, true)
 	if err != nil {
 		return err
 	}

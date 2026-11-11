@@ -24,6 +24,7 @@ const (
 )
 
 type automation_ws_message struct {
+	InstanceID   string                          `json:"instance_id,omitempty"`
 	Type         string                          `json:"type"`
 	FlowID       string                          `json:"flow_id"`
 	RunID        string                          `json:"run_id"`
@@ -59,6 +60,7 @@ func automation_ws_message_from_event(event events.Event) (automation_ws_message
 		return automation_ws_message{
 			Type:       automation_run_started_ws_update,
 			FlowID:     typed_event.FlowID,
+			InstanceID: typed_event.InstanceID,
 			RunID:      typed_event.RunID,
 			ScheduleID: typed_event.ScheduleID,
 			Trigger:    typed_event.Trigger,
@@ -68,6 +70,7 @@ func automation_ws_message_from_event(event events.Event) (automation_ws_message
 		return automation_ws_message{
 			Type:       automation_run_completed_ws_update,
 			FlowID:     typed_event.FlowID,
+			InstanceID: typed_event.InstanceID,
 			RunID:      typed_event.RunID,
 			ScheduleID: typed_event.ScheduleID,
 			Trigger:    typed_event.Trigger,
@@ -77,6 +80,7 @@ func automation_ws_message_from_event(event events.Event) (automation_ws_message
 		return automation_ws_message{
 			Type:       automation_run_waiting_ws_update,
 			FlowID:     typed_event.FlowID,
+			InstanceID: typed_event.InstanceID,
 			RunID:      typed_event.RunID,
 			ScheduleID: typed_event.ScheduleID,
 			Trigger:    typed_event.Trigger,
@@ -90,6 +94,7 @@ func automation_ws_message_from_event(event events.Event) (automation_ws_message
 		return automation_ws_message{
 			Type:       automation_run_failed_ws_update,
 			FlowID:     typed_event.FlowID,
+			InstanceID: typed_event.InstanceID,
 			RunID:      typed_event.RunID,
 			ScheduleID: typed_event.ScheduleID,
 			Trigger:    typed_event.Trigger,

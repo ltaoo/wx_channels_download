@@ -4,7 +4,7 @@
       "自动化"
     ],
     "summary": "更新自定义工作流定义",
-    "description": "nodes 非空时替换完整节点集合，省略或空数组保留已有节点，边通过 next_ids 指定。triggers 省略/null 保留规则，传 [] 移除额外触发规则；context_schema 为上下文定义。 subflows 声明本自动化内可复用的子流程，WorkflowNode/LoopNode 用 config.flow_id 引用声明的键；省略保留，传 {} 清空。",
+    "description": "修改共享流程图、名称和默认配置；不会创建实例。节点声明改变时清理不兼容的默认值与实例覆盖值。触发器和实例覆盖值使用实例接口。",
     "responses": {
       "200": {
         "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
@@ -52,6 +52,14 @@
                 "type": "string",
                 "nullable": true
               },
+              "default_node_configs": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "共用流程的默认配置，省略时保留。"
+              },
               "context_schema": {
                 "type": "array",
                 "items": {
@@ -65,12 +73,6 @@
                 "type": "array",
                 "items": {
                   "$ref": "../components.json#/schemas/services_UserFlowNodeInput"
-                }
-              },
-              "triggers": {
-                "type": "array",
-                "items": {
-                  "$ref": "../components.json#/schemas/services_UserFlowTriggerInput"
                 }
               },
               "subflows": {

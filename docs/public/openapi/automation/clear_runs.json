@@ -1,0 +1,51 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "清除一个实例的终态执行记录",
+    "description": "",
+    "operationId": "post_api_v1_automation_clear_runs",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "instance_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "instance_id"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "code=0 表示成功。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

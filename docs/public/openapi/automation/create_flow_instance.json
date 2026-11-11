@@ -1,0 +1,54 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "创建自动化流程实例",
+    "description": "仅创建实例，覆盖值为空；不会复制流程图或默认配置。",
+    "operationId": "post_api_v1_automation_create_flow_instance",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "flow_id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "flow_id"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "code=0 表示成功。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/model_UserFlowInstance"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

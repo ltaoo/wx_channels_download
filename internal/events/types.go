@@ -142,6 +142,7 @@ type AutomationRunStarted struct {
 	ScheduleID string `json:"schedule_id,omitempty"`
 	RunID      string `json:"run_id"`
 	FlowID     string `json:"flow_id"`
+	InstanceID string `json:"instance_id"`
 	Trigger    string `json:"trigger,omitempty"`
 }
 
@@ -152,6 +153,7 @@ type AutomationRunCompleted struct {
 	ScheduleID string `json:"schedule_id,omitempty"`
 	RunID      string `json:"run_id"`
 	FlowID     string `json:"flow_id"`
+	InstanceID string `json:"instance_id"`
 	Trigger    string `json:"trigger,omitempty"`
 }
 
@@ -163,6 +165,7 @@ type AutomationRunWaiting struct {
 	ScheduleID string `json:"schedule_id,omitempty"`
 	RunID      string `json:"run_id"`
 	FlowID     string `json:"flow_id"`
+	InstanceID string `json:"instance_id"`
 	Trigger    string `json:"trigger,omitempty"`
 }
 
@@ -174,6 +177,7 @@ type AutomationRunFailed struct {
 	ScheduleID string `json:"schedule_id,omitempty"`
 	RunID      string `json:"run_id"`
 	FlowID     string `json:"flow_id"`
+	InstanceID string `json:"instance_id"`
 	Trigger    string `json:"trigger,omitempty"`
 	Error      string `json:"error,omitempty"`
 	Status     string `json:"status,omitempty"`

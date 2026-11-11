@@ -1,5 +1,8 @@
-DROP INDEX IF EXISTS `idx_user_flow_deleted_at`;
-DROP TABLE IF EXISTS `user_flow`;
+-- Remove the platform seeds introduced with automation and video support.
+DELETE FROM platform WHERE id = 'iqiyi';
+DELETE FROM platform WHERE id IN ('youku', 'tencent', 'mgtv', 'hongguo');
+
+DROP TABLE IF EXISTS `flow_run_node_log`;
 
 -- Drop the tag tables first because content_tag/account_tag reference tag.
 DROP TABLE IF EXISTS `account_tag`;
@@ -18,3 +21,7 @@ DROP INDEX IF EXISTS `idx_flow_schedule_deleted_at`;
 DROP INDEX IF EXISTS `idx_flow_schedule_next_run_at`;
 DROP INDEX IF EXISTS `idx_flow_schedule_flow_id`;
 DROP TABLE IF EXISTS `flow_schedule`;
+
+DROP TABLE IF EXISTS `user_flow_instance`;
+DROP INDEX IF EXISTS `idx_user_flow_deleted_at`;
+DROP TABLE IF EXISTS `user_flow`;

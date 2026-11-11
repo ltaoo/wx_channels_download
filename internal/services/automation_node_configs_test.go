@@ -38,20 +38,20 @@ func TestAutomationNodeConfigsPersistAndReachEachHTTPRequest(t *testing.T) {
 		nodes[node_id] = node
 	}
 	flow := import_runtime_flow(t, service, nodes)
-	if _, err := service.TriggerFlowDirect(flow.ID, nil); err == nil || !strings.Contains(err.Error(), "apikey") {
+	if _, err := service.TriggerFlowInstance(flow.ID, nil); err == nil || !strings.Contains(err.Error(), "apikey") {
 		t.Fatalf("unconfigured automation ran: %v", err)
 	}
 	values := map[string]map[string]interface{}{"first": {"apikey": "first-key"}, "second": {"apikey": "second-key"}}
-	if _, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{NodeConfigs: values}); err != nil {
+	if _, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{NodeConfigs: values}); err != nil {
 		t.Fatal(err)
 	}
 	// Reload registrations from the database, as on application startup.
 	service.load_user_flows()
-	persisted, err := service.GetUserFlow(flow.ID)
+	persisted, err := service.GetUserFlowInstance(flow.ID)
 	if err != nil || decode_node_configs(persisted.NodeConfigs)["second"]["apikey"] != "second-key" || strings.Contains(persisted.Definition, "first-key") {
 		t.Fatalf("values were not stored separately on the automation: %+v %v", persisted, err)
 	}
-	run, err := service.TriggerFlowDirect(flow.ID, nil)
+	run, err := service.TriggerFlowInstance(flow.ID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestAutomationNodeConfigsPersistAndReachEachHTTPRequest(t *testing.T) {
 		t.Fatalf("node configurations collided: %s %s", first, second)
 	}
 	values["first"]["apikey"] = "new-key"
-	if _, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{NodeConfigs: values}); err != nil {
+	if _, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{NodeConfigs: values}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.RetryRun(run.ID, false); err != nil {
@@ -90,7 +90,7 @@ func TestAutomationNodeConfigsPersistAndReachEachHTTPRequest(t *testing.T) {
 	if first, second := <-requests, <-requests; first != "Bearer new-key" || second != "Bearer second-key" {
 		t.Fatalf("current retry did not use current configuration: %s %s", first, second)
 	}
-	rule, err := service.CreateSchedule(CreateScheduleInput{Name: "configured cron", FlowID: flow.ID, CronExpr: "@daily"})
+	rule, err := service.CreateSchedule(CreateScheduleInput{Name: "configured cron", InstanceID: flow.ID, CronExpr: "@daily"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,12 +118,12 @@ func TestAutomationNodeConfigValidationAndSchemaEditing(t *testing.T) {
 	for _, values := range []map[string]interface{}{
 		{"token": " "}, {"token": "key", "enabled": "false"}, {"token": "key", "enabled": false, "count": 1.5},
 	} {
-		if _, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{NodeConfigs: map[string]map[string]interface{}{"fail": values}}); err == nil {
+		if _, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{NodeConfigs: map[string]map[string]interface{}{"fail": values}}); err == nil {
 			t.Fatalf("accepted invalid values: %+v", values)
 		}
 	}
 	valid := map[string]map[string]interface{}{"fail": {"token": "key", "enabled": false, "count": 0, "removed": "stale"}, "deleted-node": {"token": "stale"}}
-	flow, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{NodeConfigs: valid})
+	flow, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{NodeConfigs: valid})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestAutomationNodeConfigValidationAndSchemaEditing(t *testing.T) {
 		t.Fatalf("normalization lost false/zero or retained undeclared settings: %s", flow.NodeConfigs)
 	}
 	// Omission from older editor clients preserves declarations and values.
-	flow, err = service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{Nodes: []UserFlowNodeInput{
+	flow, err = service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{Nodes: []UserFlowNodeInput{
 		{ID: "start", Type: "StartNode", NextIDs: []string{"fail"}}, {ID: "fail", Type: "FailNode", Config: node.Config},
 	}})
 	if err != nil {
@@ -141,20 +141,20 @@ func TestAutomationNodeConfigValidationAndSchemaEditing(t *testing.T) {
 	if len(definition.Nodes["fail"].ConfigSchema) != 3 || !strings.Contains(flow.NodeConfigs, "key") {
 		t.Fatalf("legacy save lost settings: %+v", flow)
 	}
-	flow, err = service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{Nodes: []UserFlowNodeInput{
+	flow, err = service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{Nodes: []UserFlowNodeInput{
 		{ID: "start", Type: "StartNode", NextIDs: []string{"fail"}}, {ID: "fail", Type: "FailNode", Config: node.Config, ConfigSchema: []engine.NodeConfigField{{Key: "token", Type: "number", Required: true}}},
 	}})
 	if err != nil || flow.NodeConfigs != "{}" {
 		t.Fatalf("changing a type did not invalidate its old value: %+v %v", flow, err)
 	}
 	// Removing a declaration also removes its stored value.
-	_, err = service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{Nodes: []UserFlowNodeInput{
+	_, err = service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{Nodes: []UserFlowNodeInput{
 		{ID: "start", Type: "StartNode", NextIDs: []string{"fail"}}, {ID: "fail", Type: "FailNode", Config: map[string]interface{}{"message": "done"}, ConfigSchema: []engine.NodeConfigField{}},
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	flow, _ = service.GetUserFlow(flow.ID)
+	flow, _ = service.GetUserFlowInstance(flow.ID)
 	if flow.NodeConfigs != "{}" {
 		t.Fatalf("removed declaration kept values: %s", flow.NodeConfigs)
 	}
@@ -170,10 +170,10 @@ func TestAutomationConfigScopeWorksInJSAndImportedRuntimeValuesAreDiscarded(t *t
 	if strings.Contains(flow.Definition, "config_values") {
 		t.Fatal("import retained runtime values")
 	}
-	if _, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{NodeConfigs: map[string]map[string]interface{}{"js": {"count": 0}}}); err != nil {
+	if _, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{NodeConfigs: map[string]map[string]interface{}{"js": {"count": 0}}}); err != nil {
 		t.Fatal(err)
 	}
-	run, err := service.TriggerFlowDirect(flow.ID, nil)
+	run, err := service.TriggerFlowInstance(flow.ID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,11 +199,11 @@ func TestAutomationNodeConfigChoicesAndMultilineTemplates(t *testing.T) {
 	if len(definition.Nodes["push"].ConfigSchema[0].Options) != 2 || !definition.Nodes["push"].ConfigSchema[1].Multiline {
 		t.Fatal("import lost form options or multiline control")
 	}
-	if _, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{NodeConfigs: map[string]map[string]interface{}{"push": {"push_method": "unsupported"}}}); err == nil || !strings.Contains(err.Error(), "选项") {
+	if _, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{NodeConfigs: map[string]map[string]interface{}{"push": {"push_method": "unsupported"}}}); err == nil || !strings.Contains(err.Error(), "选项") {
 		t.Fatalf("invalid choice accepted: %v", err)
 	}
 	template := "账号：{username}\n标题：{title}"
-	saved, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{NodeConfigs: map[string]map[string]interface{}{"push": {"push_method": "webhook", "message_template": template}}})
+	saved, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{NodeConfigs: map[string]map[string]interface{}{"push": {"push_method": "webhook", "message_template": template}}})
 	if err != nil || decode_node_configs(saved.NodeConfigs)["push"]["message_template"] != template {
 		t.Fatalf("multiline template did not round trip: %+v %v", saved, err)
 	}
@@ -228,16 +228,20 @@ func TestAutomationNodeConfigsResumeAndReferencedSubflowKeepSnapshots(t *testing
 	})
 	set_token := func(flow_id, token string) {
 		t.Helper()
-		if _, err := service.UpdateUserFlow(flow_id, UpdateUserFlowInput{NodeConfigs: map[string]map[string]interface{}{"result": {"token": token}}}); err != nil {
+		instance, err := service.GetUserFlowInstance(flow_id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.UpdateFlowDefinition(instance.FlowID, UpdateUserFlowInput{DefaultNodeConfigs: map[string]map[string]interface{}{"result": {"token": token}}}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	set_token(child.ID, "child-original")
 	parent := import_runtime_flow(t, service, map[string]flowengine.NodeDefinition{
 		"start": runtime_test_node("start", "StartNode", nil, "child"),
-		"child": runtime_test_node("child", "WorkflowNode", map[string]interface{}{"flow_id": child.ID}),
+		"child": runtime_test_node("child", "WorkflowNode", map[string]interface{}{"flow_id": child.FlowID}),
 	})
-	run, err := service.TriggerFlowDirect(parent.ID, nil)
+	run, err := service.TriggerFlowInstance(parent.ID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +261,7 @@ func TestAutomationNodeConfigsResumeAndReferencedSubflowKeepSnapshots(t *testing
 		"confirm": runtime_test_node("confirm", "ManualNode", nil, "result"), "result": result,
 	})
 	set_token(manual.ID, "manual-original")
-	waiting, err := service.TriggerFlowDirect(manual.ID, nil)
+	waiting, err := service.TriggerFlowInstance(manual.ID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

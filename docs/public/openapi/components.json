@@ -2844,6 +2844,10 @@
         "enabled": {
           "type": "boolean",
           "nullable": true
+        },
+        "instance_id": {
+          "type": "string",
+          "description": "流程实例 ID。"
         }
       }
     },
@@ -2897,6 +2901,10 @@
           "type": "integer",
           "format": "int64",
           "nullable": true
+        },
+        "instance_id": {
+          "type": "string",
+          "description": "流程实例 ID。"
         }
       }
     },
@@ -2925,6 +2933,10 @@
         },
         "timeout_sec": {
           "type": "integer"
+        },
+        "instance_id": {
+          "type": "string",
+          "description": "流程实例 ID。"
         }
       }
     },
@@ -3060,6 +3072,10 @@
           "type": "integer",
           "format": "int64",
           "nullable": true
+        },
+        "instance_id": {
+          "type": "string",
+          "description": "流程实例 ID。"
         }
       }
     },
@@ -3080,6 +3096,10 @@
         },
         "status": {
           "type": "string"
+        },
+        "instance_id": {
+          "type": "string",
+          "description": "流程实例 ID。"
         }
       }
     },
@@ -3095,27 +3115,22 @@
         "description": {
           "type": "string"
         },
-        "trigger_type": {
-          "type": "string"
-        },
-        "event_key": {
-          "type": "string"
-        },
         "definition": {
-          "type": "string"
+          "type": "string",
+          "description": "共享图和参数声明 JSON。"
+        },
+        "default_node_configs": {
+          "type": "string",
+          "description": "流程默认配置 JSON，每次执行实时继承。"
+        },
+        "instance_count": {
+          "type": "integer"
         },
         "created_at": {
-          "type": "integer",
-          "format": "int64"
+          "type": "integer"
         },
         "updated_at": {
-          "type": "integer",
-          "format": "int64"
-        },
-        "deleted_at": {
-          "type": "integer",
-          "format": "int64",
-          "nullable": true
+          "type": "integer"
         }
       }
     },
@@ -4142,6 +4157,47 @@
         },
         "certificate": {
           "$ref": "./components.json#/schemas/CertificateStatus"
+        }
+      }
+    },
+    "model_UserFlowInstance": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "flow_id": {
+          "type": "string",
+          "description": "所属 user_flow ID。"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "node_configs": {
+          "type": "string",
+          "description": "实例显式覆盖值 JSON；{} 恢复继承。"
+        },
+        "definition_name": {
+          "type": "string"
+        },
+        "default_node_configs": {
+          "type": "string"
+        },
+        "definition": {
+          "type": "string",
+          "description": "仅实例详情返回共享图，列表不重复返回。"
+        },
+        "active_run_id": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer"
+        },
+        "updated_at": {
+          "type": "integer"
         }
       }
     }

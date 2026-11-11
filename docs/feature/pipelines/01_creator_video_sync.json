@@ -2,15 +2,6 @@
   "id": "01_creator_video_sync",
   "name": "定时增量同步创作者视频",
   "start_node": "start",
-  "triggers": [
-    {
-      "type": "Cron",
-      "name": "每天 12:00、18:00 同步创作者视频",
-      "cron_expr": "0 12,18 * * *",
-      "enabled": true,
-      "initial_data": {}
-    }
-  ],
   "context_schema": [],
   "nodes": {
     "start": {

@@ -18,7 +18,7 @@ func TestReusableSubflowsImportSaveAndFreeze(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			flow, err := service.ImportUserFlow(string(raw))
+			flow, err := service.ImportUserFlowWithInstance(string(raw))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -33,7 +33,7 @@ func TestReusableSubflowsImportSaveAndFreeze(t *testing.T) {
 			if filename == "01_creator_video_sync_service.json" {
 				values["validate"] = map[string]interface{}{"username": "creator"}
 			}
-			updated, err := service.UpdateUserFlow(flow.ID, UpdateUserFlowInput{Subflows: definition.Subflows, NodeConfigs: values})
+			updated, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{Subflows: definition.Subflows, NodeConfigs: values})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -47,7 +47,7 @@ func TestReusableSubflowsImportSaveAndFreeze(t *testing.T) {
 			if definition.Nodes[node_id].Config["flow_id"] == nil || definition.Nodes[node_id].Config["workflow"] != nil {
 				t.Fatal("reusable declaration was replaced with an inline copy in the saved template")
 			}
-			run, err := service.prepare_run(model.FlowSchedule{FlowID: flow.ID}, model.FlowRunTriggerManual, "", "", "")
+			run, err := service.prepare_run(model.FlowSchedule{InstanceID: flow.ID}, model.FlowRunTriggerManual, "", "", "")
 			if err != nil {
 				t.Fatal(err)
 			}

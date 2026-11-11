@@ -196,6 +196,7 @@ func (s *AutomationService) tick() {
 // CreateScheduleInput describes a new schedule. InitialData is stored as JSON
 // and handed to the flow as its starting context.
 type CreateScheduleInput struct {
+	InstanceID  string
 	Name        string
 	Description string
 	CronExpr    string
@@ -208,6 +209,7 @@ type CreateScheduleInput struct {
 // UpdateScheduleInput patches an existing schedule. Nil fields are left
 // untouched; a non-nil InitialData replaces the stored JSON.
 type UpdateScheduleInput struct {
+	InstanceID  *string
 	Name        *string
 	Description *string
 	CronExpr    *string
@@ -219,15 +221,17 @@ type UpdateScheduleInput struct {
 
 // ListSchedulesInput filters and paginates schedule listings.
 type ListSchedulesInput struct {
-	Page     int
-	PageSize int
-	FlowID   string
-	Enabled  *bool
-	Keyword  string
+	InstanceID string
+	Page       int
+	PageSize   int
+	FlowID     string
+	Enabled    *bool
+	Keyword    string
 }
 
 // ListRunsInput filters and paginates run history listings.
 type ListRunsInput struct {
+	InstanceID string
 	Summary    bool
 	Page       int
 	PageSize   int
@@ -250,6 +254,19 @@ func (s *AutomationService) CreateSchedule(input CreateScheduleInput) (*model.Fl
 		return nil, fmt.Errorf("cron_expr 不能为空")
 	}
 	flow_id := strings.TrimSpace(input.FlowID)
+	if input.InstanceID != "" {
+		instance, err := s.GetUserFlowInstance(input.InstanceID)
+		if err != nil {
+			return nil, err
+		}
+		if flow_id != "" && flow_id != instance.FlowID {
+			return nil, fmt.Errorf("实例不属于指定流程")
+		}
+		flow_id = instance.FlowID
+	}
+	if input.InstanceID == "" {
+		return nil, fmt.Errorf("请指定流程实例 instance_id")
+	}
 	if flow_id == "" {
 		return nil, fmt.Errorf("flow_id 不能为空")
 	}
@@ -286,6 +303,7 @@ func (s *AutomationService) CreateSchedule(input CreateScheduleInput) (*model.Fl
 		Description: strings.TrimSpace(input.Description),
 		CronExpr:    cron_expr,
 		FlowID:      flow_id,
+		InstanceID:  input.InstanceID,
 		InitialData: initial_data,
 		Enabled:     enabled,
 		TimeoutSec:  timeout_sec,
@@ -315,6 +333,17 @@ func (s *AutomationService) UpdateSchedule(id string, input UpdateScheduleInput)
 		return nil, err
 	}
 	updates := map[string]interface{}{}
+	if input.InstanceID != nil {
+		instance, err := s.GetUserFlowInstance(*input.InstanceID)
+		if err != nil {
+			return nil, err
+		}
+		updates["instance_id"] = instance.ID
+		updates["flow_id"] = instance.FlowID
+	}
+	if input.FlowID != nil && schedule.InstanceID != "" && *input.FlowID != schedule.FlowID {
+		return nil, fmt.Errorf("请通过 instance_id 修改关联实例")
+	}
 	if input.Name != nil {
 		name := strings.TrimSpace(*input.Name)
 		if name == "" {
@@ -449,6 +478,9 @@ func (s *AutomationService) ListSchedules(input ListSchedulesInput) ([]model.Flo
 		return nil, 0, err
 	}
 	query := s.db.Model(&model.FlowSchedule{}).Where("deleted_at IS NULL")
+	if instance_id := strings.TrimSpace(input.InstanceID); instance_id != "" {
+		query = query.Where("instance_id = ?", instance_id)
+	}
 	if flow_id := strings.TrimSpace(input.FlowID); flow_id != "" {
 		query = query.Where("flow_id = ?", flow_id)
 	}
@@ -564,6 +596,9 @@ func (s *AutomationService) ListRuns(input ListRunsInput) ([]model.FlowRunRecord
 	if schedule_id := strings.TrimSpace(input.ScheduleID); schedule_id != "" {
 		query = query.Where("schedule_id = ?", schedule_id)
 	}
+	if instance_id := strings.TrimSpace(input.InstanceID); instance_id != "" {
+		query = query.Where("instance_id = ?", instance_id)
+	}
 	if flow_id := strings.TrimSpace(input.FlowID); flow_id != "" {
 		query = query.Where("flow_id = ?", flow_id)
 	}
@@ -579,7 +614,7 @@ func (s *AutomationService) ListRuns(input ListRunsInput) ([]model.FlowRunRecord
 		if input.Summary {
 			query = query.Select("id", "created_at", "status")
 		} else {
-			query = query.Omit("checkpoint", "definition", "initial_data", "node_logs", "node_outputs", "node_attempts")
+			query = query.Omit("checkpoint", "definition", "initial_data", "node_logs", "node_outputs", "node_attempts", "node_states")
 		}
 		if err := query.Order("created_at DESC").
 			Offset((page - 1) * page_size).
@@ -602,7 +637,7 @@ func (s *AutomationService) ClearRuns(flow_id string) (int64, error) {
 	}
 	now := time.Now().UnixMilli()
 	result := s.db.Model(&model.FlowRunRecord{}).
-		Where("flow_id = ? AND deleted_at IS NULL AND status IN ?", flow_id, []string{
+		Where("instance_id = ? AND deleted_at IS NULL AND status IN ?", flow_id, []string{
 			model.FlowRunStatusCompleted, model.FlowRunStatusFailed, model.FlowRunStatusCancelled,
 		}).Updates(map[string]interface{}{"deleted_at": now, "updated_at": now})
 	if result.Error != nil {
@@ -613,15 +648,15 @@ func (s *AutomationService) ClearRuns(flow_id string) (int64, error) {
 
 // GetRun loads a single run record by id.
 func (s *AutomationService) GetRun(id string) (*model.FlowRunRecord, error) {
-	return s.get_run(id, false)
+	return s.get_run(id, false, true)
 }
 
 // GetRunMetadata loads status, trigger and errors without node or snapshot payloads.
 func (s *AutomationService) GetRunMetadata(id string) (*model.FlowRunRecord, error) {
-	return s.get_run(id, true)
+	return s.get_run(id, true, false)
 }
 
-func (s *AutomationService) get_run(id string, metadata_only bool) (*model.FlowRunRecord, error) {
+func (s *AutomationService) get_run(id string, metadata_only, include_logs bool) (*model.FlowRunRecord, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("自动化服务未初始化")
 	}
@@ -637,6 +672,17 @@ func (s *AutomationService) get_run(id string, metadata_only bool) (*model.FlowR
 	if err := query.First(&run).Error; err != nil {
 		return nil, fmt.Errorf("运行记录不存在: %s", id)
 	}
+	if include_logs {
+		var entries []string
+		if err := s.db.Model(&model.FlowRunNodeLog{}).Where("run_id=?", id).Order("id ASC").Pluck("entry", &entries).Error; err != nil {
+			return nil, err
+		}
+		logs := make([]json.RawMessage, 0, len(entries))
+		for _, entry := range entries {
+			logs = append(logs, json.RawMessage(entry))
+		}
+		run.NodeLogs = marshal_json(logs)
+	}
 	return &run, nil
 }
 
@@ -645,80 +691,21 @@ func (s *AutomationService) GetRunNodeStates(id string, flow_ids ...string) (map
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("自动化服务未初始化")
 	}
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return nil, fmt.Errorf("id 不能为空")
-	}
 	var run model.FlowRunRecord
-	if err := s.db.Select("id", "flow_id", "definition", "node_attempts", "node_logs", "node_states", "status", "current_node").Where("id = ? AND deleted_at IS NULL", id).First(&run).Error; err != nil {
+	if err := s.db.Select("id", "flow_id", "node_states", "status", "current_node").Where("id=? AND deleted_at IS NULL", strings.TrimSpace(id)).First(&run).Error; err != nil {
 		return nil, fmt.Errorf("运行记录不存在: %s", id)
 	}
-	var logs []struct {
-		NodeStates map[string]string `json:"node_states"`
-		FlowID     string            `json:"flow_id"`
-		NodeID     string            `json:"node_id"`
-		Outcome    string            `json:"outcome"`
-		Success    bool              `json:"success"`
-		Error      string            `json:"error,omitempty"`
+	var scopes map[string]map[string]string
+	_ = json.Unmarshal([]byte(run.NodeStates), &scopes)
+	scope_id := run.FlowID
+	if len(flow_ids) > 0 && strings.TrimSpace(flow_ids[0]) != "" {
+		scope_id = strings.TrimSpace(flow_ids[0])
 	}
-	definition, is_root, _, err := automation_run_scope(run, flow_ids)
-	if err != nil {
-		return nil, err
+	states := scopes[scope_id]
+	if states == nil {
+		states = map[string]string{}
 	}
-	states := make(map[string]string, len(definition.Nodes))
-	for node_id := range definition.Nodes {
-		states[node_id] = "PENDING"
-	}
-	var attempts map[string]int
-	_ = json.Unmarshal([]byte(run.NodeAttempts), &attempts)
-	for node_id, attempt := range attempts {
-		if is_root && attempt > 0 {
-			states[node_id] = "UNKNOWN"
-		}
-	}
-	// Legacy malformed traces remain readable as a run with missing node logs.
-	if json.Unmarshal([]byte(run.NodeLogs), &logs) == nil {
-		for _, entry := range logs {
-			if (is_root && entry.FlowID != "" && entry.FlowID != run.FlowID && entry.FlowID != definition.ID) || (!is_root && entry.FlowID != definition.ID) {
-				continue
-			}
-			if entry.NodeStates != nil {
-				if entry.NodeID == "" {
-					states = entry.NodeStates
-				} else {
-					for node_id, state := range entry.NodeStates {
-						states[node_id] = state
-					}
-				}
-				continue
-			}
-			if entry.NodeID == "" {
-				continue
-			}
-			status := strings.ToUpper(entry.Outcome)
-			switch status {
-			case "WAITING":
-				status = "WAITING_FOR_USER"
-			case "COMPLETED", "FAILED", "RETRYING":
-			default:
-				status = "COMPLETED"
-				if entry.Error != "" || !entry.Success {
-					status = "FAILED"
-				}
-			}
-			states[entry.NodeID] = status
-		}
-	}
-	var scoped_states map[string]map[string]string
-	_ = json.Unmarshal([]byte(run.NodeStates), &scoped_states)
-	scope_id := definition.ID
-	if is_root && scoped_states[run.FlowID] != nil {
-		scope_id = run.FlowID
-	}
-	for node_id, state := range scoped_states[scope_id] {
-		states[node_id] = state
-	}
-	if is_root && run.CurrentNode != "" {
+	if scope_id == run.FlowID && run.CurrentNode != "" {
 		active := map[string]string{"QUEUED": "PENDING", "RUNNING": "RUNNING", "WAITING": "WAITING_FOR_USER", "FAILED": "FAILED", "CANCELLED": "CANCELLED"}[run.Status]
 		if active != "" {
 			states[run.CurrentNode] = active
@@ -727,63 +714,74 @@ func (s *AutomationService) GetRunNodeStates(id string, flow_ids ...string) (map
 	return states, nil
 }
 
-// GetRunNodeLogs loads detailed payloads only for the requested parent-flow node.
+type FlowRunNodeLogPage struct {
+	List         []json.RawMessage `json:"list"`
+	HasMore      bool              `json:"has_more"`
+	NextBeforeID int64             `json:"next_before_id"`
+}
+
 func (s *AutomationService) GetRunNodeLogs(id, node_id string, flow_ids ...string) ([]json.RawMessage, error) {
-	if s == nil || s.db == nil {
-		return nil, fmt.Errorf("自动化服务未初始化")
+	scope_id := ""
+	if len(flow_ids) > 0 {
+		scope_id = flow_ids[0]
 	}
-	id, node_id = strings.TrimSpace(id), strings.TrimSpace(node_id)
-	if id == "" || node_id == "" {
-		return nil, fmt.Errorf("id 和 node_id 不能为空")
-	}
-	var run model.FlowRunRecord
-	if err := s.db.Select("id", "flow_id", "definition", "node_logs").Where("id = ? AND deleted_at IS NULL", id).First(&run).Error; err != nil {
-		return nil, fmt.Errorf("运行记录不存在: %s", id)
-	}
-	definition, is_root, ancestors, err := automation_run_scope(run, flow_ids)
+	page, err := s.GetRunNodeLogPage(id, node_id, scope_id, 0, 100)
 	if err != nil {
 		return nil, err
 	}
-	logs := make([]json.RawMessage, 0)
-	var entries []json.RawMessage
-	if json.Unmarshal([]byte(run.NodeLogs), &entries) != nil {
-		return logs, nil
+	return page.List, nil
+}
+
+// Cursor pages keep repeated invocations bounded without collapsing attempts.
+func (s *AutomationService) GetRunNodeLogPage(id, node_id, scope_id string, before_id int64, page_size int) (*FlowRunNodeLogPage, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("自动化服务未初始化")
 	}
-	for _, raw := range entries {
-		var entry struct {
-			NodeStates map[string]string `json:"node_states"`
-			FlowID     string            `json:"flow_id"`
-			NodeID     string            `json:"node_id"`
-		}
-		if json.Unmarshal(raw, &entry) != nil {
-			continue
-		}
-		if entry.NodeStates != nil && entry.NodeID == "" {
-			for _, ancestor := range ancestors {
-				if entry.FlowID == ancestor {
-					logs = logs[:0]
-				}
-			}
-		}
-		if (is_root && entry.FlowID != "" && entry.FlowID != run.FlowID && entry.FlowID != definition.ID) || (!is_root && entry.FlowID != definition.ID) {
-			continue
-		}
-		if entry.NodeStates != nil {
-			if entry.NodeID == "" {
-				logs = logs[:0]
-			}
-			continue
-		}
-		if entry.NodeID == node_id {
-			logs = append(logs, raw)
-		}
+	id, node_id, scope_id = strings.TrimSpace(id), strings.TrimSpace(node_id), strings.TrimSpace(scope_id)
+	if id == "" || node_id == "" {
+		return nil, fmt.Errorf("id 和 node_id 不能为空")
 	}
-	return logs, nil
+	if page_size == 0 {
+		page_size = 100
+	}
+	if before_id < 0 || page_size < 1 || page_size > 200 {
+		return nil, fmt.Errorf("before_id 必须非负，page_size 必须在 1 到 200 之间")
+	}
+	var run model.FlowRunRecord
+	if err := s.db.Select("id", "flow_id").Where("id=? AND deleted_at IS NULL", id).First(&run).Error; err != nil {
+		return nil, fmt.Errorf("运行记录不存在: %s", id)
+	}
+	if scope_id == "" {
+		scope_id = run.FlowID
+	}
+	query := s.db.Where("run_id=? AND flow_id=? AND node_id=?", id, scope_id, node_id)
+	if before_id > 0 {
+		query = query.Where("id < ?", before_id)
+	}
+	var rows []model.FlowRunNodeLog
+	if err := query.Order("id DESC").Limit(page_size + 1).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	page := &FlowRunNodeLogPage{List: make([]json.RawMessage, 0, page_size), HasMore: len(rows) > page_size}
+	if page.HasMore {
+		rows = rows[:page_size]
+		page.NextBeforeID = rows[len(rows)-1].ID
+	}
+	for index := len(rows) - 1; index >= 0; index-- {
+		row := rows[index]
+		var entry map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(row.Entry), &entry); err != nil {
+			return nil, err
+		}
+		entry["log_id"] = json.RawMessage(fmt.Sprint(row.ID))
+		page.List = append(page.List, json.RawMessage(marshal_json(entry)))
+	}
+	return page, nil
 }
 
 // CancelRun cancels node I/O and marks a terminal state which completion cannot overwrite.
 func (s *AutomationService) CancelRun(id string) error {
-	run, err := s.GetRun(id)
+	run, err := s.GetRunMetadata(id)
 	if err != nil {
 		return err
 	}
@@ -824,13 +822,13 @@ func (s *AutomationService) execute_schedule(schedule model.FlowSchedule, trigge
 
 func (s *AutomationService) execute_prepared_run(schedule model.FlowSchedule, run *model.FlowRunRecord) *model.FlowRunRecord {
 	s.db.Model(&model.FlowRunRecord{}).Where("id = ? AND status = ?", run.ID, model.FlowRunStatusQueued).Update("status", model.FlowRunStatusRunning)
-	s.publish(events.AutomationRunStarted{ScheduleID: run.ScheduleID, RunID: run.ID, FlowID: run.FlowID, Trigger: run.TriggerType})
+	s.publish(events.AutomationRunStarted{ScheduleID: run.ScheduleID, RunID: run.ID, FlowID: run.FlowID, InstanceID: run.InstanceID, Trigger: run.TriggerType})
 	execution_context, cancel := context.WithDeadline(s.lifecycle_context, time.UnixMilli(run.DeadlineAt))
 	s.active_runs.Store(run.ID, context.CancelFunc(cancel))
 	defer s.active_runs.Delete(run.ID)
 	defer cancel()
 	// Cancellation may have won between persistence and launching this goroutine.
-	if current, err := s.GetRun(run.ID); err != nil || current.Status == model.FlowRunStatusCancelled {
+	if current, err := s.GetRunMetadata(run.ID); err != nil || current.Status == model.FlowRunStatusCancelled {
 		if current != nil {
 			return current
 		}
@@ -843,9 +841,13 @@ func (s *AutomationService) execute_prepared_run(schedule model.FlowSchedule, ru
 			definition = &parsed
 		}
 	}
+	start_node_id := automation_schedule_metadata(schedule).StartNodeID
+	if definition != nil {
+		start_node_id = definition.StartNodeID
+	}
 	_, run_err := s.flow_engine.StartFlowWithOptions(run.FlowID, decode_initial_data(run.InitialData), flowengine.StartFlowOptions{
 		Context: execution_context, Definition: definition, RunID: run.ID, ValidateSchemas: strings.HasPrefix(run.FlowID, user_flow_id_prefix),
-		StartNodeID: automation_schedule_metadata(schedule).StartNodeID,
+		StartNodeID: start_node_id,
 		Trigger:     flowengine.TriggerInfo{Type: flowengine.TriggerType(run.TriggerType), Key: run.TriggerKey, Source: run.ScheduleID},
 	})
 	return s.finish_run(schedule, run, run_err)
@@ -880,7 +882,7 @@ func (s *AutomationService) finish_run(schedule model.FlowSchedule, run *model.F
 	if err := s.db.Model(&model.FlowRunRecord{}).Where("id = ? AND status != ?", run.ID, model.FlowRunStatusCancelled).Updates(updates).Error; err != nil {
 		s.log_error(err, "failed to finish automation run")
 	}
-	persisted, err := s.GetRun(run.ID)
+	persisted, err := s.GetRunMetadata(run.ID)
 	if err != nil {
 		run.Status = model.FlowRunStatusFailed
 		run.Error = err.Error()
@@ -894,11 +896,11 @@ func (s *AutomationService) finish_run(schedule model.FlowSchedule, run *model.F
 func (s *AutomationService) publish_run_result(run *model.FlowRunRecord) {
 	switch run.Status {
 	case model.FlowRunStatusCompleted:
-		s.publish(events.AutomationRunCompleted{ScheduleID: run.ScheduleID, RunID: run.ID, FlowID: run.FlowID, Trigger: run.TriggerType})
+		s.publish(events.AutomationRunCompleted{ScheduleID: run.ScheduleID, RunID: run.ID, FlowID: run.FlowID, InstanceID: run.InstanceID, Trigger: run.TriggerType})
 	case model.FlowRunStatusWaiting:
-		s.publish(events.AutomationRunWaiting{ScheduleID: run.ScheduleID, RunID: run.ID, FlowID: run.FlowID, Trigger: run.TriggerType})
+		s.publish(events.AutomationRunWaiting{ScheduleID: run.ScheduleID, RunID: run.ID, FlowID: run.FlowID, InstanceID: run.InstanceID, Trigger: run.TriggerType})
 	default:
-		s.publish(events.AutomationRunFailed{ScheduleID: run.ScheduleID, RunID: run.ID, FlowID: run.FlowID, Trigger: run.TriggerType, Error: run.Error, Status: run.Status})
+		s.publish(events.AutomationRunFailed{ScheduleID: run.ScheduleID, RunID: run.ID, FlowID: run.FlowID, InstanceID: run.InstanceID, Trigger: run.TriggerType, Error: run.Error, Status: run.Status})
 	}
 }
 

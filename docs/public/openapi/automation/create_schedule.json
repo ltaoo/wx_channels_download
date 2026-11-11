@@ -67,12 +67,16 @@
                 "type": "integer",
                 "default": 3600,
                 "maximum": 86400
+              },
+              "instance_id": {
+                "type": "string",
+                "description": "流程实例 ID；执行历史按实例过滤。"
               }
             },
             "required": [
               "name",
               "cron_expr",
-              "flow_id"
+              "instance_id"
             ]
           },
           "example": {

@@ -178,13 +178,19 @@ func (c *APIClient) setup_automation_routes() {
 	c.engine.POST("/api/v1/automation/list_flows", c.handle_list_user_flows)
 	c.engine.POST("/api/v1/automation/create_flow", c.handle_create_user_flow)
 	c.engine.POST("/api/v1/automation/copy_flow", c.handle_copy_user_flow)
+	c.engine.POST("/api/v1/automation/create_flow_instance", c.handle_create_user_flow_instance)
 	c.engine.POST("/api/v1/automation/import_flow", c.handle_import_user_flow)
 	c.engine.POST("/api/v1/automation/get_flow", c.handle_get_user_flow)
 	c.engine.POST("/api/v1/automation/update_flow", c.handle_update_user_flow)
 	c.engine.POST("/api/v1/automation/delete_flow", c.handle_delete_user_flow)
 	c.engine.POST("/api/v1/automation/list_flow_nodes", c.handle_get_user_flow_node_catalog)
 	c.engine.POST("/api/v1/automation/get_flow_graph", c.handle_get_user_flow_graph)
-	c.engine.POST("/api/v1/automation/trigger_flow", c.handle_trigger_user_flow)
+	c.engine.POST("/api/v1/automation/trigger_flow_instance", c.handle_trigger_user_flow)
+	c.engine.POST("/api/v1/automation/list_flow_instances", c.handle_list_user_flow_instances)
+	c.engine.POST("/api/v1/automation/get_flow_instance", c.handle_get_user_flow_instance)
+	c.engine.POST("/api/v1/automation/update_flow_instance", c.handle_update_user_flow_instance)
+	c.engine.POST("/api/v1/automation/delete_flow_instance", c.handle_delete_user_flow_instance)
+	c.engine.POST("/api/v1/automation/copy_flow_instance", c.handle_copy_user_flow_instance)
 }
 
 func (c *APIClient) handle_favicon(ctx *gin.Context) {
