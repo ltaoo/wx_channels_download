@@ -21,6 +21,7 @@ type user_flow_create_body struct {
 }
 
 type user_flow_update_body struct {
+	Subflows      map[string]engine.FlowDefinition  `json:"subflows"`
 	NodeConfigs   map[string]map[string]interface{} `json:"node_configs"`
 	ID            string                            `json:"id"`
 	Name          *string                           `json:"name"`
@@ -33,6 +34,24 @@ type user_flow_update_body struct {
 
 type user_flow_id_body struct {
 	ID string `json:"id"`
+}
+
+func (c *APIClient) handle_copy_user_flow(ctx *gin.Context) {
+	service, ok := c.automation_service_or_error(ctx)
+	if !ok {
+		return
+	}
+	var body user_flow_id_body
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, api_code_invalid_params, "请求参数无效")
+		return
+	}
+	flow, err := service.CopyUserFlow(body.ID)
+	if err != nil {
+		result.Err(ctx, api_code_invalid_params, err.Error())
+		return
+	}
+	result.Ok(ctx, flow)
 }
 
 type user_flow_trigger_body struct {
@@ -114,6 +133,7 @@ func (c *APIClient) handle_update_user_flow(ctx *gin.Context) {
 		return
 	}
 	flow, err := service.UpdateUserFlow(strings.TrimSpace(body.ID), services.UpdateUserFlowInput{
+		Subflows:      body.Subflows,
 		NodeConfigs:   body.NodeConfigs,
 		Name:          body.Name,
 		Description:   body.Description,
@@ -171,7 +191,7 @@ func (c *APIClient) handle_get_user_flow_node_catalog(ctx *gin.Context) {
 	if _, ok := c.automation_service_or_error(ctx); !ok {
 		return
 	}
-	result.Ok(ctx, gin.H{"nodes": services.SortedUserFlowNodeCatalog()})
+	result.Ok(ctx, gin.H{"nodes": c.service_automation.NodeCatalog()})
 }
 
 // handle_trigger_user_flow runs a user pipeline immediately without a schedule.

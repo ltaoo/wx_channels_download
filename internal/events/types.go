@@ -2,6 +2,7 @@ package events
 
 import (
 	"wx_channel/internal/database/model"
+	"wx_channel/pkg/dm"
 	"wx_channel/pkg/flowengine"
 )
 
@@ -84,7 +85,9 @@ func (e DownloadTaskCreated) Type() string { return TypeDownloadTaskCreated }
 
 // DownloadTaskFinished is published when a download task finishes.
 type DownloadTaskFinished struct {
-	TaskID int
+	TaskID      int
+	Task        *dm.DownloadTask `json:"task,omitempty"`
+	DownloadDir string           `json:"download_dir"`
 }
 
 func (e DownloadTaskFinished) Type() string { return TypeDownloadTaskFinished }

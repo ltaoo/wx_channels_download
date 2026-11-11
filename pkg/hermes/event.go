@@ -66,9 +66,10 @@ type TaskPausedEventData struct {
 // TaskFinishedEventData is emitted after a task and its resource outputs have
 // been finalized successfully.
 type TaskFinishedEventData struct {
-	TaskID    int                    `json:"task_id"`
-	FilePaths []string               `json:"file_paths"`
-	Resources []TaskFinishedResource `json:"resources"`
+	TaskID      int                    `json:"task_id"`
+	DownloadDir string                 `json:"download_dir"`
+	FilePaths   []string               `json:"file_paths"`
+	Resources   []TaskFinishedResource `json:"resources"`
 }
 
 // TaskFinishedResource is Hermes' authoritative final resource snapshot. Name

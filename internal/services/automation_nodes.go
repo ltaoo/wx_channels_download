@@ -157,9 +157,18 @@ func validate_automation_node_config(node_type string, config map[string]interfa
 }
 
 // Freeze referenced dependencies too, so retries never silently call a newer child.
-func (s *AutomationService) snapshot_flow_dependencies(definition *engine.FlowDefinition, depth int) error {
+func (s *AutomationService) snapshot_flow_dependencies(definition *engine.FlowDefinition, depth int, inherited ...map[string]engine.FlowDefinition) error {
 	if depth > 16 {
 		return fmt.Errorf("子流程引用循环或超过 16 层")
+	}
+	local := map[string]engine.FlowDefinition{}
+	if len(inherited) > 0 {
+		for id, child := range inherited[0] {
+			local[id] = child
+		}
+	}
+	for id, child := range definition.Subflows {
+		local[id] = child
 	}
 	for id, node := range definition.Nodes {
 		if node.Type != "WorkflowNode" && node.Type != "LoopNode" {
@@ -168,12 +177,16 @@ func (s *AutomationService) snapshot_flow_dependencies(definition *engine.FlowDe
 		var child engine.FlowDefinition
 		referenced := false
 		if flow_id, _ := node.Config["flow_id"].(string); flow_id != "" {
-			value, ok := s.flow_engine.GetFlowDefinition(flow_id)
+			value, ok := local[flow_id]
+			is_local := ok
+			if !ok {
+				value, ok = s.flow_engine.GetFlowDefinition(flow_id)
+			}
 			if !ok {
 				return fmt.Errorf("子流程不存在: %s", flow_id)
 			}
 			child = value
-			referenced = true
+			referenced = !is_local
 		} else {
 			raw, err := json.Marshal(node.Config["workflow"])
 			if err != nil {
@@ -183,7 +196,7 @@ func (s *AutomationService) snapshot_flow_dependencies(definition *engine.FlowDe
 				return err
 			}
 		}
-		if err := normalize_user_flow_definition(&child); err != nil {
+		if err := normalize_user_flow_definition(&child, s.custom_nodes); err != nil {
 			return err
 		}
 		if referenced && strings.HasPrefix(child.ID, user_flow_id_prefix) {
@@ -196,7 +209,7 @@ func (s *AutomationService) snapshot_flow_dependencies(definition *engine.FlowDe
 				return fmt.Errorf("子流程内暂不支持人工等待")
 			}
 		}
-		if err := s.snapshot_flow_dependencies(&child, depth+1); err != nil {
+		if err := s.snapshot_flow_dependencies(&child, depth+1, local); err != nil {
 			return err
 		}
 		delete(node.Config, "flow_id")

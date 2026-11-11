@@ -137,3 +137,50 @@ func TestAutomationMigrationsRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+func TestSubflowStateMigrationPreservesRunHistory(t *testing.T) {
+	sql_db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sql_db.Close()
+	sql_db.SetMaxOpenConns(1)
+	driver, err := sqlite3.WithInstance(sql_db, &sqlite3.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := iofs.New(Migrations, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	migrator, err := migrate.NewWithInstance("iofs", source, "sqlite3", driver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer migrator.Close()
+	if err := migrator.Migrate(3); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sql_db.Exec(`INSERT INTO flow_run_record (id, flow_id, status, node_logs) VALUES ('existing', 'flow', 'COMPLETED', '[{"node_id":"first"}]')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrator.Up(); err != nil {
+		t.Fatal(err)
+	}
+	var states, logs, status string
+	if err := sql_db.QueryRow(`SELECT node_states, node_logs, status FROM flow_run_record WHERE id = 'existing'`).Scan(&states, &logs, &status); err != nil {
+		t.Fatal(err)
+	}
+	if states != "{}" || logs != `[{"node_id":"first"}]` || status != "COMPLETED" {
+		t.Fatalf("upgrade changed history: states=%s logs=%s status=%s", states, logs, status)
+	}
+	if err := migrator.Migrate(3); err != nil {
+		t.Fatal(err)
+	}
+	if err := sql_db.QueryRow(`SELECT node_logs, status FROM flow_run_record WHERE id = 'existing'`).Scan(&logs, &status); err != nil {
+		t.Fatal(err)
+	}
+	if logs != `[{"node_id":"first"}]` || status != "COMPLETED" {
+		t.Fatal("rollback changed run history")
+	}
+}

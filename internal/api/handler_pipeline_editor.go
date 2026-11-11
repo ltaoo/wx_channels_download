@@ -175,7 +175,7 @@ func (c *APIClient) handle_get_pipeline_editor(ctx *gin.Context) {
 		result.Err(ctx, api_code_invalid_params, err.Error())
 		return
 	}
-	result.Ok(ctx, gin.H{"editor_id": editor_id, "snapshot": snapshot, "catalog": services.SortedUserFlowNodeCatalog()})
+	result.Ok(ctx, gin.H{"editor_id": editor_id, "snapshot": snapshot, "catalog": c.service_automation.NodeCatalog()})
 }
 func (c *APIClient) handle_update_pipeline_editor(ctx *gin.Context) {
 	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, 1024*1024)
@@ -188,7 +188,7 @@ func (c *APIClient) handle_update_pipeline_editor(ctx *gin.Context) {
 		result.Err(ctx, api_code_invalid_params, "必须提供 editor_id、读取到的 revision 和完整 draft")
 		return
 	}
-	if err := services.ValidatePipelineEditorDraft(&body.Draft); err != nil {
+	if err := c.service_automation.ValidateEditorDraft(&body.Draft); err != nil {
 		result.Err(ctx, api_code_invalid_params, err.Error())
 		return
 	}

@@ -9,13 +9,15 @@ type UserFlow struct {
 	Description string `gorm:"type:text" json:"description"`
 	// TriggerType and EventKey retain the legacy single-trigger configuration.
 	// The start-node editor stores multiple rules in FlowSchedule and clears
-	// these legacy fields on save. Manual execution is always available.
+	// these legacy fields on save. Manual execution is independent of these rules.
 	TriggerType string `gorm:"column:trigger_type;not null;default:Cron" json:"trigger_type"`
 	EventKey    string `gorm:"column:event_key" json:"event_key"`
 	// Definition is the serialized engine.FlowDefinition (nodes, edges,
 	// context schema).
 	Definition  string `gorm:"column:definition;type:text" json:"definition"`
 	NodeConfigs string `gorm:"column:node_configs;type:text;not null;default:'{}'" json:"node_configs"`
+	// ActiveRunID is computed from run records, never stored on the flow.
+	ActiveRunID string `gorm:"->;-:migration" json:"active_run_id"`
 	Timestamps
 }
 
