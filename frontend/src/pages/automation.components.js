@@ -632,7 +632,7 @@ function AutomationSubflowGroup({ group, store: vm$, inspectable = false, editab
       attributes: { n: `automation-subflow-edges-${group.id}`, "aria-hidden": "true" },
     }, group.nodes.flatMap((node) => node.next_ids.filter((id) => positions[id]).map((id) => SVG.Path({
       d: automation_edge_path({ from: node.id, to: id }, positions), stroke: "currentColor", "stroke-width": "2", fill: "none",
-      attributes: { n: `automation-subflow-edge-${group.id}-${node.id}-${id}` },
+      attributes: { n: `automation-subflow-edge-${group.id}-${node.id}-${id}`, "data-flow-edge": JSON.stringify({ from: node.id, to: id }) },
     })))),
     ...group.nodes.filter((node) => !group.groups.some((child) => child.owner_id === node.id)).map((node) => {
       const status_ = computed(vm$.state.node_execution_states, (states) => states[node.execution_key]?.status || "PENDING");
@@ -1067,13 +1067,22 @@ export function AutomationFlowGraph(props) {
     event.stopPropagation();
     stop_active_pointer();
     const element = container ? event.currentTarget.parentElement : event.currentTarget;
+    const positions = Object.fromEntries(group.nodes.map((entry) => [entry.id, { left: entry.x, top: entry.y, width: entry.width, height: entry.height }]));
+    const edges = [...element.parentElement.querySelectorAll(":scope > svg > [data-flow-edge]")]
+      .map((path) => ({ path, edge: JSON.parse(path.getAttribute("data-flow-edge")) }))
+      .filter(({ edge }) => edge.from === node.id || edge.to === node.id);
+    function render_position(position) {
+      element.style.left = `${position.x}px`;
+      element.style.top = `${position.y}px`;
+      const displayed_positions = { ...positions, [node.id]: { ...positions[node.id], left: position.x, top: position.y } };
+      edges.forEach(({ path, edge }) => path.setAttribute("d", automation_edge_path(edge, displayed_positions)));
+    }
     const flow_node = new Timeless.vm.FlowNodeModel({ id: node.execution_key, position: { x: node.x, y: node.y } });
     flow_node.setCanvas$(flow$);
     flow_node.pointerDown(event.clientX, event.clientY);
     const handle_move = (move_event) => {
       flow_node.pointerMove(move_event.clientX, move_event.clientY);
-      element.style.left = `${flow_node.position.x}px`;
-      element.style.top = `${flow_node.position.y}px`;
+      render_position(flow_node.position);
     };
     const handle_up = (up_event) => {
       flow_node.pointerUp(up_event.clientX, up_event.clientY);
@@ -1083,8 +1092,7 @@ export function AutomationFlowGraph(props) {
     active_pointer_cleanup = () => {
       document.removeEventListener("mousemove", handle_move);
       document.removeEventListener("mouseup", handle_up);
-      element.style.left = `${node.x}px`;
-      element.style.top = `${node.y}px`;
+      render_position(node);
     };
     document.addEventListener("mousemove", handle_move);
     document.addEventListener("mouseup", handle_up);

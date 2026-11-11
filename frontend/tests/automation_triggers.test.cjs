@@ -1420,13 +1420,14 @@ test("dragging expanded graph nodes saves their movement without including autom
   model.methods.destroy();
 });
 
-test("dragging a subflow node updates its container only on release and persists both positions", async () => {
+test("subflow edges follow dragging live while container bounds update only on release", async () => {
   const { context, model, flow, calls } = setup();
   flow.definition = JSON.stringify({ start_node: "call", nodes: {
     call: { type: "WorkflowNode", position: { x: 200, y: 100 }, config: { workflow: {
       start_node: "a", nodes: {
         a: { type: "WaitNode", position: { x: 0, y: 0 }, next_node_ids: ["b"] },
-        b: { type: "WaitNode", position: { x: 200, y: 100 } },
+        b: { type: "WaitNode", position: { x: 200, y: 100 }, next_node_ids: ["c"] },
+        c: { type: "WaitNode", position: { x: 400, y: 200 }, next_node_ids: ["a"] },
       },
     } } },
   } });
@@ -1446,7 +1447,14 @@ test("dragging a subflow node updates its container only on release and persists
   const graph = context.AutomationFlowGraph({ store: model, editable: true });
   const first = model.state.execution_layout.value.groups[0];
   canvas_model.setViewport({ x: 0, y: 0, zoom: 0.5 });
-  const element = { style: {} };
+  const edges = ["a-b", "c-a", "b-c"].map((ids) => {
+    const attributes = { ...find_view(graph, `automation-subflow-edge-call-${ids}`).state.attributes, d: "original" };
+    return { getAttribute(name) { return attributes[name]; }, setAttribute(name, value) { attributes[name] = value; } };
+  });
+  const element = { style: {}, parentElement: { querySelectorAll(selector) {
+    assert.equal(selector, ":scope > svg > [data-flow-edge]", "only edges in the same subflow are queried");
+    return edges;
+  } } };
   const event = { button: 0, clientX: 150, clientY: 150, currentTarget: element, preventDefault() {}, stopPropagation() {} };
   const card = find_view(graph, "automation-subflow-node-call-a");
   assert.equal(card.state.attributes.tabindex, "0");
@@ -1454,10 +1462,18 @@ test("dragging a subflow node updates its container only on release and persists
   listeners.get("mousemove")({ clientX: 100, clientY: 110 });
   assert.equal(element.style.left, "-76px");
   assert.equal(element.style.top, "-32px");
-  assert.equal(model.state.execution_layout.value.groups[0].width, first.width);
+  assert.match(edges[0].getAttribute("d"), /^M 104 20 C /, "outgoing edges follow the moved source");
+  assert.match(edges[1].getAttribute("d"), /, -76 20$/, "incoming edges follow the moved target");
+  assert.equal(edges[2].getAttribute("d"), "original", "unconnected edges remain untouched");
+  for (const key of ["x", "y", "width", "height"]) assert.equal(model.state.execution_layout.value.groups[0][key], first[key]);
   assert.equal(model.state.dirty.value, false);
+  listeners.get("mousemove")({ clientX: 125, clientY: 130 });
+  assert.match(edges[0].getAttribute("d"), /^M 154 60 C /);
+  assert.match(edges[1].getAttribute("d"), /, -26 60$/);
+  listeners.get("mousemove")({ clientX: 100, clientY: 110 });
   listeners.get("mouseup")({ clientX: 100, clientY: 110 });
   assert.equal(listeners.size, 0);
+  assert.match(edges[0].getAttribute("d"), /^M 204 100 C /, "transient paths are restored on cleanup");
   const moved = model.state.execution_layout.value.groups[0];
   assert.equal(moved.x, first.x - 100);
   assert.equal(moved.y, first.y - 80);
@@ -1514,7 +1530,7 @@ test("moving nested and reusable subflow nodes preserves declarations and ancest
   };
   const heading = find_view(graph, `automation-subflow-heading-${nested.id}`);
   heading.events.onMouseDown({ button: 0, clientX: 0, clientY: 0,
-    currentTarget: { parentElement: { style: {} } }, preventDefault() {}, stopPropagation() {},
+    currentTarget: { parentElement: { style: {}, parentElement: { querySelectorAll: () => [] } } }, preventDefault() {}, stopPropagation() {},
   });
   listeners.get("mousemove")({ clientX: 30, clientY: 20 });
   listeners.get("mouseup")({ clientX: 30, clientY: 20 });
