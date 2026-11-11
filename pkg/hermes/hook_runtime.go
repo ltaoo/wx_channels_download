@@ -95,7 +95,15 @@ func new_hook_runtime(logger zerolog.Logger) (*hook_runtime, error) {
 }
 
 func (runtime *hook_runtime) run(callback func() (goja.Value, error)) (result goja.Value, err error) {
-	request_ctx, cancel := context.WithTimeout(context.Background(), runtime.timeout)
+	return runtime.run_context(context.Background(), callback)
+}
+
+func (runtime *hook_runtime) run_context(parent context.Context, callback func() (goja.Value, error)) (result goja.Value, err error) {
+	request_ctx, cancel := context.WithTimeout(parent, runtime.timeout)
+	if err := request_ctx.Err(); err != nil {
+		cancel()
+		return nil, err
+	}
 	runtime.request_ctx = request_ctx
 	runtime.pending_io = 0
 	completed := false
@@ -126,22 +134,22 @@ func (runtime *hook_runtime) run(callback func() (goja.Value, error)) (result go
 			}
 		}
 	}
-	done := make(chan struct{})
-	deadline_timer := time.AfterFunc(runtime.timeout, func() {
-		runtime.loop.RunOnLoop(func(*goja.Runtime) {
-			select {
-			case <-done:
-				return
-			default:
-			}
-			err = fmt.Errorf("hook timed out after %s", runtime.timeout)
-			runtime.loop.StopNoWait()
-		})
-	})
+	watchdog_done := make(chan struct{})
+	watchdog_stop := make(chan struct{})
+	go func() {
+		defer close(watchdog_done)
+		select {
+		case <-request_ctx.Done():
+			runtime.vm.Interrupt(request_ctx.Err())
+			runtime.loop.RunOnLoop(func(*goja.Runtime) { runtime.loop.StopNoWait() })
+		case <-watchdog_stop:
+		}
+	}()
 	defer func() {
-		close(done)
-		deadline_timer.Stop()
+		close(watchdog_stop)
+		<-watchdog_done
 		cancel()
+		runtime.vm.ClearInterrupt()
 		for _, stream := range runtime.streams {
 			_ = stream.Close()
 		}
@@ -185,6 +193,12 @@ func (runtime *hook_runtime) run(callback func() (goja.Value, error)) (result go
 		completed = true
 		runtime.stop_if_idle(nil)
 	})
+	if request_ctx.Err() != nil {
+		if request_ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("script timed out: %w", request_ctx.Err())
+		}
+		return nil, fmt.Errorf("script execution stopped: %w", request_ctx.Err())
+	}
 	if err == nil {
 		for promise := range rejections {
 			err = hook_rejection_error(promise.Result())
