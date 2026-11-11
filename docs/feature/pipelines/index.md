@@ -5,6 +5,8 @@ description: 创作者视频同步、直播录制和新视频通知的配置说�
 
 # 自动化流程示例
 
+[下载完成后上传七牛云并通知 Webhook](./download-finished-qiniu-webhook.md)展示 JS 自定义节点的安装与下载 Hook 迁移方法。
+
 这三个 JSON 使用当前项目的流程定义格式，默认面向微信视频号。打开下方示例页面，点击 JSON 代码块右上角的复制按钮，即可在「自动化 → 导入 Pipeline」中粘贴导入。
 
 | 示例 | 功能 | 建议 Cron |
@@ -23,7 +25,7 @@ description: 创作者视频同步、直播录制和新视频通知的配置说�
 
 Cron 是描述定时执行规则的表达式，本项目使用 5 段格式：`分 时 日 月 星期`。`0 12,18 * * *` 表示每天的 12 点和 18 点，在第 0 分钟触发；逗号表示多个值，星号表示任意值。
 
-第一个流程将「获取创作者视频列表」封装为独立子流程，传入 `username`、`next_marker`、接口地址、请求方法和认证配置，返回 HTTP 接口响应。默认 GET 请求 `http://127.0.0.1:2022/api/channels/contact/feed/list`，可在流程的「配置」中填写 `url`、选择 `method` 和填写可选 `token`；method 留空使用 GET。username 和 next_marker 放在查询参数中，POST 等带请求体的方法还会发送同名 JSON 字段，GET/HEAD 不发送请求体。token 使用 secret 输入遮罩，通过 Bearer 认证发送，留空不发送认证头。列表可使用下载器的包装结构，也可直接返回 `BaseResponse/object` 原始结构；同时兼容驼峰和下划线命名的分页、视频字段。`next_marker` 为空表示从头获取，后续调用使用响应中的 `lastBuffer` 或 `last_buffer`；没有单独的「获取第一页」操作。
+第一个流程将「获取创作者视频列表」封装为独立子流程，传入 `username`、`next_marker`、接口地址、请求方法和认证配置，返回 HTTP 接口响应。默认 GET 请求 `http://127.0.0.1:2022/api/channels/contact/feed/list`，可在流程的「配置」中填写 `url`、选择 `method` 和填写可选 `token`；method 留空使用 GET。username 和 next_marker 放在查询参数中，POST 等带请求体的方法还会发送同名 JSON 字段，GET/HEAD 不发送请求体。token 使用 secret 输入遮罩，通过 Bearer 认证发送，留空不发送认证头。HTTP 列表直接返回 `BaseResponse/object` 原始结构，分页、视频字段使用下划线命名。`next_marker` 为空表示从头获取，后续调用使用响应中的 `last_buffer`；没有单独的「获取第一页」操作。
 
 主流程回连到同一个分页子流程调用节点实现 loop。每次调用使用独立作用域，并行执行「提交上一页筛选出的缺失视频下载任务」与「按当前 next_marker 调用获取列表子流程」。首次调用待下载列表为空；末页检查完成后，最后调用仅提交剩余下载任务，不再请求列表。两条分支完成并汇合后，主流程收集本页视频的 `wxchannels:<视频 ID>`，通过一次 `check_download_task_contents` 服务调用批量查询是否已有下载任务。整页检查完成后汇总结果，全部已存在则终止，否则保存缺失视频和下一页游标，再次调用同一个分页子流程。
 
