@@ -2363,6 +2363,18 @@ img.dm-lazy-img-image[data-lazy-img-state] {
   animation: dm-fade-out var(--dm-duration-fast) var(--dm-ease-standard) both;
 }
 
+.dm-dropdown-content.is-exiting {
+  animation-duration: 80ms;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dm-dropdown-content.is-entering,
+  .dm-dropdown-content.is-exiting {
+    animation-duration: 1ms;
+  }
+}
+
 .dm-dialog-content.is-entering {
   animation: dm-dialog-in var(--dm-duration-base) var(--dm-ease-emphasized)
     both;
