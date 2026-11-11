@@ -2,6 +2,7 @@ import { ErrorMessage } from "@/dmui.js";
 import {
   calculate_flow_minimap_geometry,
   calculate_pipeline_node_positions,
+  calculate_execution_layout,
 } from "./automation.model.js";
 
 export function automation_trigger_badge(props) {
@@ -16,7 +17,7 @@ export function automation_trigger_badge(props) {
     {
       variant: variants[normalized] || "default",
       class: "min-w-52px",
-      attributes: { n: `automation-trigger-${normalized}` },
+      attributes: { n: `automation-trigger-${normalized}`, title: props.title },
     },
     [props.label],
   );
@@ -24,13 +25,21 @@ export function automation_trigger_badge(props) {
 
 export function AutomationPipelineTriggerBadges(props) {
   const vm$ = props.store;
-  return View({ class: "flex flex-wrap items-center gap-1" }, [For({
+  return View({ class: "flex items-center gap-1 flex-wrap" }, [For({
     each: computed(vm$.state.schedules, () =>
       vm$.methods.pipelineTriggerTypes(props.pipeline).map((type) => ({ type }))),
     key: "type",
     render(value) {
       const item = value && value.value !== undefined ? value.value : value;
-      return automation_trigger_badge({ type: item.type, label: vm$.methods.triggerLabel(item.type) });
+      return automation_trigger_badge({
+        type: item.type,
+        label: vm$.methods.triggerLabel(item.type),
+        title: item.type === "Cron" ? computed(vm$.state.schedules, () =>
+          vm$.methods.pipelineTriggers(props.pipeline)
+            .filter((trigger) => trigger.type === "Cron")
+            .map((trigger) => `${trigger.name || "定时触发"}：${trigger.cron_expr}（${trigger.enabled ? "已启用" : "已暂停"}）`)
+            .join("\n")) : undefined,
+      });
     },
   })]);
 }
@@ -57,34 +66,34 @@ export function automation_status_badge(value) {
 
 export function AutomationStartTriggers(props) {
   const vm$ = props.store;
-  return View({ class: "grid min-w-0 py-4 gap-3 border-t border-t-solid border-t-color-default", attributes: { n: "automation-start-triggers" } }, [
-    View({ class: "font-display text-base font-semibold text-color-text-primary" }, ["开始节点触发器"]),
-    View({ class: "mt-0.5 text-caption leading-base text-color-text-secondary" }, [
+  return View({ class: "grid gap-3 min-w-0 py-4 border-top-[1px_solid_var(--dm-color-border)]", attributes: { n: "automation-start-triggers" } }, [
+    View({ class: "text-color-text-primary font-display text-base font-semibold" }, ["开始节点触发器"]),
+    View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base" }, [
       "手动执行始终可用。可同时添加多个定时和事件触发器，保存 Pipeline 后生效。",
     ]),
-    View({ class: "flex min-w-0 flex-wrap items-center gap-2" }, [
+    View({ class: "flex flex-wrap items-center gap-2 min-w-0" }, [
       Button({ store: vm$.ui.btn_add_cron_trigger$, attributes: { n: "automation-add-cron-trigger", type: "button" } }, ["添加定时触发"]),
       Button({ store: vm$.ui.btn_add_event_trigger$, attributes: { n: "automation-add-event-trigger", type: "button" } }, ["添加事件触发"]),
       Button({ store: vm$.ui.btn_add_webhook_trigger$, attributes: { n: "automation-add-webhook-trigger", type: "button" } }, ["添加 Webhook"]),
     ]),
     Show({
       when: computed(vm$.state.edit_triggers, (triggers) => !triggers.length),
-      ok() { return View({ class: "mt-0.5 text-caption leading-base text-color-text-secondary" }, ["尚未配置定时或事件触发器，可通过开始节点上方的「手动执行」启动。"]); },
+      ok() { return View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base" }, ["尚未配置定时或事件触发器，可通过开始节点上方的「手动执行」启动。"]); },
     }),
     For({
       each: vm$.state.edit_triggers, key: "uid",
       render(value) {
         const trigger = value && value.value !== undefined ? value.value : value;
         const prefix = `automation-trigger-${trigger.uid}`;
-        const field = (label, store, name, textarea = false) => View({ class: "flex min-w-0 flex-col gap-1 form-field " }, [
-          View({ as: "label", class: "text-xs font-semibold text-color-text-secondary", attributes: { for: `${prefix}-${name}` } }, [label]),
+        const field = (label, store, name, textarea = false) => View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
+          View({ as: "label", class: "text-color-text-secondary text-xs font-semibold", attributes: { for: `${prefix}-${name}` } }, [label]),
           (textarea ? Textarea : Input)({ store, attributes: {
             id: `${prefix}-${name}`, n: `${prefix}-${name}`, "aria-label": label,
             ...(textarea ? { rows: "4", spellcheck: "false" } : {}),
           } }),
         ]);
-        return View({ class: "grid min-w-0 pt-3 gap-3 border-t border-t-solid border-t-color-default", attributes: { n: prefix } }, [
-          View({ class: "flex min-w-0 flex-wrap items-center justify-between gap-2" }, [
+        return View({ class: "grid gap-3 min-w-0 border-top-[1px_solid_var(--dm-color-border)] pt-3", attributes: { n: prefix } }, [
+          View({ class: "flex flex-wrap items-center gap-2 min-w-0 justify-between" }, [
             automation_trigger_badge({ type: trigger.type, label: vm$.methods.triggerLabel(trigger.type) }),
             Button({ store: vm$.ui.btn_remove_trigger$.bind(trigger), attributes: {
               n: `${prefix}-remove`, type: "button", "aria-label": `移除${vm$.methods.triggerLabel(trigger.type)}触发器`,
@@ -92,19 +101,19 @@ export function AutomationStartTriggers(props) {
           ]),
           field("触发器名称", trigger.input_name$, "name"),
           trigger.type === "Cron" ? field("Cron 表达式", trigger.input_cron$, "cron") : null,
-          trigger.type === "Cron" ? View({ class: "flex min-w-0 flex-wrap items-center gap-2" }, [
+          trigger.type === "Cron" ? View({ class: "flex flex-wrap items-center gap-2 min-w-0" }, [
             Checkbox({ store: trigger.checkbox_enabled$, attributes: { id: `${prefix}-enabled`, n: `${prefix}-enabled`, "aria-label": "启用定时触发" } }),
-            View({ as: "label", class: "text-xs font-semibold text-color-text-secondary", attributes: { for: `${prefix}-enabled` } }, ["启用定时触发"]),
+            View({ as: "label", class: "text-color-text-secondary text-xs font-semibold", attributes: { for: `${prefix}-enabled` } }, ["启用定时触发"]),
           ]) : null,
           trigger.type === "Event" ? field("事件 Key", trigger.input_event_key$, "event-key") : null,
           trigger.type !== "Cron" ? View({ class: "flex items-center gap-2" }, [
             Checkbox({ store: trigger.checkbox_active$, attributes: { id: `${prefix}-active`, "aria-label": "启用触发器" } }),
-            View({ as: "label", attributes: { for: `${prefix}-active` }, class: "text-xs text-color-text-secondary" }, ["启用触发器"]),
+            View({ as: "label", attributes: { for: `${prefix}-active` }, class: "text-color-text-secondary text-xs" }, ["启用触发器"]),
           ]) : null,
           field("整体超时（秒，包含人工等待）", trigger.input_timeout$, "timeout"),
-          trigger.type === "Webhook" ? View({ class: "min-w-0 text-caption word-break-break-all text-color-text-secondary" }, [trigger.id ? `POST /api/v1/automation/webhook/${trigger.id}；Authorization: Bearer ${trigger.webhook_token || "保存后生成"}` : "保存后生成 Webhook 地址与令牌。事件载荷从 input.event.data 读取，需在流程参数中声明 event。"]): null,
+          trigger.type === "Webhook" ? View({ class: "min-w-0 text-color-text-secondary text-caption word-break-break-all" }, [trigger.id ? `POST /api/v1/automation/webhook/${trigger.id}；Authorization: Bearer ${trigger.webhook_token || "保存后生成"}` : "保存后生成 Webhook 地址与令牌。事件载荷从 input.event.data 读取，需在流程参数中声明 event。"]): null,
           field("输入参数 JSON", trigger.input_data$, "data", true),
-          View({ class: "mt-0.5 text-caption leading-base text-color-text-secondary" }, ["输入参数作为开始节点的 input；所有触发器共用后续流程。"]),
+          View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base" }, ["输入参数作为开始节点的 input；所有触发器共用后续流程。"]),
         ].filter(Boolean));
       },
     }),
@@ -115,14 +124,14 @@ export function AutomationTriggerSummary(props) {
   const vm$ = props.store;
   const triggers = combine({ flow: vm$.state.selected_pipeline, schedules: vm$.state.schedules },
     ({ flow }) => vm$.methods.pipelineTriggers(flow));
-  return View({ class: "grid min-w-0 py-4 gap-3 border-t border-t-solid border-t-color-default", attributes: { n: "automation-trigger-summary" } }, [
-    View({ class: "text-base font-semibold text-color-text-primary" }, ["开始节点触发器"]),
-    View({ class: "mt-0.5 text-caption leading-base text-color-text-secondary" }, ["手动执行始终可用。选择「编辑 Pipeline」，在开始节点中管理触发器。"]),
+  return View({ class: "grid gap-3 min-w-0 py-4 border-top-[1px_solid_var(--dm-color-border)]", attributes: { n: "automation-trigger-summary" } }, [
+    View({ class: "text-color-text-primary text-base font-semibold" }, ["开始节点触发器"]),
+    View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base" }, ["手动执行始终可用。选择「编辑 Pipeline」，在开始节点中管理触发器。"]),
     For({ each: triggers, render(value) {
       const trigger = value && value.value !== undefined ? value.value : value;
-      return View({ class: "grid min-w-0 pt-3 gap-3 border-t border-t-solid border-t-color-default" }, [
-        View({ class: "flex min-w-0 flex-wrap items-center justify-between gap-2" }, [
-          View({ class: "flex min-w-0 flex-wrap items-center gap-2" }, [
+      return View({ class: "grid gap-3 min-w-0 border-top-[1px_solid_var(--dm-color-border)] pt-3" }, [
+        View({ class: "flex flex-wrap items-center gap-2 min-w-0 justify-between" }, [
+          View({ class: "flex flex-wrap items-center gap-2 min-w-0" }, [
             automation_trigger_badge({ type: trigger.type, label: vm$.methods.triggerLabel(trigger.type) }),
             View({ attributes: { title: trigger.name } }, [trigger.name]),
           ]),
@@ -131,10 +140,10 @@ export function AutomationTriggerSummary(props) {
             attributes: { type: "button", n: `automation-trigger-event-${trigger.id}` },
           }, [trigger.type === "Event" ? "触发事件" : "手动执行"]) : null,
         ].filter(Boolean)),
-        View({ class: "overflow-visible font-mono text-sm whitespace-pre-wrap word-break-break-all text-overflow-initial code-label" }, [
+        View({ class: "group-automation-code font-mono text-sm overflow-visible text-overflow-initial whitespace-pre-wrap word-break-break-all" }, [
           trigger.type === "Cron" ? trigger.cron_expr : trigger.event_key || "手动执行",
         ]),
-        trigger.type === "Cron" ? View({ class: "mt-0.5 text-caption leading-base text-color-text-secondary" }, [
+        trigger.type === "Cron" ? View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base" }, [
           trigger.enabled ? `已启用 · 下次 ${vm$.methods.formatTime(trigger.next_run_at)}` : "已暂停",
         ]) : null,
       ].filter(Boolean));
@@ -153,9 +162,9 @@ export function AutomationEmptyState(props = {}) {
   return View(
     {
       class: [
-        "dm-empty-state",
+        "dm-empty-state [&_.group-content-state-title]:text-base [&_.group-content-state-text]:text-sm",
         props.compact ? "min-h-168px p-5" : "",
-        props.detail ? "min-h-fluid-state" : "",
+        props.detail ? "min-h-[clamp(280px,_48vh,_520px)]" : "",
       ]
         .filter(Boolean)
         .join(" "),
@@ -166,9 +175,9 @@ export function AutomationEmptyState(props = {}) {
       },
     },
     [
-      View({ class: "text-base font-semibold text-content-text state-title" }, [props.title]),
+      View({ class: "group-content-state-title text-content-text text-lg font-semibold" }, [props.title]),
       props.description
-        ? View({ class: "max-w-480px text-sm leading-relaxed state-description" }, [props.description])
+        ? View({ class: "group-content-state-text max-w-480px text-md leading-relaxed" }, [props.description])
         : null,
     ].filter(Boolean),
   );
@@ -185,7 +194,7 @@ export function AutomationPipelineLink(props) {
   return Link(
     {
       class: [
-        "text-decoration-none dm-button dm-focus-ring dm-button--sm",
+        "dm-button dm-focus-ring dm-button--sm text-decoration-none",
         props.primary ? "dm-button--primary" : "dm-button--outline",
       ].join(" "),
       href: automation_pipeline_href(props.flowId, mode),
@@ -251,16 +260,16 @@ export function AutomationWorkspaceToolbar(props) {
   const is_edit = props.mode === "edit";
   return View({
     class: is_edit
-      ? "flex fixed top-4 left-4 z-sticky max-w-screen-inset flex-col items-start gap-2"
-      : "flex min-w-0 max-760:flex-wrap max-900:flex-col items-center justify-between max-900:items-stretch gap-3 group-content-toolbar",
+      ? "fixed top-4 left-4 z-sticky flex flex-col items-start gap-2 max-w-[calc(100vw_-_32px)]"
+      : "group-content-toolbar flex items-center justify-between gap-3 max-760:flex-wrap min-w-0 max-900:items-stretch max-900:flex-col",
     attributes: { n: "automation-workspace-toolbar" },
   }, [
-    !is_edit ? View({ class: "flex min-w-0 items-center gap-2", attributes: { n: "automation-workspace-heading" } }, [
+    !is_edit ? View({ class: "min-w-0 flex items-center gap-2", attributes: { n: "automation-workspace-heading" } }, [
       View({ class: "min-w-0", attributes: { n: "automation-workspace-title" } }, [
-        View({ class: "text-caption font-semibold text-transform-uppercase text-color-text-secondary", attributes: { n: "automation-workspace-mode" } }, [
+        View({ class: "text-color-text-secondary text-caption font-semibold text-transform-uppercase", attributes: { n: "automation-workspace-mode" } }, [
           "Pipeline 详情",
         ]),
-        View({ class: "overflow-hidden font-display text-lg font-semibold whitespace-nowrap text-ellipsis text-color-text-primary", attributes: { n: "automation-workspace-name" } }, [
+        View({ class: "overflow-hidden text-color-text-primary font-display text-lg font-semibold text-ellipsis whitespace-nowrap", attributes: { n: "automation-workspace-name" } }, [
           computed(vm$.state.selected_pipeline, (flow) =>
             flow ? flow.name || flow.id : vm$.state.selected_flow_id.value,
           ),
@@ -268,7 +277,7 @@ export function AutomationWorkspaceToolbar(props) {
       ]),
     ]) : null,
     View(
-      { class: is_edit ? "flex min-w-0 flex-wrap items-center justify-start gap-2" : "flex min-w-0 flex-wrap items-center justify-end gap-2", attributes: { n: "automation-workspace-actions" } },
+      { class: is_edit ? "min-w-0 flex items-center gap-2 flex-wrap justify-start" : "min-w-0 flex items-center gap-2 flex-wrap justify-end", attributes: { n: "automation-workspace-actions" } },
       [
         !is_edit ? Button(
           {
@@ -278,7 +287,7 @@ export function AutomationWorkspaceToolbar(props) {
           ["手动执行"],
         ) : null,
         is_edit
-          ? View({ class: "flex min-w-0 items-center gap-2", attributes: { n: "automation-save-controls" } }, [
+          ? View({ class: "min-w-0 flex items-center gap-2", attributes: { n: "automation-save-controls" } }, [
             Input({
               store: vm$.ui.input_edit_name$,
               attributes: { n: "automation-pipeline-name", "aria-label": "Pipeline 标题" },
@@ -296,8 +305,8 @@ export function AutomationWorkspaceToolbar(props) {
                 variant: "warning",
                 class: computed(vm$.state.dirty, (dirty) =>
                   dirty
-                    ? "status-badge-success "
-                    : "status-badge-success is-clean",
+                    ? "[&.is-clean]:text-color-success [&.is-clean]:bg-color-success-soft [&.is-clean]:border-color-[color-mix(in_srgb,_var(--dm-color-success)_34%,_transparent)]"
+                    : "[&.is-clean]:text-color-success [&.is-clean]:bg-color-success-soft [&.is-clean]:border-color-[color-mix(in_srgb,_var(--dm-color-success)_34%,_transparent)] is-clean",
                 ),
               },
               [
@@ -325,7 +334,7 @@ export function automation_execution_status_class(status) {
     .replaceAll("_", "-");
 }
 
-function automation_edit_layout(nodes, position_overrides) {
+function automation_edit_layout(nodes, position_overrides, groups = []) {
   const by_id = {};
   (nodes || []).forEach((node) => {
     by_id[node.id] = node;
@@ -342,24 +351,24 @@ function automation_edit_layout(nodes, position_overrides) {
       top: Number(position.top) || 0,
     };
   });
-  const width = Object.values(positions).reduce(
+  const width = Math.max(...groups.map((group) => group.x + group.width + 24), Object.values(positions).reduce(
     (max, position) => Math.max(max, position.left + 270),
     350,
-  );
-  const max_bottom = Object.values(positions).reduce(
+  ));
+  const max_bottom = Math.max(...groups.map((group) => group.y + group.height), Object.values(positions).reduce(
     (max, position) => Math.max(max, position.top + 110),
     160,
-  );
+  ));
   // 节点可以拖到画布原点左上（负坐标），画布原点仍是 0,0，
   // 这里只把负向边界一起返回，供缩略图/世界范围使用
-  const min_left = Object.values(positions).reduce(
+  const min_left = Math.min(...groups.map((group) => group.x), Object.values(positions).reduce(
     (min, position) => Math.min(min, position.left),
     0,
-  );
-  const min_top = Object.values(positions).reduce(
+  ));
+  const min_top = Math.min(...groups.map((group) => group.y), Object.values(positions).reduce(
     (min, position) => Math.min(min, position.top),
     0,
-  );
+  ));
   return {
     positions,
     width,
@@ -506,7 +515,7 @@ function automation_edge_path(edge, positions) {
   const from = positions[edge.from];
   const to = positions[edge.to];
   if (!from || !to) return "";
-  const x1 = from.left + 180;
+  const x1 = from.left + (from.width || 180);
   // 第 index 条出边对齐到第 index 个连接圆点（绿点是「新增」，排在所有出边之后）
   const y1 =
     from.top +
@@ -519,9 +528,8 @@ function automation_edge_path(edge, positions) {
 }
 
 // 条件分支出边的分支标签：按 edge id 给出「是 / 否 / case 值」和标签要贴的曲线中点
-function automation_edge_labels(nodes, position_overrides) {
+function automation_edge_labels(nodes, position_overrides, layout = automation_edit_layout(nodes, position_overrides)) {
   const labels = {};
-  const layout = automation_edit_layout(nodes, position_overrides);
   automation_edit_edges(nodes).forEach((edge) => {
     const source = (nodes || []).find((item) => item.id === edge.from);
     const branch = automation_gateway_branch(source, edge.to);
@@ -529,7 +537,7 @@ function automation_edge_labels(nodes, position_overrides) {
     const from = layout.positions[edge.from];
     const to = layout.positions[edge.to];
     if (!from || !to) return;
-    const x1 = from.left + 180;
+    const x1 = from.left + (from.width || 180);
     const y1 =
       from.top +
       automation_flow_connector_anchor +
@@ -545,9 +553,8 @@ function automation_edge_labels(nodes, position_overrides) {
   return labels;
 }
 
-function automation_refresh_flow_canvas(canvas, nodes, position_overrides) {
+function automation_refresh_flow_canvas(canvas, nodes, position_overrides, layout = automation_edit_layout(nodes, position_overrides)) {
   if (!canvas) return;
-  const layout = automation_edit_layout(nodes, position_overrides);
   canvas.style.width = `${layout.width}px`;
   canvas.style.height = `${layout.height}px`;
   canvas.querySelectorAll(".group-automation-flow-edge").forEach((path) => {
@@ -559,7 +566,7 @@ function automation_refresh_flow_canvas(canvas, nodes, position_overrides) {
     path.setAttribute("d", automation_edge_path(edge, layout.positions));
   });
   // 拖动节点时 edit_nodes 还没提交，标签位置得跟连线一样手动刷新，否则会滞后到松手才跳
-  const labels = automation_edge_labels(nodes, position_overrides);
+  const labels = automation_edge_labels(nodes, position_overrides, layout);
   canvas.querySelectorAll(".group-automation-flow-edge-label").forEach((element) => {
     const label = labels[element.getAttribute("data-flow-edge")];
     if (!label) return;
@@ -577,9 +584,80 @@ const automation_flow_minimap_size = {
   padding: 8,
 };
 
+function AutomationSubflowGroup({ group, store: vm$, inspectable = false, selected, onSelect, onDrag }) {
+  const positions = Object.fromEntries(group.nodes.map((node) => [node.id, { left: node.x, top: node.y, width: node.width, height: node.height }]));
+  return View({
+    class: "absolute box-sizing-border-box rounded-content border-[var(--dm-border-width)_solid_var(--dm-color-info-border)]",
+    style: {
+      left: `${group.x}px`, top: `${group.y}px`, width: `${group.width}px`, height: `${group.height}px`,
+      "background-color": group.depth % 2 ? "var(--dm-color-primary-soft)" : "var(--dm-color-info-soft)",
+      "border-color": selected ? computed(selected, (value) => value ? "var(--dm-color-selection-border)" : "var(--dm-color-info-border)") : undefined,
+      "box-shadow": selected ? computed(selected, (value) => value ? "var(--dm-shadow-selection)" : "none") : undefined,
+    },
+    attributes: { n: `automation-subflow-group-${group.id}`, role: "group", "aria-label": `子流程：${group.name}` },
+  }, [
+    View({
+      class: "absolute top-3 left-3 right-3 flex items-center gap-2 min-w-0 text-sm text-color-info font-semibold",
+      style: { width: `${group.width - 24}px`, cursor: onDrag ? "grab" : inspectable ? "pointer" : undefined },
+      attributes: {
+        n: `automation-subflow-heading-${group.id}`, title: group.name,
+        role: inspectable || onSelect ? "button" : undefined, tabindex: inspectable || onSelect ? "0" : undefined,
+        "aria-label": onSelect ? `编辑子流程调用：${group.name}` : inspectable ? `查看子流程调用日志：${group.name}` : undefined,
+        "aria-pressed": onSelect ? computed(selected, String) : undefined,
+      },
+      onMouseDown(event) { if (onDrag) onDrag(event); },
+      onClick(event) {
+        event.stopPropagation();
+        if (onSelect) onSelect();
+        else if (inspectable) vm$.methods.openNodeExecutionWindow(group.owner_key, { x: event.clientX, y: event.clientY });
+      },
+      onKeyDown(event) { if (onSelect || inspectable) automation_activate(event, () => onSelect ? onSelect() : vm$.methods.openNodeExecutionWindow(group.owner_key)); },
+    }, [
+      Timeless.Icon({ name: "git-fork", size: 16, attributes: { n: `automation-subflow-icon-${group.id}`, "aria-hidden": "true" } }),
+      View({ class: "overflow-hidden text-ellipsis whitespace-nowrap", attributes: { n: `automation-subflow-title-${group.id}` } }, [`子流程：${group.workflow_name}`]),
+    ]),
+    SVG.SVG({
+      class: "absolute inset-0 w-full h-full overflow-visible text-color-border-strong pointer-events-none",
+      attributes: { n: `automation-subflow-edges-${group.id}`, "aria-hidden": "true" },
+    }, group.nodes.flatMap((node) => node.next_ids.filter((id) => positions[id]).map((id) => SVG.Path({
+      d: automation_edge_path({ from: node.id, to: id }, positions), stroke: "currentColor", "stroke-width": "2", fill: "none",
+      attributes: { n: `automation-subflow-edge-${group.id}-${node.id}-${id}` },
+    })))),
+    ...group.nodes.filter((node) => !group.groups.some((child) => child.owner_id === node.id)).map((node) => {
+      const status_ = computed(vm$.state.node_execution_states, (states) => states[node.execution_key]?.status || "PENDING");
+      return View({
+      class: computed(status_, (status) => `dm-panel absolute box-sizing-border-box p-3 overflow-hidden text-color-text-primary ${inspectable ? "cursor-pointer" : ""} [&.is-running]:border-color-color-warning [&.is-retrying]:border-color-color-warning [&.is-completed]:border-color-color-success [&.is-failed]:border-color-color-danger-border is-${automation_execution_status_class(status)}`),
+      style: { left: `${node.x}px`, top: `${node.y}px`, width: "180px", height: "104px" },
+      attributes: { n: `automation-subflow-node-${group.id}-${node.id}`, title: node.name, role: inspectable ? "button" : undefined, tabindex: inspectable ? "0" : undefined },
+      onMouseDown(event) { if (inspectable) event.stopPropagation(); },
+      onClick(event) { if (inspectable) { event.stopPropagation(); vm$.methods.openNodeExecutionWindow(node.execution_key, { x: event.clientX, y: event.clientY }); } },
+      onKeyDown(event) { if (inspectable) automation_activate(event, () => vm$.methods.openNodeExecutionWindow(node.execution_key)); },
+    }, [
+      inspectable ? Show({ when: computed(status_, (status) => ["RUNNING", "RETRYING"].includes(status)), ok: () => SVG.SVG({
+        class: "dm-automation-running-border", attributes: { n: `automation-subflow-running-border-${group.id}-${node.id}`, "aria-hidden": "true" },
+      }, [SVG.Rect({ class: "dm-automation-running-border__track", attributes: { n: `automation-subflow-running-track-${group.id}-${node.id}` } })]) }) : null,
+      View({ class: "flex items-center gap-2 text-color-primary text-caption", attributes: { n: `automation-subflow-node-type-${group.id}-${node.id}` } }, [
+        Timeless.Icon({ name: vm$.methods.flowIcon(node.type), size: 16, attributes: { n: `automation-subflow-node-icon-${group.id}-${node.id}`, "aria-hidden": "true" } }),
+        vm$.methods.flowLabel(node.type),
+      ]),
+      View({ class: "mt-2 text-sm font-semibold overflow-hidden text-ellipsis whitespace-nowrap", attributes: { n: `automation-subflow-node-name-${group.id}-${node.id}` } }, [node.name]),
+      View({ class: "mt-1 text-caption text-color-text-secondary font-mono overflow-hidden text-ellipsis whitespace-nowrap", attributes: { n: `automation-subflow-node-id-${group.id}-${node.id}` } }, [node.id]),
+      inspectable ? View({
+        class: computed(status_, (status) => `absolute right-2 bottom-2 text-caption bg-color-bg-surface px-1 [&.is-running]:text-color-warning [&.is-retrying]:text-color-warning [&.is-completed]:text-color-success [&.is-failed]:text-color-danger is-${automation_execution_status_class(status)}`),
+        attributes: { n: `automation-subflow-status-${group.id}-${node.id}` },
+      }, [computed(status_, (status) => vm$.methods.nodeExecutionStatusLabel(status))]) : null,
+    ]);
+    }),
+    ...group.groups.map((nested) => AutomationSubflowGroup({ group: nested, store: vm$, inspectable })),
+  ]);
+}
+
 export function AutomationFlowGraph(props) {
   const vm$ = props.store;
   const editable = Boolean(props.editable);
+  const inspectable = Boolean(props.executionLogs);
+  const groups_ = computed(vm$.state.execution_layout, (layout) => layout.groups);
+  const graph_nodes_ = computed(vm$.state.edit_nodes, (nodes) => nodes.filter((node) => !vm$.state.subflow_groups.value.some((group) => group.owner_id === node.id)));
   const FlowPrimitive = Timeless.ui.FlowPrimitive;
   const flow$ = new Timeless.vm.FlowCanvasModel({
     nodes: [],
@@ -591,6 +669,9 @@ export function AutomationFlowGraph(props) {
     maxZoom: automation_flow_max_zoom,
   });
   const position_overrides = {};
+  function graph_layout(nodes = vm$.state.edit_nodes.value, overrides = position_overrides) {
+    return calculate_execution_layout(nodes, vm$.state.subflow_groups.value, overrides);
+  }
   const flow_node_models = new Map();
   const viewport_ = refobj({ ...flow$.viewport });
   const minimap_geometry_ = refobj(
@@ -607,7 +688,7 @@ export function AutomationFlowGraph(props) {
   // 条件分支出边上的分支标签（是 / 否 / case 值）：一次算好所有边再按 id 取，
   // 每条边各建一个 computed 的话订阅者太多，某个订阅者出错会静默吞掉后面的通知
   const flow_edge_labels_ = computed(vm$.state.edit_nodes, (nodes) =>
-    automation_edge_labels(nodes, position_overrides),
+    automation_edge_labels(nodes, position_overrides, graph_layout(nodes)),
   );
   let root_element = null;
   let canvas_element = null;
@@ -620,6 +701,7 @@ export function AutomationFlowGraph(props) {
       refresh_minimap(nodes);
     },
   });
+  const stop_subflow_sync = groups_.subscribe({ onChange() { refresh_minimap(); } });
   const stop_viewport_sync = flow$.onViewportChange((viewport) => {
     viewport_.as({ ...viewport });
     refresh_minimap();
@@ -633,7 +715,7 @@ export function AutomationFlowGraph(props) {
   }
 
   function refresh_minimap(nodes = vm$.state.edit_nodes.value) {
-    const layout = automation_edit_layout(nodes, position_overrides);
+    const layout = graph_layout(nodes, position_overrides);
     const size = viewport_size();
     const zoom = Math.max(automation_flow_min_zoom, flow$.viewport.zoom || 1);
     if (canvas_element) {
@@ -683,7 +765,7 @@ export function AutomationFlowGraph(props) {
       flow$.resetView();
       return;
     }
-    const layout = automation_edit_layout(nodes, position_overrides);
+    const layout = graph_layout(nodes, position_overrides);
     const bounds = Object.values(layout.positions).reduce(
       (result, position) => ({
         min_x: Math.min(result.min_x, position.left),
@@ -698,6 +780,12 @@ export function AutomationFlowGraph(props) {
         max_y: -Infinity,
       },
     );
+    groups_.value.forEach((group) => {
+      bounds.min_x = Math.min(bounds.min_x, group.x);
+      bounds.min_y = Math.min(bounds.min_y, group.y);
+      bounds.max_x = Math.max(bounds.max_x, group.x + group.width);
+      bounds.max_y = Math.max(bounds.max_y, group.y + group.height);
+    });
     const size = viewport_size();
     const padding = 48;
     const content_width = Math.max(1, bounds.max_x - bounds.min_x);
@@ -727,8 +815,8 @@ export function AutomationFlowGraph(props) {
         id: node.id,
         type: node.type,
         position: { x: position.left, y: position.top },
-        width: 180,
-        height: 104,
+        width: position.width,
+        height: position.height,
         data: node,
       });
       flow_node.setCanvas$(flow$);
@@ -737,6 +825,8 @@ export function AutomationFlowGraph(props) {
     } else {
       flow_node.type = node.type;
       flow_node.data = node;
+      flow_node.width = position.width;
+      flow_node.height = position.height;
       if (!position_overrides[node.id]) {
         flow_node.position = { x: position.left, y: position.top };
       }
@@ -752,7 +842,7 @@ export function AutomationFlowGraph(props) {
       delete position_overrides[node_id];
       flow$.removeNode(node_id);
     });
-    const layout = automation_edit_layout(nodes, position_overrides);
+    const layout = graph_layout(nodes, position_overrides);
     // 布局会随 edit_nodes 变化（插入节点把后面的整体右移），模型里的坐标要一起走，
     // 否则下次从该节点开始拖拽会以旧坐标起算，节点会跳回老位置
     Object.entries(layout.positions).forEach(([node_id, position]) => {
@@ -776,7 +866,7 @@ export function AutomationFlowGraph(props) {
       target &&
       typeof target.closest === "function" &&
       target.closest(
-        ".graph-node-shell-target, .group-automation-flow-controls, .group-automation-flow-minimap",
+        ".group-automation-flow-node-shell, .group-automation-flow-controls, .group-automation-flow-minimap",
       )
     ) {
       return;
@@ -875,9 +965,16 @@ export function AutomationFlowGraph(props) {
   function handle_canvas_wheel(event) {
     event.preventDefault();
     if (!root_element) return;
+    // 双指滑动平移画布；捏合手势（ctrlKey）保留缩放。
+    if (!event.ctrlKey) {
+      flow$.setViewport({
+        x: flow$.viewport.x - event.deltaX,
+        y: flow$.viewport.y - event.deltaY,
+      });
+      return;
+    }
     const rect = root_element.getBoundingClientRect();
-    const sensitivity = event.ctrlKey ? 0.01 : 0.001;
-    const factor = Math.max(0.5, 1 - event.deltaY * sensitivity);
+    const factor = Math.max(0.5, 1 - event.deltaY * 0.01);
     set_flow_zoom(flow$.viewport.zoom * factor, {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top,
@@ -893,11 +990,19 @@ export function AutomationFlowGraph(props) {
     vm$.methods.selectEditNode(node.id);
 
     const node_element = event.currentTarget;
-    const shell_element = node_element.closest(".graph-node-shell-target");
-    const canvas_element = node_element.closest(".graph-content");
+    const shell_element = node_element.closest(".group-automation-flow-node-shell");
+    const canvas_element = node_element.closest(".group-automation-flow-canvas");
     if (!shell_element || !canvas_element) return;
 
     stop_active_pointer();
+    const original_position = calculate_pipeline_node_positions(vm$.state.edit_nodes.value)[node.id];
+    const displayed_position = { ...flow_node.position };
+    function saved_position() {
+      return {
+        x: original_position.x + flow_node.position.x - displayed_position.x,
+        y: original_position.y + flow_node.position.y - displayed_position.y,
+      };
+    }
     flow_node.pointerDown(event.clientX, event.clientY);
     shell_element.classList.add("is-dragging");
     let has_moved = false;
@@ -912,16 +1017,14 @@ export function AutomationFlowGraph(props) {
       has_moved = true;
       flow_node.position = { x: position.left, y: position.top };
       position_overrides[node.id] = position;
-      vm$.methods.stageEditNodePosition(node.id, {
-        x: position.left,
-        y: position.top,
-      });
+      vm$.methods.stageEditNodePosition(node.id, saved_position());
       shell_element.style.left = `${position.left}px`;
       shell_element.style.top = `${position.top}px`;
       automation_refresh_flow_canvas(
         canvas_element,
         vm$.state.edit_nodes.value,
         position_overrides,
+        graph_layout(),
       );
       refresh_minimap();
     };
@@ -929,10 +1032,7 @@ export function AutomationFlowGraph(props) {
     const handle_up = (up_event) => {
       flow_node.pointerUp(up_event.clientX, up_event.clientY);
       if (has_moved) {
-        vm$.methods.moveEditNode(node.id, {
-          x: flow_node.position.x,
-          y: flow_node.position.y,
-        });
+        vm$.methods.moveEditNode(node.id, saved_position());
       }
       stop_active_pointer();
     };
@@ -951,7 +1051,7 @@ export function AutomationFlowGraph(props) {
       {
         as: "button",
         class:
-          "w-control-height-sm min-w-control-height-sm h-control-height-sm min-h-control-height-sm p-0 dm-button--surface dm-button dm-button--icon dm-focus-ring",
+          "dm-button dm-button--surface dm-button--icon dm-focus-ring w-control-height-sm min-w-control-height-sm h-control-height-sm min-h-control-height-sm p-0",
         attributes: {
           type: "button",
           title: options.label,
@@ -977,7 +1077,7 @@ export function AutomationFlowGraph(props) {
 
   function minimap_node_style(node) {
     return computed(minimap_geometry_, (geometry) => {
-      const layout = automation_edit_layout(
+      const layout = graph_layout(
         vm$.state.edit_nodes.value,
         position_overrides,
       );
@@ -1010,9 +1110,8 @@ export function AutomationFlowGraph(props) {
     {
       store: flow$,
       class: [
-        "relative min-h-320px p-0 overflow-hidden isolation-isolate dm-panel--soft dm-panel cursor-grab touch-action-none graph-surface graph-canvas ",
+        "dm-panel dm-panel--soft group-automation-flow-scroll relative min-h-320px p-0 overflow-hidden cursor-grab isolation-isolate touch-action-none [&.is-panning]:cursor-grabbing [&.is-panning_.group-automation-flow-canvas]:cursor-grabbing [&.is-editable_.group-automation-flow-node]:cursor-grab [&.is-editable_.group-automation-flow-node.is-start]:cursor-default [&.is-editable_.group-automation-flow-node:hover]:border-color-color-border-strong [&.is-editable_.group-automation-flow-node:active]:bg-color-bg-interactive [&.is-editable_.group-automation-flow-node-shell.is-dragging_.group-automation-flow-node]:cursor-grabbing [&.is-editable_.group-automation-flow-node-shell.is-dragging_.group-automation-flow-node]:border-color-color-selection-border [&.is-editable_.group-automation-flow-node-shell.is-dragging_.group-automation-flow-node]:shadow-selection [&.is-editable_.group-automation-flow-node.is-selected:hover]:bg-color-selection-surface-hover [&.is-editable_.group-automation-flow-node.is-selected:hover]:border-color-color-selection-border [&.is-editable_.group-automation-flow-node.is-selected:active]:bg-color-selection-surface-hover [&.is-editable_.group-automation-flow-node.is-selected:active]:border-color-color-selection-border",
         editable ? "is-editable" : "is-readonly",
-        props.class || "",
       ].join(" "),
       attributes: {
         n: "automation-flow",
@@ -1040,12 +1139,13 @@ export function AutomationFlowGraph(props) {
           root_element.removeEventListener("wheel", wheel_handler);
         }
         stop_edge_sync();
+        stop_subflow_sync();
         stop_viewport_sync();
       },
     },
     [
       FlowPrimitive.Background({
-        class: "absolute z-base inset-0 bg-color-canvas bg-image-flow-grid pointer-events-none",
+        class: "absolute z-base inset-0 [background-color:var(--dm-color-bg-canvas)] bg-image-[radial-gradient(_circle,_var(--dm-color-border-strong)_1px,_transparent_1px_)] pointer-events-none",
         style: computed(viewport_, (viewport) => {
           const zoom = Math.max(automation_flow_min_zoom, viewport.zoom || 1);
           const grid_size = automation_flow_grid_size * zoom;
@@ -1062,7 +1162,7 @@ export function AutomationFlowGraph(props) {
       FlowPrimitive.Canvas(
         {
           store: flow$,
-          class: "absolute z-raised top-0 left-0 box-sizing-border-box min-w-full min-h-full origin-top-left will-change-transform graph-content",
+          class: "group-automation-flow-canvas absolute z-raised top-0 left-0 min-w-full min-h-full box-sizing-border-box transform-origin-[0_0] will-change-transform",
           style: combine(
             {
               nodes: vm$.state.edit_nodes,
@@ -1098,7 +1198,7 @@ export function AutomationFlowGraph(props) {
               key: "id",
               render(edge) {
                 const path_ = computed(vm$.state.edit_nodes, (nodes) => {
-                  const layout = automation_edit_layout(
+                  const layout = graph_layout(
                     nodes,
                     position_overrides,
                   );
@@ -1114,7 +1214,7 @@ export function AutomationFlowGraph(props) {
                   },
                   [
                     SVG.Path({
-                      class: "stroke-currentcolor stroke-linecap-round vector-effect-non-scaling-stroke group-automation-flow-edge graph-edge ",
+                      class: "group-automation-flow-edge stroke-currentcolor stroke-linecap-round vector-effect-non-scaling-stroke [&.is-rule]:stroke-color-primary [&.is-rule]:stroke-dasharray-[5_4]",
                       d: path_,
                       stroke: "currentColor",
                       "stroke-width": "2",
@@ -1147,8 +1247,8 @@ export function AutomationFlowGraph(props) {
                   {
                     class: computed(label_, (label) =>
                       label
-                        ? `absolute max-w-160px py-0 px-1 overflow-hidden text-11px leading-16px whitespace-nowrap text-ellipsis border-default border-solid border-color-default rounded-full bg-color-bg-surface text-color-text-secondary translate-center group-automation-flow-edge-label graph-edge-label is-${label.kind}${label.is_js ? " is-js" : ""}`
-                        : "absolute max-w-160px py-0 px-1 overflow-hidden text-11px leading-16px whitespace-nowrap text-ellipsis border-default border-solid border-color-default rounded-full bg-color-bg-surface text-color-text-secondary translate-center group-automation-flow-edge-label graph-edge-label is-hidden",
+                        ? `group-automation-flow-edge-label absolute transform-[translate(-50%,_-50%)] max-w-160px overflow-hidden p-[0_var(--dm-space-1)] border-[var(--dm-border-width)_solid_var(--dm-color-border)] rounded-full bg-color-bg-surface text-color-text-secondary text-11px leading-16px text-ellipsis whitespace-nowrap [&.is-yes]:border-color-color-success [&.is-yes]:text-color-success [&.is-no]:border-color-color-border-strong [&.is-case]:border-color-color-info-border [&.is-case]:text-color-info [&.is-unconfigured]:border-color-color-danger-border [&.is-unconfigured]:text-color-danger [&.is-js]:font-mono [&.is-hidden]:hidden is-${label.kind}${label.is_js ? " is-js" : ""}`
+                        : "group-automation-flow-edge-label absolute transform-[translate(-50%,_-50%)] max-w-160px overflow-hidden p-[0_var(--dm-space-1)] border-[var(--dm-border-width)_solid_var(--dm-color-border)] rounded-full bg-color-bg-surface text-color-text-secondary text-11px leading-16px text-ellipsis whitespace-nowrap [&.is-yes]:border-color-color-success [&.is-yes]:text-color-success [&.is-no]:border-color-color-border-strong [&.is-case]:border-color-color-info-border [&.is-case]:text-color-info [&.is-unconfigured]:border-color-color-danger-border [&.is-unconfigured]:text-color-danger [&.is-js]:font-mono [&.is-hidden]:hidden is-hidden",
                     ),
                     style: computed(label_, (label) => ({
                       left: `${label ? label.left : 0}px`,
@@ -1178,7 +1278,7 @@ export function AutomationFlowGraph(props) {
               // 插入节点会把 to 及其右侧的所有节点整体右移，连线（computed）跟着走，
               // 但节点壳停在原地 → 连线和节点脱节，必须再拖一下才恢复。
               const position_ = computed(vm$.state.edit_nodes, () => {
-                const layout = automation_edit_layout(
+                const layout = graph_layout(
                   vm$.state.edit_nodes.value,
                   position_overrides,
                 );
@@ -1208,14 +1308,17 @@ export function AutomationFlowGraph(props) {
                 return automation_node_connectors(current, nodes);
               });
               const flow_node = ensure_flow_node(node, position);
+              const group_ = computed(groups_, (groups) => groups.find((group) => group.owner_id === node.id));
               return FlowPrimitive.Node(
                 {
                   store: flow$,
                   nodeId: node.id,
-                  class: "absolute w-180px min-h-104px graph-node-shell-target graph-node-shell",
+                  class: "group-automation-flow-node-shell absolute min-h-104px [&.is-dragging]:z-raised",
                   style: computed(position_, (p) => ({
                     left: `${p.left}px`,
                     top: `${p.top}px`,
+                    width: `${p.width}px`,
+                    height: `${p.height}px`,
                   })),
                 },
                 [
@@ -1230,20 +1333,27 @@ export function AutomationFlowGraph(props) {
                         attributes: { n: "automation-run-flow", type: "button" },
                       }, ["手动执行"])])
                     : null,
-                  View(
+                  Show({ when: group_, ok: () => For({ each: computed(group_, (group) => [group]), key: "render_key", render(value) {
+                    const group = value && value.value !== undefined ? value.value : value;
+                    return AutomationSubflowGroup({
+                      group: { ...group, x: 0, y: 0 }, store: vm$, inspectable, selected: editable ? selected : undefined,
+                      onSelect: editable ? () => vm$.methods.selectEditNode(node.id) : undefined,
+                      onDrag: editable ? (event) => start_node_drag(event, node, flow_node) : undefined,
+                    });
+                  } }), else: () => View(
                     {
                     class: combine(
                       { selected, execution_status },
                       ({ selected: is_selected, execution_status: status }) =>
-                        `relative w-full min-h-104px py-2 px-2.5 dm-panel user-select-none graph-node-target graph-node ${is_start ? " is-start" : ""}${is_selected ? " is-selected" : ""}${status
-                            ? ` has-execution is-${automation_execution_status_class(status.status)}`
+                        `dm-panel group-automation-flow-node relative w-full min-h-104px p-[var(--dm-space-2)_var(--dm-space-2-5)] user-select-none [&::before]:absolute [&::before]:top-[50%] [&::before]:w-2 [&::before]:h-2 [&::before]:content-[""] [&::before]:bg-color-bg-surface [&::before]:border-[var(--dm-border-width-strong)_solid_var(--dm-color-border-strong)] [&::before]:rounded-full [&::before]:transform-[translateY(-50%)] [&::after]:absolute [&::after]:top-[50%] [&::after]:w-2 [&::after]:h-2 [&::after]:content-[""] [&::after]:bg-color-bg-surface [&::after]:border-[var(--dm-border-width-strong)_solid_var(--dm-color-border-strong)] [&::after]:rounded-full [&::after]:transform-[translateY(-50%)] [&::before]:left-[calc(-1_*_var(--dm-space-1))] [&::after]:right-[calc(-1_*_var(--dm-space-1))] [&.is-start::before]:visibility-hidden [&.has-execution:not(.is-selected)]:shadow-[inset_var(--dm-space-0-5)_0_0_var(--dm-color-info)] [&.has-execution.is-pending:not(.is-selected)]:shadow-none [&.has-execution.is-pending:not(.is-selected)]:border-color-color-border [&.has-execution.is-running:not(.is-selected)]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_48%,_var(--dm-color-border))] [&.has-execution.is-running:not(.is-selected)]:shadow-[inset_var(--dm-space-0-5)_0_0_var(--dm-color-warning)] [&.has-execution.is-retrying:not(.is-selected)]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_48%,_var(--dm-color-border))] [&.has-execution.is-retrying:not(.is-selected)]:shadow-[inset_var(--dm-space-0-5)_0_0_var(--dm-color-warning)] [&.has-execution.is-completed:not(.is-selected)]:border-color-[color-mix(in_srgb,_var(--dm-color-success)_48%,_var(--dm-color-border))] [&.has-execution.is-completed:not(.is-selected)]:shadow-[inset_var(--dm-space-0-5)_0_0_var(--dm-color-success)] [&.has-execution.is-failed:not(.is-selected)]:border-color-color-danger-border [&.has-execution.is-failed:not(.is-selected)]:shadow-[inset_var(--dm-space-0-5)_0_0_var(--dm-color-danger)] [&.has-execution_.group-automation-flow-node__schema]:pr-16 [&.is-selected]:text-color-selection-text [&.is-selected]:bg-color-selection-surface [&.is-selected]:border-color-color-selection-border [&.is-selected]:shadow-selection [&.is-selected:focus-visible]:outline-0 [&.is-selected:focus-visible]:shadow-[var(--dm-shadow-selection),_var(--dm-focus-ring)] [&.is-start]:border-color-[color-mix(_in_srgb,_var(--dm-color-success)_60%,_var(--dm-color-border)_)] [&.is-start]:shadow-[inset_3px_0_0_var(--dm-color-success),_var(--dm-shadow-sm)] [&.is-start.is-selected]:border-color-color-selection-border [&.is-start.is-selected]:shadow-selection${is_start ? " is-start" : ""}${is_selected ? " is-selected" : ""}${inspectable ? " cursor-pointer" : ""}${status
+                            ? ` has-execution is-${automation_execution_status_class((status?.status || "PENDING"))}`
                             : ""}`,
                       ),
                       attributes: {
                         n: `automation-flow-node-${node.id}`,
                         title: node.name || node.id,
-                        role: editable ? "button" : undefined,
-                        tabindex: editable ? "0" : undefined,
+                        role: editable || inspectable ? "button" : undefined,
+                        tabindex: editable || inspectable ? "0" : undefined,
                         "aria-pressed": computed(selected, (is_selected) =>
                           editable ? String(is_selected) : undefined,
                         ),
@@ -1251,15 +1361,15 @@ export function AutomationFlowGraph(props) {
                       onMouseDown(event) {
                         start_node_drag(event, node, flow_node);
                       },
-                      // 点节点只做选中/编辑，执行日志走 header 上的日志浮标
-                      onClick() {
-                        if (!editable) return;
-                        vm$.methods.selectEditNode(node.id);
+                      onClick(event) {
+                        if (editable) vm$.methods.selectEditNode(node.id);
+                        else if (inspectable) vm$.methods.openNodeExecutionWindow(node.id, { x: event.clientX, y: event.clientY });
                       },
                       onKeyDown(event) {
-                        if (!editable) return;
+                        if (!editable && !inspectable) return;
                         automation_activate(event, () => {
-                          vm$.methods.selectEditNode(node.id);
+                          if (editable) vm$.methods.selectEditNode(node.id);
+                          else vm$.methods.openNodeExecutionWindow(node.id);
                         });
                       },
                     },
@@ -1275,11 +1385,11 @@ export function AutomationFlowGraph(props) {
                         })]),
                       }) : null,
                       View({
-                        class: "flex items-center gap-1.5",
+                        class: "flex items-center gap-1-5",
                         attributes: { n: `automation-flow-node-header-${node.id}` },
                       }, [
                         View({
-                          class: "grid h-8 grow-0 shrink-0 basis-8 place-items-center rounded-control bg-color-primary-soft text-color-primary",
+                          class: "grid place-items-center flex-[0_0_var(--dm-space-8)] h-8 text-color-primary bg-color-primary-soft rounded-control",
                           attributes: {
                             n: `automation-flow-node-icon-${node.id}`,
                             "aria-hidden": "true",
@@ -1292,19 +1402,19 @@ export function AutomationFlowGraph(props) {
                           }),
                         ]),
                         View({
-                          class: "flex min-w-0 flex-1 flex-col items-start gap-1",
+                          class: "flex-1 min-w-0 flex flex-col items-start gap-1",
                           attributes: { n: `automation-flow-node-heading-${node.id}` },
                         }, [
                           Tag(
                             {
                               variant: is_start ? "success" : "info",
-                              class: "min-h-4.5 flex-none px-1 text-caption",
+                              class: "min-h-4-5 flex-[0_0_auto] px-1 text-caption",
                               attributes: { n: `automation-flow-node-type-${node.id}` },
                             },
                             [vm$.methods.flowLabel(node.type)],
                           ),
                           View({
-                            class: "max-w-full min-w-0 overflow-hidden text-base font-bold whitespace-nowrap text-ellipsis text-color-text-primary",
+                            class: "max-w-full min-w-0 overflow-hidden text-color-text-primary text-base font-bold text-ellipsis whitespace-nowrap",
                             attributes: {
                               n: `automation-flow-node-name-${node.id}`,
                               title: node.name || vm$.methods.flowLabel(node.type),
@@ -1312,12 +1422,10 @@ export function AutomationFlowGraph(props) {
                           }, [node.name || vm$.methods.flowLabel(node.type)]),
                         ]),
                         View({
-                          class: "inline-flex flex-none items-center gap-1",
+                          class: "inline-flex items-center flex-[0_0_auto] gap-1",
                           attributes: { n: `automation-flow-node-badges-${node.id}` },
                         }, [
-                          // 执行过的节点才有日志可看（when 为空则不渲染）；
-                          // 浮标只在可编辑的画布上出现，只读页没有浮窗容器
-                          editable
+                          editable || inspectable
                             ? Show({
                                 when: execution_status,
                                 ok() {
@@ -1325,7 +1433,7 @@ export function AutomationFlowGraph(props) {
                                     {
                                       as: "button",
                                       class:
-                                        "box-sizing-border-box w-4.5 min-h-4.5 p-0 dm-button--ghost text-color-text-secondary dm-button icon-action-soft dm-focus-ring",
+                                        "dm-button dm-button--ghost box-sizing-border-box w-4-5 min-h-4-5 p-0 text-color-text-secondary [&:hover:not(:disabled)]:text-color-primary [&:hover:not(:disabled)]:bg-color-primary-soft [&:hover:not(:disabled)]:border-color-color-primary-border dm-focus-ring",
                                       attributes: {
                                         n: `automation-flow-node-log-${node.id}`,
                                         type: "button",
@@ -1337,9 +1445,8 @@ export function AutomationFlowGraph(props) {
                                         event.stopPropagation();
                                       },
                                       onClick(event) {
-                                        if (!editable) return;
                                         event.stopPropagation();
-                                        vm$.methods.selectEditNode(node.id);
+                                        if (editable) vm$.methods.selectEditNode(node.id);
                                         vm$.methods.openNodeExecutionWindow(
                                           node.id,
                                           {
@@ -1363,11 +1470,11 @@ export function AutomationFlowGraph(props) {
                         ]),
                       ]),
                       View({
-                        class: "flex items-center mt-1 gap-1.5",
+                        class: "flex items-center gap-1-5 mt-1",
                         attributes: { n: `automation-flow-node-meta-${node.id}` },
                       }, [
                         View({
-                          class: "block min-w-0 overflow-hidden font-mono text-caption whitespace-nowrap text-ellipsis text-color-text-secondary",
+                          class: "block min-w-0 overflow-hidden text-color-text-secondary font-mono text-caption text-ellipsis whitespace-nowrap",
                           attributes: {
                             n: `automation-flow-node-id-${node.id}`,
                             title: node.id,
@@ -1375,7 +1482,7 @@ export function AutomationFlowGraph(props) {
                         }, [node.id]),
                       ]),
                       is_start ? View({
-                        class: "mt-1 overflow-hidden font-mono text-caption leading-base whitespace-nowrap text-ellipsis text-color-text-secondary graph-node-description",
+                        class: "group-automation-flow-node__schema mt-1 overflow-hidden text-color-text-secondary font-mono text-caption leading-base text-ellipsis whitespace-nowrap",
                         attributes: { n: "automation-start-trigger-count" },
                       }, [computed(vm$.state.edit_triggers, (triggers) => {
                         const cron_count = triggers.filter((trigger) => trigger.type === "Cron").length;
@@ -1389,7 +1496,7 @@ export function AutomationFlowGraph(props) {
                           const config_text = JSON.stringify(node.config);
                           return View(
                             {
-                              class: "mt-1 overflow-hidden font-mono text-caption leading-base whitespace-nowrap text-ellipsis text-color-text-secondary graph-node-description",
+                              class: "group-automation-flow-node__schema mt-1 overflow-hidden text-color-text-secondary font-mono text-caption leading-base text-ellipsis whitespace-nowrap",
                               attributes: {
                                 n: `automation-flow-node-schema-${node.id}`,
                                 title: config_text,
@@ -1407,20 +1514,20 @@ export function AutomationFlowGraph(props) {
                             class: computed(
                               execution_status,
                               (status) =>
-                                `inline-flex absolute right-2 bottom-2 min-h-4.5 items-center px-1.5 text-caption font-semibold leading-1 border-default border-solid border-color-info rounded-badge bg-color-info-soft text-color-info execution-status-badge is-${automation_execution_status_class(status.status)}`,
+                                `inline-flex items-center min-h-4-5 px-1-5 text-color-info bg-color-info-soft border-[var(--dm-border-width)_solid_var(--dm-color-info-border)] rounded-badge text-caption font-semibold leading-1 [&.is-pending]:text-color-text-secondary [&.is-pending]:bg-color-bg-interactive [&.is-pending]:border-color-color-border [&.is-completed]:text-color-success [&.is-completed]:bg-color-success-soft [&.is-completed]:border-color-[color-mix(in_srgb,_var(--dm-color-success)_34%,_transparent)] [&.is-running]:text-color-warning [&.is-running]:bg-color-warning-soft [&.is-running]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-retrying]:text-color-warning [&.is-retrying]:bg-color-warning-soft [&.is-retrying]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-failed]:text-color-danger [&.is-failed]:bg-color-danger-soft [&.is-failed]:border-color-color-danger-border absolute right-2 bottom-2 is-${automation_execution_status_class((status?.status || "PENDING"))}`,
                             ),
                             attributes: { role: "status" },
                           },
                           [
                             computed(execution_status, (status) =>
-                              vm$.methods.nodeExecutionStatusLabel(status.status),
+                              vm$.methods.nodeExecutionStatusLabel((status?.status || "PENDING")),
                             ),
                           ],
                         );
                       },
                     }),
                     ],
-                  ),
+                  ) }),
                   editable && !is_end
                     ? View(
                         {
@@ -1438,7 +1545,7 @@ export function AutomationFlowGraph(props) {
                               return View(
                                 {
                                   as: "button",
-                                  class: `absolute -right-1 z-raised w-2 h-2 min-w-0 p-0 border-strong border-solid border-color-surface rounded-full cursor-pointer -translate-y-1/2 hover:brightness-108 pointer-events-auto dm-focus-ring graph-connector ${is_insert ? "is-connected" : "is-empty"}`,
+                                  class: `dm-focus-ring absolute right-[calc(-1_*_var(--dm-space-1))] z-raised w-2 h-2 min-w-0 p-0 border-[var(--dm-border-width-strong)_solid_var(--dm-color-bg-surface)] rounded-full transform-[translateY(-50%)] pointer-events-auto cursor-pointer [&.is-empty]:bg-color-success [&.is-connected]:bg-color-warning hover:filter-[brightness(1.08)] ${is_insert ? "is-connected" : "is-empty"}`,
                                   attributes: {
                                     n: is_insert
                                       ? `automation-flow-insert-${node.id}-${connector.to}`
@@ -1488,7 +1595,7 @@ export function AutomationFlowGraph(props) {
       FlowPrimitive.Controls(
         {
           store: flow$,
-          class: "flex absolute z-sticky bottom-3 left-3 flex-col p-1 gap-1 bg-color-bg-surface dm-panel shadow-md group-automation-flow-controls",
+          class: "dm-panel group-automation-flow-controls absolute z-sticky bottom-3 left-3 flex flex-col gap-1 p-1 bg-color-bg-surface shadow-md",
           attributes: {
             n: "automation-flow-controls",
             "aria-label": "画布缩放控制",
@@ -1508,7 +1615,7 @@ export function AutomationFlowGraph(props) {
           }),
           View(
             {
-              class: "min-w-control-height-sm font-mono text-caption leading-snug text-center text-color-text-secondary",
+              class: "min-w-control-height-sm text-color-text-secondary font-mono text-caption leading-snug text-center",
               attributes: { "aria-live": "polite" },
             },
             [
@@ -1542,7 +1649,7 @@ export function AutomationFlowGraph(props) {
       FlowPrimitive.Minimap(
         {
           store: flow$,
-          class: "absolute z-sticky left-16 bottom-3 w-176px h-112px p-0 overflow-hidden border-color-color-border-strong bg-color-bg-surface dm-panel shadow-md cursor-crosshair touch-action-none group-automation-flow-minimap dm-focus-ring",
+          class: "dm-panel group-automation-flow-minimap absolute z-sticky left-16 bottom-3 w-176px h-112px p-0 overflow-hidden cursor-crosshair bg-color-bg-surface border-color-color-border-strong shadow-md touch-action-none dm-focus-ring",
           attributes: {
             n: "automation-flow-minimap",
             role: "button",
@@ -1562,8 +1669,20 @@ export function AutomationFlowGraph(props) {
         },
         [
           View({ class: "absolute inset-0 pointer-events-none" }, [
+            For({ each: groups_, key: "render_key", render(value) {
+              const group = value && value.value !== undefined ? value.value : value;
+              return View({
+                class: "absolute box-sizing-border-box bg-color-info-soft border-[var(--dm-border-width)_solid_var(--dm-color-info-border)] rounded-xs",
+                style: computed(minimap_geometry_, (geometry) => ({
+                  left: `${geometry.offset_x + (graph_layout().positions[group.owner_id].left - geometry.world_left) * geometry.scale}px`,
+                  top: `${geometry.offset_y + (graph_layout().positions[group.owner_id].top - geometry.world_top) * geometry.scale}px`,
+                  width: `${group.width * geometry.scale}px`, height: `${group.height * geometry.scale}px`,
+                })),
+                attributes: { n: `automation-subflow-minimap-${group.id}`, "aria-hidden": "true" },
+              });
+            } }),
             For({
-              each: vm$.state.edit_nodes,
+              each: graph_nodes_,
               key: "id",
               render(node_) {
                 const node =
@@ -1580,8 +1699,8 @@ export function AutomationFlowGraph(props) {
                   class: combine(
                     { selected, execution_status },
                     ({ selected: is_selected, execution_status: status }) =>
-                      `absolute box-sizing-border-box border-default border-solid border-color-strong rounded-xs bg-color-bg-interactive minimap-node ${node.type === "StartNode" ? " is-start" : ""}${is_selected ? " is-selected" : ""}${status
-                          ? ` has-execution is-${automation_execution_status_class(status.status)}`
+                      `absolute box-sizing-border-box bg-color-bg-interactive border-[var(--dm-border-width)_solid_var(--dm-color-border-strong)] rounded-xs [&.is-start]:border-color-color-success [&.is-selected]:bg-color-primary-fill [&.is-selected]:border-color-color-primary [&.has-execution.is-running:not(.is-selected)]:bg-color-warning [&.has-execution.is-retrying:not(.is-selected)]:bg-color-warning [&.has-execution.is-completed:not(.is-selected)]:bg-color-success [&.has-execution.is-failed:not(.is-selected)]:bg-color-danger${node.type === "StartNode" ? " is-start" : ""}${is_selected ? " is-selected" : ""}${inspectable ? " cursor-pointer" : ""}${status
+                          ? ` has-execution is-${automation_execution_status_class((status?.status || "PENDING"))}`
                           : ""}`,
                   ),
                   style: minimap_node_style(node),
@@ -1591,7 +1710,7 @@ export function AutomationFlowGraph(props) {
             }),
           ]),
           View({
-            class: "absolute box-sizing-border-box border-strong border-solid border-color-primary-border-strong rounded-xs bg-color-primary-soft pointer-events-none",
+            class: "absolute box-sizing-border-box bg-color-primary-soft border-[var(--dm-border-width-strong)_solid_var(--dm-color-primary-border-strong)] rounded-xs pointer-events-none",
             style: minimap_viewport_style(),
             attributes: { "aria-hidden": "true" },
           }),
@@ -1609,7 +1728,7 @@ export function AutomationTriggerOption(props) {
       class: computed(
         selected,
         (is_selected) =>
-          `min-h-72px flex-col gap-0-5 motion-reduce:transition-none dm-button--choice-card dm-button dm-interactive dm-focus-ring${is_selected ? " is-selected" : ""}`,
+          `dm-button dm-button--choice-card motion-reduce:transition-none dm-interactive dm-focus-ring min-h-72px flex-col gap-0-5${is_selected ? " is-selected" : ""}`,
       ),
       attributes: {
         n: `${props.namePrefix}-trigger-option-${value.toLowerCase()}`,
@@ -1627,8 +1746,8 @@ export function AutomationTriggerOption(props) {
       },
     },
     [
-      View({ class: "text-sm font-semibold text-color-text-primary" }, [props.label]),
-      View({ class: "text-caption leading-base text-color-text-secondary" }, [props.hint]),
+      View({ class: "text-color-text-primary text-sm font-semibold" }, [props.label]),
+      View({ class: "text-color-text-secondary text-caption leading-base" }, [props.hint]),
     ],
   );
 }
@@ -1672,8 +1791,8 @@ export function AutomationRunPipelineDialog(props) {
                         placeholder: param.required ? "必填" : "可选",
                       },
                     });
-              return View({ class: "flex min-w-0 flex-col gap-1 form-field " }, [
-                View({ class: "text-xs font-semibold text-color-text-secondary" }, label),
+              return View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
+                View({ class: "text-color-text-secondary text-xs font-semibold" }, label),
                 control,
               ]);
             },
@@ -1713,8 +1832,8 @@ export function automation_execution_log_data(entry, vm$) {
     ["输出", entry.output],
   ].map(([label, value]) =>
     View({ class: "min-w-0" }, [
-      View({ class: "mb-1 text-caption font-semibold text-color-text-secondary" }, [label]),
-      View({ as: "pre", class: "max-h-180px m-0 p-2 overflow-auto font-mono text-caption leading-base whitespace-pre-wrap word-break-break-word border-default border-solid border-color-default rounded-content bg-color-bg-surface text-color-text-primary log-panel-value" }, [
+      View({ class: "mb-1 text-color-text-secondary text-caption font-semibold" }, [label]),
+      View({ as: "pre", class: "group-automation-execution-log__value max-h-180px m-0 p-2 overflow-auto text-color-text-primary bg-color-bg-surface border-[var(--dm-border-width)_solid_var(--dm-color-border)] rounded-content font-mono text-caption leading-base whitespace-pre-wrap word-break-break-word" }, [
         vm$.methods.formatExecutionValue(value),
       ]),
     ]),
@@ -1769,9 +1888,9 @@ export function AutomationNodeExecutionWindow(props) {
   const detail_ = vm$.methods.nodeExecutionDetail(node_id);
   const node_id_ = ref(node_id);
   const node_ = computed(
-    combine({ nodes: vm$.state.edit_nodes, node_id: node_id_ }, (v) => v),
+    combine({ nodes: vm$.state.execution_nodes, node_id: node_id_ }, (v) => v),
     ({ nodes, node_id: id }) =>
-      (nodes || []).find((item) => item.id === id) || null,
+      (nodes || []).find((item) => item.execution_key === id) || null,
   );
   const status_ = computed(
     combine(
@@ -1785,6 +1904,10 @@ export function AutomationNodeExecutionWindow(props) {
     ({ logs, node_id: id }) =>
       (logs || []).filter((entry) => entry.node_id === id).reverse(),
   );
+  const error_ = combine({ status: status_, logs: logs_ }, ({ status, logs }) => {
+    const error = status?.error || logs[0]?.error;
+    return typeof error === "string" ? error : error ? vm$.methods.formatExecutionValue(error) : "";
+  });
   const z_ = computed(
     combine(
       { z: vm$.state.execution_window_z, node_id: node_id_ },
@@ -1819,11 +1942,11 @@ export function AutomationNodeExecutionWindow(props) {
       class: computed(
         focused_,
         (is_focused) =>
-          `flex min-w-0 flex-col overflow-hidden border-default border-solid border-color-default rounded-overlay bg-color-bg-surface shadow-popover floating-window ${is_focused ? " is-focused" : ""}`,
+          `flex flex-col min-w-0 overflow-hidden bg-color-bg-surface border-[var(--dm-border-width)_solid_var(--dm-color-border)] rounded-overlay shadow-popover [&.is-focused]:border-color-color-primary [&.is-focused]:shadow-popover${is_focused ? " is-focused" : ""}`,
       ),
-      headerClass: "flex items-center py-2 px-3 gap-2 border-b-default border-b-solid border-b-color-default bg-color-bg-subtle cursor-grab active:cursor-grabbing touch-action-none user-select-none floating-window-header ",
-      bodyClass: "flex max-h-60vh flex-col p-3 gap-2 overflow-auto",
-      closeClass: "inline-flex w-6 h-6 flex-none items-center justify-center text-md leading-1 border-0 rounded-content bg-transparent hover:bg-color-bg-interactive text-color-text-secondary hover:text-color-text-primary cursor-pointer dm-focus-ring",
+      headerClass: "flex items-center gap-2 p-[var(--dm-space-2)_var(--dm-space-3)] bg-color-bg-subtle border-bottom-[var(--dm-border-width)_solid_var(--dm-color-border)] cursor-grab touch-action-none user-select-none active:cursor-grabbing [&_.group-timeless-window__title]:flex-1 [&_.group-timeless-window__title]:min-w-0 [&_.group-timeless-window__title]:overflow-hidden [&_.group-timeless-window__title]:text-color-text-primary [&_.group-timeless-window__title]:text-sm [&_.group-timeless-window__title]:font-semibold [&_.group-timeless-window__title]:text-ellipsis [&_.group-timeless-window__title]:whitespace-nowrap",
+      bodyClass: "flex flex-col gap-2 max-h-60vh p-3 overflow-auto",
+      closeClass: "flex-none inline-flex items-center justify-center w-6 h-6 text-color-text-secondary bg-transparent border-0 rounded-content text-md leading-1 cursor-pointer hover:text-color-text-primary hover:bg-color-bg-interactive dm-focus-ring",
       closeLabel: "关闭执行日志",
       attributes: {
         n: "automation-node-execution-window",
@@ -1844,7 +1967,7 @@ export function AutomationNodeExecutionWindow(props) {
       },
     },
     [
-      Show({
+      View({ class: "flex items-start gap-2 min-w-0", attributes: { n: `automation-node-status-row-${node_id}` } }, [Show({
         when: status_,
         ok() {
           return View(
@@ -1852,19 +1975,27 @@ export function AutomationNodeExecutionWindow(props) {
               class: computed(
                 status_,
                 (status) =>
-                  `inline-flex min-h-4.5 align-self-flex-start items-center px-1.5 text-caption font-semibold leading-1 border-default border-solid border-color-info rounded-badge bg-color-info-soft text-color-info execution-status-badge is-${automation_execution_status_class(
-                    status.status,
+                  `align-self-flex-start inline-flex items-center min-h-4-5 px-1-5 text-color-info bg-color-info-soft border-[var(--dm-border-width)_solid_var(--dm-color-info-border)] rounded-badge text-caption font-semibold leading-1 [&.is-pending]:text-color-text-secondary [&.is-pending]:bg-color-bg-interactive [&.is-pending]:border-color-color-border [&.is-completed]:text-color-success [&.is-completed]:bg-color-success-soft [&.is-completed]:border-color-[color-mix(in_srgb,_var(--dm-color-success)_34%,_transparent)] [&.is-running]:text-color-warning [&.is-running]:bg-color-warning-soft [&.is-running]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-retrying]:text-color-warning [&.is-retrying]:bg-color-warning-soft [&.is-retrying]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-failed]:text-color-danger [&.is-failed]:bg-color-danger-soft [&.is-failed]:border-color-color-danger-border is-${automation_execution_status_class(
+                    (status?.status || "PENDING"),
                   )}`,
               ),
             },
             [
               computed(status_, (status) =>
-                vm$.methods.nodeExecutionStatusLabel(status.status),
+                vm$.methods.nodeExecutionStatusLabel((status?.status || "PENDING")),
               ),
             ],
           );
         },
-      }),
+      }), Show({
+        when: error_,
+        ok() {
+          return View({
+            class: "flex-1 min-w-0 text-color-danger text-sm leading-base whitespace-pre-wrap word-break-break-word",
+            attributes: { n: `automation-node-error-${node_id}`, role: "alert", title: error_ },
+          }, [error_]);
+        },
+      })]),
       Show({
         when: computed(detail_, (detail) => is_detail && Boolean(detail.error)),
         ok() {
@@ -1879,32 +2010,35 @@ export function AutomationNodeExecutionWindow(props) {
           ]);
         },
       }),
-      For({
+      is_detail ? View({ class: "grid gap-2 min-w-0", attributes: { n: `automation-node-record-${node_id}` } }, [
+        View({ class: "text-color-text-secondary text-caption font-semibold" }, ["执行记录 JSON"]),
+        View({ as: "pre", class: "m-0 p-2 overflow-auto font-mono text-xs whitespace-pre-wrap word-break-break-all bg-color-bg-subtle rounded-content", attributes: { n: `automation-node-record-json-${node_id}` } }, [record_]),
+      ]) : For({
         each: logs_,
         key: "_execution_key",
         render(entry_) {
           const entry = automation_unwrap_ref(entry_);
           return View(
             {
-              class: "overflow-hidden border-default border-solid border-color-default rounded-content log-panel-compact ",
+              class: "overflow-hidden border-[var(--dm-border-width)_solid_var(--dm-color-border)] rounded-content [&_.group-automation-execution-log__body]:grid-cols-1fr [&_.group-automation-execution-log__value]:max-h-120px",
               attributes: { n: `automation-node-log-${entry.node_id}` },
             },
             [
-              View({ class: "flex items-center py-1.5 px-3 gap-2 border-b-default border-b-solid border-b-color-default bg-color-bg-subtle" }, [
+              View({ class: "flex items-center gap-2 p-[var(--dm-space-1-5)_var(--dm-space-3)] bg-color-bg-subtle border-bottom-[var(--dm-border-width)_solid_var(--dm-color-border)]" }, [
                 View(
                   {
-                    class: `inline-flex min-h-4.5 items-center px-1.5 text-caption font-semibold leading-1 border-default border-solid border-color-info rounded-badge bg-color-info-soft text-color-info execution-status-badge is-${automation_execution_status_class(
+                    class: `inline-flex items-center min-h-4-5 px-1-5 text-color-info bg-color-info-soft border-[var(--dm-border-width)_solid_var(--dm-color-info-border)] rounded-badge text-caption font-semibold leading-1 [&.is-pending]:text-color-text-secondary [&.is-pending]:bg-color-bg-interactive [&.is-pending]:border-color-color-border [&.is-completed]:text-color-success [&.is-completed]:bg-color-success-soft [&.is-completed]:border-color-[color-mix(in_srgb,_var(--dm-color-success)_34%,_transparent)] [&.is-running]:text-color-warning [&.is-running]:bg-color-warning-soft [&.is-running]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-retrying]:text-color-warning [&.is-retrying]:bg-color-warning-soft [&.is-retrying]:border-color-[color-mix(in_srgb,_var(--dm-color-warning)_34%,_transparent)] [&.is-failed]:text-color-danger [&.is-failed]:bg-color-danger-soft [&.is-failed]:border-color-color-danger-border is-${automation_execution_status_class(
                       entry.outcome,
                     )}`,
                   },
                   [vm$.methods.nodeExecutionStatusLabel(entry.outcome)],
                 ),
-                View({ class: "font-mono text-caption font-variant-numeric-tabular-nums text-color-text-secondary" }, [
+                View({ class: "text-color-text-secondary font-mono text-caption font-variant-numeric-tabular-nums" }, [
                   `第 ${entry.attempt || 1} 次 · ${entry.duration_ms || 0} ms`,
                 ]),
               ]),
               View(
-                { class: "grid grid-cols-3 max-900:grid-cols-1fr pt-2 pb-3 px-3 gap-2 border-t-default border-t-solid border-t-color-default bg-color-bg-subtle log-panel-body" },
+                { class: "group-automation-execution-log__body grid grid-cols-[repeat(3,_minmax(0,_1fr))] gap-2 p-[var(--dm-space-2)_var(--dm-space-3)_var(--dm-space-3)] bg-color-bg-subtle border-top-[var(--dm-border-width)_solid_var(--dm-color-border)] max-900:grid-cols-1fr" },
                 automation_execution_log_data(entry, vm$),
               ),
             ],
@@ -1927,42 +2061,49 @@ export function AutomationRunHistory(props) {
         Button({ store: vm$.ui.btn_refresh_runs$, attributes: { n: "automation-refresh-runs", type: "button", "aria-label": "刷新运行记录" } }, ["刷新"]),
       ]),
     ]),
-    View({ class: "flex max-h-200px min-w-0 flex-wrap gap-2 overflow-auto" }, [
+    View({ class: "flex-1 min-h-0 overflow-auto p-2 grid gap-2 content-start", attributes: { n: "automation-run-list", "aria-label": "选择执行记录" } }, [
       For({ each: vm$.state.runs, key: "id", render(value) {
         const run = value && value.value !== undefined ? value.value : value;
-        return Button({ store: vm$.ui.btn_select_run$.bind(run), attributes: { type: "button", title: run.id, "aria-label": `查看运行 ${run.id}` } }, [`${vm$.methods.formatTime(run.created_at)} · ${run.status}`]);
+        const current_ = computed(vm$.state.runs, (runs) => runs.find((item) => item.id === run.id) || run);
+        return Button({
+          store: vm$.ui.btn_select_run$.bind(run),
+          class: computed(vm$.state.selected_run_id, (id) => `dm-button--list-row w-full min-w-0 h-auto flex flex-col items-start gap-1 p-3 text-left border-[var(--dm-border-width)_solid_var(--dm-color-border)] [&.is-selected]:bg-color-selection-surface [&.is-selected]:border-color-color-selection-border [&.is-selected]:shadow-selection${id === run.id ? " is-selected" : ""}`),
+          attributes: { type: "button", n: `automation-run-select-${run.id}`, title: run.id, "aria-label": `查看运行 ${run.id}`, "aria-pressed": computed(vm$.state.selected_run_id, (id) => String(id === run.id)) },
+        }, [
+          View({ class: "w-full flex items-center justify-between gap-2" }, [
+            View({ class: "min-w-0 overflow-hidden text-sm text-ellipsis whitespace-nowrap" }, [computed(current_, (item) => vm$.methods.formatTime(item.created_at))]),
+            View({ class: "text-caption text-color-text-secondary" }, [computed(current_, (item) => vm$.methods.nodeExecutionStatusLabel(item.status))]),
+          ]),
+          View({ class: "max-w-full overflow-hidden font-mono text-xs text-color-text-secondary text-ellipsis whitespace-nowrap" }, [run.id]),
+        ]);
       } }),
-      Show({ when: computed(vm$.state.runs, (runs) => !runs.length), ok() { return View({ class: "text-sm text-color-text-secondary" }, ["暂无运行记录。保存 Pipeline 后手动执行或配置触发器。"]); } }),
+      Show({ when: computed(vm$.state.runs, (runs) => !runs.length), ok() { return View({ class: "text-color-text-secondary text-sm p-2" }, [computed(vm$.state.runs_loading, (loading) => loading ? "正在加载执行记录…" : "暂无执行记录，点击顶部「手动执行」开始。")]); } }),
     ]),
-    For({ each: computed(vm$.state.selected_run, (run) => run ? [{ ...run, render_key: `${run.id}-${run.status}-${run.updated_at}` }] : []), key: "render_key", render(value) {
+    For({ each: computed(vm$.state.selected_run, (run) => run ? [{ ...run, render_key: `${run.id}-${run.status}-${run.updated_at}-${run.current_node}` }] : []), key: "render_key", render(value) {
       const run = value && value.value !== undefined ? value.value : value;
-      let logs = [];
-      try { logs = JSON.parse(run.node_logs || "[]"); } catch { /* Legacy records may have no trace. */ }
-      return View({ class: "grid min-w-0 pt-3 gap-2 border-t border-t-solid border-t-color-default" }, [
-        View({ class: "flex min-w-0 flex-wrap items-center gap-2 text-sm" }, [
+      return View({ class: "grid gap-2 min-w-0 max-h-60vh overflow-auto border-top-[var(--dm-border-width)_solid_var(--dm-color-border)] p-3" }, [
+        View({ class: "flex flex-wrap gap-2 items-center text-sm min-w-0" }, [
           automation_status_badge(run.status), View({ class: "font-mono text-xs word-break-break-all" }, [run.id]),
-          View({ class: "text-color-text-secondary" }, [`当前节点：${run.current_node || "等待执行"}`]),
+          View({ class: "text-color-text-secondary", attributes: { n: "automation-run-current-node" } }, [`当前节点：${run.current_node || (run.status === "FAILED" ? "未进入节点执行" : "等待执行")}`]),
         ]),
+        run.trigger_type ? View({ class: "text-color-text-secondary text-xs", attributes: { n: "automation-run-trigger-source" } }, [`触发来源：${vm$.methods.triggerLabel(run.trigger_type)}${run.trigger_key ? `（${run.trigger_key}）` : ""}`]) : null,
         run.error ? ErrorMessage({ tip: vm$.methods.tip, error: run.error }) : null,
-        run.retry_of ? View({ class: "text-xs text-color-text-secondary" }, [`重试来源：${run.retry_of}`]) : null,
-        run.status === "WAITING" ? View({ class: "grid min-w-0 gap-2" }, [
-          View({ as: "label", attributes: { for: "automation-manual-response" }, class: "text-sm text-color-text-secondary" }, ["人工确认输入 JSON"]),
+        run.retry_of ? View({ class: "text-color-text-secondary text-xs" }, [`重试来源：${run.retry_of}`]) : null,
+        run.status === "WAITING" ? View({ class: "grid gap-2 min-w-0" }, [
+          View({ as: "label", attributes: { for: "automation-manual-response" }, class: "text-color-text-secondary text-sm" }, ["人工确认输入 JSON"]),
           Textarea({ store: vm$.ui.input_manual_response$, class: "font-mono text-xs", attributes: { id: "automation-manual-response", rows: "3", spellcheck: "false", "aria-label": "人工确认输入 JSON" } }),
-          View({ class: "text-xs text-color-text-secondary" }, ["按人工节点的 input_schema 填写，例如 {\"approved\":true}；恢复沿用启动时的流程定义。"]),
+          View({ class: "text-color-text-secondary text-xs" }, ["按人工节点的 input_schema 填写，例如 {\"approved\":true}；恢复沿用启动时的流程定义。"]),
           Button({ store: vm$.ui.btn_resume_run$, attributes: { type: "button" } }, ["提交确认并继续"]),
         ]) : null,
         ["QUEUED", "RUNNING", "WAITING"].includes(run.status) ? Button({ store: vm$.ui.btn_cancel_run$, attributes: { type: "button" } }, ["取消运行"]) : null,
         ["FAILED", "CANCELLED"].includes(run.status) ? View({ class: "grid gap-2" }, [
-          View({ class: "text-xs text-color-text-secondary" }, ["重试会从头执行，已发生的下载或通知可能重复，请先核对外部结果。"]),
+          View({ class: "text-color-text-secondary text-xs" }, ["重试会从头执行，已发生的下载或通知可能重复，请先核对外部结果。"]),
           View({ class: "flex flex-wrap gap-2" }, [
             Button({ store: vm$.ui.btn_retry_run$, attributes: { type: "button" } }, ["按原流程重试"]),
             Button({ store: vm$.ui.btn_retry_current_run$, attributes: { type: "button" } }, ["按当前已保存流程重试"]),
           ]),
         ]) : null,
-        logs.length ? View({ as: "details", class: "min-w-0 text-sm", attributes: { n: "automation-persisted-logs" } }, [
-          View({ as: "summary", class: "text-color-text-secondary" }, [`节点执行记录（最近 ${logs.length} 条）`]),
-          View({ as: "pre", class: "max-h-200px overflow-auto font-mono text-xs whitespace-pre-wrap word-break-break-all" }, [JSON.stringify(logs, null, 2)]),
-        ]) : null,
+        View({ class: "text-color-text-secondary text-caption leading-base" }, ["点击画布节点查看本次执行的 JSON。未执行的节点显示 Pending。"]),
       ].filter(Boolean));
     } }),
   ]);
