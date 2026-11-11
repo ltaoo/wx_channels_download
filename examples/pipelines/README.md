@@ -1,22 +1,32 @@
 # 创作者自动化 Pipeline
 
-这三个 JSON 使用当前项目的流程定义格式，可在「自动化 → 导入 Pipeline」中粘贴文件内容导入。默认面向微信视频号。
+这些 JSON 使用当前项目的流程定义格式，可在「自动化 → 导入 Pipeline」中粘贴文件内容导入。默认面向微信视频号。
 
 | 文件 | 功能 | 建议 Cron |
 | --- | --- | --- |
 | `01_creator_video_sync.json` | 通过 HTTP 接口逐页检查视频，直接用列表对象下载缺失视频，遇到整页已存在时停止 | `0 12,18 * * *`，每天 12:00、18:00（已内置） |
+| `01_creator_video_sync_service.json` | 通过内置工具获取列表，其余增量检查与下载流程和 HTTP 版相同 | `0 12,18 * * *`，每天 12:00、18:00（已内置） |
 | `02_creator_live_record.json` | 查询当前直播，正在直播时创建录制任务，未开播正常结束 | `*/1 * * * *`，每分钟 |
 | `03_creator_new_video_notify.json` | 首次扫描建立基线，之后仅通知新增视频，使用企业微信机器人 | `*/5 * * * *`，每五分钟 |
+| `download_finished_qiniu_webhook.json` | 下载完成后通过 JS 自定义节点上传七牛云，再发送原任务详情到 Webhook | 事件 `downloadtask.finished` |
+
+七牛上传流程需要先安装 `examples/nodes/qiniu_upload.js`，详见[安装与 Hook 迁移](../../docs/feature/pipelines/download-finished-qiniu-webhook.md)。
 
 ## 导入和配置
 
-1. 分别导入三个 JSON。导入会生成新的 Pipeline ID。
+1. 按需导入 JSON，视频同步选择 HTTP 版或内置工具版。导入会生成新的 Pipeline ID。
 2. 第一个流程在列表页「配置」中填写 `username`，并可设置列表接口 `url`、`method`、`token`；第二、三个流程仍在「配置」节点中修改 `creator_username`。username 推荐完整的 `xxx@finder`，它不是昵称，可以从账号搜索结果取得。
 3. 前两个流程的 `download_dir` 留空时使用应用默认下载目录，也可以填写下载器所在机器的绝对路径。
 4. 第一个流程已内置定时触发规则，导入时自动创建；第二、三个流程在开始节点添加定时触发器，填写上表 Cron，保存 Pipeline。Cron 使用下载器进程的时区，调度器约每 30 秒检查一次。
 5. 保持下载器运行。第一个流程需确保配置的 HTTP 列表接口可用，另外两个流程需确保视频号查询能力可用。首次运行可从定时规则的立即执行入口进行手动验证。
 
 第一个流程通过子流程、`LoopNode` 和循环连线遍历分页及视频，直接把 HTTP 列表返回的完整视频对象交给 `create_download_task`，不会再查询详情或要求本机视频号页面建立 socket 连接。列表需包含媒体 URL、URL token 和加密视频所需的解密 key；仅返回 ID 无法直接下载。原流程需在编辑页重新导入 JSON 并保存才会使用修复后的模板。
+
+HTTP 列表直接返回 `BaseResponse/object/continue_flag/last_buffer`，其中 `object_desc.media[].spec` 的 `file_format`、`duration_ms`、`video_bitrate`、`level_order` 会转换为下载器使用的画质字段。
+
+`01_creator_video_sync_service.json` 以 HTTP 版为基准，仅把「获取创作者视频列表」替换为 `get_wxchannels_account_videos` 内置工具，并移除 HTTP 专用的 `url`、`method`、`token` 配置。导入后同样在流程「配置」中填写 `username`；运行时需要视频号查询能力可用。HTTP 版只解析原始下划线字段；内置工具版只解析 `errCode/data` 包装及驼峰字段，两版不兼容对方的响应格式。定时触发、分页、批量检查、整页已存在时停止、并行提交下载及下载结果统计完全相同，下载均通过 `create_download_task` 复用列表媒体，不再查询详情。
+
+内置工具版在顶层 `subflows` 中声明分页、列表查询和单个视频下载子流程。`WorkflowNode` 和 `LoopNode` 使用 `config.flow_id` 引用声明的键，循环和遍历会重复执行同一份定义；子流程内也可引用顶层的其他子流程。保存的模板保留引用，创建执行记录时冻结依赖，保证重试使用当时的定义。详情页直接展开子流程容器，显示内部节点的实时状态和日志。
 
 其余流程使用 JS、设置变量和条件分支回连遍历分页及视频。`max_pages` 默认 1000，`max_videos` 默认 100000；超过限制会明确失败，避免把截断结果当成全部内容。
 
