@@ -584,8 +584,16 @@ const automation_flow_minimap_size = {
   padding: 8,
 };
 
-function AutomationSubflowGroup({ group, store: vm$, inspectable = false, selected, onSelect, onDrag }) {
+function AutomationSubflowGroup({ group, store: vm$, inspectable = false, editable = false, parentGroup, selected, onSelect, onDrag, onNodeDrag }) {
   const positions = Object.fromEntries(group.nodes.map((node) => [node.id, { left: node.x, top: node.y, width: node.width, height: node.height }]));
+  function move_with_keyboard(event, group_id, node_id) {
+    const delta = { ArrowLeft: { x: -10, y: 0 }, ArrowRight: { x: 10, y: 0 }, ArrowUp: { x: 0, y: -10 }, ArrowDown: { x: 0, y: 10 } }[event.key];
+    if (!editable || !delta) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    vm$.methods.moveSubflowNode(group_id, node_id, delta);
+    return true;
+  }
   return View({
     class: "absolute box-sizing-border-box rounded-content border-[var(--dm-border-width)_solid_var(--dm-color-info-border)]",
     style: {
@@ -601,7 +609,7 @@ function AutomationSubflowGroup({ group, store: vm$, inspectable = false, select
       style: { width: `${group.width - 24}px`, cursor: onDrag ? "grab" : inspectable ? "pointer" : undefined },
       attributes: {
         n: `automation-subflow-heading-${group.id}`, title: group.name,
-        role: inspectable || onSelect ? "button" : undefined, tabindex: inspectable || onSelect ? "0" : undefined,
+        role: inspectable || onSelect || onDrag ? "button" : undefined, tabindex: inspectable || onSelect || onDrag ? "0" : undefined,
         "aria-label": onSelect ? `编辑子流程调用：${group.name}` : inspectable ? `查看子流程调用日志：${group.name}` : undefined,
         "aria-pressed": onSelect ? computed(selected, String) : undefined,
       },
@@ -611,7 +619,10 @@ function AutomationSubflowGroup({ group, store: vm$, inspectable = false, select
         if (onSelect) onSelect();
         else if (inspectable) vm$.methods.openNodeExecutionWindow(group.owner_key, { x: event.clientX, y: event.clientY });
       },
-      onKeyDown(event) { if (onSelect || inspectable) automation_activate(event, () => onSelect ? onSelect() : vm$.methods.openNodeExecutionWindow(group.owner_key)); },
+      onKeyDown(event) {
+        if (parentGroup && move_with_keyboard(event, parentGroup.id, group.owner_id)) return;
+        if (onSelect || inspectable) automation_activate(event, () => onSelect ? onSelect() : vm$.methods.openNodeExecutionWindow(group.owner_key));
+      },
     }, [
       Timeless.Icon({ name: "git-fork", size: 16, attributes: { n: `automation-subflow-icon-${group.id}`, "aria-hidden": "true" } }),
       View({ class: "overflow-hidden text-ellipsis whitespace-nowrap", attributes: { n: `automation-subflow-title-${group.id}` } }, [`子流程：${group.workflow_name}`]),
@@ -626,12 +637,12 @@ function AutomationSubflowGroup({ group, store: vm$, inspectable = false, select
     ...group.nodes.filter((node) => !group.groups.some((child) => child.owner_id === node.id)).map((node) => {
       const status_ = computed(vm$.state.node_execution_states, (states) => states[node.execution_key]?.status || "PENDING");
       return View({
-      class: computed(status_, (status) => `dm-panel absolute box-sizing-border-box p-3 overflow-hidden text-color-text-primary ${inspectable ? "cursor-pointer" : ""} [&.is-running]:border-color-color-warning [&.is-retrying]:border-color-color-warning [&.is-completed]:border-color-color-success [&.is-failed]:border-color-color-danger-border is-${automation_execution_status_class(status)}`),
+      class: computed(status_, (status) => `dm-panel absolute box-sizing-border-box p-3 overflow-hidden text-color-text-primary ${editable ? "cursor-grab" : inspectable ? "cursor-pointer" : ""} [&.is-running]:border-color-color-warning [&.is-retrying]:border-color-color-warning [&.is-completed]:border-color-color-success [&.is-failed]:border-color-color-danger-border is-${automation_execution_status_class(status)}`),
       style: { left: `${node.x}px`, top: `${node.y}px`, width: "180px", height: "104px" },
-      attributes: { n: `automation-subflow-node-${group.id}-${node.id}`, title: node.name, role: inspectable ? "button" : undefined, tabindex: inspectable ? "0" : undefined },
-      onMouseDown(event) { if (inspectable) event.stopPropagation(); },
-      onClick(event) { if (inspectable) { event.stopPropagation(); vm$.methods.openNodeExecutionWindow(node.execution_key, { x: event.clientX, y: event.clientY }); } },
-      onKeyDown(event) { if (inspectable) automation_activate(event, () => vm$.methods.openNodeExecutionWindow(node.execution_key)); },
+      attributes: { n: `automation-subflow-node-${group.id}-${node.id}`, title: node.name, role: editable || inspectable ? "button" : undefined, tabindex: editable || inspectable ? "0" : undefined, "aria-label": editable ? `${node.name}，方向键移动` : undefined },
+      onMouseDown(event) { if (editable) onNodeDrag(event, group, node); else if (inspectable) event.stopPropagation(); },
+      onClick(event) { if (editable || inspectable) event.stopPropagation(); if (inspectable) vm$.methods.openNodeExecutionWindow(node.execution_key, { x: event.clientX, y: event.clientY }); },
+      onKeyDown(event) { if (move_with_keyboard(event, group.id, node.id)) return; if (inspectable) automation_activate(event, () => vm$.methods.openNodeExecutionWindow(node.execution_key)); },
     }, [
       inspectable ? Show({ when: computed(status_, (status) => ["RUNNING", "RETRYING"].includes(status)), ok: () => SVG.SVG({
         class: "dm-automation-running-border", attributes: { n: `automation-subflow-running-border-${group.id}-${node.id}`, "aria-hidden": "true" },
@@ -648,7 +659,10 @@ function AutomationSubflowGroup({ group, store: vm$, inspectable = false, select
       }, [computed(status_, (status) => vm$.methods.nodeExecutionStatusLabel(status))]) : null,
     ]);
     }),
-    ...group.groups.map((nested) => AutomationSubflowGroup({ group: nested, store: vm$, inspectable })),
+    ...group.groups.map((nested) => AutomationSubflowGroup({
+      group: nested, store: vm$, inspectable, editable, parentGroup: group, onNodeDrag,
+      onDrag: editable ? (event) => onNodeDrag(event, group, group.nodes.find((node) => node.id === nested.owner_id), true) : undefined,
+    })),
   ]);
 }
 
@@ -1032,6 +1046,7 @@ export function AutomationFlowGraph(props) {
     const handle_up = (up_event) => {
       flow_node.pointerUp(up_event.clientX, up_event.clientY);
       if (has_moved) {
+        delete position_overrides[node.id];
         vm$.methods.moveEditNode(node.id, saved_position());
       }
       stop_active_pointer();
@@ -1041,6 +1056,35 @@ export function AutomationFlowGraph(props) {
       document.removeEventListener("mousemove", handle_move);
       document.removeEventListener("mouseup", handle_up);
       shell_element.classList.remove("is-dragging");
+    };
+    document.addEventListener("mousemove", handle_move);
+    document.addEventListener("mouseup", handle_up);
+  }
+
+  function start_subflow_node_drag(event, group, node, container = false) {
+    if (!editable || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    stop_active_pointer();
+    const element = container ? event.currentTarget.parentElement : event.currentTarget;
+    const flow_node = new Timeless.vm.FlowNodeModel({ id: node.execution_key, position: { x: node.x, y: node.y } });
+    flow_node.setCanvas$(flow$);
+    flow_node.pointerDown(event.clientX, event.clientY);
+    const handle_move = (move_event) => {
+      flow_node.pointerMove(move_event.clientX, move_event.clientY);
+      element.style.left = `${flow_node.position.x}px`;
+      element.style.top = `${flow_node.position.y}px`;
+    };
+    const handle_up = (up_event) => {
+      flow_node.pointerUp(up_event.clientX, up_event.clientY);
+      stop_active_pointer();
+      vm$.methods.moveSubflowNode(group.id, node.id, { x: flow_node.position.x - node.x, y: flow_node.position.y - node.y });
+    };
+    active_pointer_cleanup = () => {
+      document.removeEventListener("mousemove", handle_move);
+      document.removeEventListener("mouseup", handle_up);
+      element.style.left = `${node.x}px`;
+      element.style.top = `${node.y}px`;
     };
     document.addEventListener("mousemove", handle_move);
     document.addEventListener("mouseup", handle_up);
@@ -1336,9 +1380,10 @@ export function AutomationFlowGraph(props) {
                   Show({ when: group_, ok: () => For({ each: computed(group_, (group) => [group]), key: "render_key", render(value) {
                     const group = value && value.value !== undefined ? value.value : value;
                     return AutomationSubflowGroup({
-                      group: { ...group, x: 0, y: 0 }, store: vm$, inspectable, selected: editable ? selected : undefined,
+                      group: { ...group, x: 0, y: 0 }, store: vm$, inspectable, editable, selected: editable ? selected : undefined,
                       onSelect: editable ? () => vm$.methods.selectEditNode(node.id) : undefined,
                       onDrag: editable ? (event) => start_node_drag(event, node, flow_node) : undefined,
+                      onNodeDrag: start_subflow_node_drag,
                     });
                   } }), else: () => View(
                     {
