@@ -12,7 +12,7 @@ import (
 	"wx_channel/pkg/flowengine"
 )
 
-func (s *AutomationService) prepare_run(schedule model.FlowSchedule, trigger_type, trigger_key, retry_of, original_definition string) (*model.FlowRunRecord, error) {
+func (s *AutomationService) reserve_run(schedule model.FlowSchedule, trigger_type, trigger_key, retry_of string) (*model.FlowRunRecord, error) {
 	if s == nil || s.db == nil || s.flow_engine == nil {
 		return nil, fmt.Errorf("自动化执行服务未初始化")
 	}
@@ -23,18 +23,13 @@ func (s *AutomationService) prepare_run(schedule model.FlowSchedule, trigger_typ
 	}
 	s.claim_mu.Lock()
 	defer s.claim_mu.Unlock()
-	query := s.db.Model(&model.FlowRunRecord{}).Where("status IN ? AND deleted_at IS NULL", []string{"QUEUED", "RUNNING", "WAITING"})
-	if schedule.ID != "" {
-		query = query.Where("schedule_id = ?", schedule.ID)
-	} else {
-		query = query.Where("flow_id = ? AND (schedule_id = '' OR schedule_id IS NULL)", schedule.FlowID)
-	}
+	query := s.db.Model(&model.FlowRunRecord{}).Where("flow_id = ? AND status IN ? AND deleted_at IS NULL", schedule.FlowID, []string{"QUEUED", "RUNNING", "WAITING"})
 	var active int64
 	if err := query.Count(&active).Error; err != nil {
 		return nil, err
 	}
 	if active != 0 {
-		return nil, fmt.Errorf("流程触发器正在执行或等待人工确认")
+		return nil, err_automation_busy
 	}
 	var total_active int64
 	if err := s.db.Model(&model.FlowRunRecord{}).Where("status IN ?", []string{"QUEUED", "RUNNING"}).Count(&total_active).Error; err != nil {
@@ -43,6 +38,40 @@ func (s *AutomationService) prepare_run(schedule model.FlowSchedule, trigger_typ
 	if total_active >= 128 {
 		return nil, fmt.Errorf("自动化运行队列已满（128），请稍后重试")
 	}
+	timeout_sec := schedule.TimeoutSec
+	if timeout_sec <= 0 {
+		timeout_sec = default_schedule_timeout_sec
+	}
+	if timeout_sec > max_schedule_timeout_sec {
+		timeout_sec = max_schedule_timeout_sec
+	}
+	now := time.Now().UnixMilli()
+	run := &model.FlowRunRecord{ID: fmt.Sprintf("run-%d", time.Now().UnixNano()), FlowID: schedule.FlowID,
+		ScheduleID: schedule.ID, TriggerType: trigger_type, TriggerKey: trigger_key, Status: model.FlowRunStatusQueued,
+		InitialData: marshal_json(flow_initial_data(schedule)),
+		TimeoutSec:  timeout_sec, DeadlineAt: now + int64(timeout_sec)*1000, RetryOf: retry_of, StartedAt: &now,
+		Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now}}
+	if err := s.db.Create(run).Error; err != nil {
+		return nil, fmt.Errorf("创建运行记录失败，流程未执行: %w", err)
+	}
+	return run, nil
+}
+
+// Persist receipt before validation so rejected starts remain visible in history.
+func (s *AutomationService) prepare_run(schedule model.FlowSchedule, trigger_type, trigger_key, retry_of, original_definition string) (prepared_run *model.FlowRunRecord, preparation_err error) {
+	run, err := s.reserve_run(schedule, trigger_type, trigger_key, retry_of)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if preparation_err == nil {
+			return
+		}
+		if err := s.db.Model(&model.FlowRunRecord{}).Where("id = ?", run.ID).Update("definition", run.Definition).Error; err != nil {
+			s.log_error(err, "save rejected automation definition")
+		}
+		prepared_run = s.finish_run(schedule, run, fmt.Errorf("启动校验失败: %w", preparation_err))
+	}()
 	definition, ok := s.flow_engine.GetFlowDefinition(schedule.FlowID)
 	if original_definition != "" {
 		if err := json.Unmarshal([]byte(original_definition), &definition); err != nil {
@@ -52,6 +81,10 @@ func (s *AutomationService) prepare_run(schedule model.FlowSchedule, trigger_typ
 	}
 	if !ok {
 		return nil, fmt.Errorf("流程不存在: %s", schedule.FlowID)
+	}
+	// Preserve the graph even if configuration validation prevents execution.
+	if raw, err := json.Marshal(definition); err == nil {
+		run.Definition = string(raw)
 	}
 	if strings.HasPrefix(schedule.FlowID, user_flow_id_prefix) {
 		if original_definition == "" {
@@ -74,21 +107,17 @@ func (s *AutomationService) prepare_run(schedule model.FlowSchedule, trigger_typ
 		}
 		raw_definition = nil
 	}
-	timeout_sec := schedule.TimeoutSec
-	if timeout_sec <= 0 {
-		timeout_sec = default_schedule_timeout_sec
-	}
-	if timeout_sec > max_schedule_timeout_sec {
+
+	if schedule.TimeoutSec > max_schedule_timeout_sec {
 		return nil, fmt.Errorf("timeout_sec 不能超过 %d", max_schedule_timeout_sec)
 	}
-	now := time.Now().UnixMilli()
-	run := &model.FlowRunRecord{ID: fmt.Sprintf("run-%d", time.Now().UnixNano()), FlowID: schedule.FlowID,
-		ScheduleID: schedule.ID, TriggerType: trigger_type, TriggerKey: trigger_key, Status: model.FlowRunStatusQueued,
-		Definition: string(raw_definition), InitialData: marshal_json(flow_initial_data(schedule)),
-		TimeoutSec: timeout_sec, DeadlineAt: now + int64(timeout_sec)*1000, RetryOf: retry_of, StartedAt: &now,
-		Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now}}
-	if err := s.db.Create(run).Error; err != nil {
-		return nil, fmt.Errorf("创建运行记录失败，流程未执行: %w", err)
+	run.Definition = string(raw_definition)
+	result := s.db.Model(&model.FlowRunRecord{}).Where("id = ? AND status = ?", run.ID, model.FlowRunStatusQueued).Update("definition", run.Definition)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected != 1 {
+		return nil, context.Canceled
 	}
 	return run, nil
 }

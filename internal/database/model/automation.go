@@ -44,6 +44,7 @@ type FlowRunRecord struct {
 	InitialData string `gorm:"type:text" json:"initial_data"`
 	Checkpoint  string `gorm:"type:text" json:"-"`
 	NodeLogs    string `gorm:"type:text" json:"node_logs"`
+	NodeStates  string `gorm:"type:text;not null;default:{}" json:"-"`
 	TimeoutSec  int    `json:"timeout_sec"`
 	DeadlineAt  int64  `gorm:"index" json:"deadline_at"`
 	RetryOf     string `gorm:"index" json:"retry_of,omitempty"`

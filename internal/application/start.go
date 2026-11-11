@@ -227,7 +227,14 @@ func Start(cfg *config.Config) error {
 		logger.Debug().Str("file", "/application/start.go").Int("task_id", task_id).Str("event", string(event)).Msg("Hermes task event")
 		download_task_broadcaster.Notify(task_id, event, progress, finished_resources)
 		if event == hermes.EventFinished {
-			go bus.Publish(events.DownloadTaskFinished{TaskID: task_id})
+			finished := data.(hermes.TaskFinishedEventData)
+			go func() {
+				task, err := service_download_task.BuildTaskDetail(context.Background(), task_id, finished_resources)
+				if err != nil {
+					logger.Error().Err(err).Int("task_id", task_id).Msg("failed to build download completion event")
+				}
+				bus.Publish(events.DownloadTaskFinished{TaskID: task_id, Task: task, DownloadDir: finished.DownloadDir})
+			}()
 		}
 	})
 	var service_bridge *services.BridgeService
@@ -250,13 +257,18 @@ func Start(cfg *config.Config) error {
 	// One flow engine is shared by the automation service and any caller that
 	// registers flow definitions on it.
 	flow_engine := flowengine.NewWorkflowEngine()
+	custom_nodes, err := flowengine.LoadCustomNodes(context.Background(), flow_engine, api_cfg.WorkDir, logger)
+	if err != nil {
+		task_store.Shutdown()
+		return fmt.Errorf("failed to load custom automation nodes: %w", err)
+	}
 	wxchannels_flows := wxchannelsadapter.GetWXChannelsPostprocessFlows()
 	wxchannels_flow_definitions := make(map[string]flowengine.FlowDefinition, len(wxchannels_flows))
 	for _, flow := range wxchannels_flows {
 		wxchannels_flow_definitions[flow.ID] = flow
 	}
 	flow_engine.SetFlowDefinitions(wxchannels_flow_definitions)
-	service_automation := services.NewAutomationService(b.DB, logger, flow_engine, bus)
+	service_automation := services.NewAutomationService(b.DB, logger, flow_engine, bus, custom_nodes)
 
 	service_mcp, err := new_mcp_service(api_cfg, service_data, service_download_task, service_scraper_job, service_automation, cfg.GetBool("mcp.enabled"))
 	if err != nil {

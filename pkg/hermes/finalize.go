@@ -110,9 +110,10 @@ func (d *HermesEngine) finish_task(job *TaskJob) error {
 	// 9. Emit final progress and EventFinished
 	d.emit_progress(task_id)
 	d.emit(EventFinished, TaskFinishedEventData{
-		TaskID:    task_id,
-		FilePaths: append([]string(nil), final_paths...),
-		Resources: finished_resource_snapshot(job.Resources),
+		TaskID:      task_id,
+		DownloadDir: job.DownloadDir,
+		FilePaths:   append([]string(nil), final_paths...),
+		Resources:   finished_resource_snapshot(job.Resources),
 	})
 	d.delete_tracker(task_id)
 	return nil

@@ -25,11 +25,13 @@ const (
 // Only JSON-config driven node types are exposed; FuncNode is bound to Go
 // functions and therefore not user-constructible.
 type UserFlowNodeCatalogItem struct {
-	Type        string                 `json:"type"`
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	ConfigKeys  []UserFlowConfigKey    `json:"config_keys"`
-	Tools       []mcpserver.Definition `json:"tools,omitempty"`
+	Type          string                   `json:"type"`
+	Name          string                   `json:"name"`
+	Description   string                   `json:"description"`
+	ConfigKeys    []UserFlowConfigKey      `json:"config_keys"`
+	Tools         []mcpserver.Definition   `json:"tools,omitempty"`
+	DefaultConfig map[string]any           `json:"default_config,omitempty"`
+	ConfigSchema  []engine.NodeConfigField `json:"config_schema,omitempty"`
 }
 
 type UserFlowConfigKey struct {
@@ -135,6 +137,7 @@ type CreateUserFlowInput struct {
 // UpdateUserFlowInput replaces the editable parts of a user pipeline. Nodes is
 // the authoritative node list; edges are expressed as next_ids on each node.
 type UpdateUserFlowInput struct {
+	Subflows      map[string]engine.FlowDefinition
 	NodeConfigs   map[string]map[string]interface{}
 	Name          *string
 	Description   *string
@@ -175,7 +178,18 @@ func (s *AutomationService) load_user_flows() {
 			s.log_error(err, "failed to decode user flow "+flows[index].ID)
 			continue
 		}
-		s.flow_engine.FlowDefinitions[definition.ID] = *definition
+		if s.custom_nodes.ApplyConfigSchemas(definition) {
+			encoded, err := json.Marshal(definition)
+			if err != nil {
+				s.log_error(err, "failed to encode custom node configuration")
+				continue
+			}
+			if err := s.db.Model(&flows[index]).Update("definition", string(encoded)).Error; err != nil {
+				s.log_error(err, "failed to update custom node declarations")
+				continue
+			}
+		}
+		s.register_user_flow(*definition)
 	}
 }
 
@@ -282,7 +296,7 @@ func (s *AutomationService) ImportUserFlow(raw string) (*model.UserFlow, error) 
 	if err != nil {
 		return nil, err
 	}
-	if err := normalize_user_flow_definition(definition); err != nil {
+	if err := normalize_user_flow_definition(definition, s.custom_nodes); err != nil {
 		return nil, err
 	}
 	var imported struct {
@@ -335,16 +349,37 @@ func (s *AutomationService) ImportUserFlow(raw string) (*model.UserFlow, error) 
 // each node so its id, config["id"], NextNodeIDs and NextNodes stay consistent.
 // The engine drives ordinary nodes via NextNodes but ManualNode via NextNodeIDs,
 // so both representations must agree for an imported graph to run correctly.
-func normalize_user_flow_definition(definition *engine.FlowDefinition) error {
-	return normalize_user_flow_definition_at_depth(definition, 0)
+func normalize_user_flow_definition(definition *engine.FlowDefinition, custom_nodes ...*flowengine.CustomNodeRegistry) error {
+	return normalize_user_flow_definition_at_depth(definition, 0, custom_nodes...)
 }
 
-func normalize_user_flow_definition_at_depth(definition *engine.FlowDefinition, depth int) error {
+func normalize_user_flow_definition_at_depth(definition *engine.FlowDefinition, depth int, custom_nodes ...*flowengine.CustomNodeRegistry) error {
+	if len(custom_nodes) > 0 {
+		custom_nodes[0].ApplyConfigSchemas(definition)
+	}
 	if depth > 16 {
 		return fmt.Errorf("子流程嵌套不能超过 16 层")
 	}
 	if len(definition.Nodes) > 500 {
 		return fmt.Errorf("流程节点数量不能超过 500")
+	}
+	if len(definition.Subflows) > 500 {
+		return fmt.Errorf("子流程数量不能超过 500")
+	}
+	for id, child := range definition.Subflows {
+		if strings.TrimSpace(id) == "" {
+			return fmt.Errorf("子流程 id 不能为空")
+		}
+		if child.ID == "" {
+			child.ID = id
+		}
+		if child.Name == "" {
+			child.Name = id
+		}
+		if err := normalize_user_flow_definition_at_depth(&child, depth+1, custom_nodes...); err != nil {
+			return fmt.Errorf("子流程 %s: %w", id, err)
+		}
+		definition.Subflows[id] = child
 	}
 
 	name := strings.TrimSpace(definition.Name)
@@ -370,13 +405,13 @@ func normalize_user_flow_definition_at_depth(definition *engine.FlowDefinition, 
 		if node_id == "" {
 			return fmt.Errorf("节点 id 不能为空")
 		}
-		if !user_flow_allows_node_type(node.Type) {
+		if !user_flow_allows_node_type(node.Type, custom_nodes...) {
 			return fmt.Errorf("节点类型不支持: %s", node.Type)
 		}
 		if node.Config == nil {
 			node.Config = map[string]interface{}{}
 		}
-		if err := validate_user_flow_node_config(node.Type, node.Config); err != nil {
+		if err := validate_user_flow_node_config(node.Type, node.Config, custom_nodes...); err != nil {
 			return fmt.Errorf("节点 %s 配置无效: %w", node_id, err)
 		}
 		if err := validate_node_execution_policy(node); err != nil {
@@ -398,7 +433,7 @@ func normalize_user_flow_definition_at_depth(definition *engine.FlowDefinition, 
 				if child.ID == "" {
 					child.ID = definition.ID + ":" + node_id
 				}
-				if err := normalize_user_flow_definition_at_depth(&child, depth+1); err != nil {
+				if err := normalize_user_flow_definition_at_depth(&child, depth+1, custom_nodes...); err != nil {
 					return fmt.Errorf("子流程 %s: %w", node_id, err)
 				}
 				for _, child_node := range child.Nodes {
@@ -472,6 +507,10 @@ func normalize_user_flow_definition_at_depth(definition *engine.FlowDefinition, 
 	return nodes.ValidateFlowScopes(*definition)
 }
 
+func (s *AutomationService) user_flow_query() *gorm.DB {
+	return s.db.Model(&model.UserFlow{}).Select("user_flow.*, COALESCE((SELECT id FROM flow_run_record WHERE flow_id = user_flow.id AND status IN ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1), '') AS active_run_id", []string{"QUEUED", "RUNNING", "WAITING"})
+}
+
 // GetUserFlow loads one user pipeline by id.
 func (s *AutomationService) GetUserFlow(id string) (*model.UserFlow, error) {
 	if s == nil || s.db == nil {
@@ -479,10 +518,68 @@ func (s *AutomationService) GetUserFlow(id string) (*model.UserFlow, error) {
 	}
 	id = strings.TrimSpace(id)
 	var flow model.UserFlow
-	if err := s.db.Where("id = ? AND deleted_at IS NULL", id).First(&flow).Error; err != nil {
+	if err := s.user_flow_query().Where("id = ? AND deleted_at IS NULL", id).First(&flow).Error; err != nil {
 		return nil, fmt.Errorf("流程不存在: %s", id)
 	}
 	return &flow, nil
+}
+
+func (s *AutomationService) CopyUserFlow(id string) (*model.UserFlow, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("自动化服务未初始化")
+	}
+	var copied model.UserFlow
+	var definition *engine.FlowDefinition
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		scoped_service := &AutomationService{db: tx, cron_parser: s.cron_parser}
+		source, err := scoped_service.GetUserFlow(id)
+		if err != nil {
+			return err
+		}
+		definition, err = decode_user_flow_definition(source.Definition)
+		if err != nil {
+			return err
+		}
+		copied = *source
+		copied.ActiveRunID = ""
+		copied.ID = fmt.Sprintf("%s%d", user_flow_id_prefix, time.Now().UnixNano())
+		copied.Name += "（副本）"
+		now := time.Now().UnixMilli()
+		copied.Timestamps = model.Timestamps{CreatedAt: now, UpdatedAt: now}
+		definition.ID, definition.Name = copied.ID, copied.Name
+		encoded, err := json.Marshal(definition)
+		if err != nil {
+			return err
+		}
+		copied.Definition = string(encoded)
+		if err := tx.Create(&copied).Error; err != nil {
+			return err
+		}
+		var schedules []model.FlowSchedule
+		if err := tx.Where("flow_id = ? AND deleted_at IS NULL", source.ID).Find(&schedules).Error; err != nil {
+			return err
+		}
+		for _, schedule := range schedules {
+			initial_data := decode_initial_data(schedule.InitialData)
+			if metadata, ok := initial_data[automation_metadata_key].(map[string]interface{}); ok && metadata["type"] == model.FlowRunTriggerWebhook {
+				// A copied webhook gets its own URL and access token.
+				delete(metadata, "webhook_token")
+			}
+			if _, err := scoped_service.CreateSchedule(CreateScheduleInput{
+				Name: schedule.Name, Description: schedule.Description, FlowID: copied.ID,
+				CronExpr: schedule.CronExpr, InitialData: initial_data,
+				Enabled: &schedule.Enabled, TimeoutSec: schedule.TimeoutSec,
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("复制流程失败: %w", err)
+	}
+	s.register_user_flow(*definition)
+	return &copied, nil
 }
 
 // ListUserFlows returns all user pipelines ordered by creation time.
@@ -491,7 +588,7 @@ func (s *AutomationService) ListUserFlows() ([]model.UserFlow, error) {
 		return nil, fmt.Errorf("自动化服务未初始化")
 	}
 	flows := make([]model.UserFlow, 0)
-	if err := s.db.Where("deleted_at IS NULL").Order("created_at DESC").Find(&flows).Error; err != nil {
+	if err := s.user_flow_query().Where("deleted_at IS NULL").Order("created_at DESC").Find(&flows).Error; err != nil {
 		return nil, fmt.Errorf("查询流程失败: %w", err)
 	}
 	return flows, nil
@@ -522,7 +619,7 @@ func (s *AutomationService) UpdateUserFlow(id string, input UpdateUserFlowInput)
 	if input.ContextSchema != nil {
 		definition.ContextSchema = input.ContextSchema
 	}
-	if err := apply_user_flow_update(definition, input); err != nil {
+	if err := apply_user_flow_update(definition, input, s.custom_nodes); err != nil {
 		return nil, err
 	}
 	values := decode_node_configs(flow.NodeConfigs)
@@ -574,7 +671,10 @@ func (s *AutomationService) UpdateUserFlow(id string, input UpdateUserFlowInput)
 // the save path enforces the same graph and scope contract as an import.
 // Skipping that normalization is how a definition the engine only rejects at
 // run time could get persisted.
-func apply_user_flow_update(definition *engine.FlowDefinition, input UpdateUserFlowInput) error {
+func apply_user_flow_update(definition *engine.FlowDefinition, input UpdateUserFlowInput, custom_nodes ...*flowengine.CustomNodeRegistry) error {
+	if input.Subflows != nil {
+		definition.Subflows = input.Subflows
+	}
 	if len(input.Nodes) > 0 {
 		rebuilt := map[string]engine.NodeDefinition{}
 		for _, node := range input.Nodes {
@@ -582,7 +682,7 @@ func apply_user_flow_update(definition *engine.FlowDefinition, input UpdateUserF
 			if node_id == "" {
 				return fmt.Errorf("节点 id 不能为空")
 			}
-			if !user_flow_allows_node_type(node.Type) {
+			if !user_flow_allows_node_type(node.Type, custom_nodes...) {
 				return fmt.Errorf("节点类型不支持: %s", node.Type)
 			}
 			if _, exists := rebuilt[node_id]; exists {
@@ -592,7 +692,7 @@ func apply_user_flow_update(definition *engine.FlowDefinition, input UpdateUserF
 			if config == nil {
 				config = map[string]interface{}{}
 			}
-			if err := validate_user_flow_node_config(node.Type, config); err != nil {
+			if err := validate_user_flow_node_config(node.Type, config, custom_nodes...); err != nil {
 				return fmt.Errorf("节点 %s 配置无效: %w", node_id, err)
 			}
 			config["id"] = node_id
@@ -641,7 +741,7 @@ func apply_user_flow_update(definition *engine.FlowDefinition, input UpdateUserF
 		definition.StartNodeID = start_node_id
 		definition.Nodes = rebuilt
 	}
-	return normalize_user_flow_definition(definition)
+	return normalize_user_flow_definition(definition, custom_nodes...)
 }
 
 // DeleteUserFlow soft-deletes a user pipeline and detaches it from the engine.
@@ -699,16 +799,31 @@ func (s *AutomationService) UserFlowVisualization(flow_id string) (*flowengine.F
 
 // user_flow_allows_node_type restricts editor nodes to engine node types whose
 // behaviour is fully described by JSON config.
-func user_flow_allows_node_type(node_type string) bool {
+func user_flow_allows_node_type(node_type string, custom_nodes ...*flowengine.CustomNodeRegistry) bool {
 	switch node_type {
 	case "StartNode", "EndNode", "ExprNode", "GatewayNode", "APICallNode", "ManualNode", "ServiceNode", "JSCodeNode", "SetVariableNode", "LoopNode", "WorkflowNode", "WaitNode", "FailNode":
 		return true
 	default:
-		return false
+		return len(custom_nodes) > 0 && custom_nodes[0].Has(node_type)
 	}
 }
 
-func validate_user_flow_node_config(node_type string, config map[string]interface{}) error {
+func validate_user_flow_node_config(node_type string, config map[string]interface{}, custom_nodes ...*flowengine.CustomNodeRegistry) error {
+	if len(custom_nodes) > 0 && custom_nodes[0].Has(node_type) {
+		if raw, exists := config["arguments"]; exists {
+			if _, ok := raw.(map[string]interface{}); !ok {
+				return fmt.Errorf("arguments 必须是 JSON 对象")
+			}
+		}
+		if raw, exists := config["output_key"]; exists {
+			if key, ok := raw.(string); !ok || strings.TrimSpace(key) == "" {
+				return fmt.Errorf("output_key 必须是非空字符串")
+			}
+		} else {
+			config["output_key"] = "result"
+		}
+		return node_config_integer(config, "timeout_seconds", 600, 1, 86400)
+	}
 	if node_type != "ServiceNode" {
 		return validate_automation_node_config(node_type, config)
 	}
@@ -756,12 +871,28 @@ func validate_user_flow_node_config(node_type string, config map[string]interfac
 }
 
 // SortedUserFlowNodeCatalog keeps a stable order for the editor picker.
-func SortedUserFlowNodeCatalog() []UserFlowNodeCatalogItem {
+func SortedUserFlowNodeCatalog(custom_nodes ...*flowengine.CustomNodeRegistry) []UserFlowNodeCatalogItem {
 	catalog := user_flow_node_catalog()
+	if len(custom_nodes) > 0 {
+		for _, node := range custom_nodes[0].Catalog() {
+			keys := make([]UserFlowConfigKey, 0, len(node.ConfigKeys))
+			for _, key := range node.ConfigKeys {
+				keys = append(keys, UserFlowConfigKey{Key: key.Key, Type: key.Type, Required: key.Required, Description: key.Description})
+			}
+			catalog = append(catalog, UserFlowNodeCatalogItem{Type: node.Type, Name: node.Name, Description: node.Description, ConfigKeys: keys, DefaultConfig: node.DefaultConfig, ConfigSchema: node.ConfigSchema})
+		}
+	}
 	sort.SliceStable(catalog, func(i, j int) bool {
 		return catalog[i].Type < catalog[j].Type
 	})
 	return catalog
+}
+
+func (s *AutomationService) NodeCatalog() []UserFlowNodeCatalogItem {
+	if s == nil {
+		return SortedUserFlowNodeCatalog()
+	}
+	return SortedUserFlowNodeCatalog(s.custom_nodes)
 }
 
 // TriggerFlowDirect starts any user pipeline immediately as a manual/debug

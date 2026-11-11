@@ -82,6 +82,7 @@ func TestAutomationResetStartsNewNodeStateAndLogProjection(t *testing.T) {
 		t.Fatalf("previous invocation logs returned: %v, %v", logs, err)
 	}
 	service.persist_node_log(flowengine.NodeExecutionLog{RunID: run.ID, FlowID: run.FlowID, NodeID: "second", Outcome: "completed", Output: map[string]interface{}{"current": true}})
+	service.publish_node_execution_status(flowengine.NodeExecutionStatus{RunID: run.ID, FlowID: run.FlowID, NodeID: "second", Status: flowengine.StateCompleted})
 	service.publish_node_execution_status(flowengine.NodeExecutionStatus{RunID: run.ID, FlowID: "another-child", NodeStates: map[string]flowengine.NodeState{"second": flowengine.StatePending}})
 	states, err = service.GetRunNodeStates(run.ID)
 	if err != nil || states["first"] != "PENDING" || states["second"] != "COMPLETED" {
@@ -89,6 +90,74 @@ func TestAutomationResetStartsNewNodeStateAndLogProjection(t *testing.T) {
 	}
 	if logs, err := service.GetRunNodeLogs(run.ID, "second"); err != nil || len(logs) != 1 || !strings.Contains(string(logs[0]), "current") {
 		t.Fatalf("current invocation logs missing: %v, %v", logs, err)
+	}
+}
+
+func TestAutomationDownstreamResetPreservesUpstreamStatesAndLogs(t *testing.T) {
+	service := new_trigger_test_service(t)
+	run := model.FlowRunRecord{ID: "run-downstream-reset", FlowID: "target", Status: model.FlowRunStatusRunning, CurrentNode: "child",
+		Definition: `{"id":"target","nodes":{"before":{},"child":{},"after":{}}}`,
+		NodeLogs:   `[{"flow_id":"target","node_id":"before","outcome":"completed"},{"flow_id":"target","node_id":"child","outcome":"completed"},{"flow_id":"target","node_id":"after","outcome":"completed"}]`}
+	if err := service.db.Create(&run).Error; err != nil {
+		t.Fatal(err)
+	}
+	service.publish_node_execution_status(flowengine.NodeExecutionStatus{RunID: run.ID, FlowID: run.FlowID, NodeID: "child", Status: flowengine.StateRunning,
+		NodeStates: map[string]flowengine.NodeState{"child": flowengine.StateRunning, "after": flowengine.StatePending}})
+	states, err := service.GetRunNodeStates(run.ID)
+	if err != nil || states["before"] != "COMPLETED" || states["child"] != "RUNNING" || states["after"] != "PENDING" {
+		t.Fatalf("incorrect downstream reset projection: %v, %v", states, err)
+	}
+	for _, node_id := range []string{"before", "child", "after"} {
+		logs, err := service.GetRunNodeLogs(run.ID, node_id)
+		if err != nil || len(logs) != 1 || strings.Contains(string(logs[0]), "node_states") {
+			t.Fatalf("reset erased node %s history or became an execution log: %v, %v", node_id, logs, err)
+		}
+	}
+}
+
+func TestAutomationSubflowStatesAndLogsAreScopedAndSurviveReload(t *testing.T) {
+	service := new_trigger_test_service(t)
+	run := model.FlowRunRecord{ID: "run-scoped", FlowID: "root", Status: model.FlowRunStatusRunning, CurrentNode: "call",
+		Definition: `{"id":"root","nodes":{"start":{},"call":{"config":{"workflow":{"id":"child","nodes":{"start":{},"end":{},"nested":{"config":{"workflow":{"id":"grandchild","nodes":{"start":{}}}}}}}}}}}`}
+	if err := service.db.Create(&run).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []string{"root", "child", "grandchild"} {
+		service.publish_node_execution_status(flowengine.NodeExecutionStatus{RunID: run.ID, FlowID: scope, NodeID: "start", Status: flowengine.StateCompleted})
+		service.persist_node_log(flowengine.NodeExecutionLog{RunID: run.ID, FlowID: scope, NodeID: "start", Outcome: "completed", Success: true})
+	}
+	service.publish_node_execution_status(flowengine.NodeExecutionStatus{RunID: run.ID, FlowID: "child", NodeStates: map[string]flowengine.NodeState{
+		"start": flowengine.StatePending, "end": flowengine.StatePending, "nested": flowengine.StatePending,
+	}})
+	service.publish_node_execution_status(flowengine.NodeExecutionStatus{RunID: run.ID, FlowID: "child", NodeID: "start", Status: flowengine.StateRunning})
+	reloaded := NewAutomationService(service.db, nil, nil, nil)
+	states, err := reloaded.GetRunNodeStates(run.ID, "child")
+	if err != nil || states["start"] != "RUNNING" || states["end"] != "PENDING" {
+		t.Fatalf("child state not restored: %v, %v", states, err)
+	}
+	states, err = reloaded.GetRunNodeStates(run.ID)
+	if err != nil || states["start"] != "COMPLETED" || states["call"] != "RUNNING" {
+		t.Fatalf("child overwrote parent: %v, %v", states, err)
+	}
+	states, err = reloaded.GetRunNodeStates(run.ID, "grandchild")
+	if err != nil || states["start"] != "PENDING" {
+		t.Fatalf("ancestor reentry retained nested state: %v, %v", states, err)
+	}
+	for _, scope := range []string{"child", "grandchild"} {
+		logs, err := reloaded.GetRunNodeLogs(run.ID, "start", scope)
+		if err != nil || len(logs) != 0 {
+			t.Fatalf("previous child invocation logs restored: %s, %v, %v", scope, logs, err)
+		}
+	}
+	logs, err := reloaded.GetRunNodeLogs(run.ID, "start")
+	if err != nil || len(logs) != 1 {
+		t.Fatalf("parent history lost: %v, %v", logs, err)
+	}
+	if _, err := reloaded.GetRunNodeStates(run.ID, "unrelated"); err == nil {
+		t.Fatal("unrelated scope accepted")
+	}
+	if _, err := reloaded.GetRunNodeLogs(run.ID, "start", "unrelated"); err == nil {
+		t.Fatal("unrelated log scope accepted")
 	}
 }
 

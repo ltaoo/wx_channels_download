@@ -177,6 +177,7 @@ func (c *APIClient) setup_automation_routes() {
 	// User-defined pipelines
 	c.engine.POST("/api/v1/automation/list_flows", c.handle_list_user_flows)
 	c.engine.POST("/api/v1/automation/create_flow", c.handle_create_user_flow)
+	c.engine.POST("/api/v1/automation/copy_flow", c.handle_copy_user_flow)
 	c.engine.POST("/api/v1/automation/import_flow", c.handle_import_user_flow)
 	c.engine.POST("/api/v1/automation/get_flow", c.handle_get_user_flow)
 	c.engine.POST("/api/v1/automation/update_flow", c.handle_update_user_flow)

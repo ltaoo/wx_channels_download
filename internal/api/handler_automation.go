@@ -296,12 +296,21 @@ func (c *APIClient) handle_get_automation_run(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	var body automation_id_body
+	var body struct {
+		ID           string `json:"id"`
+		MetadataOnly bool   `json:"metadata_only"`
+	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, api_code_invalid_params, "请求参数无效")
 		return
 	}
-	run, err := service.GetRun(strings.TrimSpace(body.ID))
+	var run *model.FlowRunRecord
+	var err error
+	if body.MetadataOnly {
+		run, err = service.GetRunMetadata(strings.TrimSpace(body.ID))
+	} else {
+		run, err = service.GetRun(strings.TrimSpace(body.ID))
+	}
 	if err != nil {
 		result.Err(ctx, api_code_invalid_params, err.Error())
 		return
@@ -314,12 +323,15 @@ func (c *APIClient) handle_get_automation_run_node_states(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	var body automation_id_body
+	var body struct {
+		ID     string `json:"id"`
+		FlowID string `json:"flow_id"`
+	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, api_code_invalid_params, "请求参数无效")
 		return
 	}
-	states, err := service.GetRunNodeStates(body.ID)
+	states, err := service.GetRunNodeStates(body.ID, body.FlowID)
 	if err != nil {
 		result.Err(ctx, api_code_invalid_params, err.Error())
 		return
@@ -335,12 +347,13 @@ func (c *APIClient) handle_get_automation_run_node_logs(ctx *gin.Context) {
 	var body struct {
 		ID     string `json:"id"`
 		NodeID string `json:"node_id"`
+		FlowID string `json:"flow_id"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, api_code_invalid_params, "请求参数无效")
 		return
 	}
-	logs, err := service.GetRunNodeLogs(body.ID, body.NodeID)
+	logs, err := service.GetRunNodeLogs(body.ID, body.NodeID, body.FlowID)
 	if err != nil {
 		result.Err(ctx, api_code_invalid_params, err.Error())
 		return

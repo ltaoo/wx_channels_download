@@ -1,0 +1,88 @@
+{
+  "id": "download-finished-qiniu-webhook",
+  "name": "下载完成后上传七牛云并通知 Webhook",
+  "start_node": "start",
+  "context_schema": [
+    {
+      "key": "event",
+      "type": "object",
+      "required": true
+    }
+  ],
+  "triggers": [
+    {
+      "type": "Event",
+      "name": "下载任务完成",
+      "event_key": "downloadtask.finished",
+      "active": true,
+      "enabled": false,
+      "timeout_sec": 600
+    }
+  ],
+  "nodes": {
+    "start": {
+      "type": "StartNode",
+      "name": "下载任务完成",
+      "config": {},
+      "next_node_ids": [
+        "upload"
+      ],
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    "upload": {
+      "type": "QiniuUploadNode",
+      "name": "上传到七牛云",
+      "config": {
+        "arguments": {
+          "task": "{{input.event.data.task}}",
+          "manifest_dir": "{{input.event.data.download_dir}}"
+        },
+        "output_key": "uploaded",
+        "timeout_seconds": 600
+      },
+      "next_node_ids": [
+        "webhook"
+      ],
+      "position": {
+        "x": 300,
+        "y": 0
+      }
+    },
+    "webhook": {
+      "type": "APICallNode",
+      "name": "发送完成 Webhook",
+      "config": {
+        "url": "http://localhost:8080/webhook/download_task/success",
+        "method": "POST",
+        "body_type": "json",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{{input.event.data.task}}",
+        "timeout_seconds": 600,
+        "fail_on_status": true,
+        "output_key": "webhook_response"
+      },
+      "next_node_ids": [
+        "end"
+      ],
+      "position": {
+        "x": 600,
+        "y": 0
+      }
+    },
+    "end": {
+      "type": "EndNode",
+      "name": "结束",
+      "config": {},
+      "next_node_ids": [],
+      "position": {
+        "x": 900,
+        "y": 0
+      }
+    }
+  }
+}

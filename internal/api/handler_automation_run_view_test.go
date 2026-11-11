@@ -28,7 +28,7 @@ func TestAutomationRunViewResponses(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sql_db.Close() })
-	run := model.FlowRunRecord{ID: "run-view", FlowID: "flow-test", Status: "COMPLETED",
+	run := model.FlowRunRecord{ID: "run-view", FlowID: "flow-test", Status: "COMPLETED", Error: "启动校验失败: access_key 不能为空", TriggerType: "Event", TriggerKey: "downloadtask.finished",
 		Definition: `{"id":"flow-test","nodes":{"start":{},"end":{}}}`,
 		NodeLogs:   `[{"node_id":"start","outcome":"completed","input":{"large":"payload"}},{"node_id":"end","outcome":"completed","output":{"private":"other-node"}}]`}
 	if err := db.Create(&run).Error; err != nil {
@@ -51,6 +51,14 @@ func TestAutomationRunViewResponses(t *testing.T) {
 	summary := listed[0].(map[string]interface{})
 	if len(summary) != 3 || summary["id"] != run.ID || summary["status"] != run.Status || summary["created_at"] == nil {
 		t.Fatalf("list must contain only time, id and result: %+v", summary)
+	}
+	metadata := request("get_run", `{"id":"run-view","metadata_only":true}`)["data"].(map[string]interface{})
+	if metadata["error"] != run.Error || metadata["trigger_key"] != run.TriggerKey || metadata["trigger_type"] != "Event" || metadata["node_logs"] != "" || metadata["definition"] != "" {
+		t.Fatalf("metadata omitted startup failure or loaded payloads: %+v", metadata)
+	}
+	full := request("get_run", `{"id":"run-view"}`)["data"].(map[string]interface{})
+	if full["definition"] != run.Definition || full["node_logs"] != run.NodeLogs {
+		t.Fatal("full run response changed")
 	}
 	states := request("get_run_node_states", `{"id":"run-view"}`)["data"].(map[string]interface{})
 	if len(states) != 2 || states["start"] != "COMPLETED" || states["end"] != "COMPLETED" {
