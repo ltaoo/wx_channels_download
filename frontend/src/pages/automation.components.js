@@ -191,12 +191,10 @@ export function automation_pipeline_href(flow_id, mode) {
 
 export function AutomationPipelineLink(props) {
   const mode = props.mode === "edit" ? "edit" : "detail";
-  return Link(
+  const render = props.primary ? Link : TextButton;
+  return render(
     {
-      class: [
-        "dm-button dm-focus-ring dm-button--sm text-decoration-none",
-        props.primary ? "dm-button--primary" : "dm-button--outline",
-      ].join(" "),
+      class: props.primary ? "dm-button dm-focus-ring dm-button--sm dm-button--primary text-decoration-none" : "",
       href: automation_pipeline_href(props.flowId, mode),
       target: "_blank",
       attributes: {
@@ -206,13 +204,13 @@ export function AutomationPipelineLink(props) {
       },
     },
     [
-      Timeless.Icon({
+      props.primary ? Timeless.Icon({
         name: mode === "edit" ? "pen-line" : "eye",
         size: 15,
-        attributes: { "aria-hidden": "true" },
-      }),
+        attributes: { n: `automation-open-${mode}-${props.flowId}-icon`, "aria-hidden": "true" },
+      }) : null,
       props.label,
-    ],
+    ].filter(Boolean),
   );
 }
 

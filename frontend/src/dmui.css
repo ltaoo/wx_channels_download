@@ -1141,14 +1141,16 @@ img.dm-lazy-img-image[data-lazy-img-state] {
 .dm-button--link {
   min-height: auto;
   padding: 0;
-  color: var(--dm-color-primary);
+  color: var(--dm-color-text-primary);
+  text-decoration: none;
   background: transparent;
   border-color: transparent;
   border-radius: 0;
 }
 
 .dm-button--link:hover:not(:disabled) {
-  text-decoration: underline;
+  color: var(--dm-color-text-primary);
+  text-decoration: none;
   background: transparent;
   border-color: transparent;
 }
@@ -1308,7 +1310,35 @@ img.dm-lazy-img-image[data-lazy-img-state] {
   background: var(--dm-color-bg-subtle);
 }
 
-.dm-button__prefix {
+.dm-button-group {
+  display: inline-flex;
+  align-items: stretch;
+  isolation: isolate;
+}
+
+.dm-button-group > .dm-button:first-child {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.dm-button-group > .dm-button:not(:first-child) {
+  margin-inline-start: calc(-1 * var(--dm-border-width));
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+
+.dm-button-group > .dm-button--icon,
+.dm-button-group > .dm-button--icon-sm {
+  width: var(--dm-space-6);
+}
+
+.dm-button-group > .dm-button:hover,
+.dm-button-group > .dm-button:focus-visible {
+  z-index: var(--dm-z-raised);
+}
+
+.dm-button__prefix,
+.dm-button__suffix {
   display: inline-flex;
   align-items: center;
 }
@@ -3135,6 +3165,36 @@ img.dm-lazy-img-image[data-lazy-img-state] {
   right: 0;
   bottom: 0;
   background: var(--dm-content-panel-soft);
+}
+
+.dm-table-fields {
+  display: grid;
+  grid-template-columns: fit-content(40%) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--dm-space-0-5) var(--dm-space-2);
+  min-width: 0;
+  margin: 0;
+  font-size: var(--dm-font-size-sm);
+}
+
+.dm-table-fields__row {
+  display: contents;
+}
+
+.dm-table-fields__label {
+  min-width: 0;
+  color: var(--dm-color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.dm-table-fields__value {
+  display: flex;
+  align-items: center;
+  gap: var(--dm-space-1);
+  min-width: 0;
+  margin: 0;
+  color: var(--dm-color-text-primary);
+  overflow-wrap: anywhere;
 }
 
 .dm-table-cell,

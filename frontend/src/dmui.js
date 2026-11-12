@@ -678,11 +678,20 @@ function button_class(state) {
   ]);
 }
 
+function button_suffix(suffix) {
+  return suffix ? View({
+    type: "span",
+    class: "dm-button__suffix",
+    attributes: { n: "button-suffix" },
+  }, Array.isArray(suffix) ? suffix : [suffix]) : null;
+}
+
 export function Button(props, children = []) {
   const {
     store: provided_store,
     class: extra_class,
     prefix,
+    suffix,
     onUnmounted,
     ...rest
   } = props || {};
@@ -725,8 +734,22 @@ export function Button(props, children = []) {
           )
         : null,
       ui.ButtonPrimitive.Content({}, children),
+      button_suffix(suffix),
     ].filter(Boolean),
   );
+}
+
+export function TextButton(props, children = []) {
+  const render = props.href ? Link : props.store ? Button : View;
+  return render({
+    ...props,
+    ...(!props.href && { type: "button" }),
+    class: class_names([
+      "dm-button dm-focus-ring dm-button--link dm-button--sm text-decoration-none",
+      props.class,
+    ]),
+    attributes: { n: "text-button", ...(!props.href && { type: "button" }), ...props.attributes },
+  }, render === Button || !props.suffix ? children : [...children, button_suffix(props.suffix)]);
 }
 
 export function IconButton(props, children = []) {
@@ -761,6 +784,7 @@ export function Input(props) {
     onUnmounted,
     onChange,
     onKeyDown,
+    onEnter,
     ...rest
   } = props || {};
   const store = require_store("Input", provided_store, vm.InputCore);
@@ -828,6 +852,7 @@ export function Input(props) {
           if (typeof attributes?.autocomplete === "string") {
             event.target.get$elm().setAttribute("autocomplete", attributes.autocomplete);
           }
+          if (state_.value.autoFocus) event.target.get$elm().focus();
           if (typeof onMounted === "function") return onMounted(event);
         },
         onChange(event) {
@@ -835,7 +860,10 @@ export function Input(props) {
           if (typeof onChange === "function") onChange(event);
         },
         onKeyDown(event) {
-          store.handleKeyDown(event);
+          if (!event.isComposing && event.keyCode !== 229) {
+            store.handleKeyDown(event);
+            if (event.key === "Enter" && !store.ignoreEnterEvent && typeof onEnter === "function") onEnter(store.state.value);
+          }
           if (typeof onKeyDown === "function") onKeyDown(event);
         },
       }),
@@ -4453,6 +4481,29 @@ function table_render(props, render_list) {
   ]);
 }
 
+export function TableFields(props) {
+  const name = props.name || "table-fields";
+  return View({
+    type: "dl",
+    class: class_names(["dm-table-fields", props.class]),
+    attributes: { n: name, ...props.attributes },
+  }, props.fields.map((field, index) => {
+    const field_name = field.name || `${name}-field-${index}`;
+    return View({ class: "dm-table-fields__row", attributes: { n: field_name } }, [
+      View({
+        type: "dt",
+        class: "dm-table-fields__label",
+        attributes: { n: `${field_name}-label` },
+      }, [field.label]),
+      View({
+        type: "dd",
+        class: "dm-table-fields__value",
+        attributes: { n: `${field_name}-value` },
+      }, Array.isArray(field.value) ? field.value : [field.value]),
+    ]);
+  }));
+}
+
 export function Table(props) {
   return table_render(props, TableList);
 }
@@ -4572,6 +4623,7 @@ Object.assign(window, {
   createCheckboxStore,
   LazyImg,
   Button,
+  TextButton,
   IconButton,
   Input,
   ArrayField,
@@ -4616,6 +4668,7 @@ Object.assign(window, {
   BrandEmpty,
   BrandError,
   Table,
+  TableFields,
   TableWithVirtualList,
   Skeleton,
   Progress,
