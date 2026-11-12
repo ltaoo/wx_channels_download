@@ -217,7 +217,7 @@ HTTP、JS、服务、表达式等节点显式记录输出，同值写入也可�
 
 支持 GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS。`keys` 保留旧参数映射方式，GET/HEAD 放 query，其他方法在未配置 `body` 时生成 JSON body。`body_type` 可选 json/form/raw，Basic 认证使用 `type: basic` 与 username/password。
 
-`headers` 也可用 `"{{config.headers}}"` 引用整组请求头。可选 `body_template` 优先于 `body`，填写 JSON 模板文本或用 `"{{config.body_template}}"` 引用配置中的 JSON 文本；先解析 JSON 再渲染占位符，例如 `{"task":"{{input.event.data.task}}"}` 会保留任务的对象类型。Bearer token 留空时不添加 Authorization，也不覆盖 headers 中已有的认证字段。
+`headers` 也可用 <code v-pre>"{{config.headers}}"</code> 引用整组请求头。可选 `body_template` 优先于 `body`，填写 JSON 模板文本或用 <code v-pre>"{{config.body_template}}"</code> 引用配置中的 JSON 文本；先解析 JSON 再渲染占位符，例如 <code v-pre>{"task":"{{input.event.data.task}}"}</code> 会保留任务的对象类型。Bearer token 留空时不添加 Authorization，也不覆盖 headers 中已有的认证字段。
 
 默认节点超时 15 秒，受整体剩余时间约束。默认非 2xx 触发失败/重试，设置 `fail_on_status: false` 可自行按状态码分支。响应体上限 8 MiB，JSON 对象/数组可解码，否则返回文本。尚无 OAuth 凭据库、multipart 文件上传和自动分页。
 

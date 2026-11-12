@@ -28,9 +28,9 @@ Webhook 节点支持以下实例配置，也可在流程中设置默认值供实
 | --- | --- | --- |
 | `url` | `http://localhost:8080/webhook/download_task/success` | 完整 HTTP(S) 地址 |
 | `method` | `POST` | GET、POST、PUT、PATCH、DELETE、HEAD、OPTIONS；GET/HEAD 不发送正文 |
-| `headers` | `{"Content-Type":"application/json"}` | JSON 对象，值支持作用域模板，例如 `{"X-Task-ID":"{{input.event.data.task.id}}"}` |
+| `headers` | `{"Content-Type":"application/json"}` | JSON 对象，值支持作用域模板，例如 <code v-pre>{"X-Task-ID":"{{input.event.data.task.id}}"}</code> |
 | `token` | 空 | 密钥输入，非空时设置 `Authorization: Bearer <token>` 并覆盖 headers 中的同名字段；留空时保留 headers 中的认证设置 |
-| `body_template` | `"{{input.event.data.task}}"` | 多行 JSON 模板；先解析 JSON，再替换字符串内的作用域占位符。整个字符串为占位符时保留原值类型 |
+| `body_template` | <code v-pre>"{{input.event.data.task}}"</code> | 多行 JSON 模板；先解析 JSON，再替换字符串内的作用域占位符。整个字符串为占位符时保留原值类型 |
 
 默认 body 模板包含两端的双引号。若要同时通知任务与上传结果，可填写：
 
