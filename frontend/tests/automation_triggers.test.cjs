@@ -211,7 +211,7 @@ test("the page reads independent flow and instance lists, including flows with n
 test("flow drawer actions create inherited instances and keep flow editing out of the main list", async () => {
   const { model, context, calls } = setup({ mode: "list" });
   await model.methods.refresh();
-  for (const name of ["View", "Button", "TextButton", "TableFields", "Input", "Popover", "DropdownMenu", "DrawerHeader", "DrawerTitle", "DrawerDescription", "DrawerBody"]) {
+  for (const name of ["View", "Button", "TextButton", "TableFields", "Label", "Input", "Popover", "DropdownMenu", "DrawerHeader", "DrawerTitle", "DrawerDescription", "DrawerBody"]) {
     context[name] = (props, children) => ({ props, children });
   }
   context.Drawer = (props, children) => ({ props, children: children() });
@@ -225,6 +225,17 @@ test("flow drawer actions create inherited instances and keep flow editing out o
   assert.ok(buttons.some((button) => button.children[0] === "新增配置实例"));
   assert.ok(!buttons.some((button) => ["导入 JSON", "创建流程"].includes(button.children[0])));
   const instance_table = context.AutomationPipelineList({ store: model }).props;
+  const pipeline = { ...model.state.pipelines.value[0], description: "实例说明" };
+  const name_column = instance_table.columns.find((column) => column.name === "name");
+  const name_cell = name_column.render(pipeline);
+  assert.equal(name_cell.length, 1, "titles stay together when other columns make the row taller");
+  assert.deepEqual(Array.from(name_cell[0].children, (node) => node.props.attributes.n), [
+    `automation-pipeline-definition-${pipeline.id}`,
+    `automation-pipeline-name-row-${pipeline.id}`,
+    `automation-pipeline-description-${pipeline.id}`,
+  ]);
+  assert.equal(name_cell[0].children[0].children[0], model.methods.pipelineInstanceDescription(pipeline));
+  assert.equal(name_cell[0].children[1].children[0].children[0], pipeline.name);
   const instance_actions = instance_table.columns.find((column) => column.name === "actions").render(model.state.pipelines.value[0]);
   assert.equal(instance_actions[0].children[0], "执行");
   assert.ok(!instance_actions.some((item) => item.link?.mode === "edit"));
@@ -275,6 +286,88 @@ test("configuration instances can be named without changing their graph or trigg
   assert.deepEqual(calls.find((call) => call.url.endsWith("update_flow_instance")).body, {
     id: flow.id, name: "每天同步账号 A", node_configs: {},
   });
+  model.methods.destroy();
+});
+
+test("inline instance renaming validates, prevents duplicate saves and updates only the name", async () => {
+  const { model, flow, calls } = setup({ mode: "list" });
+  add_config_declarations(flow);
+  const original_configs = flow.node_configs;
+  await model.methods.refresh();
+  const editor = model.methods.pipelineNameEditor(model.state.pipelines.value[0]);
+  editor.popover$.show();
+  assert.equal(editor.input$.state.value, flow.name);
+  editor.input$.setValue(" ");
+  await editor.save$.click();
+  assert.match(editor.error.value, /名称不能为空/);
+  assert.equal(calls.filter((call) => call.url.endsWith("update_flow_instance")).length, 0);
+  editor.input$.setValue("  每日同步  ");
+  await Promise.all([editor.save$.click(), editor.save$.click()]);
+  await new Promise(setImmediate);
+  const saves = calls.filter((call) => call.url.endsWith("update_flow_instance"));
+  assert.equal(saves.length, 1);
+  assert.deepEqual(saves[0].body, { id: flow.id, name: "每日同步" });
+  assert.equal(model.state.pipelines.value[0].name, "每日同步");
+  assert.equal(flow.node_configs, original_configs);
+  assert.equal(editor.popover$.visible, false);
+  editor.popover$.show();
+  assert.equal(editor.input$.state.value, "每日同步");
+  editor.input$.setValue("取消的名称");
+  await editor.cancel$.click();
+  editor.popover$.show();
+  assert.equal(editor.input$.state.value, "每日同步");
+  editor.destroy();
+  model.methods.destroy();
+});
+
+test("failed inline renaming keeps the popover and draft available for retry", async () => {
+  const { model, flow, calls } = setup({ mode: "list", reject_save: true });
+  const previous_name = flow.name;
+  const editor = model.methods.pipelineNameEditor(flow);
+  editor.popover$.show();
+  editor.input$.setValue("保留的名称");
+  await editor.save$.click();
+  await new Promise(setImmediate);
+  assert.equal(editor.popover$.visible, true);
+  assert.equal(editor.input$.state.value, "保留的名称");
+  assert.match(editor.error.value, /invalid Cron/);
+  assert.equal(editor.save$.state.loading, false);
+  assert.equal(editor.cancel$.state.disabled, false);
+  assert.equal(flow.name, previous_name);
+  assert.equal(calls.filter((call) => call.url.endsWith("update_flow_instance")).length, 1);
+  editor.destroy();
+  model.methods.destroy();
+});
+
+test("the instance title exposes an accessible edit popover with cancel and submit controls", async () => {
+  const { model, context, flow, calls } = setup({ mode: "list" });
+  await model.methods.refresh();
+  load_canvas_components(context);
+  vm.runInContext(fs.readFileSync(path.join(frontend, "src/pages/automation.js"), "utf8")
+    .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export default .*;$/gm, ""), context);
+  context.Table = (props) => props;
+  const table = context.AutomationPipelineList({ store: model });
+  const pipeline = model.state.pipelines.value[0];
+  assert.notEqual(table.rowKey(pipeline), table.rowKey({ ...pipeline, name: "新名称" }));
+  const cell = table.columns.find((column) => column.name === "name").render(pipeline);
+  const name = `automation-pipeline-rename-${flow.id}`;
+  const trigger = find_view({ children: cell }, `${name}-trigger`);
+  assert.equal(trigger.state.attributes["aria-haspopup"], "dialog");
+  assert.ok(find_view(trigger, `${name}-icon`));
+  trigger.events.onClick({ detail: 0 });
+  const input = find_view({ children: cell }, `${name}-input`);
+  let focus_count = 0;
+  input.onMounted({ target: { get$elm: () => ({ setAttribute() {}, focus() { focus_count++; } }) } });
+  assert.equal(focus_count, 1);
+  input.events.onChange({ target: { value: "从标题修改" } });
+  assert.ok(find_view({ children: cell }, `${name}-cancel`));
+  assert.ok(find_view({ children: cell }, `${name}-save`));
+  input.events.onKeyDown({ key: "Enter", isComposing: true });
+  assert.equal(calls.filter((call) => call.url.endsWith("update_flow_instance")).length, 0);
+  input.events.onKeyDown({ key: "Enter" });
+  await new Promise(setImmediate);
+  assert.deepEqual(calls.find((call) => call.url.endsWith("update_flow_instance")).body, { id: flow.id, name: "从标题修改" });
+  assert.equal(model.state.pipelines.value[0].name, "从标题修改");
   model.methods.destroy();
 });
 

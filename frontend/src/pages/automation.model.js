@@ -2554,6 +2554,36 @@ function AutomationPageViewModel(props, options) {
     catch { return true; }
   }
 
+  function pipeline_name_editor(pipeline) {
+    const error = ref("");
+    const popover$ = new Timeless.vm.PopoverCore({ side: "bottom", align: "start" });
+    const input$ = new Timeless.vm.InputCore({ defaultValue: pipeline.name || "", autoFocus: true });
+    const trigger$ = new Timeless.vm.ButtonCore({ variant: "link", size: "sm" });
+    const cancel$ = new Timeless.vm.ButtonCore({ variant: "outline", size: "sm", onClick() { popover$.hide(); } });
+    const save$ = new Timeless.vm.ButtonCore({ variant: "primary", size: "sm", async onClick() {
+      if (save$.state.loading || disposed) return;
+      error.as("");
+      const name = String(input$.state.value || "").trim();
+      if (!name) { error.as("名称不能为空"); return; }
+      save$.setLoading(true);
+      cancel$.disable();
+      try {
+        const response = await reqs.pipeline.update.run({ id: pipeline.id, name });
+        if (disposed) return;
+        if (response.error) throw request_result_error(response, "实例名称保存失败");
+        popover$.hide();
+        props.tip({ msg: ["实例名称已更新"], type: "success" });
+        await load_data();
+      } catch (err) { if (!disposed) error.as(err.message || "实例名称保存失败"); }
+      finally { save$.setLoading(false); cancel$.enable(); }
+    } });
+    const unlisten = popover$.onShow(() => {
+      input$.setValue(find_pipeline(pipeline.id)?.name || pipeline.name || "");
+      error.as("");
+    });
+    return { error, popover$, input$, trigger$, cancel$, save$, destroy: unlisten };
+  }
+
   async function open_pipeline_config(pipeline, show_dialog = true, edit_defaults = false) {
     if (!pipeline || config_saving_.value) return;
     const sequence = ++config_sequence;
@@ -3516,6 +3546,7 @@ function AutomationPageViewModel(props, options) {
     openPipelineConfig: open_pipeline_config,
     savePipelineConfig: save_pipeline_config,
     pipelineConfigMenu: pipeline_config_menu,
+    pipelineNameEditor: pipeline_name_editor,
     pipelineActionsMenu: pipeline_actions_menu,
     pipelineActionButton: pipeline_action_button,
     copyPipeline: copy_pipeline,

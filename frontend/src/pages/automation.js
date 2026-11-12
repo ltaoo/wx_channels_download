@@ -168,6 +168,33 @@ function AutomationConfigValues(props) {
   ));
 }
 
+function AutomationInstanceNameEditor(props) {
+  const editor = props.store;
+  const name = props.name;
+  return Popover({
+    store: editor.popover$,
+    triggerClass: "flex-none",
+    class: "grid gap-3",
+    style: { width: "280px", "max-width": "calc(100vw - 32px)" },
+    attributes: { n: `${name}-popover`, id: `${name}-popover`, role: "dialog", "aria-label": "修改实例名称" },
+    onUnmounted: editor.destroy,
+    content: [
+      Label({ attributes: { n: `${name}-label`, for: `${name}-input` } }, ["实例名称"]),
+      Input({ store: editor.input$, onEnter() { return editor.save$.click(); }, attributes: { n: `${name}-input`, id: `${name}-input`, "aria-label": "实例名称", autocomplete: "off" } }),
+      View({ class: "text-color-danger text-sm", style: computed(editor.error, (error) => ({ display: error ? "block" : "none" })), attributes: { n: `${name}-error`, role: "alert" } }, [editor.error]),
+      View({ class: "flex items-center justify-end gap-2", attributes: { n: `${name}-actions` } }, [
+        Button({ store: editor.cancel$, attributes: { n: `${name}-cancel`, type: "button" } }, ["取消"]),
+        Button({ store: editor.save$, attributes: { n: `${name}-save`, type: "button" } }, ["确定"]),
+      ]),
+    ],
+  }, [TextButton({ store: editor.trigger$, attributes: {
+    n: `${name}-trigger`, type: "button", title: "修改实例名称", "aria-label": "修改实例名称",
+    "aria-haspopup": "dialog", "aria-controls": `${name}-popover`,
+  }, onClick(event) {
+    if (event.detail === 0) editor.popover$.toggle();
+  } }, [Timeless.Icon({ name: "pen-line", size: 14, attributes: { n: `${name}-icon`, "aria-hidden": "true" } })])]);
+}
+
 function AutomationPipelineList(props) {
   const vm$ = props.store;
   return Table({
@@ -175,33 +202,38 @@ function AutomationPipelineList(props) {
     containerClass: "group-content-main flex-[1_1_auto] min-w-0 p-4  automation-index",
     containerAttributes: { n: "automation-pipeline-table-container" },
     panelAttributes: { n: "automation-pipeline-table-panel" },
-    rowKey: (pipeline) => `${pipeline.id}:${pipeline.updated_at || pipeline.created_at || 0}:${pipeline.active_run_id || ""}:${vm$.methods.pipelineDefinitionLabel(pipeline)}`,
+    rowKey: (pipeline) => `${pipeline.id}:${pipeline.name || ""}:${pipeline.updated_at || pipeline.created_at || 0}:${pipeline.active_run_id || ""}:${vm$.methods.pipelineDefinitionLabel(pipeline)}`,
     columns: [
       {
         name: "name",
         title: "配置实例",
         width: 240,
-        cellClass: "min-w-0 grid gap-0-5 justify-items-start",
+        cellClass: "min-w-0",
         render(pipeline) {
           return [
-            View(
-              {
-                class: "min-w-0 max-w-full text-color-text-primary text-base font-semibold overflow-wrap-anywhere",
-                attributes: { n: `automation-pipeline-name-${pipeline.id}`, title: pipeline.name || pipeline.id },
-              },
-              [pipeline.name || pipeline.id],
-            ),
-            View({ class: "text-color-text-secondary text-xs", attributes: { n: `automation-pipeline-definition-${pipeline.id}` } }, [vm$.methods.pipelineInstanceDescription(pipeline)]),
-            pipeline.description
-              ? View(
+            View({ class: "min-w-0 max-w-full grid gap-0-5 justify-items-start", attributes: { n: `automation-pipeline-titles-${pipeline.id}` } }, [
+              View({ class: "text-color-text-secondary text-xs", attributes: { n: `automation-pipeline-definition-${pipeline.id}` } }, [vm$.methods.pipelineInstanceDescription(pipeline)]),
+              View({ class: "min-w-0 max-w-full flex items-baseline gap-1", attributes: { n: `automation-pipeline-name-row-${pipeline.id}` } }, [
+                View(
                   {
-                    class: "min-w-0 max-w-full overflow-hidden text-color-text-secondary text-sm text-ellipsis whitespace-nowrap",
-                    attributes: { title: pipeline.description },
+                    class: "min-w-0 max-w-full text-color-text-primary text-base font-semibold overflow-wrap-anywhere",
+                    attributes: { n: `automation-pipeline-name-${pipeline.id}`, title: pipeline.name || pipeline.id },
                   },
-                  [pipeline.description],
-                )
-              : null,
-          ].filter(Boolean);
+                  [pipeline.name || pipeline.id],
+                ),
+                AutomationInstanceNameEditor({ store: vm$.methods.pipelineNameEditor(pipeline), name: `automation-pipeline-rename-${pipeline.id}` }),
+              ]),
+              pipeline.description
+                ? View(
+                    {
+                      class: "min-w-0 max-w-full overflow-hidden text-color-text-secondary text-sm text-ellipsis whitespace-nowrap",
+                      attributes: { n: `automation-pipeline-description-${pipeline.id}`, title: pipeline.description },
+                    },
+                    [pipeline.description],
+                  )
+                : null,
+            ].filter(Boolean)),
+          ];
         },
       },
       {
