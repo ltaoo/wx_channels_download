@@ -94,3 +94,40 @@ func TestHTTPNodeCancellationAndFormBody(t *testing.T) {
 		t.Fatalf("HTTP cancellation failed: %v", err)
 	}
 }
+
+func TestHTTPNodeBodyTemplate(t *testing.T) {
+	ctx := template_context()
+	ctx.Data["title"] = "line\n\"quoted\"{{input.count}}"
+	ctx.InputKeys = append(ctx.InputKeys, "title")
+	for _, scenario := range []struct {
+		name     string
+		template any
+		want     string
+		want_err bool
+	}{
+		{"object", `{"count":"{{input.count}}"}`, `{"count":3}`, false},
+		{"string", `"hello {{input.username}}"`, `"hello v2_abc@finder"`, false},
+		{"escaped-value", `{"title":"{{input.title}}"}`, `{"title":"line\n\"quoted\"{{input.count}}"}`, false},
+		{"invalid-json", `{"count":`, "", true},
+		{"unquoted-placeholder", `{"count":{{input.count}}}`, "", true},
+		{"wrong-type", 1, "", true},
+		{"unknown-scope", `"{{input.missing}}"`, "", true},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			body, err := api_call_body_template(scenario.template, ctx)
+			if err == nil {
+				body, err = resolve_service_template(body, ctx)
+			}
+			if scenario.want_err {
+				if err == nil {
+					t.Fatal("invalid body template accepted")
+				}
+				return
+			}
+			raw, marshal_err := json.Marshal(body)
+			if err != nil || marshal_err != nil || string(raw) != scenario.want {
+				t.Fatalf("body=%s error=%v marshal=%v", raw, err, marshal_err)
+			}
+		})
+	}
+}

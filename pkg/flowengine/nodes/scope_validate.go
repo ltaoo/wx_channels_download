@@ -149,7 +149,7 @@ func (v *scope_validator) collect_references() {
 				v.validate_template_value(node_id, value, fmt.Sprintf("variables.%s", name))
 			}
 		case "APICallNode":
-			for _, name := range []string{"url", "headers", "query", "body", "authentication"} {
+			for _, name := range []string{"url", "method", "headers", "query", "body", "body_template", "authentication"} {
 				v.validate_template_value(node_id, node.Config[name], name)
 			}
 			for name, value := range scope_config_object(node.Config, "keys") {

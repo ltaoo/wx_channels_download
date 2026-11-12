@@ -88,6 +88,12 @@ func (n *APICallNode) Execute(ctx *engine.ProcessContext) (bool, []string, error
 		if !has_body {
 			raw_body = values
 		}
+		if template, exists := n.Config["body_template"]; exists {
+			raw_body, err = api_call_body_template(template, ctx)
+			if err != nil {
+				return false, nil, err
+			}
+		}
 		resolved_body, err := resolve_service_template(raw_body, ctx)
 		if err != nil {
 			return false, nil, err
@@ -136,7 +142,17 @@ func (n *APICallNode) Execute(ctx *engine.ProcessContext) (bool, []string, error
 	if body != nil {
 		request.Header.Set("Content-Type", content_type)
 	}
-	if headers, ok := n.Config["headers"].(map[string]interface{}); ok {
+	if raw_headers := n.Config["headers"]; raw_headers != nil {
+		if _, ok := raw_headers.(string); ok {
+			raw_headers, err = resolve_service_template(raw_headers, ctx)
+			if err != nil {
+				return false, nil, err
+			}
+		}
+		headers, ok := raw_headers.(map[string]interface{})
+		if !ok {
+			return false, nil, fmt.Errorf("headers must resolve to an object")
+		}
 		for name, value := range headers {
 			resolved, err := resolve_service_template(value, ctx)
 			if err != nil {
@@ -154,7 +170,9 @@ func (n *APICallNode) Execute(ctx *engine.ProcessContext) (bool, []string, error
 		switch fields["type"] {
 		case "bearer":
 			token, _ := fields["token"].(string)
-			request.Header.Set("Authorization", "Bearer "+token)
+			if token != "" {
+				request.Header.Set("Authorization", "Bearer "+token)
+			}
 		case "basic":
 			username, _ := fields["username"].(string)
 			password, _ := fields["password"].(string)
@@ -192,6 +210,30 @@ func (n *APICallNode) Execute(ctx *engine.ProcessContext) (bool, []string, error
 		return false, nil, fmt.Errorf("HTTP request returned status %d", response.StatusCode)
 	}
 	return true, ctx.EngineRef.GetNextNodeIDsFromDefinition(ctx, n.Id), nil
+}
+
+// Parse JSON before rendering so substituted objects and strings retain their types.
+func api_call_body_template(value any, ctx *engine.ProcessContext) (any, error) {
+	text, ok := value.(string)
+	if !ok {
+		return nil, fmt.Errorf("body_template must be a JSON template string")
+	}
+	var body any
+	if json.Unmarshal([]byte(text), &body) == nil {
+		return body, nil
+	}
+	if match := service_template_re.FindString(strings.TrimSpace(text)); match == "" || match != strings.TrimSpace(text) {
+		return nil, fmt.Errorf("body_template must contain valid JSON")
+	}
+	resolved, err := resolve_service_template(text, ctx)
+	if err != nil {
+		return nil, err
+	}
+	text, ok = resolved.(string)
+	if !ok || json.Unmarshal([]byte(text), &body) != nil {
+		return nil, fmt.Errorf("body_template must contain valid JSON")
+	}
+	return body, nil
 }
 
 // api_call_keys normalizes config["keys"] into {request parameter: scope path}.

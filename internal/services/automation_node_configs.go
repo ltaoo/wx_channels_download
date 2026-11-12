@@ -54,7 +54,11 @@ func normalize_node_configs(definition engine.FlowDefinition, values map[string]
 				value, exists = field.Default, field.Default != nil
 			}
 			text, is_text = value.(string)
-			if !exists || value == nil || (is_text && strings.TrimSpace(text) == "") {
+			empty_text := is_text && strings.TrimSpace(text) == ""
+			if apply_defaults && !field.Required && field.Default == "" {
+				empty_text = false
+			}
+			if !exists || value == nil || empty_text {
 				if require_complete && apply_defaults && field.Required {
 					return nil, fmt.Errorf("节点 %s 的配置项 %s 不能为空", node.Name, field.Key)
 				}
