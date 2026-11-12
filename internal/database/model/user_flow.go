@@ -7,6 +7,7 @@ type UserFlowDefinition struct {
 	Description        string `gorm:"type:text" json:"description"`
 	Definition         string `gorm:"type:text" json:"definition"`
 	DefaultNodeConfigs string `gorm:"type:text;not null;default:'{}'" json:"default_node_configs"`
+	DefaultTriggers    string `gorm:"type:text;not null;default:'[]'" json:"default_triggers"`
 	InstanceCount      int64  `gorm:"->;-:migration" json:"instance_count"`
 	Timestamps
 }
@@ -22,9 +23,12 @@ type UserFlowInstance struct {
 	TriggerType        string `gorm:"not null;default:Manual" json:"trigger_type"`
 	EventKey           string `json:"event_key"`
 	NodeConfigs        string `gorm:"type:text;not null;default:'{}'" json:"node_configs"`
+	InheritTriggers    bool   `gorm:"not null" json:"inherit_triggers"`
+	TriggerOverrides   string `gorm:"type:text;not null;default:'{}'" json:"trigger_overrides"`
 	Definition         string `gorm:"->;-:migration" json:"definition,omitempty"`
 	DefinitionName     string `gorm:"->;-:migration" json:"definition_name"`
 	DefaultNodeConfigs string `gorm:"->;-:migration" json:"default_node_configs"`
+	DefaultTriggers    string `gorm:"->;-:migration" json:"default_triggers"`
 	ActiveRunID        string `gorm:"->;-:migration" json:"active_run_id"`
 	Timestamps
 }

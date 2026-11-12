@@ -51,6 +51,7 @@ type AutomationService struct {
 	logger            *zerolog.Logger
 	flow_engine       *flowengine.FlowEngine
 	custom_nodes      *flowengine.CustomNodeRegistry
+	syncing_triggers  bool
 	event_bus         events.Publisher
 	cron_parser       cron.Parser
 
@@ -319,7 +320,7 @@ func (s *AutomationService) CreateSchedule(input CreateScheduleInput) (*model.Fl
 	if enabled {
 		schedule.NextRunAt = next_run
 	}
-	if err := s.db.Create(schedule).Error; err != nil {
+	if err := s.persist_schedule_change(schedule.InstanceID, "", map[string]interface{}{}, func(tx *gorm.DB) error { return tx.Create(schedule).Error }); err != nil {
 		return nil, fmt.Errorf("创建定时任务失败: %w", err)
 	}
 	return schedule, nil
@@ -417,9 +418,38 @@ func (s *AutomationService) UpdateSchedule(id string, input UpdateScheduleInput)
 		return schedule, nil
 	}
 	updates["updated_at"] = time.Now().UnixMilli()
-	if err := s.db.Model(&model.FlowSchedule{}).
-		Where("id = ? AND deleted_at IS NULL", id).
-		Updates(updates).Error; err != nil {
+	var overrides map[string]interface{}
+	for _, field := range []string{"name", "cron_expr", "enabled", "timeout_sec"} {
+		if value, ok := updates[field]; ok {
+			if overrides == nil {
+				overrides = map[string]interface{}{}
+			}
+			overrides[field] = value
+		}
+	}
+	previous_metadata := automation_schedule_metadata(*schedule)
+	if metadata.Active != previous_metadata.Active || metadata.EventKey != previous_metadata.EventKey {
+		if overrides == nil {
+			overrides = map[string]interface{}{}
+		}
+		if metadata.Active != previous_metadata.Active {
+			overrides["active"] = metadata.Active
+		}
+		if metadata.EventKey != previous_metadata.EventKey {
+			overrides["event_key"] = metadata.EventKey
+		}
+	}
+	if input.InstanceID != nil || metadata.Type != previous_metadata.Type || metadata.StartNodeID != previous_metadata.StartNodeID || metadata.DefaultTriggerID != previous_metadata.DefaultTriggerID {
+		overrides = map[string]interface{}{}
+	}
+	if err := s.persist_schedule_change(schedule.InstanceID, previous_metadata.DefaultTriggerID, overrides, func(tx *gorm.DB) error {
+		if input.InstanceID != nil {
+			if err := tx.Model(&model.UserFlowInstance{}).Where("id=?", *input.InstanceID).Update("inherit_triggers", false).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Model(&model.FlowSchedule{}).Where("id = ? AND deleted_at IS NULL", id).Updates(updates).Error
+	}); err != nil {
 		return nil, fmt.Errorf("更新定时任务失败: %w", err)
 	}
 	return s.GetSchedule(id)
@@ -435,21 +465,22 @@ func (s *AutomationService) DeleteSchedule(id string) error {
 	if id == "" {
 		return fmt.Errorf("id 不能为空")
 	}
+	schedule, err := s.GetSchedule(id)
+	if err != nil {
+		return err
+	}
 	now := time.Now().UnixMilli()
-	result := s.db.Model(&model.FlowSchedule{}).
-		Where("id = ? AND deleted_at IS NULL", id).
-		Updates(map[string]interface{}{
-			"deleted_at":  now,
-			"next_run_at": nil,
-			"updated_at":  now,
-		})
-	if result.Error != nil {
-		return fmt.Errorf("删除定时任务失败: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("定时任务不存在: %s", id)
-	}
-	return nil
+	return s.persist_schedule_change(schedule.InstanceID, "", map[string]interface{}{}, func(tx *gorm.DB) error {
+		result := tx.Model(&model.FlowSchedule{}).Where("id = ? AND deleted_at IS NULL", id).
+			Updates(map[string]interface{}{"deleted_at": now, "next_run_at": nil, "updated_at": now})
+		if result.Error != nil {
+			return fmt.Errorf("删除定时任务失败: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("定时任务不存在: %s", id)
+		}
+		return nil
+	})
 }
 
 // GetSchedule loads a single schedule by id.
@@ -531,9 +562,9 @@ func (s *AutomationService) ToggleSchedule(id string) (*model.FlowSchedule, erro
 	} else {
 		updates["next_run_at"] = nil
 	}
-	if err := s.db.Model(&model.FlowSchedule{}).
-		Where("id = ? AND deleted_at IS NULL", id).
-		Updates(updates).Error; err != nil {
+	if err := s.persist_schedule_change(schedule.InstanceID, metadata.DefaultTriggerID, map[string]interface{}{"enabled": enabled}, func(tx *gorm.DB) error {
+		return tx.Model(&model.FlowSchedule{}).Where("id = ? AND deleted_at IS NULL", id).Updates(updates).Error
+	}); err != nil {
 		return nil, fmt.Errorf("切换定时任务状态失败: %w", err)
 	}
 	return s.GetSchedule(id)
@@ -1038,11 +1069,12 @@ func normalize_automation_page(page int, page_size int) (int, int, error) {
 }
 
 type automation_schedule_config struct {
-	Active       bool
-	WebhookToken string
-	Type         string
-	StartNodeID  string
-	EventKey     string
+	DefaultTriggerID string
+	Active           bool
+	WebhookToken     string
+	Type             string
+	StartNodeID      string
+	EventKey         string
 }
 
 func automation_schedule_metadata(schedule model.FlowSchedule) automation_schedule_config {
@@ -1065,6 +1097,7 @@ func automation_schedule_metadata(schedule model.FlowSchedule) automation_schedu
 	config.WebhookToken, _ = raw["webhook_token"].(string)
 	config.StartNodeID, _ = raw["start_node"].(string)
 	config.EventKey, _ = raw["event_key"].(string)
+	config.DefaultTriggerID, _ = raw["default_trigger_id"].(string)
 	return config
 }
 

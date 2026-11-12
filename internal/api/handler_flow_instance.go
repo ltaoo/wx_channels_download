@@ -80,7 +80,7 @@ func (c *APIClient) handle_update_user_flow_instance(ctx *gin.Context) {
 		result.Err(ctx, api_code_invalid_params, "流程默认配置请使用 update_flow 修改")
 		return
 	}
-	instance, err := service.UpdateUserFlowInstance(body.ID, services.UpdateUserFlowInput{Name: body.Name, Description: body.Description, NodeConfigs: body.NodeConfigs, Triggers: body.Triggers, Nodes: body.Nodes, StartNodeID: body.StartNodeID, Subflows: body.Subflows, ContextSchema: body.ContextSchema})
+	instance, err := service.UpdateUserFlowInstance(body.ID, services.UpdateUserFlowInput{Name: body.Name, Description: body.Description, NodeConfigs: body.NodeConfigs, Triggers: body.Triggers, InheritTriggers: body.InheritTriggers, TriggerOverrides: body.TriggerOverrides, Nodes: body.Nodes, StartNodeID: body.StartNodeID, Subflows: body.Subflows, ContextSchema: body.ContextSchema})
 	if err != nil {
 		result.Err(ctx, api_code_invalid_params, err.Error())
 		return

@@ -66,53 +66,58 @@ export function automation_status_badge(value, label) {
 export function AutomationStartTriggers(props) {
   const vm$ = props.store;
   return View({ class: "grid gap-3 min-w-0 py-4 border-top-[1px_solid_var(--dm-color-border)]", attributes: { n: "automation-start-triggers" } }, [
-    View({ class: "text-color-text-primary font-display text-base font-semibold" }, ["开始节点触发器"]),
-    View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base" }, [
-      "手动执行始终可用。可同时添加多个定时和事件触发器，保存 Pipeline 后生效。",
+    View({ class: "text-color-text-primary font-display text-base font-semibold", attributes: { n: "automation-start-triggers-title" } }, [props.title || "开始节点触发器"]),
+    View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base", attributes: { n: "automation-start-triggers-description" } }, [
+      props.description || "手动执行始终可用。可同时添加定时、事件和 Webhook 触发器，保存后生效。",
     ]),
-    View({ class: "flex flex-wrap items-center gap-2 min-w-0" }, [
+    props.overrides ? null : View({ class: "flex flex-wrap items-center gap-2 min-w-0", attributes: { n: "automation-trigger-actions" } }, [
       Button({ store: vm$.ui.btn_add_cron_trigger$, attributes: { n: "automation-add-cron-trigger", type: "button" } }, ["添加定时触发"]),
       Button({ store: vm$.ui.btn_add_event_trigger$, attributes: { n: "automation-add-event-trigger", type: "button" } }, ["添加事件触发"]),
       Button({ store: vm$.ui.btn_add_webhook_trigger$, attributes: { n: "automation-add-webhook-trigger", type: "button" } }, ["添加 Webhook"]),
     ]),
     Show({
       when: computed(vm$.state.edit_triggers, (triggers) => !triggers.length),
-      ok() { return View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base" }, ["尚未配置定时或事件触发器，可通过开始节点上方的「手动执行」启动。"]); },
+      ok() { return View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base", attributes: { n: "automation-no-triggers" } }, [props.overrides ? "流程尚未声明触发器，请在自动化流程的默认配置中设置。" : "尚未配置触发器，仍可手动执行。"]); },
     }),
     For({
       each: vm$.state.edit_triggers, key: "uid",
       render(value) {
         const trigger = value && value.value !== undefined ? value.value : value;
         const prefix = `automation-trigger-${trigger.uid}`;
-        const field = (label, store, name, textarea = false) => View({ class: "min-w-0 flex flex-col gap-1 [&_.dm-select]:w-full [&_.dm-input]:w-full [&.dm-flex]:flex-row [&.dm-flex]:items-center [&.dm-flex]:gap-1-5" }, [
-          View({ as: "label", class: "text-color-text-secondary text-xs font-semibold", attributes: { for: `${prefix}-${name}` } }, [label]),
-          (textarea ? Textarea : Input)({ store, attributes: {
+        const field = (label, store, name, kind = "input", key = name) => {
+          const inheritance = trigger.inheritance?.[key];
+          const control = (kind === "checkbox" ? Checkbox : kind === "textarea" ? Textarea : Input)({ store, attributes: {
             id: `${prefix}-${name}`, n: `${prefix}-${name}`, "aria-label": label,
-            ...(textarea ? { rows: "4", spellcheck: "false" } : {}),
-          } }),
-        ]);
+            ...(kind === "textarea" ? { rows: "4", spellcheck: "false" } : {}),
+          } });
+          return View({ class: "min-w-0 flex flex-col gap-1", attributes: { n: `${prefix}-${name}-field` } }, [
+            View({ as: "label", class: "text-color-text-secondary text-xs font-semibold", attributes: { n: `${prefix}-${name}-label`, for: `${prefix}-${name}` } }, [label]),
+            inheritance ? View({ class: "flex items-center gap-2", attributes: { n: `${prefix}-${name}-inheritance` } }, [
+              Checkbox({ store: inheritance.inherit$, attributes: { id: `${prefix}-${name}-inherit`, n: `${prefix}-${name}-inherit`, "aria-label": `${label} 继承流程配置` } }),
+              View({ as: "label", attributes: { for: `${prefix}-${name}-inherit`, n: `${prefix}-${name}-inherit-label` } }, ["继承流程配置"]),
+            ]) : null,
+            View({ class: "relative min-w-0", attributes: { n: `${prefix}-${name}-value` } }, [
+              View({ style: inheritance ? computed(inheritance.inherited, (value) => ({ visibility: value ? "hidden" : "visible" })) : {}, attributes: { n: `${prefix}-${name}-editor` } }, [control]),
+              inheritance ? Show({ when: inheritance.inherited, ok: () => View({ class: "absolute inset-0 overflow-auto whitespace-pre-wrap text-color-text-secondary", attributes: { n: `${prefix}-${name}-inherited-value` } }, [inheritance.text]) }) : null,
+            ]),
+          ].filter(Boolean));
+        };
         return View({ class: "grid gap-3 min-w-0 border-top-[1px_solid_var(--dm-color-border)] pt-3", attributes: { n: prefix } }, [
-          View({ class: "flex flex-wrap items-center gap-2 min-w-0 justify-between" }, [
+          View({ class: "flex flex-wrap items-center gap-2 min-w-0 justify-between", attributes: { n: `${prefix}-header` } }, [
             automation_trigger_badge({ type: trigger.type, label: vm$.methods.triggerLabel(trigger.type) }),
-            Button({ store: vm$.ui.btn_remove_trigger$.bind(trigger), attributes: {
+            props.overrides ? null : Button({ store: vm$.ui.btn_remove_trigger$.bind(trigger), attributes: {
               n: `${prefix}-remove`, type: "button", "aria-label": `移除${vm$.methods.triggerLabel(trigger.type)}触发器`,
             } }, ["移除触发器"]),
           ]),
           field("触发器名称", trigger.input_name$, "name"),
-          trigger.type === "Cron" ? field("Cron 表达式", trigger.input_cron$, "cron") : null,
-          trigger.type === "Cron" ? View({ class: "flex flex-wrap items-center gap-2 min-w-0" }, [
-            Checkbox({ store: trigger.checkbox_enabled$, attributes: { id: `${prefix}-enabled`, n: `${prefix}-enabled`, "aria-label": "启用定时触发" } }),
-            View({ as: "label", class: "text-color-text-secondary text-xs font-semibold", attributes: { for: `${prefix}-enabled` } }, ["启用定时触发"]),
-          ]) : null,
-          trigger.type === "Event" ? field("事件 Key", trigger.input_event_key$, "event-key") : null,
-          trigger.type !== "Cron" ? View({ class: "flex items-center gap-2" }, [
-            Checkbox({ store: trigger.checkbox_active$, attributes: { id: `${prefix}-active`, "aria-label": "启用触发器" } }),
-            View({ as: "label", attributes: { for: `${prefix}-active` }, class: "text-color-text-secondary text-xs" }, ["启用触发器"]),
-          ]) : null,
-          field("整体超时（秒，包含人工等待）", trigger.input_timeout$, "timeout"),
-          trigger.type === "Webhook" ? View({ class: "min-w-0 text-color-text-secondary text-caption word-break-break-all" }, [trigger.id ? `POST /api/v1/automation/webhook/${trigger.id}；Authorization: Bearer ${trigger.webhook_token || "保存后生成"}` : "保存后生成 Webhook 地址与令牌。事件载荷从 input.event.data 读取，需在流程参数中声明 event。"]): null,
-          field("输入参数 JSON", trigger.input_data$, "data", true),
-          View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base" }, ["输入参数作为开始节点的 input；所有触发器共用后续流程。"]),
+          trigger.type === "Cron" ? field("Cron 表达式", trigger.input_cron$, "cron", "input", "cron_expr") : null,
+          trigger.type === "Cron" ? field("启用定时触发", trigger.checkbox_enabled$, "enabled", "checkbox") : null,
+          trigger.type === "Event" ? field("事件 Key", trigger.input_event_key$, "event-key", "input", "event_key") : null,
+          trigger.type !== "Cron" ? field("启用触发器", trigger.checkbox_active$, "active", "checkbox") : null,
+          field("整体超时（秒，包含人工等待）", trigger.input_timeout$, "timeout", "input", "timeout_sec"),
+          trigger.type === "Webhook" ? View({ class: "min-w-0 text-color-text-secondary text-caption word-break-break-all", attributes: { n: `${prefix}-webhook` } }, [props.defaults ? "每个实例继承后生成各自的 Webhook 地址与令牌。" : (trigger.inheritance ? trigger.binding_id : trigger.id) ? `POST /api/v1/automation/webhook/${trigger.binding_id || trigger.id}；Authorization: Bearer ${trigger.webhook_token || "保存后生成"}` : "保存后生成 Webhook 地址与令牌。事件载荷从 input.event.data 读取，需在流程参数中声明 event。"]): null,
+          field("输入参数 JSON", trigger.input_data$, "data", "textarea", "initial_data"),
+          View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base", attributes: { n: `${prefix}-input-help` } }, ["输入参数作为开始节点的 input；所有触发器共用后续流程。"]),
         ].filter(Boolean));
       },
     }),

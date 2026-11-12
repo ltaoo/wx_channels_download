@@ -147,7 +147,9 @@ type UpdateUserFlowInput struct {
 	StartNodeID        string
 	Nodes              []UserFlowNodeInput
 	// Nil preserves existing rules; an empty slice removes all extra triggers.
-	Triggers []UserFlowTriggerInput
+	Triggers         []UserFlowTriggerInput
+	InheritTriggers  *bool
+	TriggerOverrides map[string]map[string]interface{}
 }
 
 type UserFlowNodeInput struct {
@@ -272,8 +274,9 @@ func (s *AutomationService) ImportFlowDefinition(raw string) (*model.UserFlowDef
 	if err := json.Unmarshal([]byte(raw), &envelope); err != nil {
 		return nil, err
 	}
-	if len(envelope.Triggers) > 0 {
-		return nil, fmt.Errorf("触发器属于流程实例，请创建实例后配置")
+	triggers, err := s.normalize_default_triggers(envelope.Triggers)
+	if err != nil {
+		return nil, err
 	}
 	defaults, err := normalize_node_configs(*definition, envelope.DefaultNodeConfigs, true, false)
 	if err != nil {
@@ -282,7 +285,7 @@ func (s *AutomationService) ImportFlowDefinition(raw string) (*model.UserFlowDef
 	now := time.Now().UnixMilli()
 	definition.ID = fmt.Sprintf("%s%d", user_flow_id_prefix, time.Now().UnixNano())
 	clear_runtime_node_configs(definition)
-	flow := model.UserFlowDefinition{ID: definition.ID, Name: definition.Name, Definition: marshal_json(definition), DefaultNodeConfigs: marshal_json(defaults), Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now}}
+	flow := model.UserFlowDefinition{ID: definition.ID, Name: definition.Name, Definition: marshal_json(definition), DefaultNodeConfigs: marshal_json(defaults), DefaultTriggers: marshal_json(triggers), Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now}}
 	if err := s.db.Create(&flow).Error; err != nil {
 		return nil, err
 	}
@@ -508,9 +511,16 @@ func (s *AutomationService) UpdateFlowDefinition(id string, input UpdateUserFlow
 	clear_runtime_node_configs(definition)
 	flow.Definition = marshal_json(definition)
 	flow.DefaultNodeConfigs = marshal_json(defaults)
+	if input.Triggers != nil {
+		triggers, err := s.normalize_default_triggers(input.Triggers)
+		if err != nil {
+			return nil, err
+		}
+		flow.DefaultTriggers = marshal_json(triggers)
+	}
 	flow.UpdatedAt = time.Now().UnixMilli()
 	err = s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(flow).Updates(map[string]interface{}{"name": flow.Name, "description": flow.Description, "definition": flow.Definition, "default_node_configs": flow.DefaultNodeConfigs, "updated_at": flow.UpdatedAt}).Error; err != nil {
+		if err := tx.Model(flow).Updates(map[string]interface{}{"name": flow.Name, "description": flow.Description, "definition": flow.Definition, "default_node_configs": flow.DefaultNodeConfigs, "default_triggers": flow.DefaultTriggers, "updated_at": flow.UpdatedAt}).Error; err != nil {
 			return err
 		}
 		var instances []model.UserFlowInstance
@@ -518,6 +528,11 @@ func (s *AutomationService) UpdateFlowDefinition(id string, input UpdateUserFlow
 			return err
 		}
 		for _, instance := range instances {
+			if instance.InheritTriggers {
+				if err := s.sync_instance_default_triggers(tx, instance.ID, definition.StartNodeID, flow.DefaultTriggers); err != nil {
+					return err
+				}
+			}
 			values, err := normalize_node_configs(*definition, decode_node_configs(instance.NodeConfigs), false, false)
 			if err != nil {
 				return err
@@ -574,7 +589,7 @@ func (s *AutomationService) DeleteFlowDefinition(id string) error {
 	return nil
 }
 func (s *AutomationService) user_flow_query() *gorm.DB {
-	return s.db.Model(&model.UserFlowInstance{}).Joins("JOIN user_flow ON user_flow.id=user_flow_instance.flow_id AND user_flow.deleted_at IS NULL").Select("user_flow_instance.*,user_flow.definition,user_flow.name AS definition_name,user_flow.default_node_configs,COALESCE((SELECT id FROM flow_run_record WHERE instance_id=user_flow_instance.id AND deleted_at IS NULL AND status IN ('QUEUED','RUNNING','WAITING') ORDER BY created_at DESC LIMIT 1),'') AS active_run_id")
+	return s.db.Model(&model.UserFlowInstance{}).Joins("JOIN user_flow ON user_flow.id=user_flow_instance.flow_id AND user_flow.deleted_at IS NULL").Select("user_flow_instance.*,user_flow.definition,user_flow.name AS definition_name,user_flow.default_node_configs,user_flow.default_triggers,COALESCE((SELECT id FROM flow_run_record WHERE instance_id=user_flow_instance.id AND deleted_at IS NULL AND status IN ('QUEUED','RUNNING','WAITING') ORDER BY created_at DESC LIMIT 1),'') AS active_run_id")
 }
 func (s *AutomationService) GetUserFlowInstance(id string) (*model.UserFlowInstance, error) {
 	if s == nil || s.db == nil {
@@ -589,7 +604,7 @@ func (s *AutomationService) GetUserFlowInstance(id string) (*model.UserFlowInsta
 func (s *AutomationService) ListUserFlowInstances() ([]model.UserFlowInstance, error) {
 	instances := make([]model.UserFlowInstance, 0)
 	// Lists do not repeat the shared graph for every configuration instance.
-	if err := s.user_flow_query().Select("user_flow_instance.*,user_flow.name AS definition_name,user_flow.default_node_configs,COALESCE((SELECT id FROM flow_run_record WHERE instance_id=user_flow_instance.id AND deleted_at IS NULL AND status IN ('QUEUED','RUNNING','WAITING') ORDER BY created_at DESC LIMIT 1),'') AS active_run_id").Where("user_flow_instance.deleted_at IS NULL").Order("user_flow_instance.created_at DESC").Find(&instances).Error; err != nil {
+	if err := s.user_flow_query().Select("user_flow_instance.*,user_flow.name AS definition_name,user_flow.default_node_configs,user_flow.default_triggers,COALESCE((SELECT id FROM flow_run_record WHERE instance_id=user_flow_instance.id AND deleted_at IS NULL AND status IN ('QUEUED','RUNNING','WAITING') ORDER BY created_at DESC LIMIT 1),'') AS active_run_id").Where("user_flow_instance.deleted_at IS NULL").Order("user_flow_instance.created_at DESC").Find(&instances).Error; err != nil {
 		return nil, err
 	}
 	return instances, nil
@@ -600,8 +615,17 @@ func (s *AutomationService) CreateUserFlowInstance(flow_id string) (*model.UserF
 		return nil, err
 	}
 	now := time.Now().UnixMilli()
-	instance := model.UserFlowInstance{ID: fmt.Sprintf("instance-u-%d", time.Now().UnixNano()), FlowID: flow.ID, Name: flow.Name + "（实例）", NodeConfigs: "{}", TriggerType: model.FlowRunTriggerManual, Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now}}
-	if err := s.db.Create(&instance).Error; err != nil {
+	instance := model.UserFlowInstance{ID: fmt.Sprintf("instance-u-%d", time.Now().UnixNano()), FlowID: flow.ID, Name: flow.Name + "（实例）", NodeConfigs: "{}", InheritTriggers: true, TriggerType: model.FlowRunTriggerManual, Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now}}
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&instance).Error; err != nil {
+			return err
+		}
+		definition, err := decode_user_flow_definition(flow.Definition)
+		if err != nil {
+			return err
+		}
+		return s.sync_instance_default_triggers(tx, instance.ID, definition.StartNodeID, flow.DefaultTriggers)
+	}); err != nil {
 		return nil, err
 	}
 	return s.GetUserFlowInstance(instance.ID)
@@ -636,7 +660,7 @@ func (s *AutomationService) CopyUserFlowInstance(id string) (*model.UserFlowInst
 				return err
 			}
 		}
-		return nil
+		return tx.Model(&copied).Update("inherit_triggers", source.InheritTriggers).Error
 	})
 	if err != nil {
 		return nil, err
@@ -692,14 +716,50 @@ func (s *AutomationService) UpdateUserFlowInstance(id string, input UpdateUserFl
 		if input.Description != nil {
 			instance.Description = strings.TrimSpace(*input.Description)
 		}
-		if input.Triggers != nil {
+		if input.TriggerOverrides != nil {
+			if input.Triggers != nil || input.InheritTriggers != nil {
+				return fmt.Errorf("trigger_overrides 不能与 triggers 或 inherit_triggers 同时提交")
+			}
+			var defaults []UserFlowTriggerInput
+			if err := json.Unmarshal([]byte(instance.DefaultTriggers), &defaults); err != nil {
+				return err
+			}
+			_, overrides, err := scoped.merge_trigger_overrides(defaults, input.TriggerOverrides, true)
+			if err != nil {
+				return err
+			}
+			instance.TriggerOverrides = marshal_json(overrides)
+			if err := tx.Model(instance).Update("trigger_overrides", instance.TriggerOverrides).Error; err != nil {
+				return err
+			}
+			if err := scoped.sync_instance_default_triggers(tx, id, definition.StartNodeID, instance.DefaultTriggers); err != nil {
+				return err
+			}
+			instance.InheritTriggers = true
+		} else if input.InheritTriggers != nil && *input.InheritTriggers {
+			if input.Triggers != nil {
+				return fmt.Errorf("继承流程触发器时不能同时提交自定义触发器")
+			}
+			instance.TriggerOverrides = "{}"
+			if err := tx.Model(instance).Update("trigger_overrides", instance.TriggerOverrides).Error; err != nil {
+				return err
+			}
+			if err := scoped.sync_instance_default_triggers(tx, id, definition.StartNodeID, instance.DefaultTriggers); err != nil {
+				return err
+			}
+			instance.InheritTriggers = true
+		} else if input.Triggers != nil {
 			if err := scoped.replace_user_flow_triggers(tx, id, definition.StartNodeID, input.Triggers); err != nil {
 				return err
 			}
 			instance.TriggerType = model.FlowRunTriggerManual
 			instance.EventKey = ""
+			instance.InheritTriggers = false
+			instance.TriggerOverrides = "{}"
+		} else if input.InheritTriggers != nil {
+			instance.InheritTriggers = false
 		}
-		return tx.Model(instance).Updates(map[string]interface{}{"name": instance.Name, "description": instance.Description, "node_configs": marshal_json(values), "trigger_type": instance.TriggerType, "event_key": instance.EventKey, "updated_at": time.Now().UnixMilli()}).Error
+		return tx.Model(instance).Updates(map[string]interface{}{"name": instance.Name, "description": instance.Description, "node_configs": marshal_json(values), "trigger_type": instance.TriggerType, "event_key": instance.EventKey, "inherit_triggers": instance.InheritTriggers, "trigger_overrides": instance.TriggerOverrides, "updated_at": time.Now().UnixMilli()}).Error
 	})
 	if err != nil {
 		return nil, err

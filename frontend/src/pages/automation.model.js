@@ -6,6 +6,7 @@ import {
   copyPipeline,
   createPipelineInstance,
   updatePipeline,
+  deletePipeline,
   fetchPipelineDetail,
   fetchPipelineNodeCatalog,
   triggerPipeline,
@@ -38,7 +39,7 @@ function parse_initial_data(value) {
 }
 
 function schedule_metadata(schedule) {
-  const metadata = { type: "Cron", start_node: "", event_key: "", active: true, webhook_token: "" };
+  const metadata = { type: "Cron", start_node: "", event_key: "", active: true, webhook_token: "", default_trigger_id: "" };
   if (!schedule) return metadata;
   try {
     const data = parse_initial_data(schedule.initial_data);
@@ -49,6 +50,7 @@ function schedule_metadata(schedule) {
       if (raw.event_key) metadata.event_key = String(raw.event_key);
       metadata.active = raw.active !== false;
       metadata.webhook_token = String(raw.webhook_token || "");
+      metadata.default_trigger_id = String(raw.default_trigger_id || "");
     }
   } catch (err) {
     void err;
@@ -608,6 +610,7 @@ function pipeline_config_groups(pipeline, props) {
 
 function pipeline_triggers(pipeline, schedules) {
   if (!pipeline) return [];
+  if (pipeline.is_flow_definition) return pipeline_default_triggers(pipeline);
   const triggers = (schedules || [])
     .filter((schedule) => schedule.instance_id === pipeline.id)
     .map((schedule) => {
@@ -625,6 +628,7 @@ function pipeline_triggers(pipeline, schedules) {
         cron_expr: schedule.cron_expr, event_key: metadata.event_key,
         enabled: schedule.enabled, next_run_at: schedule.next_run_at,
         active: metadata.active, webhook_token: metadata.webhook_token,
+        default_id: metadata.default_trigger_id,
         initial_data, timeout_sec: schedule.timeout_sec,
       };
     });
@@ -635,6 +639,13 @@ function pipeline_triggers(pipeline, schedules) {
     triggers.push({ id: "", type: "Event", name: "事件触发", event_key: pipeline.event_key, initial_data: {} });
   }
   return triggers;
+}
+
+function pipeline_default_triggers(pipeline) {
+  try {
+    const triggers = typeof pipeline?.default_triggers === "string" ? JSON.parse(pipeline.default_triggers) : pipeline?.default_triggers;
+    return Array.isArray(triggers) ? triggers : [];
+  } catch { return []; }
 }
 
 function automation_view_query(props, fallback_mode) {
@@ -729,6 +740,7 @@ function AutomationPageViewModel(props, options) {
   ]);
   const execution_layout_ = combine({ nodes: edit_nodes_, groups: subflow_groups_ }, ({ nodes, groups }) => calculate_execution_layout(nodes, groups));
   const edit_triggers_ = refarr([]);
+  let edit_triggers_dirty = false;
   const edit_start_node_id_ = ref("");
   const selected_edit_node_id_ = ref("");
   const selected_edit_node_ = combine({ nodes: execution_nodes_, id: selected_edit_node_id_ }, ({ nodes, id }) =>
@@ -743,6 +755,11 @@ function AutomationPageViewModel(props, options) {
   const config_loading_ = ref(false);
   const config_pipeline_ = refobj(null);
   const config_defaults_ = ref(false);
+  const config_triggers_ = refarr([]);
+  const config_trigger_overrides_ = ref(false);
+  const config_default_triggers_ = computed(config_pipeline_, pipeline_default_triggers);
+  let config_trigger_bindings = [];
+  let config_triggers_dirty = false;
   let config_sequence = 0;
   const staged_node_positions = new Map();
 
@@ -781,6 +798,8 @@ function AutomationPageViewModel(props, options) {
 
   // list-row delete state
   const pending_delete_flow_id_ = ref("");
+  const delete_pipeline_ = combine({ id: pending_delete_flow_id_, pipelines: pipelines_, definitions: definitions_ },
+    ({ id, pipelines, definitions }) => [...pipelines, ...definitions].find((pipeline) => pipeline.id === id) || null);
 
   let request_sequence = 0;
   let node_sequence = 0;
@@ -826,6 +845,7 @@ function AutomationPageViewModel(props, options) {
       create: new Timeless.kit.RequestCore(createPipeline, { client: props.client }),
       update: new Timeless.kit.RequestCore(updatePipeline, { client: props.client }),
       copy: new Timeless.kit.RequestCore(copyPipeline, { client: props.client }),
+      delete: new Timeless.kit.RequestCore(deletePipeline, { client: props.client }),
       import: new Timeless.kit.RequestCore(importPipeline, { client: props.client }),
     },
     pipeline: {
@@ -874,6 +894,7 @@ function AutomationPageViewModel(props, options) {
     btn_create_instance$: new Timeless.vm.ButtonCore({ variant: "primary", onClick() { ui.definitions_drawer$.show(); } }),
     input_definition_keyword$: new Timeless.vm.InputCore({ placeholder: "搜索自动化流程", allowClear: true, onChange(value) { definition_keyword_.as(String(value || "")); } }),
     btn_definition_instance$: new Timeless.vm.ButtonInListCore({ variant: "link", size: "sm", onClick(pipeline) { return copy_pipeline(pipeline, true); } }),
+    btn_definition_delete$: new Timeless.vm.ButtonInListCore({ variant: "link", size: "sm", onClick(pipeline) { return ask_delete_pipeline(pipeline); } }),
     btn_definition_config$: new Timeless.vm.ButtonInListCore({ variant: "outline", size: "sm", onClick(pipeline) { ui.definitions_drawer$.hide(); return open_pipeline_config(pipeline, true, true); } }),
     btn_definition_config_menu$: new Timeless.vm.ButtonInListCore({ variant: "outline", size: "sm" }),
     btn_node_logs_more$: new Timeless.vm.ButtonInListCore({ variant: "outline", size: "sm", onClick(node) { return load_node_execution_logs(node.id, true); } }),
@@ -881,6 +902,12 @@ function AutomationPageViewModel(props, options) {
     config_json_dialog$: new Timeless.vm.DialogCore({ footer: false }),
     input_config_json$: new Timeless.vm.InputCore({ defaultValue: "" }),
     input_config_name$: new Timeless.vm.InputCore({ defaultValue: "" }),
+    btn_config_restore_triggers$: new Timeless.vm.ButtonCore({ variant: "outline", size: "sm", onClick() {
+      const defaults = pipeline_default_triggers(config_pipeline_.value);
+      config_triggers_.as(defaults.map((trigger) => new_trigger_override_row(trigger, {}, config_trigger_bindings.find((binding) => binding.default_id === trigger.id), () => { config_triggers_dirty = true; })), { reset: true });
+      config_trigger_overrides_.as(true);
+      config_triggers_dirty = true;
+    } }),
     btn_config_json_save$: new Timeless.vm.ButtonCore({ variant: "primary", onClick() { return save_pasted_pipeline_config(); } }),
     btn_config_json_cancel$: new Timeless.vm.ButtonCore({ variant: "outline", onClick() { if (!config_loading_.value && !config_saving_.value) ui.config_json_dialog$.hide(); } }),
     btn_pipeline_config$: new Timeless.vm.ButtonInListCore({ variant: "outline", onClick(pipeline) { return open_pipeline_config(pipeline); } }),
@@ -1156,7 +1183,7 @@ function AutomationPageViewModel(props, options) {
       variant: "danger", size: "xs",
       onClick(trigger) {
         edit_triggers_.as(edit_triggers_.value.filter((item) => item.uid !== trigger.uid), { reset: true });
-        dirty_.as(true);
+        mark_edit_triggers_dirty();
       },
     }),
     btn_schedule_trigger$: new Timeless.vm.ButtonInListCore({
@@ -2095,11 +2122,11 @@ function AutomationPageViewModel(props, options) {
     return (payload && payload.nodes) || [];
   }
 
-  async function load_schedules() {
+  async function load_schedules(instance_id = view_query.flow_id || "") {
     const schedules = [];
     for (let page = 1; ; page += 1) {
       const r = await reqs.schedule.list.run({
-        page, page_size: 200, instance_id: view_query.flow_id || "",
+        page, page_size: 200, instance_id,
       });
       if (r.error) throw request_result_error(r, "触发器列表加载失败");
       const payload = r.data || {};
@@ -2127,7 +2154,7 @@ function AutomationPageViewModel(props, options) {
       definitions_.as(flows, { reset: true });
       const instances = pipelines.map((instance) => {
         const flow = flows.find((flow) => flow.id === instance.flow_id);
-        return normalize_pipeline({ ...instance, definition: flow?.definition || instance.definition, definition_name: flow?.name || instance.definition_name, default_node_configs: flow?.default_node_configs || instance.default_node_configs });
+        return normalize_pipeline({ ...instance, definition: flow?.definition || instance.definition, definition_name: flow?.name || instance.definition_name, default_node_configs: flow?.default_node_configs || instance.default_node_configs, default_triggers: flow?.default_triggers || instance.default_triggers });
       });
       pipelines_.as(instances, { reset: true });
       catalog_.as(catalog, { reset: true });
@@ -2164,7 +2191,12 @@ function AutomationPageViewModel(props, options) {
     selected_pipeline_.as(flow);
     edit_name_.as(flow.name || flow.id);
     ui.input_edit_name$.setValue(edit_name_.value, { silence: true });
-    edit_triggers_.as(pipeline_triggers(flow, schedules_.value).map(new_trigger_row), { reset: true });
+    const bindings = pipeline_triggers(flow, schedules_.value);
+    const overrides = node_config_values(flow.trigger_overrides);
+    edit_triggers_.as(!flow.is_flow_definition && flow.inherit_triggers
+      ? pipeline_default_triggers(flow).map((trigger) => new_trigger_override_row(trigger, overrides[trigger.id] || {}, bindings.find((binding) => binding.default_id === trigger.id)))
+      : bindings.map((trigger) => new_trigger_row(trigger)), { reset: true });
+    edit_triggers_dirty = false;
     const edit_nodes = (flow.nodes || []).map((node) => ({
       id: node.id,
       type: node.type,
@@ -2195,11 +2227,16 @@ function AutomationPageViewModel(props, options) {
     if (execution_channel_connected_.value) editor_bridge.register();
   }
 
-  function new_trigger_row(value) {
+  function mark_edit_triggers_dirty() {
+    edit_triggers_dirty = true;
+    dirty_.as(true);
+  }
+
+  function new_trigger_row(value, on_change = mark_edit_triggers_dirty) {
     const trigger = { ...value, uid: ++trigger_sequence };
     const change = (key, value) => {
       trigger[key] = value;
-      dirty_.as(true);
+      on_change();
     };
     trigger.input_name$ = new Timeless.vm.InputCore({
       defaultValue: trigger.name || "", onChange(value) { change("name", value); },
@@ -2223,16 +2260,52 @@ function AutomationPageViewModel(props, options) {
     return trigger;
   }
 
-  function add_trigger(type) {
-    edit_triggers_.as([...edit_triggers_.value, new_trigger_row({
+  function add_trigger(type, triggers = edit_triggers_, on_change = mark_edit_triggers_dirty) {
+    triggers.as([...triggers.value, new_trigger_row({
       id: "", type, name: type === "Cron" ? "定时触发" : type === "Webhook" ? "Webhook" : "事件触发",
       cron_expr: "@daily", event_key: "", enabled: type === "Cron", initial_data: {},
-    })], { reset: true });
-    dirty_.as(true);
+    }, on_change)], { reset: true });
+    on_change();
   }
 
-  function serialize_triggers() {
-    return edit_triggers_.value.map((trigger, index) => {
+  function new_trigger_override_row(defaults, overrides, binding, on_change = mark_edit_triggers_dirty) {
+    const trigger = new_trigger_row({ ...defaults, ...overrides, binding_id: binding?.id, webhook_token: binding?.webhook_token }, on_change);
+    const keys = ["name", "timeout_sec", "initial_data", ...(trigger.type === "Cron" ? ["cron_expr", "enabled"] : ["active", ...(trigger.type === "Event" ? ["event_key"] : [])])];
+    trigger.inheritance = Object.fromEntries(keys.map((key) => {
+      const inherited = ref(!Object.hasOwn(overrides, key));
+      const value = defaults[key] ?? (key === "initial_data" ? {} : key === "timeout_sec" ? 3600 : "");
+      return [key, {
+        inherited,
+        text: ["active", "enabled"].includes(key) ? (value === false ? "已暂停" : "已启用") : typeof value === "object" ? JSON.stringify(value, null, 2) : String(value),
+        inherit$: new Timeless.vm.CheckboxCore({ checked: inherited.value, onChange(value) { inherited.as(value); on_change(); } }),
+      }];
+    }));
+    return trigger;
+  }
+
+  function serialize_trigger_overrides(triggers) {
+    const overrides = {};
+    for (const trigger of triggers) {
+      if (!trigger.inheritance) throw new Error("请在自动化流程中声明触发器，再在实例中覆盖字段");
+      const values = {};
+      for (const [key, field] of Object.entries(trigger.inheritance)) {
+        if (field.inherited.value) continue;
+        if (key === "initial_data") values[key] = parse_initial_data(trigger.input_data$.state.value);
+        else if (key === "timeout_sec") {
+          const timeout = Number(trigger.input_timeout$.state.value);
+          if (!Number.isInteger(timeout) || timeout < 1 || timeout > 86400) throw new Error("整体超时必须为 1 到 86400 秒的整数");
+          values[key] = timeout;
+        } else if (key === "enabled") values[key] = trigger.checkbox_enabled$.state.checked;
+        else if (key === "active") values[key] = trigger.checkbox_active$.state.checked;
+        else values[key] = (key === "cron_expr" ? trigger.input_cron$ : key === "event_key" ? trigger.input_event_key$ : trigger.input_name$).state.value;
+      }
+      if (Object.keys(values).length) overrides[trigger.id] = values;
+    }
+    return overrides;
+  }
+
+  function serialize_triggers(triggers = edit_triggers_.value) {
+    return triggers.map((trigger, index) => {
       const initial_data = JSON.parse(trigger.data_text || "{}");
       if (!initial_data || typeof initial_data !== "object" || Array.isArray(initial_data)) {
         throw new Error(`触发器 ${index + 1} 的输入参数必须是 JSON 对象`);
@@ -2587,21 +2660,34 @@ function AutomationPageViewModel(props, options) {
   async function open_pipeline_config(pipeline, show_dialog = true, edit_defaults = false) {
     if (!pipeline || config_saving_.value) return;
     const sequence = ++config_sequence;
+    const is_flow = Boolean(edit_defaults || pipeline.is_flow_definition);
+    config_defaults_.as(is_flow);
     config_pipeline_.as(pipeline);
     config_error_.as("");
     config_groups_.as([], { reset: true });
+    config_triggers_.as([], { reset: true });
+    config_triggers_dirty = false;
     config_loading_.as(true);
     ui.btn_config_save$.disable();
     if (show_dialog) ui.config_dialog$.show();
     try {
-      const is_flow = Boolean(edit_defaults || pipeline.is_flow_definition);
-      const response = await reqs[is_flow ? "definition" : "pipeline"].detail.run({ id: is_flow ? pipeline.flow_id || pipeline.id : pipeline.id });
+      const [response, schedules] = await Promise.all([
+        reqs[is_flow ? "definition" : "pipeline"].detail.run({ id: is_flow ? pipeline.flow_id || pipeline.id : pipeline.id }),
+        !is_flow && show_dialog ? load_schedules(pipeline.id) : Promise.resolve([]),
+      ]);
       if (sequence !== config_sequence || disposed) return;
       if (response.error) throw request_result_error(response, "自动化配置加载失败");
       const fresh = normalize_pipeline({ ...response.data, is_flow_definition: is_flow });
       config_pipeline_.as(fresh);
+      config_trigger_bindings = pipeline_triggers(fresh, schedules);
+      config_trigger_overrides_.as(!is_flow && fresh.inherit_triggers === true);
+      const trigger_overrides = node_config_values(fresh.trigger_overrides);
+      const changed = () => { config_triggers_dirty = true; };
+      config_triggers_.as(config_trigger_overrides_.value
+        ? pipeline_default_triggers(fresh).map((trigger) => new_trigger_override_row(trigger, trigger_overrides[trigger.id] || {}, config_trigger_bindings.find((binding) => binding.default_id === trigger.id), changed))
+        : config_trigger_bindings.map((trigger) => new_trigger_row(trigger, changed)), { reset: true });
+      config_triggers_dirty = false;
       const editing_defaults = is_flow;
-      config_defaults_.as(editing_defaults);
       ui.input_config_name$.setValue(fresh.name);
       const defaults = node_config_values(fresh.default_node_configs);
       const values = node_config_values(editing_defaults ? fresh.default_node_configs || fresh.node_configs : fresh.node_configs);
@@ -2615,7 +2701,8 @@ function AutomationPageViewModel(props, options) {
           if (!editing_defaults) {
             field.inherited = ref(saved_value === undefined);
             field.inherited_value = inherited_value;
-            field.inherit$ = new Timeless.vm.CheckboxCore({ checked: field.inherited.value, onChange(value) { field.inherited.as(value); } });
+            field.secret_display = schema.secret && inherited_value !== undefined ? secret_config_display(inherited_value, props) : null;
+            field.inherit$ = new Timeless.vm.CheckboxCore({ checked: field.inherited.value, onChange(value) { field.inherited.as(value); field.secret_display?.popover$.hide(); } });
             field.inherited_text = inherited_value === undefined ? "流程未填写" : schema.secret ? "••••••" : typeof inherited_value === "string" ? inherited_value : JSON.stringify(inherited_value);
           }
           if (schema.options && schema.options.length) {
@@ -2667,6 +2754,10 @@ function AutomationPageViewModel(props, options) {
         id: pipeline.id,
         ...(name !== pipeline.name ? { name } : {}),
         [shared_defaults ? "default_node_configs" : "node_configs"]: node_configs,
+        ...(config_triggers_dirty ? shared_defaults
+          ? { triggers: serialize_triggers(config_triggers_.value) }
+          : config_trigger_overrides_.value ? { trigger_overrides: serialize_trigger_overrides(config_triggers_.value) }
+            : { triggers: serialize_triggers(config_triggers_.value) } : {}),
       });
       if (response.error) throw request_result_error(response, "自动化配置保存失败");
       ui.config_dialog$.hide();
@@ -3067,7 +3158,8 @@ function AutomationPageViewModel(props, options) {
         name,
         context_schema: selected_pipeline_.value.context_schema || [],
         subflows: selected_pipeline_.value.subflows || {},
-        ...(is_flow ? {} : { triggers: serialize_triggers() }),
+        ...(is_flow || !selected_pipeline_.value.inherit_triggers ? { triggers: serialize_triggers() }
+          : edit_triggers_dirty ? { trigger_overrides: serialize_trigger_overrides(edit_triggers_.value) } : {}),
         start_node_id: edit_start_node_id_.value,
         nodes: (edit_nodes_.value || []).map((node) => ({
           id: node.id,
@@ -3116,10 +3208,6 @@ function AutomationPageViewModel(props, options) {
           onClick() { menu.hide(); return ui.btn_pipeline_copy$.bind(pipeline).click(); },
         }),
         new Timeless.vm.MenuItemCore({
-          label: "新增配置实例", disabled: ui.btn_pipeline_copy$.bind(pipeline).state.loading,
-          onClick() { menu.hide(); return copy_pipeline(pipeline, true); },
-        }),
-        new Timeless.vm.MenuItemCore({
           label: "删除",
           onClick() { menu.hide(); return ask_delete_pipeline(pipeline); },
         }),
@@ -3160,7 +3248,8 @@ function AutomationPageViewModel(props, options) {
     if (!flow_id) return null;
     error_.as("");
     try {
-      const r = await reqs.pipeline.delete.run({ id: flow_id });
+      const pipeline = delete_pipeline_.value || find_pipeline(flow_id);
+      const r = await reqs[pipeline?.is_flow_definition ? "definition" : "pipeline"].delete.run({ id: flow_id });
       if (r.error) throw request_result_error(r, "Pipeline 删除失败");
       ui.delete_dialog$.hide();
       pending_delete_flow_id_.as("");
@@ -3397,7 +3486,6 @@ function AutomationPageViewModel(props, options) {
     if (definition.context_schema !== undefined && !Array.isArray(definition.context_schema)) throw new Error("context_schema 必须是数组");
     if (definition.subflows !== undefined && (!definition.subflows || typeof definition.subflows !== "object" || Array.isArray(definition.subflows))) throw new Error("subflows 必须是对象");
     if (definition.triggers !== undefined && !Array.isArray(definition.triggers)) throw new Error("triggers 必须是数组");
-    if (selected_pipeline_.value.is_flow_definition && definition.triggers?.length) throw new Error("触发器属于流程实例，请在实例中配置");
     for (const [id, node] of Object.entries(definition.nodes)) {
       if (!id.trim() || !node || typeof node !== "object" || Array.isArray(node) || typeof node.type !== "string" || !node.type.trim()) throw new Error(`节点 ${id} 缺少有效类型`);
       if (node.id !== undefined && node.id !== id) throw new Error(`节点 ${id} 的 id 与键名不一致`);
@@ -3412,10 +3500,11 @@ function AutomationPageViewModel(props, options) {
       for (const key of ["enabled", "active"]) {
         if (trigger[key] !== undefined && typeof trigger[key] !== "boolean") throw new Error(`触发器 ${key} 必须是布尔值`);
       }
-      return new_trigger_row({ ...trigger, id: undefined });
+      return new_trigger_row({ ...trigger, id: selected_pipeline_.value.is_flow_definition ? trigger.id : undefined });
     });
     enter_edit(imported);
     edit_triggers_.as(triggers, { reset: true });
+    if (definition.triggers !== undefined) edit_triggers_dirty = true;
     dirty_.as(true);
   }
 
@@ -3493,7 +3582,10 @@ function AutomationPageViewModel(props, options) {
         position: positions[node.id] || null,
       })), { reset: true });
       edit_start_node_id_.as(draft.start_node_id);
-      if (Array.isArray(draft.triggers)) edit_triggers_.as(draft.triggers.map(new_trigger_row), { reset: true });
+      if (Array.isArray(draft.triggers)) {
+        edit_triggers_.as(draft.triggers.map((trigger) => new_trigger_row(trigger)), { reset: true });
+        edit_triggers_dirty = true;
+      }
       select_edit_node(find_edit_node(selected_edit_node_id_.value) ? selected_edit_node_id_.value : draft.start_node_id);
       dirty_.as(true);
       props.tip({ msg: ["MCP 已更新流程画布，保存 Pipeline 后生效"], type: "success" });
@@ -3680,6 +3772,8 @@ function AutomationPageViewModel(props, options) {
     edit_node_config_schema: edit_node_config_schema_,
     config_groups: config_groups_, config_error: config_error_, config_saving: config_saving_, config_loading: config_loading_, config_pipeline: config_pipeline_,
     config_defaults: config_defaults_,
+    config_trigger_overrides: config_trigger_overrides_,
+    config_default_triggers: config_default_triggers_,
     loading: loading_,
     error: error_,
     dirty: dirty_,
@@ -3717,9 +3811,23 @@ function AutomationPageViewModel(props, options) {
     import_json: import_json_,
     import_error: import_error_,
     delete_flow_id: pending_delete_flow_id_,
+    delete_pipeline: delete_pipeline_,
   };
 
-  return { state, ui, methods };
+  const config_trigger_editor = {
+    state: { edit_triggers: config_triggers_ },
+    methods: { triggerLabel: trigger_label },
+    ui: {
+      btn_add_cron_trigger$: new Timeless.vm.ButtonCore({ variant: "outline", size: "sm", onClick() { add_trigger("Cron", config_triggers_, () => { config_triggers_dirty = true; }); } }),
+      btn_add_event_trigger$: new Timeless.vm.ButtonCore({ variant: "outline", size: "sm", onClick() { add_trigger("Event", config_triggers_, () => { config_triggers_dirty = true; }); } }),
+      btn_add_webhook_trigger$: new Timeless.vm.ButtonCore({ variant: "outline", size: "sm", onClick() { add_trigger("Webhook", config_triggers_, () => { config_triggers_dirty = true; }); } }),
+      btn_remove_trigger$: new Timeless.vm.ButtonInListCore({ variant: "danger", size: "xs", onClick(trigger) {
+        config_triggers_.as(config_triggers_.value.filter((item) => item.uid !== trigger.uid), { reset: true });
+        config_triggers_dirty = true;
+      } }),
+    },
+  };
+  return { state, ui, methods, config_trigger_editor };
 }
 
 export {

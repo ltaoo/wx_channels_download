@@ -5,6 +5,7 @@ import {
   AutomationPipelineTriggerBadges,
   AutomationRunPipelineDialog,
   AutomationImportPipelineDialog,
+  AutomationStartTriggers,
 } from "./automation.components.js";
 
 function AutomationPageView(props) {
@@ -388,6 +389,7 @@ function AutomationDefinitionsDrawer(props) {
             return [
               TextButton({ store: vm$.ui.btn_definition_instance$.bind(definition), attributes: { n: `automation-definition-create-instance-${definition.id}`, type: "button" } }, ["新增配置实例"]),
               AutomationPipelineLink({ flowId: definition.id, mode: "edit", label: "编辑流程" }),
+              TextButton({ store: vm$.ui.btn_definition_delete$.bind(definition), attributes: { n: `automation-definition-delete-${definition.id}`, type: "button", "aria-label": `删除自动化流程 ${definition.name || definition.id}` } }, ["删除"]),
             ];
           } },
         ],
@@ -398,9 +400,9 @@ function AutomationDefinitionsDrawer(props) {
 
 function AutomationConfigDialog(props) {
   const vm$ = props.store;
-  return Dialog({ store: vm$.ui.config_dialog$, class: "automation-form-dialog", attributes: { n: "automation-config-dialog" } }, [
+  return Dialog({ store: vm$.ui.config_dialog$, class: "automation-form-dialog", attributes: { n: "automation-config-dialog" } }, () => [
     DialogHeader({}, [
-      DialogTitle({}, [computed(vm$.state.config_defaults, (defaults) => defaults ? "流程默认配置" : "实例覆盖配置")]),
+      DialogTitle({ attributes: { n: "automation-config-title" } }, [computed(vm$.state.config_defaults, (defaults) => defaults ? "流程配置" : "实例配置")]),
       DialogDescription({}, [computed(vm$.state.config_defaults, (defaults) => defaults ? "修改后，所有未覆盖相应配置项的实例在下次执行时使用新值。" : "勾选继承的配置项在执行时读取流程的最新配置；取消勾选后可为当前实例填写覆盖值。")]),
     ]),
     DialogBody({}, [
@@ -423,16 +425,38 @@ function AutomationConfigDialog(props) {
                 ? Select({ store: field.input$, attributes })
               : field.multiline || field.type === "array" || field.type === "object"
                 ? Textarea({ store: field.input$, onChange, class: "font-mono text-xs", attributes: { ...attributes, rows: "4", spellcheck: "false" } })
-                : Input({ store: field.input$, onChange, attributes: { ...attributes, type: field.secret ? "secret" : field.type === "number" || field.type === "integer" ? "number" : "text", step: field.type === "number" ? "any" : undefined, autocomplete: "off", spellcheck: field.secret ? "false" : undefined } });
+                : Input({ store: field.input$, onChange, attributes: { ...attributes, type: field.type === "number" || field.type === "integer" ? "number" : "text", step: field.type === "number" ? "any" : undefined, autocomplete: "off", spellcheck: field.secret ? "false" : undefined } });
             return View({ class: "min-w-0 flex flex-col gap-1" }, [
               field.type !== "boolean" ? Label({ class: "text-color-text-secondary text-xs font-semibold", attributes: { for: id } }, [`${field.label || field.key}${field.required ? " *" : ""}`]) : null,
-              field.inherit$ ? Checkbox({ store: field.inherit$, attributes: { n: `${id}-inherit`, "aria-label": `${field.label || field.key} 继承流程配置` } }, ["继承流程配置"]) : null,
-              field.inherited ? Show({ when: field.inherited, ok: () => View({ class: "text-color-text-secondary text-sm", attributes: { n: `${id}-inherited-value` } }, [field.inherited_text]), else: () => input }) : input,
+              View({ class: "flex items-center gap-3 min-w-0", attributes: { n: `${id}-controls` } }, [
+                field.inherit$ ? Checkbox({ store: field.inherit$, class: "flex-none", attributes: { n: `${id}-inherit`, "aria-label": `${field.label || field.key} 继承流程配置` } }, ["继承流程配置"]) : null,
+                View({ class: "relative flex-1 min-w-0", attributes: { n: `${id}-value` } }, [
+                  View({ style: field.inherited ? computed(field.inherited, (inherited) => ({ visibility: inherited ? "hidden" : "visible" })) : {}, attributes: { n: `${id}-editor` } }, [input]),
+                  field.inherited ? Show({ when: field.inherited, ok: () => View({ class: `absolute inset-0 flex items-center overflow-hidden text-color-text-secondary leading-base ${field.multiline || field.type === "array" || field.type === "object" ? "font-mono text-xs" : "text-base"}`, attributes: { n: `${id}-inherited-value` } }, [
+                    View({ class: "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap", attributes: { n: `${id}-inherited-text`, title: field.inherited_text } }, [field.inherited_text]),
+                    field.secret_display ? AutomationSecretPopover({ store: field.secret_display, name: id, label: field.label || field.key }) : null,
+                  ]) }) : null,
+                ]),
+              ].filter(Boolean)),
               field.description ? View({ class: "text-color-text-secondary text-caption", attributes: { id: `${id}-help` } }, [field.description]) : null,
             ].filter(Boolean));
           }),
         ]);
       } })]),
+      Show({ when: computed(vm$.state.config_loading, (loading) => !loading), ok: () => View({
+        class: "grid gap-3", attributes: { n: "automation-config-triggers" },
+      }, [
+        Show({ when: combine({ defaults: vm$.state.config_defaults, triggers: vm$.state.config_default_triggers }, ({ defaults, triggers }) => !defaults && triggers.length > 0), ok: () => Button({
+          store: vm$.ui.btn_config_restore_triggers$, attributes: { n: "automation-config-restore-triggers", type: "button" },
+        }, ["恢复全部默认值"]) }),
+        AutomationStartTriggers({
+          store: vm$.config_trigger_editor,
+          defaults: vm$.state.config_defaults.value,
+          overrides: !vm$.state.config_defaults.value,
+          title: "触发器配置",
+          description: "与节点配置相同：实例仅覆盖取消继承的字段，其余字段随流程默认配置更新。",
+        }),
+      ]) }),
     ]),
     DialogFooter({}, [
       Button({ store: vm$.ui.btn_config_cancel$, attributes: { type: "button" } }, ["取消"]),
@@ -573,18 +597,17 @@ function AutomationDeletePipelineDialog(props) {
     store: vm$.ui.delete_dialog$,
     class: "dm-dialog--sm",
     name: "automation-delete-pipeline",
-    title: "删除流程实例",
-    description: combine(
-      { flow_id: vm$.state.delete_flow_id, pipelines: vm$.state.pipelines },
-      ({ flow_id, pipelines }) => {
-        const flow = (pipelines || []).find((item) => item.id === flow_id);
+    title: computed(vm$.state.delete_pipeline, (pipeline) => pipeline?.is_flow_definition ? "删除自动化流程" : "删除流程实例"),
+    description: computed(vm$.state.delete_pipeline,
+      (flow) => {
+        if (flow?.is_flow_definition) return `确定删除自动化流程「${flow.name || flow.id}」？已有配置实例时无法删除。删除后不可恢复。`;
         return flow
           ? `确定删除配置实例「${flow.name || flow.id}」？其他实例不受影响，删除后不可恢复。`
           : "确定删除当前流程实例？删除后不可恢复。";
       },
     ),
     cancelText: "取消",
-    okText: "删除流程实例",
+    okText: "删除",
   });
 }
 

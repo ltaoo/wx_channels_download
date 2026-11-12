@@ -61,15 +61,15 @@ description: 自动化流程的节点配置、触发、取消、恢复与重试�
 
 | 表 | 概念与主要字段 |
 | --- | --- |
-| `user_flow` | 自动化流程：`id`、`name`、`description`、`definition`（共享图与参数声明）、`default_node_configs`（默认配置） |
-| `user_flow_instance` | 自动化流程实例：`id`、`flow_id`、`name`、`description`、`node_configs`（显式覆盖值）；不保存共享图副本 |
+| `user_flow` | 自动化流程：`id`、`name`、`description`、`definition`（共享图与参数声明）、`default_node_configs`、`default_triggers`（默认配置与触发器） |
+| `user_flow_instance` | 自动化流程实例：`id`、`flow_id`、`name`、`description`、`node_configs`、`trigger_overrides`（显式字段覆盖值）；不保存共享图副本 |
 | `flow_run_record` | 一次实例执行：`id`、`instance_id`、`flow_id`、触发来源、状态、冻结的 `definition`（含实际配置）、输入输出、检查点、错误与起止时间 |
 | `flow_schedule` | 实例的 Cron / Event / Webhook 规则，通过 `instance_id` 关联实例 |
 | `flow_run_node_log` | 节点执行尝试明细：递增 `id`、`run_id`、`flow_id`（作用域）、`node_id`、JSON `entry` |
 
-关系为 `user_flow 1 → N user_flow_instance 1 → N flow_run_record 1 → N flow_run_node_log`。创建或导入流程只创建流程，可以没有实例；用户显式创建实例后才能执行。流程没有“默认实例”，流程和实例也没有相等 ID 的特殊语义。删除仍被实例引用的流程会被拒绝，删除一个实例不影响其他实例或历史记录。
+关系为 `user_flow 1 → N user_flow_instance 1 → N flow_run_record 1 → N flow_run_node_log`。创建或导入流程只创建流程，可以没有实例；用户显式创建实例后才能执行。流程通过 `default_triggers` 保存默认触发规则，新实例的 `inherit_triggers` 为 true，并生成独立的调度绑定。流程没有“默认实例”，流程和实例也没有相等 ID 的特殊语义。删除仍被实例引用的流程会被拒绝，删除一个实例不影响其他实例或历史记录。
 
-新结构直接定义在 `000003_flow_schedule`；`000004_subflow_states` 添加轻量状态列。不提供旧数据库转换逻辑。
+`000003_flow_schedule` 定义基础结构，`000004_subflow_states` 添加轻量状态列，`000005_flow_trigger_defaults` 添加流程默认触发器，`000006_trigger_field_overrides` 添加实例的字段覆盖值。升级时已有独立规则会保留；可在实例配置中使用“恢复全部默认值”切换为流程默认规则。
 
 `/automation` 主列表直接查询实例表；点击「自动化流程」或「新增配置实例」打开流程抽屉，直接查询流程表，没有从实例列表去重生成流程的逻辑。抽屉支持搜索、创建/导入流程、编辑共享流程、修改默认配置和新增实例，搜索独立于主列表。
 
@@ -115,7 +115,11 @@ description: 自动化流程的节点配置、触发、取消、恢复与重试�
 
 API 通过 `update_flow` 的 `default_node_configs` 保存流程默认配置，通过 `update_flow_instance` 的 `node_configs` 保存实例覆盖值；省略相应属性会保留原值。保存实例配置或开始运行时校验必填及类型，编辑流程允许必填项暂未填写。移除节点或声明时清理对应填写值。引用其他自动化流程作为子流程时，使用子流程的默认配置。每次运行将配置冻结到定义快照，按原定义重试和恢复人工等待沿用原值，按当前定义重试读取最新值。
 
-触发器类型及扩展参数保存在规则的 `initial_data.__automation` 中：
+流程默认触发器可在流程编辑器的开始节点或流程的“默认配置”中设置，支持 Cron、Event 和 Webhook。和节点配置一样，实例只保存显式覆盖字段：每个字段默认勾选“继承流程配置”，取消后可单独覆盖 Cron、事件 Key、启停、名称、输入或超时，重新勾选即删除该字段的覆盖值。“恢复全部默认值”清空实例的全部触发器覆盖值。修改流程默认值会更新实例未覆盖的字段，同时保留已覆盖的字段、调度规则 ID、运行历史、Webhook 令牌和运行时进度。多个已启用实例会分别响应同一个事件或定时规则。
+
+API 使用 `update_flow.triggers` 设置流程默认规则；实例使用 `update_flow_instance.trigger_overrides`，按流程触发器 ID 保存字段覆盖。例如 `{"daily":{"cron_expr":"0 9 * * *"}}` 只覆盖 daily 的 Cron，其余字段继续读取默认值。省略 `trigger_overrides` 保留覆盖，提交 `{}` 清空所有覆盖，省略某个字段则恢复该字段的继承。布尔值 `false` 会作为显式覆盖保留，输入对象按整个字段覆盖。触发器的增删及类型在流程中维护，实例不能通过覆盖创建未知规则或改变规则 ID、类型。直接修改已绑定调度规则的 Cron、启停等字段也会保存为字段覆盖；仅更新运行时进度不创建配置覆盖。
+
+实际调度绑定的触发器类型及扩展参数保存在规则的 `initial_data.__automation` 中：
 
 ```json
 {
@@ -150,13 +154,13 @@ API 通过 `update_flow` 的 `default_node_configs` 保存流程默认配置，�
 
 `max_attempts` 是总尝试次数，范围 1～20；首次失败后等待 `delay_ms`，后续按倍率退避，单次等待最多一小时且可取消。循环重访节点时重新计算本轮重试预算，累计尝试次数继续记录。错误分支可读取失败节点的 `output.<节点ID>.error.message`。
 
-实例触发器集合的更新语义：省略/null 保留，`[]` 删除全部附加规则，非空数组替换集合。同一实例可以配置多个触发器。规则 ID 必须属于当前实例，保留规则沿用历史和未改变的参数。
+流程默认触发器 `triggers` 的更新语义为：省略/null 保留，`[]` 删除全部默认规则，非空数组替换默认集合。实例 `trigger_overrides` 按流程触发器 ID 保存字段覆盖；省略保留，`{}` 恢复全部默认值，只提交仍需覆盖的字段即可恢复其余字段。同一流程可声明多个触发器，每个实例的实际绑定保留独立的调度 ID 与运行历史。
 
 ### 3.1 导入与 MCP
 
 导入使用项目自己的 `FlowDefinition`：顶层 `start_node`、`context_schema`、`nodes` 对象。保存 API 使用 `start_node_id`、节点数组和 `next_ids`。这些格式不是 n8n JSON 或 Dify DSL，不能直接互导。
 
-流程抽屉导入生成新流程 ID，不隐式创建实例。触发规则属于实例，流程导入的 JSON 不接受非空 `triggers`。编辑页 `/automation/edit` 的「导入 JSON」会替换当前草稿的标题、节点和输入参数，点击「保存」后更新当前流程，保留流程 ID 及兼容的已填节点配置。实例触发器需在实例设置中单独修改。创作者视频同步、直播录制和新增视频通知示例见[流程示例](./pipelines/)，可直接在示例页面复制完整 JSON。
+流程抽屉导入生成新流程 ID，不隐式创建实例。JSON 的 `triggers` 声明流程默认规则，导入时会校验 Cron、事件和超时；创建实例时才生成实际调度绑定。编辑页 `/automation/edit` 的「导入 JSON」会替换当前草稿的标题、节点、输入参数及显式提供的默认触发器，点击「保存」后更新当前流程，保留流程 ID 及兼容的已填节点配置。创作者视频同步、直播录制和新增视频通知示例见[流程示例](./pipelines/)，可直接在示例页面复制完整 JSON。
 
 `get_pipeline_editor` / `update_pipeline_editor` 读取或修改已连接页面的实时草稿，包含执行策略；修改必须携带 `revision`，旧版本会被拒绝。它只更新草稿，不自动保存或运行。更新请求体上限 1 MiB。待应用的节点配置或执行策略文本必须先处理。
 

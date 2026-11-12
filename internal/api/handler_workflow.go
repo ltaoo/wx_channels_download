@@ -29,6 +29,8 @@ type user_flow_update_body struct {
 	StartNodeID        string                            `json:"start_node_id"`
 	Nodes              []services.UserFlowNodeInput      `json:"nodes"`
 	Triggers           []services.UserFlowTriggerInput   `json:"triggers"`
+	InheritTriggers    *bool                             `json:"inherit_triggers"`
+	TriggerOverrides   map[string]map[string]interface{} `json:"trigger_overrides"`
 }
 
 type user_flow_id_body struct {
@@ -129,8 +131,8 @@ func (c *APIClient) handle_update_user_flow(ctx *gin.Context) {
 		result.Err(ctx, api_code_invalid_params, "请求参数无效")
 		return
 	}
-	if body.Triggers != nil || body.NodeConfigs != nil {
-		result.Err(ctx, api_code_invalid_params, "流程只接收 default_node_configs；覆盖值和触发器请在实例中配置")
+	if body.NodeConfigs != nil || body.InheritTriggers != nil || body.TriggerOverrides != nil {
+		result.Err(ctx, api_code_invalid_params, "流程的节点默认值请使用 default_node_configs；实例覆盖值请在实例中配置")
 		return
 	}
 	flow, err := service.UpdateFlowDefinition(strings.TrimSpace(body.ID), services.UpdateUserFlowInput{

@@ -125,7 +125,7 @@ function AutomationNodeInspector(props) {
                   },
                   ["应用节点配置"],
                 ) : null,
-                is_start && !vm$.state.selected_pipeline.value?.is_flow_definition ? AutomationStartTriggers({ store: vm$ }) : null,
+                is_start ? AutomationStartTriggers({ store: vm$, defaults: vm$.state.selected_pipeline.value?.is_flow_definition, overrides: !vm$.state.selected_pipeline.value?.is_flow_definition, title: vm$.state.selected_pipeline.value?.is_flow_definition ? "流程默认触发器" : "实例触发器" }) : null,
                 View({ class: "pt-3 border-top-[var(--dm-border-width)_solid_var(--dm-color-border)]", attributes: { n: "automation-inspector-next-nodes" } }, [
                   View({ class: "block mb-1 text-color-text-secondary text-xs font-medium", attributes: { n: "automation-inspector-next-nodes-label" } }, ["后续节点"]),
                   View({ class: "group-automation-code font-mono text-sm overflow-visible text-overflow-initial whitespace-pre-wrap word-break-break-all", attributes: { n: "automation-inspector-next-nodes-value" } }, [
