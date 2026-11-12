@@ -63,7 +63,7 @@ func configure_qiniu_test_node(t *testing.T, service *AutomationService, flow_id
 }
 
 func TestAutomationCustomQiniuWorkflow(t *testing.T) {
-	for _, scenario := range []string{"success", "second-upload-fails", "empty-files", "webhook-fails"} {
+	for _, scenario := range []string{"success", "second-upload-fails", "empty-files", "webhook-fails", "configured-webhook", "headers-auth"} {
 		t.Run(scenario, func(t *testing.T) {
 			service, directory := custom_node_test_service(t)
 			task := &dm.DownloadTask{ID: 42, Status: model.TaskStatusFinished, Name: "最终任务", Files: []dm.DownloadTaskFile{}}
@@ -86,8 +86,30 @@ func TestAutomationCustomQiniuWorkflow(t *testing.T) {
 					if upload_count != len(task.Files) {
 						t.Error("webhook sent before all files uploaded")
 					}
-					if err := json.NewDecoder(request.Body).Decode(&webhook_task); err != nil {
-						t.Error(err)
+					if scenario == "configured-webhook" || scenario == "headers-auth" {
+						var payload struct {
+							Task     dm.DownloadTask  `json:"task"`
+							Uploaded []map[string]any `json:"uploaded"`
+							Message  string           `json:"message"`
+						}
+						if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+							t.Error(err)
+						}
+						webhook_task = payload.Task
+						expected_auth := "Bearer webhook-test-token"
+						if scenario == "headers-auth" {
+							expected_auth = "Custom header-token"
+						}
+						if request.Method != "PATCH" || request.Header.Get("Authorization") != expected_auth || request.Header.Get("X-Task") != "42" || len(payload.Uploaded) != len(task.Files) || payload.Message != "完成：最终任务\n\"quoted\"" {
+							t.Errorf("configured webhook mismatch: method=%s headers=%v payload=%+v", request.Method, request.Header, payload)
+						}
+					} else {
+						if request.Header.Get("Authorization") != "" {
+							t.Error("empty token should not add Authorization")
+						}
+						if err := json.NewDecoder(request.Body).Decode(&webhook_task); err != nil {
+							t.Error(err)
+						}
 					}
 					if scenario == "webhook-fails" {
 						writer.WriteHeader(http.StatusBadGateway)
@@ -151,11 +173,34 @@ func TestAutomationCustomQiniuWorkflow(t *testing.T) {
 				t.Fatal(err)
 			}
 			raw = bytes.ReplaceAll(raw, []byte("http://localhost:8080/webhook/download_task/success"), []byte(server.URL+"/webhook"))
-			flow, err := service.ImportUserFlowWithInstance(string(raw))
+			definition, err := service.ImportFlowDefinition(string(raw))
 			if err != nil {
 				t.Fatal(err)
 			}
-			configure_qiniu_test_node(t, service, flow.ID, server.URL+"/upload")
+			flow, err := service.CreateUserFlowInstance(definition.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			flow = configure_qiniu_test_node(t, service, flow.ID, server.URL+"/upload")
+			if scenario == "configured-webhook" || scenario == "headers-auth" {
+				settings := decode_node_configs(flow.NodeConfigs)
+				token := "webhook-test-token"
+				if scenario == "headers-auth" {
+					token = ""
+				}
+				settings["webhook"] = map[string]any{
+					"url": server.URL + "/webhook", "method": "PATCH", "token": token,
+					"headers":       map[string]any{"X-Task": "{{input.event.data.task.id}}", "Authorization": "Custom header-token"},
+					"body_template": `{"task":"{{input.event.data.task}}","uploaded":"{{output.upload.uploaded}}","message":"完成：{{input.event.data.task.name}}\n\"quoted\""}`,
+				}
+				if _, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{NodeConfigs: settings}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			timeout_sec := 600
+			if _, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{Triggers: []UserFlowTriggerInput{{Type: "Event", Name: "下载任务完成", EventKey: events.TypeDownloadTaskFinished, TimeoutSec: &timeout_sec}}}); err != nil {
+				t.Fatal(err)
+			}
 			// Exercise the actual application-event JSON envelope and rule lookup.
 			service.HandleEvent(events.DownloadTaskFinished{TaskID: task.ID, Task: task, DownloadDir: directory})
 			service.wg.Wait()
@@ -196,7 +241,7 @@ func TestAutomationCustomQiniuWorkflow(t *testing.T) {
 			if len(uploaded) != expected_count || uploaded[0]["file_path"] != task.Files[0].FilePath || !strings.Contains(fmt.Sprint(uploaded[0]["url"]), "%") {
 				t.Fatalf("incorrect upload manifest: %s", manifest)
 			}
-			if strings.Contains(run.NodeOutputs+run.NodeLogs, "test-secret-key") {
+			if strings.Contains(run.NodeOutputs+run.NodeLogs, "test-secret-key") || strings.Contains(run.NodeOutputs+run.NodeLogs, "webhook-test-token") {
 				t.Fatal("credentials exposed in run data")
 			}
 		})
@@ -314,11 +359,19 @@ func TestDownloadCompletionEventsWaitInsteadOfDroppingBusyTasks(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw = bytes.ReplaceAll(raw, []byte("http://localhost:8080/webhook/download_task/success"), []byte(server.URL))
-	flow, err := service.ImportUserFlowWithInstance(string(raw))
+	definition, err := service.ImportFlowDefinition(string(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	flow, err := service.CreateUserFlowInstance(definition.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	configure_qiniu_test_node(t, service, flow.ID, "")
+	timeout_sec := 600
+	if _, err := service.UpdateUserFlowInstance(flow.ID, UpdateUserFlowInput{Triggers: []UserFlowTriggerInput{{Type: "Event", Name: "下载任务完成", EventKey: events.TypeDownloadTaskFinished, TimeoutSec: &timeout_sec}}}); err != nil {
+		t.Fatal(err)
+	}
 	service.HandleEvent(events.DownloadTaskFinished{TaskID: 1, Task: &dm.DownloadTask{ID: 1, Files: []dm.DownloadTaskFile{}}})
 	select {
 	case <-first_webhook:
