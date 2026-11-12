@@ -86,9 +86,17 @@ func validate_automation_node_config(node_type string, config map[string]interfa
 		}
 		for _, key := range []string{"headers", "query", "authentication", "keys"} {
 			if raw, exists := config[key]; exists && raw != nil {
+				if text, ok := raw.(string); key == "headers" && ok && strings.Contains(text, "{{") {
+					continue
+				}
 				if _, ok := raw.(map[string]interface{}); !ok {
 					return fmt.Errorf("%s 必须为 JSON 对象", key)
 				}
+			}
+		}
+		if template, exists := config["body_template"]; exists {
+			if text, ok := template.(string); !ok || strings.TrimSpace(text) == "" {
+				return fmt.Errorf("body_template 必须为非空 JSON 模板字符串")
 			}
 		}
 		body_type, _ := config["body_type"].(string)

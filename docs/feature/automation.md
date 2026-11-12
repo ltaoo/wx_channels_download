@@ -166,7 +166,7 @@ API 通过 `update_flow` 的 `default_node_configs` 保存流程默认配置，�
 | --- | --- | --- |
 | `StartNode` | 流程 `context_schema` | 声明并校验运行输入 |
 | `ServiceNode` | `tool_name`、`arguments`、`output_key`、`timeout_seconds` | 调用目录中的应用工具，默认输出 `service_result` |
-| `APICallNode` | `url`、`method`、`headers`、`query`、`keys`、`body`、`body_type`、`authentication`、`timeout_seconds`、`fail_on_status`、`output_key` | HTTP 请求，默认输出 `api_response`、`api_response_status`、`api_response_headers` |
+| `APICallNode` | `url`、`method`、`headers`、`query`、`keys`、`body`、`body_template`、`body_type`、`authentication`、`timeout_seconds`、`fail_on_status`、`output_key` | HTTP 请求，默认输出 `api_response`、`api_response_status`、`api_response_headers` |
 | `JSCodeNode` | `code`、`output_key` | Goja 执行 JS；响应流程取消和截止时间，不是 Node.js 环境 |
 | `ExprNode` | `expression`、`output_key` | 表达式求值，默认输出 `calc_out` |
 | `GatewayNode` | `gateway_type`、`rules`、`condition_language`、`join_node_id` | 条件路由或并行分支 |
@@ -212,6 +212,8 @@ HTTP、JS、服务、表达式等节点显式记录输出，同值写入也可�
 ```
 
 支持 GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS。`keys` 保留旧参数映射方式，GET/HEAD 放 query，其他方法在未配置 `body` 时生成 JSON body。`body_type` 可选 json/form/raw，Basic 认证使用 `type: basic` 与 username/password。
+
+`headers` 也可用 `"{{config.headers}}"` 引用整组请求头。可选 `body_template` 优先于 `body`，填写 JSON 模板文本或用 `"{{config.body_template}}"` 引用配置中的 JSON 文本；先解析 JSON 再渲染占位符，例如 `{"task":"{{input.event.data.task}}"}` 会保留任务的对象类型。Bearer token 留空时不添加 Authorization，也不覆盖 headers 中已有的认证字段。
 
 默认节点超时 15 秒，受整体剩余时间约束。默认非 2xx 触发失败/重试，设置 `fail_on_status: false` 可自行按状态码分支。响应体上限 8 MiB，JSON 对象/数组可解码，否则返回文本。尚无 OAuth 凭据库、multipart 文件上传和自动分页。
 

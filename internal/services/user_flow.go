@@ -59,9 +59,10 @@ func user_flow_node_catalog() []UserFlowNodeCatalogItem {
 			ConfigKeys: []UserFlowConfigKey{
 				{Key: "url", Type: "string", Required: true, Description: "请求地址"},
 				{Key: "method", Type: "string", Required: false, Description: "GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS，默认 GET"},
-				{Key: "headers", Type: "object", Description: "请求头，支持作用域模板"},
+				{Key: "headers", Type: "object", Description: "请求头对象或引用对象的完整作用域模板"},
 				{Key: "query", Type: "object", Description: "查询参数，支持作用域模板"},
 				{Key: "body", Type: "any", Description: "请求体，支持嵌套模板"},
+				{Key: "body_template", Type: "string", Description: "JSON 模板文本或引用配置字符串的完整模板，先解析 JSON 再渲染，优先于 body"},
 				{Key: "body_type", Type: "string", Description: "json（默认）、form 或 raw"},
 				{Key: "authentication", Type: "object", Description: "{type: basic, username, password} 或 {type: bearer, token}"},
 				{Key: "timeout_seconds", Type: "number", Description: "节点超时，默认 15 秒"},
