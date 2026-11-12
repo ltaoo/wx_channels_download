@@ -575,7 +575,22 @@ function pipeline_config_values(pipeline) {
   return values;
 }
 
-function pipeline_config_groups(pipeline) {
+function secret_config_display(value, props) {
+  const text = String(value);
+  return {
+    value: text,
+    popover$: new Timeless.vm.PopoverCore({ side: "bottom", align: "end" }),
+    trigger$: new Timeless.vm.ButtonCore({ variant: "link", size: "sm" }),
+    copy$: new Timeless.vm.ButtonCore({ variant: "outline", size: "sm", async onClick() {
+      try {
+        await props.app.copy(text);
+        props.tip({ msg: ["已复制"], type: "success" });
+      } catch (error) { props.tip({ msg: [error.message || "复制失败"], type: "error" }); }
+    } }),
+  };
+}
+
+function pipeline_config_groups(pipeline, props) {
   let values = {};
   try { values = pipeline_config_values(pipeline); } catch { /* Invalid stored configuration is empty in the list. */ }
   return (pipeline.nodes || []).filter((node) => Array.isArray(node.config_schema) && node.config_schema.length).map((node) => ({
@@ -586,7 +601,7 @@ function pipeline_config_groups(pipeline) {
       const value = saved && Object.prototype.hasOwnProperty.call(saved, field.key) ? saved[field.key] : field.default;
       const filled = value !== undefined && value !== null && !(typeof value === "string" && !value.trim());
       const text = !filled ? "未填写" : field.secret ? "••••••" : typeof value === "string" ? value : JSON.stringify(value);
-      return { key: field.key, label: field.label || field.key, text, filled };
+      return { key: field.key, label: field.label || field.key, text, filled, secret_display: field.secret && filled ? secret_config_display(value, props) : null };
     }),
   }));
 }
@@ -858,8 +873,9 @@ function AutomationPageViewModel(props, options) {
     btn_definitions$: new Timeless.vm.ButtonCore({ variant: "outline", onClick() { ui.definitions_drawer$.show(); } }),
     btn_create_instance$: new Timeless.vm.ButtonCore({ variant: "primary", onClick() { ui.definitions_drawer$.show(); } }),
     input_definition_keyword$: new Timeless.vm.InputCore({ placeholder: "搜索自动化流程", allowClear: true, onChange(value) { definition_keyword_.as(String(value || "")); } }),
-    btn_definition_instance$: new Timeless.vm.ButtonInListCore({ variant: "primary", size: "sm", onClick(pipeline) { return copy_pipeline(pipeline, true); } }),
+    btn_definition_instance$: new Timeless.vm.ButtonInListCore({ variant: "link", size: "sm", onClick(pipeline) { return copy_pipeline(pipeline, true); } }),
     btn_definition_config$: new Timeless.vm.ButtonInListCore({ variant: "outline", size: "sm", onClick(pipeline) { ui.definitions_drawer$.hide(); return open_pipeline_config(pipeline, true, true); } }),
+    btn_definition_config_menu$: new Timeless.vm.ButtonInListCore({ variant: "outline", size: "sm" }),
     btn_node_logs_more$: new Timeless.vm.ButtonInListCore({ variant: "outline", size: "sm", onClick(node) { return load_node_execution_logs(node.id, true); } }),
     config_dialog$: new Timeless.vm.DialogCore({ footer: false }),
     config_json_dialog$: new Timeless.vm.DialogCore({ footer: false }),
@@ -2635,9 +2651,9 @@ function AutomationPageViewModel(props, options) {
     const menu = new Timeless.vm.DropdownMenuCore({
       trigger: "click", side: "bottom", align: "start",
       items: [
-        new Timeless.vm.MenuItemCore({ label: "流程默认配置", onClick() { menu.hide(); return open_pipeline_config(pipeline, true, true); } }),
-        new Timeless.vm.MenuItemCore({ label: "复制JSON", onClick() { return copy_pipeline_config(pipeline); } }),
-        new Timeless.vm.MenuItemCore({ label: "粘贴JSON", onClick() { menu.hide(); return open_paste_pipeline_config(pipeline); } }),
+        ...(pipeline.is_flow_definition ? [] : [new Timeless.vm.MenuItemCore({ label: "流程默认配置", onClick() { menu.hide(); return open_pipeline_config(pipeline, true, true); } })]),
+        new Timeless.vm.MenuItemCore({ label: "复制JSON", onClick() { menu.hide(); return copy_pipeline_config(pipeline); } }),
+        new Timeless.vm.MenuItemCore({ label: pipeline.is_flow_definition ? "导入JSON" : "粘贴JSON", onClick() { menu.hide(); return open_paste_pipeline_config(pipeline); } }),
       ],
     });
     return menu;
@@ -2645,6 +2661,7 @@ function AutomationPageViewModel(props, options) {
 
   function open_paste_pipeline_config(pipeline) {
     if (config_loading_.value || config_saving_.value || disposed) return;
+    config_defaults_.as(Boolean(pipeline.is_flow_definition));
     config_pipeline_.as(pipeline);
     config_error_.as("");
     ui.input_config_json$.setValue("");
@@ -3083,7 +3100,7 @@ function AutomationPageViewModel(props, options) {
 
   function pipeline_action_button(action, pipeline) {
     const button = ui[`btn_pipeline_${action}$`].bind(pipeline);
-    button.setVariant("outline");
+    button.setVariant("link");
     button.setSize("sm");
     return button;
   }
@@ -3524,7 +3541,7 @@ function AutomationPageViewModel(props, options) {
       return definitions_.value.find((flow) => flow.id === pipeline.flow_id)?.name || pipeline.definition_name || pipeline.flow_id || "";
     },
     pipelineDefinitionLabel(pipeline) { return pipeline.flow_id || ""; },
-    pipelineConfigGroups: pipeline_config_groups,
+    pipelineConfigGroups(pipeline) { return pipeline_config_groups(pipeline, props); },
     pipelineTriggers(flow) { return pipeline_triggers(flow, schedules_.value); },
     pipelineTriggerTypes(flow) {
       return [...new Set(["Manual", ...pipeline_triggers(flow, schedules_.value).map((trigger) => trigger.type)])];
