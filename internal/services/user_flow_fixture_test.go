@@ -1,7 +1,6 @@
 package services
 
 import (
-	"encoding/json"
 	"gorm.io/gorm"
 	"wx_channel/internal/database/model"
 )
@@ -32,21 +31,10 @@ func (s *AutomationService) CreateUserFlowWithInstance(input CreateUserFlowInput
 	return s.GetUserFlowInstance(instance.ID)
 }
 func (s *AutomationService) ImportUserFlowWithInstance(raw string) (*model.UserFlowInstance, error) {
-	var envelope map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(raw), &envelope); err != nil {
-		return nil, err
-	}
-	var triggers []UserFlowTriggerInput
-	if value, ok := envelope["triggers"]; ok {
-		if err := json.Unmarshal(value, &triggers); err != nil {
-			return nil, err
-		}
-		delete(envelope, "triggers")
-	}
 	var instance *model.UserFlowInstance
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		scoped := &AutomationService{db: tx, cron_parser: s.cron_parser, custom_nodes: s.custom_nodes}
-		flow, err := scoped.ImportFlowDefinition(marshal_json(envelope))
+		flow, err := scoped.ImportFlowDefinition(raw)
 		if err != nil {
 			return err
 		}
@@ -54,13 +42,10 @@ func (s *AutomationService) ImportUserFlowWithInstance(raw string) (*model.UserF
 		if err != nil {
 			return err
 		}
-		for index := range triggers {
-			triggers[index].ID = ""
-		}
 		if err := tx.Model(instance).Update("name", flow.Name).Error; err != nil {
 			return err
 		}
-		return scoped.replace_user_flow_triggers(tx, instance.ID, "", triggers)
+		return nil
 	})
 	if err != nil {
 		return nil, err

@@ -30,9 +30,9 @@ function setup({ definitions = null, legacy_event = false, schedules = [], rejec
     } }),
   };
   const template = { id: "template-test", name: "test", default_node_configs: "{}", definition: flow.definition, instance_count: 1 };
-  const flow_definitions = definitions || (flows ? flows.map((entry) => ({ ...entry, instance_count: 1 })) : [template]);
+  let flow_definitions = definitions || (flows ? flows.map((entry) => ({ ...entry, instance_count: 1 })) : [template]);
   const current_definitions = () => {
-    if (!definitions && !flows) { template.definition = flow.definition; template.default_node_configs = flow.default_node_configs || template.default_node_configs; template.default_node_configs = flow.default_node_configs || template.default_node_configs; }
+    if (!definitions && !flows) { template.definition = flow.definition; template.default_node_configs = flow.default_node_configs || template.default_node_configs; template.default_triggers = flow.default_triggers || "[]"; }
     return flow_definitions;
   };
   schedules = schedules.map(({ flow_id, ...entry }) => ({ ...entry, instance_id: entry.instance_id || flow_id }));
@@ -90,14 +90,28 @@ function setup({ definitions = null, legacy_event = false, schedules = [], rejec
       if (url.endsWith("cancel_run")) { runs = runs.map((run) => run.id === body.id ? { ...run, status: "CANCELLED" } : run); return { data: { id: body.id } }; }
       if (url.endsWith("list_flows")) return { data: { list: current_definitions() } };
       if (url.endsWith("get_flow")) return { data: current_definitions().find((entry) => entry.id === body.id) || template };
+      if (url.endsWith("delete_flow")) {
+        const target = current_definitions().find((entry) => entry.id === body.id);
+        if (target?.instance_count > 0) return { error: new Error("请先删除此流程的实例") };
+        flow_definitions = current_definitions().filter((entry) => entry.id !== body.id);
+        return { data: { id: body.id } };
+      }
+      if (url.endsWith("delete_flow_instance")) {
+        flows = (flows || [flow]).filter((entry) => entry.id !== body.id);
+        return { data: { id: body.id } };
+      }
       if (url.endsWith("update_flow")) {
         const target = current_definitions().find((entry) => entry.id === body.id) || template;
         if (body.name !== undefined) target.name = body.name;
         if (body.default_node_configs !== undefined) target.default_node_configs = JSON.stringify(body.default_node_configs);
+        if (body.triggers !== undefined) target.default_triggers = JSON.stringify(body.triggers.map((trigger, index) => ({ ...trigger, id: trigger.id || `default-${index}` })));
         const definition = JSON.parse(target.definition || "{}");
         if (body.nodes !== undefined) definition.nodes = Object.fromEntries(body.nodes.map((node) => [node.id, { ...node, next_node_ids: node.next_ids }]));
         target.definition = JSON.stringify(definition);
-        for (const item of flows || [flow]) if (item.flow_id === target.id) item.default_node_configs = target.default_node_configs;
+        for (const item of flows || [flow]) if (item.flow_id === target.id) {
+          item.default_node_configs = target.default_node_configs;
+          item.default_triggers = target.default_triggers;
+        }
         return { data: target };
       }
       if (url.endsWith("list_flow_instances")) return { data: { list: flows || [flow] } };
@@ -146,10 +160,18 @@ function setup({ definitions = null, legacy_event = false, schedules = [], rejec
         const shared = current_definitions().find((entry) => entry.id === target.flow_id);
         if (shared && body.nodes !== undefined) shared.definition = target.definition;
         if (body.node_configs !== undefined) target.node_configs = JSON.stringify(body.node_configs);
-        if (body.triggers !== undefined) schedules = body.triggers.map((trigger, index) => ({
+        if (body.inherit_triggers !== undefined) target.inherit_triggers = body.inherit_triggers;
+        if (body.trigger_overrides !== undefined) {
+          target.trigger_overrides = JSON.stringify(body.trigger_overrides);
+          target.inherit_triggers = true;
+        }
+        if (body.triggers !== undefined) {
+          target.inherit_triggers = false;
+          schedules = [...schedules.filter((item) => item.instance_id !== target.id), ...body.triggers.map((trigger, index) => ({
           ...trigger, id: trigger.id || `new-${index}`, instance_id: target.id,
-          initial_data: JSON.stringify({ ...trigger.initial_data, __automation: { type: trigger.type, event_key: trigger.event_key, start_node: "start" } }),
-        }));
+          initial_data: JSON.stringify({ ...trigger.initial_data, __automation: { type: trigger.type, event_key: trigger.event_key, active: trigger.active, start_node: "start" } }),
+          }))];
+        }
         target.trigger_type = "Manual";
         target.event_key = "";
         return { data: target };
@@ -209,7 +231,9 @@ test("the page reads independent flow and instance lists, including flows with n
 });
 
 test("flow drawer actions create inherited instances and keep flow editing out of the main list", async () => {
-  const { model, context, calls } = setup({ mode: "list" });
+  const { model, context, calls, flow } = setup({ mode: "list" });
+  add_config_declarations(flow);
+  flow.default_node_configs = flow.node_configs;
   await model.methods.refresh();
   for (const name of ["View", "Button", "TextButton", "TableFields", "Label", "Input", "Popover", "DropdownMenu", "DrawerHeader", "DrawerTitle", "DrawerDescription", "DrawerBody"]) {
     context[name] = (props, children) => ({ props, children });
@@ -246,6 +270,15 @@ test("flow drawer actions create inherited instances and keep flow editing out o
   const definition = model.state.definitions.value[0];
   const actions = drawer_table.columns.find((column) => column.name === "actions").render(definition);
   assert.ok(actions.some((action) => action.link?.mode === "edit"));
+  assert.ok(actions.some((action) => action.props?.attributes?.n === `automation-definition-delete-${definition.id}`));
+  assert.ok(!actions.some((action) => action.children?.[0] === "默认配置"));
+  const config = drawer_table.columns.find((column) => column.name === "config").render(definition);
+  assert.equal(config[1].props.class, "dm-button-group");
+  assert.equal(config[1].props.attributes.role, "group");
+  assert.equal(config[0].props.attributes.n, `automation-pipeline-config-values-${definition.id}`);
+  assert.equal(config[1].children[0].children[0], "默认配置");
+  assert.equal(config[1].children[0].props.store, model.ui.btn_definition_config$.bind(definition));
+  assert.deepEqual(Array.from(config[1].children[1].props.store.state.items, (item) => item.label), ["复制JSON", "导入JSON"]);
   await model.ui.btn_create_instance$.click();
   await actions[0].props.store.click();
   await new Promise(setImmediate);
@@ -260,10 +293,8 @@ test("new configuration instances share the definition and refresh the list", as
   const { model, flow, calls } = setup({ mode: "list" });
   await model.methods.refresh();
   const before = model.methods.pipelineDefinitionLabel(model.state.pipelines.value[0]);
-  const menu = model.methods.pipelineActionsMenu(model.state.pipelines.value[0]);
-  menu.show();
-  menu.state.items.find((item) => item.label === "新增配置实例").click();
-  assert.equal(menu.state.exit, true);
+  assert.ok(!model.methods.pipelineActionsMenu(model.state.pipelines.value[0]).state.items.some((item) => item.label === "新增配置实例"));
+  await model.ui.btn_definition_instance$.bind(model.state.definitions.value[0]).click();
   await new Promise(setImmediate);
   assert.deepEqual(calls.find((call) => call.url.endsWith("create_flow_instance")).body, { flow_id: flow.flow_id });
   assert.equal(calls.some((call) => call.url.endsWith("copy_flow_instance")), false);
@@ -271,6 +302,47 @@ test("new configuration instances share the definition and refresh the list", as
   assert.equal(new Set(model.state.pipelines.value.map((item) => item.flow_id)).size, 1);
   assert.equal(model.methods.pipelineDefinitionLabel(model.state.pipelines.value[0]), before);
   assert.equal(model.state.definitions.value.length, 1);
+  model.methods.destroy();
+});
+
+test("deletion confirms the selected entity and calls the matching flow or instance endpoint", async () => {
+  const { model, calls, context } = setup({ mode: "list", definitions: [
+    { id: "unused-flow", name: "可删除流程", instance_count: 0 },
+  ] });
+  await model.methods.refresh();
+  context.Confirm = (props) => props;
+  vm.runInContext(fs.readFileSync(path.join(frontend, "src/pages/automation.js"), "utf8")
+    .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export default .*;$/gm, ""), context);
+  const confirmation = context.AutomationDeletePipelineDialog({ store: model });
+  await model.ui.btn_definition_delete$.bind(model.state.definitions.value[0]).click();
+  assert.equal(model.ui.delete_dialog$.state.visible, true);
+  assert.equal(confirmation.title.value, "删除自动化流程");
+  assert.match(confirmation.description.value, /可删除流程/);
+  assert.equal(calls.some((call) => call.url.endsWith("delete_flow")), false);
+  await model.methods.deleteFlow();
+  assert.deepEqual(calls.find((call) => call.url.endsWith("delete_flow")).body, { id: "unused-flow" });
+  assert.equal(calls.some((call) => call.url.endsWith("delete_flow_instance")), false);
+  assert.equal(model.state.definitions.value.length, 0);
+  model.methods.askDeletePipeline(model.state.pipelines.value[0]);
+  assert.equal(confirmation.title.value, "删除流程实例");
+  await model.methods.deleteFlow();
+  assert.deepEqual(calls.find((call) => call.url.endsWith("delete_flow_instance")).body, { id: "flow-test" });
+  assert.equal(model.state.pipelines.value.length, 0);
+  model.methods.destroy();
+});
+
+test("a flow deletion rejected for linked instances retains the flow and confirmation", async () => {
+  const { model, calls } = setup({ mode: "list", definitions: [
+    { id: "template-test", name: "有关联实例的流程", instance_count: 1 },
+  ] });
+  await model.methods.refresh();
+  await model.ui.btn_definition_delete$.bind(model.state.definitions.value[0]).click();
+  await model.methods.deleteFlow();
+  assert.match(model.state.error.value, /请先删除此流程的实例/);
+  assert.equal(model.ui.delete_dialog$.state.visible, true);
+  assert.equal(model.state.definitions.value.length, 1);
+  assert.equal(model.state.pipelines.value.length, 1);
+  assert.equal(calls.some((call) => call.url.endsWith("delete_flow_instance")), false);
   model.methods.destroy();
 });
 
@@ -371,12 +443,121 @@ test("the instance title exposes an accessible edit popover with cancel and subm
   model.methods.destroy();
 });
 
+test("instance triggers save only overridden fields and restore individual defaults", async () => {
+  const { model, flow, calls, context } = setup({ mode: "list", schedules: [
+    { id: "cron-instance", flow_id: "flow-test", name: "daily", cron_expr: "0 12 * * *", enabled: true, initial_data: JSON.stringify({ __automation: { default_trigger_id: "daily" } }) },
+    { id: "event-instance", flow_id: "flow-test", name: "finished", initial_data: JSON.stringify({ __automation: { type: "Event", event_key: "downloadtask.finished", default_trigger_id: "finished" } }) },
+  ] });
+  flow.inherit_triggers = true;
+  flow.default_triggers = JSON.stringify([{ id: "daily", type: "Cron", name: "daily", cron_expr: "0 12 * * *", enabled: true }, { id: "finished", type: "Event", name: "finished", event_key: "downloadtask.finished" }]);
+  await model.methods.refresh();
+  await model.methods.openPipelineConfig(flow);
+  load_canvas_components(context);
+  vm.runInContext(fs.readFileSync(path.join(frontend, "src/pages/automation.js"), "utf8")
+    .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export default .*;$/gm, ""), context);
+  const dialog = context.AutomationConfigDialog({ store: model });
+  assert.equal(find_view(dialog, "automation-config-inherit-triggers"), null);
+  assert.equal(find_view(dialog, "automation-add-event-trigger"), null);
+  const [cron, event] = model.config_trigger_editor.state.edit_triggers.value;
+  assert.ok(find_view(dialog, `automation-trigger-${cron.uid}-cron-inherit`));
+  assert.equal(find_view(dialog, `automation-trigger-${cron.uid}-remove`), null);
+  cron.inheritance.cron_expr.inherit$.setValue(false);
+  cron.input_cron$.setValue("0 9 * * *");
+  event.inheritance.active.inherit$.setValue(false);
+  event.checkbox_active$.setValue(false);
+  await model.methods.savePipelineConfig();
+  const saved = calls.filter((call) => call.url.endsWith("update_flow_instance")).at(-1).body;
+  assert.deepEqual(saved.trigger_overrides, { daily: { cron_expr: "0 9 * * *" }, finished: { active: false } });
+  assert.equal(saved.inherit_triggers, undefined);
+  assert.equal(saved.triggers, undefined);
+  assert.equal(saved.nodes, undefined);
+  flow.default_triggers = JSON.stringify([{ id: "daily", type: "Cron", name: "daily", cron_expr: "0 18 * * *", enabled: false, timeout_sec: 900 }, { id: "finished", type: "Event", name: "finished", event_key: "downloadtask.updated" }]);
+  await model.methods.openPipelineConfig(flow);
+  const updated = model.config_trigger_editor.state.edit_triggers.value;
+  assert.equal(updated[0].input_cron$.state.value, "0 9 * * *");
+  assert.equal(updated[0].inheritance.timeout_sec.inherited.value, true);
+  assert.equal(updated[0].inheritance.timeout_sec.text, "900");
+  assert.equal(updated[1].inheritance.event_key.text, "downloadtask.updated");
+  updated[0].inheritance.cron_expr.inherit$.setValue(true);
+  await model.methods.savePipelineConfig();
+  const restored = calls.filter((call) => call.url.endsWith("update_flow_instance")).at(-1).body;
+  assert.deepEqual(restored.trigger_overrides, { finished: { active: false } });
+  assert.equal(restored.triggers, undefined);
+  await model.methods.openPipelineConfig(flow);
+  await model.ui.btn_config_restore_triggers$.click();
+  await model.methods.savePipelineConfig();
+  assert.deepEqual(calls.filter((call) => call.url.endsWith("update_flow_instance")).at(-1).body.trigger_overrides, {});
+  model.methods.destroy();
+});
+
+test("flow defaults edit Cron and event triggers without modifying instances", async () => {
+  const { model, calls } = setup({ mode: "list" });
+  await model.methods.refresh();
+  await model.ui.btn_definition_config$.bind(model.state.definitions.value[0]).click();
+  await new Promise(setImmediate);
+  assert.equal(model.state.config_defaults.value, true);
+  assert.ok(calls.some((call) => call.url.endsWith("get_flow")));
+  const editor = model.config_trigger_editor;
+  await editor.ui.btn_add_cron_trigger$.click();
+  await editor.ui.btn_add_event_trigger$.click();
+  editor.state.edit_triggers.value[0].input_cron$.setValue("0 12,18 * * *");
+  editor.state.edit_triggers.value[1].input_event_key$.setValue("downloadtask.finished");
+  editor.state.edit_triggers.value[1].input_timeout$.setValue("600");
+  await model.methods.savePipelineConfig();
+  assert.equal(model.state.config_error.value, "");
+  assert.equal(model.state.config_loading.value, false);
+  const saved = calls.find((call) => call.url.endsWith("update_flow")).body;
+  assert.equal(saved.triggers[0].cron_expr, "0 12,18 * * *");
+  assert.equal(saved.triggers[1].timeout_sec, 600);
+  assert.equal(saved.inherit_triggers, undefined);
+  assert.equal(calls.some((call) => call.url.endsWith("update_flow_instance")), false);
+  await model.methods.selectPipeline("template-test");
+  assert.equal(model.state.edit_triggers.value.length, 2);
+  model.state.edit_triggers.value[0].input_cron$.setValue("0 8 * * *");
+  await model.methods.saveFlow();
+  assert.equal(calls.filter((call) => call.url.endsWith("update_flow")).at(-1).body.triggers[0].cron_expr, "0 8 * * *");
+  model.state.view_mode.as("edit");
+  model.ui.input_import_json$.setValue(JSON.stringify({ name: "imported defaults", start_node: "start", nodes: { start: { type: "StartNode" } }, triggers: [{ id: "daily", type: "Cron", name: "daily", cron_expr: "0 10 * * *" }] }));
+  await model.methods.submitImport();
+  assert.equal(model.state.import_error.value, "");
+  assert.equal(model.state.edit_triggers.value[0].id, "daily");
+  await model.methods.saveFlow();
+  assert.equal(calls.filter((call) => call.url.endsWith("update_flow")).at(-1).body.triggers[0].id, "daily");
+  model.methods.destroy();
+});
+
+test("trigger validation and failed saves retain editable instance trigger fields", async () => {
+  const { model, flow, calls, context } = setup({ mode: "list", reject_save: true });
+  flow.inherit_triggers = true;
+  flow.default_triggers = JSON.stringify([{ id: "finished", type: "Event", name: "finished", event_key: "downloadtask.finished" }]);
+  await model.methods.openPipelineConfig(flow);
+  load_canvas_components(context);
+  vm.runInContext(fs.readFileSync(path.join(frontend, "src/pages/automation.js"), "utf8")
+    .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export default .*;$/gm, ""), context);
+  const dialog = context.AutomationConfigDialog({ store: model });
+  const event = model.config_trigger_editor.state.edit_triggers.value[0];
+  event.inheritance.event_key.inherit$.setValue(false);
+  event.inheritance.initial_data.inherit$.setValue(false);
+  event.input_event_key$.setValue("downloadtask.finished");
+  event.input_data$.setValue("[]");
+  await model.methods.savePipelineConfig();
+  assert.match(model.state.config_error.value, /JSON 对象/);
+  assert.equal(calls.some((call) => call.url.endsWith("update_flow_instance")), false);
+  assert.ok(find_view(dialog, `automation-trigger-${event.uid}-event-key`));
+  event.input_data$.setValue("{}");
+  await model.methods.savePipelineConfig();
+  assert.match(model.state.config_error.value, /invalid Cron/);
+  assert.equal(event.input_event_key$.state.value, "downloadtask.finished");
+  assert.ok(find_view(dialog, `automation-trigger-${event.uid}-event-key`));
+  model.methods.destroy();
+});
+
 test("instance settings save only explicit overrides and can restore inheritance", async () => {
   const { model, flow, calls } = setup({ mode: "list" });
   add_config_declarations(flow);
   flow.default_node_configs = flow.node_configs;
   await model.methods.refresh();
-  model.methods.pipelineActionsMenu(model.state.pipelines.value[0]).state.items.find((item) => item.label === "新增配置实例").click();
+  await model.ui.btn_definition_instance$.bind(model.state.definitions.value[0]).click();
   await new Promise(setImmediate);
   const instance = model.state.pipelines.value.find((item) => item.id !== flow.id);
   await model.methods.openPipelineConfig(instance);
@@ -403,6 +584,38 @@ test("instance settings save only explicit overrides and can restore inheritance
   assert.equal(saved.id, instance.flow_id);
   assert.equal(saved.default_node_configs.end.apikey, "new-shared-key");
   assert.equal(saved.node_configs, undefined);
+  model.methods.destroy();
+});
+
+test("drawer defaults reopen the configuration dialog in flow mode without inheritance controls", async () => {
+  const { model, context, flow, calls } = setup({ mode: "list" });
+  add_config_declarations(flow);
+  flow.default_node_configs = flow.node_configs;
+  await model.methods.refresh();
+  load_canvas_components(context);
+  vm.runInContext(fs.readFileSync(path.join(frontend, "src/pages/automation.js"), "utf8")
+    .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export default .*;$/gm, ""), context);
+  const dialog = context.AutomationConfigDialog({ store: model });
+  await model.methods.openPipelineConfig(flow);
+  assert.ok(find_view(dialog, "automation-config-end-apikey-inherit"));
+  model.ui.config_dialog$.hide();
+  model.ui.config_dialog$.presence.unmount();
+  const opening = model.ui.btn_definition_config$.bind(model.state.definitions.value[0]).click();
+  assert.equal(model.state.config_defaults.value, true, "flow mode is set before the detail request completes");
+  await opening;
+  await new Promise(setImmediate);
+  assert.equal(find_view(dialog, "automation-config-title").children[0].state.value, "流程配置");
+  assert.equal(find_view(dialog, "automation-config-end-apikey-inherit"), null);
+  assert.ok(find_view(dialog, "automation-config-end-apikey"));
+  assert.equal(find_view(dialog, "automation-config-end-apikey").state.attributes.type, "text");
+  model.state.config_groups.value[1].fields[0].input$.setValue("updated-default");
+  await model.methods.savePipelineConfig();
+  assert.equal(calls.filter((call) => call.url.endsWith("update_flow")).at(-1).body.default_node_configs.end.apikey, "updated-default");
+  assert.equal(calls.some((call) => call.url.endsWith("update_flow_instance")), false);
+  model.ui.config_dialog$.presence.unmount();
+  await model.methods.openPipelineConfig(flow);
+  assert.equal(find_view(dialog, "automation-config-title").children[0].state.value, "实例配置");
+  assert.ok(find_view(dialog, "automation-config-end-apikey-inherit"));
   model.methods.destroy();
 });
 
@@ -764,11 +977,12 @@ test("the automation list groups trigger, copy and delete under more and mounts 
   assert.equal(cell.length, 3);
   const more_button = more_menu.children[0];
   assert.equal(more_button.props.store.state.variant, "link");
-  assert.equal(more_button.props.suffix.props.name, "chevron-down");
   assert.equal(more_button.props.store.state.size, "sm");
+  assert.equal(more_button.props.suffix.props.name, "chevron-down");
+  assert.equal(more_button.props.suffix.props.attributes["aria-hidden"], "true");
   assert.equal(cell.some((item) => item.children?.some((label) => ["触发", "复制", "删除"].includes(label))), false);
   const menu_items = more_menu.props.store.state.items;
-  assert.deepEqual(Array.from(menu_items, (item) => item.label), ["触发", "复制", "新增配置实例", "删除"]);
+  assert.deepEqual(Array.from(menu_items, (item) => item.label), ["触发", "复制", "删除"]);
   const delete_item = menu_items.find((item) => item.label === "删除");
   delete_item.click();
   assert.equal(model.ui.delete_dialog$.state.visible, true);
@@ -781,6 +995,8 @@ test("the automation list groups trigger, copy and delete under more and mounts 
   ];
   const config_cell = config_column.render(pipeline);
   assert.equal(config_cell.length, 1, "unfilled configuration should show only the button");
+  assert.equal(config_cell[0].props.class, "dm-button-group");
+  assert.equal(config_cell[0].props.attributes.role, "group");
   const config_button = config_cell[0].children.find((item) => item.props?.attributes?.n === `automation-pipeline-config-${pipeline.id}`);
   assert.ok(config_button);
   assert.equal(config_button.children[0], "配置");
@@ -789,9 +1005,9 @@ test("the automation list groups trigger, copy and delete under more and mounts 
   pipeline.node_configs = { [pipeline.nodes[0].id]: { count: 0, enabled: false } };
   const configured_cell = config_column.render(pipeline);
   assert.equal(configured_cell.length, 2);
-  const configured_content = JSON.stringify(configured_cell[0]);
   const fields = configured_cell[0].children[0].children[1].props.fields;
   assert.deepEqual(Array.from(fields, (field) => [field.label, field.value[0].children[0]]), [["count", "0"], ["enabled", "false"]]);
+  const configured_content = JSON.stringify(configured_cell[0]);
   assert.ok(!configured_content.includes("未填写"));
   assert.ok(!configured_content.includes("暂无配置"));
   context.AutomationPageViewModel = () => model;
@@ -2411,6 +2627,72 @@ function add_config_declarations(flow) {
   flow.node_configs = JSON.stringify({ start: { apikey: "entry-key" }, end: { apikey: "request-key", count: 0, enabled: false, options: { test: true } } });
 }
 
+test("flow and instance configuration copy menus close before copying, including clipboard failures", async () => {
+  for (const defaults of [false, true]) {
+    const { model, flow, calls, copied_texts, app, tips } = setup({ mode: "list" });
+    add_config_declarations(flow);
+    flow.default_node_configs = JSON.stringify({ end: { apikey: "shared-key", count: 0, enabled: false } });
+    await model.methods.refresh();
+    const pipeline = defaults ? model.state.definitions.value[0] : model.state.pipelines.value[0];
+    const menu = model.methods.pipelineConfigMenu(pipeline);
+    menu.show();
+    menu.state.items.find((item) => item.label === "复制JSON").click();
+    assert.equal(menu.state.exit, true);
+    assert.equal(copied_texts.length, 0, "the menu closes before the asynchronous detail request completes");
+    await new Promise(setImmediate);
+    assert.deepEqual(JSON.parse(copied_texts[0]), JSON.parse(defaults ? flow.default_node_configs : flow.node_configs));
+    assert.deepEqual(calls.find((call) => call.url.endsWith(defaults ? "get_flow" : "get_flow_instance")).body, { id: pipeline.id });
+    app.copy = () => { throw new Error("clipboard denied"); };
+    menu.show();
+    menu.state.items.find((item) => item.label === "复制JSON").click();
+    assert.equal(menu.state.exit, true);
+    await new Promise(setImmediate);
+    assert.equal(tips.at(-1).type, "error");
+    assert.match(tips.at(-1).msg[0], /clipboard denied/);
+    model.methods.destroy();
+  }
+});
+
+test("flow configuration JSON import closes its menu and updates only shared defaults", async () => {
+  const { model, flow, calls, context } = setup({ mode: "list" });
+  add_config_declarations(flow);
+  const defaults = JSON.parse(flow.node_configs);
+  defaults.end.count = 9;
+  defaults.end.enabled = true;
+  flow.default_node_configs = JSON.stringify(defaults);
+  const instance_values = flow.node_configs;
+  const definition = flow.definition;
+  await model.methods.refresh();
+  const pipeline = model.state.definitions.value[0];
+  const menu = model.methods.pipelineConfigMenu(pipeline);
+  menu.show();
+  menu.state.items.find((item) => item.label === "导入JSON").click();
+  assert.equal(menu.state.exit, true);
+  assert.equal(model.ui.config_json_dialog$.state.visible, true);
+  load_canvas_components(context);
+  vm.runInContext(fs.readFileSync(path.join(frontend, "src/pages/automation.js"), "utf8")
+    .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export default .*;$/gm, ""), context);
+  const dialog = context.AutomationPasteConfigDialog({ store: model });
+  assert.equal(find_view(dialog, "automation-paste-config-title").children[0].state.value, "导入JSON");
+  model.ui.input_config_json$.setValue(JSON.stringify({ missing: { value: 1 } }));
+  await model.methods.savePastedPipelineConfig();
+  assert.match(model.state.config_error.value, /未知配置节点/);
+  assert.equal(calls.some((call) => call.url.endsWith("update_flow")), false);
+  model.ui.input_config_json$.setValue(JSON.stringify({ end: { count: 0, enabled: false, apikey: "updated-default" } }));
+  await model.methods.savePastedPipelineConfig();
+  const saved = calls.find((call) => call.url.endsWith("update_flow")).body;
+  assert.equal(saved.id, pipeline.id);
+  assert.deepEqual(saved.default_node_configs.end, { apikey: "updated-default", count: 0, enabled: false, options: { test: true } });
+  assert.equal(saved.default_node_configs.start.apikey, defaults.start.apikey);
+  assert.equal(saved.node_configs, undefined);
+  assert.equal(saved.triggers, undefined);
+  assert.equal(calls.some((call) => call.url.endsWith("update_flow_instance")), false);
+  assert.equal(flow.node_configs, instance_values);
+  assert.equal(flow.definition, definition);
+  assert.equal(model.state.config_error.value, "");
+  model.methods.destroy();
+});
+
 test("configuration JSON is copied and pasted into a dialog that saves only the current configuration", async () => {
   const { model, flow, calls, copied_texts } = setup({ mode: "list" });
   add_config_declarations(flow);
@@ -2627,9 +2909,10 @@ test("node configuration declarations survive editing, applying and saving", asy
   model.methods.destroy();
 });
 
-test("rendered configuration forms mask secrets and submit input before blur", async () => {
-  const { model, context, flow, calls } = setup({ mode: "list" });
+test("configuration forms show inherited secrets in a copyable popover and edit plain text before blur", async () => {
+  const { model, context, flow, calls, copied_texts, app, tips } = setup({ mode: "list" });
   add_config_declarations(flow);
+  flow.default_node_configs = flow.node_configs;
   await model.methods.openPipelineConfig(flow);
   load_canvas_components(context);
   vm.runInContext(fs.readFileSync(path.join(frontend, "src/pages/automation.js"), "utf8")
@@ -2641,7 +2924,35 @@ test("rendered configuration forms mask secrets and submit input before blur", a
   const config_cell = table.columns.find((column) => column.name === "config").render(model.state.pipelines.value[0]);
   assert.ok(find_view({ children: config_cell }, `automation-pipeline-config-menu-trigger-${flow.id}`), "configuration dropdown renders with real component stores");
   const input = find_view(dialog, "automation-config-end-apikey");
-  assert.equal(input.state.attributes.type, "secret");
+  const field = model.state.config_groups.value[1].fields.find((field) => field.key === "apikey");
+  const editor = find_view(dialog, "automation-config-end-apikey-editor");
+  field.inherit$.setValue(true);
+  assert.equal(editor.state.style.visibility, "hidden");
+  assert.equal(find_view(dialog, "automation-config-end-apikey"), input, "inheritance retains the input to reserve its height");
+  assert.ok(find_view(dialog, "automation-config-end-apikey-inherited-value").state.styleSet.includes("text-base"));
+  const secret_text = find_view(dialog, "automation-config-end-apikey-inherited-text");
+  const toggle = find_view(dialog, "automation-config-end-apikey-toggle-secret");
+  assert.equal(secret_text.children[0].state.value, "••••••");
+  assert.equal(secret_text.state.attributes.title, "••••••");
+  assert.equal(toggle.state.attributes["aria-haspopup"], "dialog");
+  toggle.events.onClick({ detail: 0 });
+  assert.equal(field.secret_display.popover$.visible, true);
+  assert.equal(find_view(dialog, "automation-config-end-apikey-secret-content").children[0].state.value, "request-key");
+  assert.equal(secret_text.state.attributes.title, "••••••");
+  const copy = find_view(dialog, "automation-config-end-apikey-copy-secret");
+  copy.events.onClick({});
+  await new Promise(setImmediate);
+  assert.equal(copied_texts.at(-1), "request-key");
+  assert.equal(tips.at(-1).type, "success");
+  app.copy = async () => { throw new Error("clipboard denied"); };
+  copy.events.onClick({});
+  await new Promise(setImmediate);
+  assert.equal(tips.at(-1).type, "error");
+  assert.match(tips.at(-1).msg[0], /clipboard denied/);
+  field.inherit$.setValue(false);
+  assert.equal(editor.state.style.visibility, "visible");
+  assert.equal(field.secret_display.popover$.visible, false, "returning to editing closes the popover");
+  assert.equal(input.state.attributes.type, "text");
   assert.equal(input.state.attributes.autocomplete, "off");
   assert.equal(input.state.attributes.spellcheck, "false");
   input.events.onChange({ target: { value: "typed-without-blur" } });

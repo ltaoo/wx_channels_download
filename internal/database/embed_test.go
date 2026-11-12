@@ -41,12 +41,24 @@ func TestAutomationMigrationsRoundTrip(t *testing.T) {
 	}
 
 	for cycle := 0; cycle < 2; cycle++ {
+		if err := migrator.Migrate(5); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := sql_db.Exec(`INSERT INTO user_flow(id,name,definition,default_triggers) VALUES ('legacy-defaults','Defaults','{}','[{"id":"daily","type":"Cron","initial_data":{"seed":1}}]');
+			INSERT INTO user_flow_instance(id,flow_id,name,inherit_triggers) VALUES ('legacy-instance','legacy-defaults','Defaults',1);
+			INSERT INTO flow_schedule(id,instance_id,flow_id,name,cron_expr,initial_data) VALUES ('legacy-rule','legacy-instance','legacy-defaults','daily','@daily','{"seed":1,"cursor":"keep","__automation":{"default_trigger_id":"daily"}}');`); err != nil {
+			t.Fatal(err)
+		}
 		if err := migrator.Up(); err != nil {
 			t.Fatalf("migrate up: %v", err)
 		}
 		version, dirty, err := migrator.Version()
-		if err != nil || version != 4 || dirty {
+		if err != nil || version != 6 || dirty {
 			t.Fatalf("migration state: version=%d dirty=%v err=%v", version, dirty, err)
+		}
+		var input_key, cursor string
+		if err := sql_db.QueryRow(`SELECT json_extract(initial_data,'$.__automation.configured_input_keys[0]'), json_extract(initial_data,'$.cursor') FROM flow_schedule WHERE id='legacy-rule'`).Scan(&input_key, &cursor); err != nil || input_key != "seed" || cursor != "keep" {
+			t.Fatalf("trigger migration lost declared input keys or runtime progress: key=%q cursor=%q err=%v", input_key, cursor, err)
 		}
 		var table_count, platform_count int
 		if err := sql_db.QueryRow(`SELECT COUNT(*) FROM sqlite_master

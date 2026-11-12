@@ -131,4 +131,17 @@ func TestAutomationFlowAndInstanceEndpointsAreSeparate(t *testing.T) {
 	if _, exists := instances[0].(map[string]interface{})["definition"]; exists {
 		t.Fatal("instance list repeated a full graph")
 	}
+	request("update_flow", map[string]interface{}{"id": flow["id"], "triggers": []map[string]interface{}{{"id": "daily", "type": "Cron", "name": "daily", "cron_expr": "0 12 * * *", "enabled": true}}})
+	bindings := request("list_schedules", map[string]interface{}{"instance_id": instance["id"]})["data"].(map[string]interface{})["list"].([]interface{})
+	if len(bindings) != 1 || bindings[0].(map[string]interface{})["cron_expr"] != "0 12 * * *" {
+		t.Fatalf("flow default did not reach an inheriting instance: %v", bindings)
+	}
+	custom := request("update_flow_instance", map[string]interface{}{"id": instance["id"], "trigger_overrides": map[string]interface{}{"daily": map[string]interface{}{"cron_expr": "0 9 * * *"}}})["data"].(map[string]interface{})
+	if custom["inherit_triggers"] != true || custom["trigger_overrides"] != `{"daily":{"cron_expr":"0 9 * * *"}}` {
+		t.Fatal("field override detached the rest of the defaults")
+	}
+	restored := request("update_flow_instance", map[string]interface{}{"id": instance["id"], "trigger_overrides": map[string]interface{}{}})["data"].(map[string]interface{})
+	if restored["inherit_triggers"] != true || restored["trigger_overrides"] != "{}" {
+		t.Fatal("instance could not restore trigger inheritance")
+	}
 }
