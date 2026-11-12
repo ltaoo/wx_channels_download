@@ -44,7 +44,7 @@ export function AutomationPipelineTriggerBadges(props) {
   })]);
 }
 
-export function automation_status_badge(value) {
+export function automation_status_badge(value, label) {
   const normalized = String(value || "UNKNOWN").toUpperCase();
   let tone = "info";
   if (["COMPLETED", "ENABLED", "TRUE", "YES"].includes(normalized)) {
@@ -54,13 +54,12 @@ export function automation_status_badge(value) {
   } else if (["RUNNING", "WAITING", "QUEUED"].includes(normalized)) {
     tone = "warning";
   }
-  return Tag(
+  return View(
     {
-      variant: tone,
-      class: "min-w-52px",
+      class: `text-caption font-semibold text-color-${tone}`,
       attributes: { n: `automation-status-${normalized.toLowerCase()}` },
     },
-    [normalized],
+    [label || normalized],
   );
 }
 
@@ -2132,13 +2131,14 @@ export function AutomationRunHistory(props) {
         return Button({
           store: vm$.ui.btn_select_run$.bind(run),
           class: computed(vm$.state.selected_run_id, (id) => `dm-button--list-row w-full min-w-0 h-auto flex flex-col items-start gap-1 p-3 text-left border-[var(--dm-border-width)_solid_var(--dm-color-border)] [&.is-selected]:bg-color-selection-surface [&.is-selected]:border-color-color-selection-border [&.is-selected]:shadow-selection${id === run.id ? " is-selected" : ""}`),
-          attributes: { type: "button", n: `automation-run-select-${run.id}`, title: run.id, "aria-label": `查看运行 ${run.id}`, "aria-pressed": computed(vm$.state.selected_run_id, (id) => String(id === run.id)) },
+          attributes: { type: "button", n: `automation-run-select-${run.id}`, "aria-label": computed(current_, (item) => `查看 ${vm$.methods.formatTime(item.created_at)} 的执行记录`), "aria-pressed": computed(vm$.state.selected_run_id, (id) => String(id === run.id)) },
         }, [
           View({ class: "w-full flex items-center justify-between gap-2" }, [
             View({ class: "min-w-0 overflow-hidden text-sm text-ellipsis whitespace-nowrap" }, [computed(current_, (item) => vm$.methods.formatTime(item.created_at))]),
-            View({ class: "text-caption text-color-text-secondary" }, [computed(current_, (item) => vm$.methods.nodeExecutionStatusLabel(item.status))]),
+            For({ each: computed(current_, (item) => [{ status: item.status }]), key: "status", render(item) {
+              return automation_status_badge(item.status, vm$.methods.nodeExecutionStatusLabel(item.status));
+            } }),
           ]),
-          View({ class: "max-w-full overflow-hidden font-mono text-xs text-color-text-secondary text-ellipsis whitespace-nowrap" }, [run.id]),
         ]);
       } }),
       Show({ when: computed(vm$.state.runs, (runs) => !runs.length), ok() { return View({ class: "text-color-text-secondary text-sm p-2" }, [computed(vm$.state.runs_loading, (loading) => loading ? "正在加载执行记录…" : "暂无执行记录，点击顶部「手动执行」开始。")]); } }),
@@ -2147,12 +2147,12 @@ export function AutomationRunHistory(props) {
       const run = value && value.value !== undefined ? value.value : value;
       return View({ class: "grid gap-2 min-w-0 max-h-60vh overflow-auto border-top-[var(--dm-border-width)_solid_var(--dm-color-border)] p-3" }, [
         View({ class: "flex flex-wrap gap-2 items-center text-sm min-w-0" }, [
-          automation_status_badge(run.status), View({ class: "font-mono text-xs word-break-break-all" }, [run.id]),
+          automation_status_badge(run.status),
           View({ class: "text-color-text-secondary", attributes: { n: "automation-run-current-node" } }, [`当前节点：${run.current_node || (run.status === "FAILED" ? "未进入节点执行" : "等待执行")}`]),
         ]),
         run.trigger_type ? View({ class: "text-color-text-secondary text-xs", attributes: { n: "automation-run-trigger-source" } }, [`触发来源：${vm$.methods.triggerLabel(run.trigger_type)}${run.trigger_key ? `（${run.trigger_key}）` : ""}`]) : null,
         run.error ? ErrorMessage({ tip: vm$.methods.tip, error: run.error }) : null,
-        run.retry_of ? View({ class: "text-color-text-secondary text-xs" }, [`重试来源：${run.retry_of}`]) : null,
+        run.retry_of ? View({ class: "text-color-text-secondary text-xs", attributes: { n: "automation-run-retry-source" } }, ["由历史执行记录重试"]) : null,
         run.status === "WAITING" ? View({ class: "grid gap-2 min-w-0" }, [
           View({ as: "label", attributes: { for: "automation-manual-response" }, class: "text-color-text-secondary text-sm" }, ["人工确认输入 JSON"]),
           Textarea({ store: vm$.ui.input_manual_response$, class: "font-mono text-xs", attributes: { id: "automation-manual-response", rows: "3", spellcheck: "false", "aria-label": "人工确认输入 JSON" } }),
