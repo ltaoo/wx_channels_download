@@ -10,14 +10,14 @@
 | `03_creator_new_video_notify.json` | 首次扫描建立基线，之后仅通知新增视频，使用企业微信机器人 | `*/5 * * * *`，每五分钟 |
 | `download_finished_qiniu_webhook.json` | 下载完成后通过 JS 自定义节点上传七牛云，再发送原任务详情到 Webhook | 事件 `downloadtask.finished` |
 
-七牛上传流程需要先安装 `examples/nodes/qiniu_upload.js`，详见[安装与 Hook 迁移](../../docs/feature/pipelines/download-finished-qiniu-webhook.md)。
+七牛上传流程需要先安装 `examples/nodes/qiniu_upload.js`。JSON 包含 `downloadtask.finished` 默认事件触发器和 600 秒整体超时；新增实例后自动继承，填写七牛参数后即可响应下载完成事件。Webhook 支持在“配置”中设置 URL、method、headers、Bearer token 和 JSON body 模板。详见[安装与 Hook 迁移](../../docs/feature/pipelines/download-finished-qiniu-webhook.md)。
 
 ## 导入和配置
 
 1. 按需导入 JSON，视频同步选择 HTTP 版或内置工具版。导入会生成新的 Pipeline ID。
 2. 第一个流程在列表页「配置」中填写 `username`，并可设置列表接口 `url`、`method`、`token`；第二、三个流程仍在「配置」节点中修改 `creator_username`。username 推荐完整的 `xxx@finder`，它不是昵称，可以从账号搜索结果取得。
 3. 前两个流程的 `download_dir` 留空时使用应用默认下载目录，也可以填写下载器所在机器的绝对路径。
-4. 第一个流程已内置定时触发规则，导入时自动创建；第二、三个流程在开始节点添加定时触发器，填写上表 Cron，保存 Pipeline。Cron 使用下载器进程的时区，调度器约每 30 秒检查一次。
+4. 前两个视频同步流程已内置默认定时规则，导入后新增配置实例时自动继承。其余流程可在流程编辑页的开始节点添加默认定时规则，填写上表 Cron 并保存。实例“配置”中可像节点配置一样逐字段取消继承并填写覆盖值；例如只覆盖 Cron 时，超时与启停仍随流程默认配置更新。重新勾选字段的“继承流程配置”即可恢复继承。Cron 使用下载器进程的时区，调度器约每 30 秒检查一次。
 5. 保持下载器运行。第一个流程需确保配置的 HTTP 列表接口可用，另外两个流程需确保视频号查询能力可用。首次运行可从定时规则的立即执行入口进行手动验证。
 
 第一个流程通过子流程、`LoopNode` 和循环连线遍历分页及视频，直接把 HTTP 列表返回的完整视频对象交给 `create_download_task`，不会再查询详情或要求本机视频号页面建立 socket 连接。列表需包含媒体 URL、URL token 和加密视频所需的解密 key；仅返回 ID 无法直接下载。原流程需在编辑页重新导入 JSON 并保存才会使用修复后的模板。

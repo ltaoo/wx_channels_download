@@ -2,21 +2,21 @@
   "id": "download-finished-qiniu-webhook",
   "name": "下载完成后上传七牛云并通知 Webhook",
   "start_node": "start",
+  "triggers": [
+    {
+      "id": "download-finished",
+      "type": "Event",
+      "name": "下载任务完成",
+      "event_key": "downloadtask.finished",
+      "active": true,
+      "timeout_sec": 600
+    }
+  ],
   "context_schema": [
     {
       "key": "event",
       "type": "object",
       "required": true
-    }
-  ],
-  "triggers": [
-    {
-      "type": "Event",
-      "name": "下载任务完成",
-      "event_key": "downloadtask.finished",
-      "active": true,
-      "enabled": false,
-      "timeout_sec": 600
     }
   ],
   "nodes": {
@@ -55,16 +55,18 @@
       "type": "APICallNode",
       "name": "发送完成 Webhook",
       "config": {
-        "url": "http://localhost:8080/webhook/download_task/success",
-        "method": "POST",
+        "url": "{{config.url}}",
+        "method": "{{config.method}}",
         "body_type": "json",
-        "headers": {
-          "Content-Type": "application/json"
-        },
-        "body": "{{input.event.data.task}}",
+        "headers": "{{config.headers}}",
         "timeout_seconds": 600,
         "fail_on_status": true,
-        "output_key": "webhook_response"
+        "output_key": "webhook_response",
+        "authentication": {
+          "type": "bearer",
+          "token": "{{config.token}}"
+        },
+        "body_template": "{{config.body_template}}"
       },
       "next_node_ids": [
         "end"
@@ -72,7 +74,79 @@
       "position": {
         "x": 600,
         "y": 0
-      }
+      },
+      "config_schema": [
+        {
+          "key": "url",
+          "label": "Webhook URL",
+          "type": "string",
+          "required": true,
+          "default": "http://localhost:8080/webhook/download_task/success"
+        },
+        {
+          "key": "method",
+          "label": "HTTP Method",
+          "type": "string",
+          "required": true,
+          "default": "POST",
+          "options": [
+            {
+              "label": "GET",
+              "value": "GET"
+            },
+            {
+              "label": "POST",
+              "value": "POST"
+            },
+            {
+              "label": "PUT",
+              "value": "PUT"
+            },
+            {
+              "label": "PATCH",
+              "value": "PATCH"
+            },
+            {
+              "label": "DELETE",
+              "value": "DELETE"
+            },
+            {
+              "label": "HEAD",
+              "value": "HEAD"
+            },
+            {
+              "label": "OPTIONS",
+              "value": "OPTIONS"
+            }
+          ]
+        },
+        {
+          "key": "headers",
+          "label": "Headers",
+          "description": "JSON 对象，值可使用 {{input.event.data.task.id}} 等作用域模板。",
+          "type": "object",
+          "default": {
+            "Content-Type": "application/json"
+          }
+        },
+        {
+          "key": "token",
+          "label": "Bearer Token",
+          "description": "可选，填写后覆盖 headers 中的 Authorization；留空时使用 headers 的认证配置。",
+          "type": "string",
+          "secret": true,
+          "default": ""
+        },
+        {
+          "key": "body_template",
+          "label": "Body 模板",
+          "description": "JSON 模板，先解析 JSON 再渲染作用域占位符；默认发送完整任务。GET/HEAD 不发送正文。",
+          "type": "string",
+          "required": true,
+          "multiline": true,
+          "default": "\"{{input.event.data.task}}\""
+        }
+      ]
     },
     "end": {
       "type": "EndNode",
