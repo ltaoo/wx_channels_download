@@ -32,7 +32,7 @@ function setup({ definitions = null, legacy_event = false, schedules = [], rejec
   const template = { id: "template-test", name: "test", default_node_configs: "{}", definition: flow.definition, instance_count: 1 };
   const flow_definitions = definitions || (flows ? flows.map((entry) => ({ ...entry, instance_count: 1 })) : [template]);
   const current_definitions = () => {
-    if (!definitions && !flows) { template.definition = flow.definition; template.default_node_configs = flow.default_node_configs || template.default_node_configs; }
+    if (!definitions && !flows) { template.definition = flow.definition; template.default_node_configs = flow.default_node_configs || template.default_node_configs; template.default_node_configs = flow.default_node_configs || template.default_node_configs; }
     return flow_definitions;
   };
   schedules = schedules.map(({ flow_id, ...entry }) => ({ ...entry, instance_id: entry.instance_id || flow_id }));
@@ -211,7 +211,7 @@ test("the page reads independent flow and instance lists, including flows with n
 test("flow drawer actions create inherited instances and keep flow editing out of the main list", async () => {
   const { model, context, calls } = setup({ mode: "list" });
   await model.methods.refresh();
-  for (const name of ["View", "Button", "Input", "DropdownMenu", "DrawerHeader", "DrawerTitle", "DrawerDescription", "DrawerBody"]) {
+  for (const name of ["View", "Button", "TextButton", "TableFields", "Input", "Popover", "DropdownMenu", "DrawerHeader", "DrawerTitle", "DrawerDescription", "DrawerBody"]) {
     context[name] = (props, children) => ({ props, children });
   }
   context.Drawer = (props, children) => ({ props, children: children() });
@@ -651,6 +651,8 @@ test("the automation list groups trigger, copy and delete under more and mounts 
   context.Table = (props) => props;
   context.View = (props, children) => ({ props, children });
   context.Button = (props, children) => ({ props, children });
+  context.TextButton = (props, children) => ({ props, children });
+  context.TableFields = (props) => ({ props });
   context.DropdownMenu = (props, children) => ({ props, children });
   context.Timeless.Icon = (props) => ({ props });
   context.AutomationPipelineTriggerBadges = () => ({ component: "badges" });
@@ -668,7 +670,8 @@ test("the automation list groups trigger, copy and delete under more and mounts 
   const more_menu = cell.find((item) => item.props?.attributes?.n === `automation-pipeline-more-menu-${pipeline.id}`);
   assert.equal(cell.length, 3);
   const more_button = more_menu.children[0];
-  assert.equal(more_button.props.store.state.variant, "outline");
+  assert.equal(more_button.props.store.state.variant, "link");
+  assert.equal(more_button.props.suffix.props.name, "chevron-down");
   assert.equal(more_button.props.store.state.size, "sm");
   assert.equal(cell.some((item) => item.children?.some((label) => ["触发", "复制", "删除"].includes(label))), false);
   const menu_items = more_menu.props.store.state.items;
@@ -694,9 +697,8 @@ test("the automation list groups trigger, copy and delete under more and mounts 
   const configured_cell = config_column.render(pipeline);
   assert.equal(configured_cell.length, 2);
   const configured_content = JSON.stringify(configured_cell[0]);
-  assert.ok(configured_content.includes("count: 0"));
-  assert.ok(configured_content.includes("enabled: false"));
-  assert.ok(!configured_content.includes("username:"));
+  const fields = configured_cell[0].children[0].children[1].props.fields;
+  assert.deepEqual(Array.from(fields, (field) => [field.label, field.value[0].children[0]]), [["count", "0"], ["enabled", "false"]]);
   assert.ok(!configured_content.includes("未填写"));
   assert.ok(!configured_content.includes("暂无配置"));
   context.AutomationPageViewModel = () => model;
@@ -2431,7 +2433,7 @@ test("copying configuration reports clipboard errors without a success notice", 
 });
 
 test("the configuration column groups values by node and masks secrets", async () => {
-  const { model, flow } = setup({ mode: "list" });
+  const { model, flow, context, copied_texts } = setup({ mode: "list" });
   add_config_declarations(flow);
   const definition = JSON.parse(flow.definition);
   definition.nodes.end.config_schema.push({ key: "username", label: "创作者", type: "string", required: true });
@@ -2446,6 +2448,29 @@ test("the configuration column groups values by node and masks secrets", async (
   assert.equal(groups[1].fields[2].text, "false");
   assert.equal(groups[1].fields[3].text, '{"test":true}');
   assert.equal(groups[1].fields[4].text, "未填写");
+  flow.default_node_configs = flow.node_configs;
+  await model.methods.refresh();
+  load_canvas_components(context);
+  vm.runInContext(fs.readFileSync(path.join(frontend, "src/pages/automation.js"), "utf8")
+    .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export default .*;$/gm, ""), context);
+  for (const item of [model.state.pipelines.value[0], model.state.definitions.value[0]]) {
+    const values = context.AutomationConfigValues({ store: model, pipeline: item });
+    const name = `automation-pipeline-config-values-${item.id}-end-apikey`;
+    const text = find_view(values, `${name}-text`);
+    const trigger = find_view(values, `${name}-toggle-secret`);
+    assert.equal(text.state.attributes.title, "••••••");
+    assert.equal(find_view(values, `${name}-label`).children[0].state.value, "API Key");
+    assert.equal(text.children[0].state.value, "••••••");
+    assert.ok(trigger.state.styleSet.includes("dm-button--link"));
+    assert.ok(!trigger.state.styleSet.includes("dm-button--icon-sm"));
+    assert.equal(trigger.children.at(-1).children[0].state.value, "查看");
+    trigger.events.onClick({ detail: 0 });
+    assert.equal(find_view(values, `${name}-secret-content`).children[0].state.value, "request-key");
+    await find_view(values, `${name}-copy-secret`).events.onClick({});
+    await new Promise(setImmediate);
+    assert.equal(copied_texts.at(-1), "request-key");
+    assert.equal(text.state.attributes.title, "••••••");
+  }
   pipeline.node_configs = { end: { username: "creator@finder" } };
   groups = model.methods.pipelineConfigGroups(pipeline);
   assert.equal(groups[1].fields[4].text, "creator@finder");
