@@ -465,6 +465,14 @@ func (e *FlowEngine) getFlowDefinition(flow_id string) (FlowDefinition, bool) {
 }
 
 func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
+	var completed_status *NodeExecutionStatus
+	flush_completed_status := func() {
+		if completed_status != nil {
+			e.emit_node_execution_status(*completed_status)
+			completed_status = nil
+		}
+	}
+	defer flush_completed_status()
 	queue := append([]string(nil), node_ids...)
 	for len(queue) > 0 {
 		if err := ctx.ExecutionContext().Err(); err != nil {
@@ -529,6 +537,8 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 			}
 			input_snapshot := ctx.SnapshotData()
 			started_at := time.Now()
+			// Publish the handoff after boundary logging and checkpoints are ready.
+			flush_completed_status()
 			e.emit_node_execution_status(NodeExecutionStatus{
 				NodeStates: reset_states,
 				Timestamp:  started_at,
@@ -572,7 +582,7 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 				err = e.validateData(node_def.OutputSchema, ctx.NodeOutputs[node_id])
 			}
 			outcome := node_execution_outcome(node_def, visit_attempt, returned_state, success, err)
-			e.emit_node_execution_status(NodeExecutionStatus{
+			status := NodeExecutionStatus{
 				Timestamp: time.Now(),
 				FlowID:    ctx.FlowID,
 				RunID:     ctx.InstanceID,
@@ -582,7 +592,12 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 				Attempt:   attempt,
 				Status:    node_execution_status_state(outcome, returned_state),
 				Error:     error_message(err),
-			})
+			}
+			if status.Status == StateCompleted {
+				completed_status = &status
+			} else {
+				e.emit_node_execution_status(status)
+			}
 			e.emit_node_execution_log(NodeExecutionLog{
 				Timestamp:         started_at,
 				FlowID:            ctx.FlowID,
@@ -612,6 +627,7 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 				e.persistContext(ctx)
 				e.update_run_record(ctx, RunStatusRunning, nil)
 				if node_def.Type == "GatewayNode" && node_def.Config["gateway_type"] == "Parallel" && node_def.Config["is_joining"] != true {
+					flush_completed_status()
 					var parallel_err error
 					next_node_ids, parallel_err = e.run_parallel(ctx, node_def, next_node_ids)
 					if parallel_err != nil {

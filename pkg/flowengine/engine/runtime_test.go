@@ -21,6 +21,55 @@ func runtime_node(id, node_type string, config map[string]interface{}, next ...s
 	return flowengine.NodeDefinition{ID: id, Type: node_type, Config: config, NextNodeIDs: next, NextNodes: targets}
 }
 
+func TestNodeStatusHandoffFollowsBoundaryPersistence(t *testing.T) {
+	flow_engine := flowengine.NewWorkflowEngine()
+	flow_engine.RegisterFlow(flowengine.FlowDefinition{ID: "handoff", StartNodeID: "first", Nodes: map[string]flowengine.NodeDefinition{
+		"first": runtime_node("first", "StartNode", nil, "last"),
+		"last":  runtime_node("last", "EndNode", nil),
+	}})
+	var events []string
+	flow_engine.SetCheckpointHandler(func(checkpoint *flowengine.RunCheckpoint) error {
+		events = append(events, "checkpoint:"+checkpoint.CurrentNode)
+		return nil
+	})
+	flow_engine.SetNodeExecutionLogHandler(func(entry flowengine.NodeExecutionLog) {
+		events = append(events, "log:"+entry.NodeID)
+	})
+	flow_engine.SetNodeExecutionStatusHandler(func(status flowengine.NodeExecutionStatus) {
+		events = append(events, status.NodeID+":"+string(status.Status))
+	})
+	if _, err := flow_engine.StartFlowWithOptions("handoff", nil, flowengine.StartFlowOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	trace := strings.Join(events, ",")
+	if !strings.Contains(trace, "first:COMPLETED,last:RUNNING") || !strings.HasSuffix(trace, "last:COMPLETED") {
+		t.Fatalf("boundary work interrupted the status handoff or lost completion: %v", events)
+	}
+}
+
+func TestNodeCompletionSurvivesSuccessorCheckpointFailure(t *testing.T) {
+	flow_engine := flowengine.NewWorkflowEngine()
+	flow_engine.RegisterFlow(flowengine.FlowDefinition{ID: "handoff", StartNodeID: "first", Nodes: map[string]flowengine.NodeDefinition{
+		"first": runtime_node("first", "StartNode", nil, "last"),
+		"last":  runtime_node("last", "EndNode", nil),
+	}})
+	checkpoint_err := errors.New("checkpoint unavailable")
+	flow_engine.SetCheckpointHandler(func(checkpoint *flowengine.RunCheckpoint) error {
+		if checkpoint.CurrentNode == "last" {
+			return checkpoint_err
+		}
+		return nil
+	})
+	var statuses []string
+	flow_engine.SetNodeExecutionStatusHandler(func(status flowengine.NodeExecutionStatus) {
+		statuses = append(statuses, status.NodeID+":"+string(status.Status))
+	})
+	_, err := flow_engine.StartFlowWithOptions("handoff", nil, flowengine.StartFlowOptions{})
+	if !errors.Is(err, checkpoint_err) || strings.Join(statuses, ",") != "first:RUNNING,first:COMPLETED" {
+		t.Fatalf("lost completion or published an unstarted successor: statuses=%v, err=%v", statuses, err)
+	}
+}
+
 func TestSubflowReentryResetsAllNodeStates(t *testing.T) {
 	for _, shared := range []bool{false, true} {
 		t.Run(fmt.Sprintf("shared=%v", shared), func(t *testing.T) {
