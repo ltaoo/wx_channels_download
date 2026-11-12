@@ -145,9 +145,8 @@ function BrowseHistoryRowCover(props) {
 }
 
 function BrowseHistorySourceAction(props) {
-  return Link(
+  return TextButton(
     {
-      class: "min-h-32px inline-flex items-center justify-center gap-1-5 p-[0_var(--dm-space-2-5)] text-content-primary font-inherit text-sm bg-content-panel-soft border-[var(--dm-border-width)_solid_var(--dm-content-border)] rounded-control cursor-pointer transition-[color_var(--dm-duration-base)_var(--dm-ease-standard),_background_var(--dm-duration-base)_var(--dm-ease-standard),_border-color_var(--dm-duration-base)_var(--dm-ease-standard)] hover:text-color-primary-hover hover:bg-color-primary-soft hover:border-color-color-primary-border max-520:w-32px max-520:p-0 dm-focus-ring",
       href: props.href,
       target: "_blank",
       attributes: {
@@ -160,16 +159,10 @@ function BrowseHistorySourceAction(props) {
     [
       View(
         {
-          class: "max-520:hidden",
           attributes: { n: "browse-history-source-action-label" },
         },
         ["源站"],
       ),
-      Timeless.Icon({
-        name: "external-link",
-        size: 15,
-        attributes: { n: "browse-history-source-action-icon" },
-      }),
     ],
   );
 }

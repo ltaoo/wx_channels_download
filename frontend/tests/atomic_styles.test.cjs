@@ -141,6 +141,57 @@ function styles(node, { width = 1440, reduced = false } = {}) {
   return Object.fromEntries([...result].map(([key, value]) => [key, value.value]));
 }
 
+test("TableFields rows share aligned label and value columns within the available width", () => {
+  const table = element("dm-table-fields");
+  const row = element("dm-table-fields__row", table);
+  const label = element("dm-table-fields__label", row);
+  const value = element("dm-table-fields__value", row);
+  assert.equal(styles(table).display, "grid");
+  assert.equal(styles(table)["grid-template-columns"], "fit-content(40%) minmax(0, 1fr)");
+  assert.equal(styles(row).display, "contents");
+  assert.equal(styles(label)["overflow-wrap"], "anywhere");
+  assert.equal(styles(value)["min-width"], "0");
+  assert.equal(styles(value).margin, "0");
+});
+
+test("compact configuration buttons share one border without clipping keyboard focus", () => {
+  const group = element("dm-button-group");
+  const main = new Element("button", { class: "dm-button" }, []);
+  const arrow = new Element("button", { class: "dm-button dm-button--icon" }, []);
+  group.children.push(main, arrow);
+  main.parent = arrow.parent = group;
+  main.next = arrow;
+  arrow.prev = main;
+  assert.equal(styles(group).display, "inline-flex");
+  assert.equal(styles(group).overflow, undefined);
+  assert.equal(styles(main)["border-start-end-radius"], "0");
+  assert.equal(styles(main)["border-end-end-radius"], "0");
+  assert.equal(styles(arrow)["border-start-start-radius"], "0");
+  assert.equal(styles(arrow)["border-end-start-radius"], "0");
+  assert.equal(styles(arrow)["margin-inline-start"], "calc(-1 * var(--dm-border-width))");
+  assert.equal(styles(arrow).width, "var(--dm-space-6)");
+  arrow.attribs.class = "dm-button dm-button--icon-sm";
+  assert.equal(styles(arrow).width, "var(--dm-space-6)");
+  arrow.hover = true;
+  assert.equal(styles(arrow)["z-index"], "var(--dm-z-raised)");
+});
+
+test("text buttons use normal text color without underlines, including on hover", () => {
+  const classes = view_classes("dmui.js", "text-button", {
+    props: {}, class_names: (values) => values.filter(Boolean).join(" "),
+  });
+  for (const tag of ["button", "a"]) {
+    const button = new Element(tag, { class: classes }, []);
+    for (const hover of [false, true]) {
+      button.hover = hover;
+      assert.equal(styles(button).color, "var(--dm-color-text-primary)");
+      assert.equal(styles(button)["text-decoration"], "none");
+      assert.equal(styles(button).background, "transparent");
+      assert.equal(styles(button)["border-color"], "transparent");
+    }
+  }
+});
+
 test("secret inputs mask their contents without password input semantics", () => {
   const secret = new Element("input", { class: "dm-input", type: "secret" }, []);
   const text = new Element("input", { class: "dm-input", type: "text" }, []);

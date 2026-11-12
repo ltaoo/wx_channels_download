@@ -350,21 +350,18 @@ function DownloadV2TaskCover(props) {
 }
 
 function DownloadV2TaskActionButton(props) {
-  const { danger, icon, iconSize: icon_size, onClick: on_click, title } = props;
-  return View(
+  const { name, onClick: on_click, title } = props;
+  return TextButton(
     {
-      type: "button",
-      class: ["focus-visible:outline-0 focus-visible:shadow-focus-ring w-34px h-34px flex-[0_0_auto] border-0 rounded-control bg-transparent text-color-text-secondary cursor-pointer inline-flex items-center justify-center p-0 transition-[background_var(--dm-duration-base)_var(--dm-ease-standard),_color_var(--dm-duration-base)_var(--dm-ease-standard)] hover:bg-color-primary-soft hover:text-color-primary max-520:w-32px max-520:h-32px", danger ? "hover:bg-color-danger-soft hover:text-color-danger" : ""]
-        .filter(Boolean)
-        .join(" "),
       attributes: {
+        n: `download-task-action-${name}`,
         type: "button",
         title: title || "",
         "aria-label": title || "",
       },
       onClick: on_click,
     },
-    [Timeless.Icon({ name: icon, size: icon_size || 18 })],
+    [title],
   );
 }
 
@@ -385,7 +382,7 @@ export function DownloadV2TaskActions(props) {
       cases: {
         0() {
           return DownloadV2TaskActionButton({
-            icon: "play",
+            name: "start",
             title: "开始",
             onClick() {
               vm$.methods.startTask(task$);
@@ -394,7 +391,7 @@ export function DownloadV2TaskActions(props) {
         },
         1() {
           return DownloadV2TaskActionButton({
-            icon: is_open_external ? "file-symlink" : "folder",
+            name: "open",
             title: is_open_external ? "打开链接" : "打开文件夹",
             onClick() {
               vm$.methods.openTask(task$);
@@ -402,41 +399,21 @@ export function DownloadV2TaskActions(props) {
           });
         },
         2() {
-          return View(
-            {
-              type: "button",
-              class: "focus-visible:outline-0 focus-visible:shadow-focus-ring w-34px h-34px flex-[0_0_auto] border-0 rounded-control bg-transparent text-color-text-secondary cursor-pointer inline-flex items-center justify-center p-0 transition-[background_var(--dm-duration-base)_var(--dm-ease-standard),_color_var(--dm-duration-base)_var(--dm-ease-standard)] hover:bg-color-primary-soft hover:text-color-primary max-520:w-32px max-520:h-32px",
-              attributes: {
-                type: "button",
-                title: computed(state_, (state) =>
-                  state.is_live_stream ? "停止录制" : "暂停",
-                ),
-                "aria-label": computed(state_, (state) =>
-                  state.is_live_stream ? "停止录制" : "暂停",
-                ),
-              },
-              onClick() {
-                vm$.methods.pauseTask(task$, {
-                  liveStream: state_.value.is_live_stream,
-                });
-              },
+          return DownloadV2TaskActionButton({
+            name: "pause",
+            title: computed(state_, (state) =>
+              state.is_live_stream ? "停止录制" : "暂停",
+            ),
+            onClick() {
+              vm$.methods.pauseTask(task$, {
+                liveStream: state_.value.is_live_stream,
+              });
             },
-            [
-              Show({
-                when: computed(state_, (state) => state.is_live_stream),
-                ok() {
-                  return Timeless.Icon({ name: "square", size: 18 });
-                },
-                else() {
-                  return Timeless.Icon({ name: "pause", size: 18 });
-                },
-              }),
-            ],
-          );
+          });
         },
         3() {
           return DownloadV2TaskActionButton({
-            icon: "play",
+            name: "resume",
             title: state_.value.is_live_stream ? "恢复录制" : "继续",
             onClick() {
               vm$.methods.resumeTask(task$);
@@ -445,7 +422,7 @@ export function DownloadV2TaskActions(props) {
         },
         4() {
           return DownloadV2TaskActionButton({
-            icon: "refresh-ccw",
+            name: "retry",
             title: "重试",
             onClick() {
               vm$.methods.retryTask(task$);
@@ -455,9 +432,8 @@ export function DownloadV2TaskActions(props) {
       },
     }),
     DownloadV2TaskActionButton({
-      icon: "trash2",
+      name: "delete",
       title: "删除",
-      danger: true,
       onClick() {
         vm$.methods.requestDeleteTask(task$);
       },
