@@ -398,6 +398,7 @@ function ContentViewModel(props) {
   const detail_id_ = ref("");
   const copied_content_id_ = ref("");
   const saved_filters_ = refarr(load_saved_filters());
+  const selected_filter_id_ = ref("");
   const layout_ = ref(load_content_layout());
   let request_sequence = 0;
   let account_request_sequence = 0;
@@ -615,6 +616,7 @@ function ContentViewModel(props) {
   const active_filter_id_ = combine(
     {
       filters: saved_filters_,
+      selected_filter_id: selected_filter_id_,
       keyword: keyword_,
       content_type: content_type_,
       platform_id: platform_id_,
@@ -630,7 +632,9 @@ function ContentViewModel(props) {
         scope: state.scope,
       };
       return (
-        state.filters.find((filter) => saved_filters_match(filter, current))
+        state.filters.find((filter) =>
+          filter.id === state.selected_filter_id && saved_filters_match(filter, current),
+        )
           ?.id || ""
       );
     },
@@ -749,6 +753,7 @@ function ContentViewModel(props) {
   }
 
   function reset_filters() {
+    selected_filter_id_.as("");
     set_keyword("");
     content_type_.as("");
     platform_id_.as("");
@@ -822,6 +827,7 @@ function ContentViewModel(props) {
       ...saved_filters_.value.filter((item) => item.name !== filter.name),
     ];
     saved_filters_.as(filters, { reset: true });
+    selected_filter_id_.as(filter.id);
     persist_saved_filters(filters);
     ui.input_filter_name$.setValue(next_filter_name(), { silence: true });
     hide_save_filter_popover();
@@ -831,15 +837,23 @@ function ContentViewModel(props) {
     const filter = normalize_saved_filter(raw_filter);
     if (!filter) return;
 
+    if (active_filter_id_.value === filter.id) {
+      reset_filters();
+      scope_.as("task");
+      await load_accounts();
+      return load(1);
+    }
+
+    selected_filter_id_.as(filter.id);
     keyword_.as(filter.keyword);
     content_type_.as(filter.content_type);
     platform_id_.as(filter.platform_id);
-    account_id_.as(filter.account_id);
     scope_.as(filter.scope);
     ui.input_keyword$.setValue(filter.keyword, { silence: true });
     ui.select_content_type$.setValue(filter.content_type, { silence: true });
     ui.select_platform$.setValue(filter.platform_id, { silence: true });
     ui.select_account$.setValue("", { silence: true });
+    account_id_.as(filter.account_id);
 
     await load_accounts();
     return load(1);

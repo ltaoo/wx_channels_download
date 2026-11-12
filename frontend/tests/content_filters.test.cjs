@@ -26,9 +26,21 @@ function setup(filters = []) {
   for (const name of ["ref", "refarr", "refobj", "computed", "combine"]) {
     context[name] = context.Timeless[name];
   }
-  for (const file of ["src/utils.js", "src/biz/request.js"]) {
+  for (const file of ["src/utils.js", "src/biz/request.js", "src/image-proxy.model.js"]) {
     vm.runInContext(read(file).replace(/^export /gm, ""), context);
   }
+  const requests = [];
+  context.Timeless = { ...context.Timeless, kit: { ...context.Timeless.kit,
+    RequestCore: class {
+      constructor(request) { this.request = request; }
+      async run(params) {
+        const url = this.request(params).url.split("?")[0];
+        requests.push({ url, params: JSON.parse(JSON.stringify(params)) });
+        return { data: { list: url === "/api/account/list" ? [{ id: "account", nickname: "测试账号" }] : [],
+          total: 96, page: params.page, page_size: params.page_size } };
+      }
+    },
+  } };
   const source = read("src/pages/content.model.js").replace(/^import[\s\S]*?;\n/gm, "");
   vm.runInContext(source.slice(0, source.lastIndexOf("\nexport {")), context);
   const model = context.ContentViewModel({ client: {}, tip(tip) { tips.push(tip); } });
@@ -39,7 +51,7 @@ function setup(filters = []) {
   vm.runInContext(view.slice(view.indexOf("function ContentSaveFilterPopover("),
     view.indexOf("function ContentSavedFilterPanel(")), context);
   const popover = context.ContentSaveFilterPopover({ store: model });
-  return { model, popover, storage, tips, timers };
+  return { model, popover, storage, tips, timers, requests };
 }
 
 test("hover opens the save controls and crossing into the popover preserves the edited name", () => {
@@ -105,4 +117,44 @@ test("default numbering skips an existing name after filters are deleted", () =>
   model.methods.saveFilter();
   assert.equal(model.state.saved_filters.value.length, 2);
   assert.equal(model.state.saved_filters.value[1].name, "筛选2");
+});
+
+test("clicking the active quick filter clears its criteria and reloads the first page", async () => {
+  const filter = { id: "video", name: "视频", keyword: "关键词", content_type: "video",
+    platform_id: "platform", account_id: "account", scope: "all" };
+  const { model, requests, storage } = setup([filter]);
+  await model.methods.applyFilter(filter);
+  assert.equal(model.state.active_filter_id.value, filter.id);
+  assert.equal(model.ui.input_keyword$.value, filter.keyword);
+  assert.equal(model.state.account_id.value, filter.account_id);
+  assert.equal(model.ui.checkbox_all$.checked, true);
+  await model.methods.changePage(2);
+  assert.equal(model.state.page.value, 2);
+
+  await model.methods.applyFilter(filter);
+  assert.equal(model.state.active_filter_id.value, "");
+  assert.equal(model.ui.input_keyword$.value, "");
+  assert.equal(model.ui.select_content_type$.value, "");
+  assert.equal(model.ui.select_platform$.value, "");
+  assert.equal(model.ui.select_account$.value, "");
+  assert.equal(model.ui.checkbox_all$.checked, false);
+  assert.equal(model.state.page.value, 1);
+  assert.deepEqual(requests.at(-1), { url: "/api/content/list", params: { page: 1, page_size: 48, scope: "task" } });
+  assert.equal(JSON.parse(storage.get("content.saved_filters")).length, 1);
+
+  await model.methods.applyFilter(filter);
+  assert.equal(model.state.active_filter_id.value, filter.id);
+});
+
+test("switching quick filters applies the new one and default criteria can also be deselected", async () => {
+  const filters = [{ id: "default", name: "默认" }, { id: "video", name: "视频", content_type: "video" }];
+  const { model } = setup(filters);
+  assert.equal(model.state.active_filter_id.value, "");
+  await model.methods.applyFilter(filters[1]);
+  assert.equal(model.state.active_filter_id.value, "video");
+  await model.methods.applyFilter(filters[0]);
+  assert.equal(model.state.active_filter_id.value, "default");
+  assert.equal(model.ui.select_content_type$.value, "");
+  await model.methods.applyFilter(filters[0]);
+  assert.equal(model.state.active_filter_id.value, "");
 });
