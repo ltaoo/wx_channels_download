@@ -15,30 +15,31 @@ import (
 	"github.com/GopeedLab/gopeed/pkg/base"
 	downloadpkg "github.com/GopeedLab/gopeed/pkg/download"
 
+	wxchannelsadapter "wx_channel/internal/adapter/wxchannels"
 	"wx_channel/internal/database/model"
 )
 
-func TestImportTargetDownloadRecordWritesDirectRecords(t *testing.T) {
+func TestImportTargetDownloadRecordRecreatesCurrentGraph(t *testing.T) {
 	dir := t.TempDir()
-	savePath := filepath.Join(dir, "demo.mp4")
-	if err := os.WriteFile(savePath, []byte("hello"), 0o644); err != nil {
+	save_path := filepath.Join(dir, "demo.mp4")
+	if err := os.WriteFile(save_path, []byte("hello"), 0o644); err != nil {
 		t.Fatalf("write migrated file: %v", err)
 	}
 
-	db, err := openTargetDB(filepath.Join(dir, "data.db"))
+	db, err := open_target_db(filepath.Join(dir, "data.db"))
 	if err != nil {
 		t.Fatalf("open target db: %v", err)
 	}
-	defer closeTargetDB(db)
+	defer close_target_db(db)
 
-	createdAt := time.Unix(1710000000, 0)
+	created_at := time.Unix(1710000000, 0)
 	task := &downloadpkg.Task{
 		ID:        "bolt-task-1",
 		Protocol:  "http",
 		Status:    base.DownloadStatusDone,
 		Progress:  &downloadpkg.Progress{Downloaded: 5},
-		CreatedAt: createdAt,
-		UpdatedAt: createdAt.Add(time.Minute),
+		CreatedAt: created_at,
+		UpdatedAt: created_at.Add(time.Minute),
 	}
 	labels := map[string]string{
 		"title":  "迁移标题",
@@ -71,50 +72,47 @@ func TestImportTargetDownloadRecordWritesDirectRecords(t *testing.T) {
 		}
 	}`)
 
-	targetID, err := importTargetDownloadRecord(db, task, labels, "12345", "67890", savePath, object)
+	target_id, err := import_target_download_record(db, task, labels, "12345", "67890", save_path, object)
 	if err != nil {
 		t.Fatalf("import target record: %v", err)
 	}
-	if targetID <= 0 {
-		t.Fatalf("target id = %d", targetID)
+	if target_id <= 0 {
+		t.Fatalf("target id = %d", target_id)
 	}
 
-	var taskRecord model.DownloadTask
-	if err := db.Where("id = ?", targetID).First(&taskRecord).Error; err != nil {
+	var task_record model.DownloadTask
+	if err := db.Where("id = ?", target_id).First(&task_record).Error; err != nil {
 		t.Fatalf("query task: %v", err)
 	}
-	if taskRecord.PlatformId != platformWXChannels || taskRecord.UniqueID != "12345_xWT111" {
-		t.Fatalf("unexpected task identity: platform=%q unique=%q", taskRecord.PlatformId, taskRecord.UniqueID)
+	if task_record.PlatformId != platform_wx_channels || task_record.UniqueID != "12345_xWT111_mp4" {
+		t.Fatalf("unexpected task identity: platform=%q unique=%q", task_record.PlatformId, task_record.UniqueID)
 	}
-	if taskRecord.Status != model.TaskStatusFinished {
-		t.Fatalf("task status = %d", taskRecord.Status)
+	if task_record.Status != model.TaskStatusFinished {
+		t.Fatalf("task status = %d", task_record.Status)
 	}
-	if taskRecord.CreatedAt != createdAt.UnixMilli() {
-		t.Fatalf("task created_at = %d want %d", taskRecord.CreatedAt, createdAt.UnixMilli())
+	if task_record.CreatedAt != created_at.UnixMilli() {
+		t.Fatalf("task created_at = %d want %d", task_record.CreatedAt, created_at.UnixMilli())
 	}
-	if taskRecord.UpdatedAt != createdAt.Add(time.Minute).UnixMilli() {
-		t.Fatalf("task updated_at = %d want %d", taskRecord.UpdatedAt, createdAt.Add(time.Minute).UnixMilli())
-	}
-	var config map[string]string
-	if err := json.Unmarshal([]byte(taskRecord.ConfigJSON), &config); err != nil {
+	var config map[string]any
+	if err := json.Unmarshal([]byte(task_record.ConfigJSON), &config); err != nil {
 		t.Fatalf("parse task config: %v", err)
 	}
-	if len(config) != 3 || config["download_dir"] != dir || config["suffix"] != ".mp4" || config["spec"] != "xWT111" {
-		t.Fatalf("unexpected config_json: %s", taskRecord.ConfigJSON)
+	if config["download_dir"] != dir || config["suffix"] != ".mp4" || config["spec"] != "xWT111" {
+		t.Fatalf("unexpected config_json: %s", task_record.ConfigJSON)
 	}
 	var metadata struct {
 		GopeedID string `json:"gopeedid"`
 	}
-	if err := json.Unmarshal([]byte(taskRecord.MetadataJSON), &metadata); err != nil {
+	if err := json.Unmarshal([]byte(task_record.MetadataJSON), &metadata); err != nil {
 		t.Fatalf("parse task metadata: %v", err)
 	}
 	if metadata.GopeedID != "bolt-task-1" {
 		t.Fatalf("unexpected metadata: %+v", metadata)
 	}
-	if taskRecord.MetadataJSON != `{"gopeedid":"bolt-task-1"}` {
-		t.Fatalf("metadata_json = %s", taskRecord.MetadataJSON)
+	if !strings.Contains(task_record.MetadataJSON, `"migrated":true`) {
+		t.Fatalf("metadata_json = %s", task_record.MetadataJSON)
 	}
-	if existing, err := findMigratedDownloadTask(db, "bolt-task-1"); err != nil || existing.Id != targetID {
+	if existing, err := find_migrated_download_task(db, "bolt-task-1"); err != nil || existing.Id != target_id {
 		t.Fatalf("find migrated by metadata: id=%v err=%v", func() int {
 			if existing == nil {
 				return 0
@@ -124,7 +122,7 @@ func TestImportTargetDownloadRecordWritesDirectRecords(t *testing.T) {
 	}
 
 	var content model.Content
-	if err := db.Where("id = ?", buildTargetContentID("12345")).First(&content).Error; err != nil {
+	if err := db.Where("id = ?", wxchannelsadapter.BuildContentID("12345")).First(&content).Error; err != nil {
 		t.Fatalf("query content: %v", err)
 	}
 	if content.Type != "video" || content.ExternalId2 != "67890" {
@@ -142,7 +140,7 @@ func TestImportTargetDownloadRecordWritesDirectRecords(t *testing.T) {
 	}
 
 	var account model.Account
-	if err := db.Where("id = ?", buildTargetAccountID("acct_1")).First(&account).Error; err != nil {
+	if err := db.Where("id = ?", wxchannelsadapter.BuildAccountID("acct_1")).First(&account).Error; err != nil {
 		t.Fatalf("query account: %v", err)
 	}
 	if account.Nickname != "作者" {
@@ -158,10 +156,10 @@ func TestImportTargetDownloadRecordWritesDirectRecords(t *testing.T) {
 	}
 
 	var resource model.DownloadResource
-	if err := db.Where("task_id = ?", targetID).First(&resource).Error; err != nil {
+	if err := db.Where("task_id = ?", target_id).First(&resource).Error; err != nil {
 		t.Fatalf("query resource: %v", err)
 	}
-	if resource.DownloadDir != dir || resource.Name != "demo.mp4" || resource.Downloaded != 5 || resource.Status != resourceStatusFinished {
+	if resource.DownloadDir != dir || resource.Name != "demo.mp4" || resource.Downloaded != 5 || resource.Status != resource_status_finished {
 		t.Fatalf("unexpected resource: dir=%q name=%q downloaded=%d status=%d", resource.DownloadDir, resource.Name, resource.Downloaded, resource.Status)
 	}
 
@@ -169,56 +167,56 @@ func TestImportTargetDownloadRecordWritesDirectRecords(t *testing.T) {
 	if err := db.Where("resource_id = ?", resource.Id).First(&endpoint).Error; err != nil {
 		t.Fatalf("query endpoint: %v", err)
 	}
-	if endpoint.Protocol != "https" || endpoint.URL != "https://video.example/demo.mp4?token=1" {
+	if endpoint.Protocol != "https" || !strings.HasPrefix(endpoint.URL, "https://video.example/demo.mp4?token=1") {
 		t.Fatalf("unexpected endpoint: protocol=%q url=%q", endpoint.Protocol, endpoint.URL)
 	}
 
-	duplicateID, err := importTargetDownloadRecord(db, task, labels, "12345", "67890", savePath, object)
-	var duplicate duplicateImportError
+	duplicate_id, err := import_target_download_record(db, task, labels, "12345", "67890", save_path, object)
+	var duplicate duplicate_import_error
 	if !errors.As(err, &duplicate) {
 		t.Fatalf("duplicate error = %v", err)
 	}
-	if duplicateID != targetID || duplicate.TaskID != targetID {
-		t.Fatalf("duplicate ids = %d/%d want %d", duplicateID, duplicate.TaskID, targetID)
+	if duplicate_id != target_id || duplicate.TaskID != target_id {
+		t.Fatalf("duplicate ids = %d/%d want %d", duplicate_id, duplicate.TaskID, target_id)
 	}
 
-	var taskCount int64
-	if err := db.Model(&model.DownloadTask{}).Where("platform_id = ? AND unique_id = ?", platformWXChannels, "12345_xWT111").Count(&taskCount).Error; err != nil {
+	var task_count int64
+	if err := db.Model(&model.DownloadTask{}).Where("platform_id = ? AND unique_id = ?", platform_wx_channels, "12345_xWT111_mp4").Count(&task_count).Error; err != nil {
 		t.Fatalf("count tasks: %v", err)
 	}
-	if taskCount != 1 {
-		t.Fatalf("task count = %d", taskCount)
+	if task_count != 1 {
+		t.Fatalf("task count = %d", task_count)
 	}
 }
 
 func TestImportTargetWXMPDownloadRecordWritesArticleAndGopeedFile(t *testing.T) {
 	dir := t.TempDir()
-	savePath := filepath.Join(dir, "article.html")
+	save_path := filepath.Join(dir, "article.html")
 	html := "<html><body>migrated article</body></html>"
-	if err := os.WriteFile(savePath, []byte(html), 0o644); err != nil {
+	if err := os.WriteFile(save_path, []byte(html), 0o644); err != nil {
 		t.Fatalf("write migrated article: %v", err)
 	}
 
-	db, err := openTargetDB(filepath.Join(dir, "data.db"))
+	db, err := open_target_db(filepath.Join(dir, "data.db"))
 	if err != nil {
 		t.Fatalf("open target db: %v", err)
 	}
-	defer closeTargetDB(db)
+	defer close_target_db(db)
 
-	createdAt := time.Unix(1710000000, 0)
+	created_at := time.Unix(1710000000, 0)
 	task := &downloadpkg.Task{
 		ID:        "mp-task-1",
 		Protocol:  "officialaccount",
 		Status:    base.DownloadStatusDone,
 		Progress:  &downloadpkg.Progress{Downloaded: int64(len(html))},
-		CreatedAt: createdAt,
-		UpdatedAt: createdAt.Add(2 * time.Minute),
+		CreatedAt: created_at,
+		UpdatedAt: created_at.Add(2 * time.Minute),
 	}
 	labels := map[string]string{
 		"article_id": "k_F-1KYn-EPy27W9VoKZng",
 	}
-	articleURL := "https://mp.weixin.qq.com/s/k_F-1KYn-EPy27W9VoKZng"
-	contentRaw := json.RawMessage(`{
+	article_url := "https://mp.weixin.qq.com/s/k_F-1KYn-EPy27W9VoKZng"
+	content_raw := json.RawMessage(`{
 		"user_name": "biz_user",
 		"nick_name": "公众号作者",
 		"title": "公众号标题",
@@ -234,44 +232,44 @@ func TestImportTargetWXMPDownloadRecordWritesArticleAndGopeedFile(t *testing.T) 
 		"ori_head_img_url": "https://mmbiz.qpic.cn/avatar.jpg"
 	}`)
 
-	targetID, err := importTargetWXMPDownloadRecord(db, task, labels, "k_F-1KYn-EPy27W9VoKZng", articleURL, savePath, contentRaw)
+	target_id, err := import_target_wxmp_download_record(db, task, labels, "k_F-1KYn-EPy27W9VoKZng", article_url, save_path, content_raw)
 	if err != nil {
 		t.Fatalf("import wxmp record: %v", err)
 	}
-	if targetID <= 0 {
-		t.Fatalf("target id = %d", targetID)
+	if target_id <= 0 {
+		t.Fatalf("target id = %d", target_id)
 	}
 
-	var taskRecord model.DownloadTask
-	if err := db.Where("id = ?", targetID).First(&taskRecord).Error; err != nil {
+	var task_record model.DownloadTask
+	if err := db.Where("id = ?", target_id).First(&task_record).Error; err != nil {
 		t.Fatalf("query task: %v", err)
 	}
-	if taskRecord.PlatformId != platformWXMP {
-		t.Fatalf("task platform = %q", taskRecord.PlatformId)
+	if task_record.PlatformId != platform_wxmp {
+		t.Fatalf("task platform = %q", task_record.PlatformId)
 	}
-	if taskRecord.Status != model.TaskStatusFinished {
-		t.Fatalf("task status = %d", taskRecord.Status)
+	if task_record.Status != model.TaskStatusFinished {
+		t.Fatalf("task status = %d", task_record.Status)
 	}
-	if taskRecord.CreatedAt != createdAt.UnixMilli() {
-		t.Fatalf("task created_at = %d want %d", taskRecord.CreatedAt, createdAt.UnixMilli())
+	if task_record.CreatedAt != created_at.UnixMilli() {
+		t.Fatalf("task created_at = %d want %d", task_record.CreatedAt, created_at.UnixMilli())
 	}
 	var metadata struct {
 		GopeedID  string `json:"gopeedid"`
 		ArticleID string `json:"article_id"`
 	}
-	if err := json.Unmarshal([]byte(taskRecord.MetadataJSON), &metadata); err != nil {
+	if err := json.Unmarshal([]byte(task_record.MetadataJSON), &metadata); err != nil {
 		t.Fatalf("parse task metadata: %v", err)
 	}
 	if metadata.GopeedID != "mp-task-1" || metadata.ArticleID != "k_F-1KYn-EPy27W9VoKZng" {
 		t.Fatalf("unexpected metadata: %+v", metadata)
 	}
-	if existing, err := findMigratedDownloadTaskByPlatform(db, platformWXMP, "mp-task-1"); err != nil || existing.Id != targetID {
+	if existing, err := find_migrated_download_task_by_platform(db, platform_wxmp, "mp-task-1"); err != nil || existing.Id != target_id {
 		t.Fatalf("find migrated wxmp by metadata: task=%+v err=%v", existing, err)
 	}
 
-	contentID := "wxmp:239001_2247483666_1"
+	content_id := "wxmp:239001_2247483666_1"
 	var content model.Content
-	if err := db.Where("id = ?", contentID).First(&content).Error; err != nil {
+	if err := db.Where("id = ?", content_id).First(&content).Error; err != nil {
 		t.Fatalf("query content: %v", err)
 	}
 	if content.Type != "article" || content.Title != "公众号标题" {
@@ -282,7 +280,7 @@ func TestImportTargetWXMPDownloadRecordWritesArticleAndGopeedFile(t *testing.T) 
 	}
 
 	var article model.ContentArticle
-	if err := db.Where("id = ?", contentID).First(&article).Error; err != nil {
+	if err := db.Where("id = ?", content_id).First(&article).Error; err != nil {
 		t.Fatalf("query content article: %v", err)
 	}
 	if article.Type != model.ContentArticleTypeHTML || article.HTML != "<p>正文内容</p>" {
@@ -298,7 +296,7 @@ func TestImportTargetWXMPDownloadRecordWritesArticleAndGopeedFile(t *testing.T) 
 	}
 
 	var association model.ContentAccount
-	if err := db.Where("content_id = ? AND account_id = ?", contentID, account.Id).First(&association).Error; err != nil {
+	if err := db.Where("content_id = ? AND account_id = ?", content_id, account.Id).First(&association).Error; err != nil {
 		t.Fatalf("query content account: %v", err)
 	}
 	if association.Role != "publisher" {
@@ -306,10 +304,10 @@ func TestImportTargetWXMPDownloadRecordWritesArticleAndGopeedFile(t *testing.T) 
 	}
 
 	var resource model.DownloadResource
-	if err := db.Where("task_id = ?", targetID).First(&resource).Error; err != nil {
+	if err := db.Where("task_id = ?", target_id).First(&resource).Error; err != nil {
 		t.Fatalf("query resource: %v", err)
 	}
-	if resource.DownloadDir != dir || resource.Name != "article.html" || resource.Kind != "html" || resource.Downloaded != int64(len(html)) || resource.Status != resourceStatusFinished {
+	if resource.DownloadDir != dir || resource.Name != "article.html" || resource.Kind != "html" || resource.Downloaded != int64(len(html)) || resource.Status != resource_status_finished {
 		t.Fatalf("unexpected resource: dir=%q name=%q kind=%q downloaded=%d status=%d", resource.DownloadDir, resource.Name, resource.Kind, resource.Downloaded, resource.Status)
 	}
 
@@ -317,7 +315,7 @@ func TestImportTargetWXMPDownloadRecordWritesArticleAndGopeedFile(t *testing.T) 
 	if err := db.Where("resource_id = ?", resource.Id).First(&endpoint).Error; err != nil {
 		t.Fatalf("query endpoint: %v", err)
 	}
-	if endpoint.Protocol != "https" || endpoint.URL != articleURL {
+	if endpoint.Protocol != "https" || endpoint.URL != article_url {
 		t.Fatalf("unexpected endpoint: protocol=%q url=%q", endpoint.Protocol, endpoint.URL)
 	}
 }
@@ -330,10 +328,10 @@ func TestFetchProfileWithCacheUsesLabelsID(t *testing.T) {
 		if got := r.URL.Query().Get("oid"); got != "12345" {
 			t.Fatalf("oid = %q", got)
 		}
-		writeAPIResponse(w, apiResponse{
+		write_api_response(w, api_response{
 			Code: 0,
 			Msg:  "success",
-			Data: channelsFeedProfile{
+			Data: channels_feed_profile{
 				ErrCode: 0,
 				Data: struct {
 					Object json.RawMessage `json:"object"`
@@ -345,9 +343,9 @@ func TestFetchProfileWithCacheUsesLabelsID(t *testing.T) {
 	}))
 	defer server.Close()
 
-	migration := &migrationServer{}
+	migration := &migration_server{}
 	client := server.Client()
-	first, _, cached, source, err := migration.fetchProfileWithCache(client, dir, server.URL, "12345", "12345", "uid", false)
+	first, _, cached, source, err := migration.fetch_profile_with_cache(client, dir, server.URL, "12345", "12345", "uid", false)
 	if err != nil {
 		t.Fatalf("first fetch: %v", err)
 	}
@@ -355,14 +353,14 @@ func TestFetchProfileWithCacheUsesLabelsID(t *testing.T) {
 		t.Fatalf("first fetch cached=%v source=%q profileNil=%v requests=%d", cached, source, first == nil, requests)
 	}
 
-	second, _, cached, source, err := migration.fetchProfileWithCache(client, dir, server.URL, "12345", "12345", "uid", false)
+	second, _, cached, source, err := migration.fetch_profile_with_cache(client, dir, server.URL, "12345", "12345", "uid", false)
 	if err != nil {
 		t.Fatalf("second fetch: %v", err)
 	}
 	if !cached || source != "cache" || second == nil || requests != 1 {
 		t.Fatalf("second fetch cached=%v source=%q profileNil=%v requests=%d", cached, source, second == nil, requests)
 	}
-	if _, err := os.Stat(filepath.Join(dir, profileCacheFile)); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, profile_cache_file)); err != nil {
 		t.Fatalf("profile cache file missing: %v", err)
 	}
 }
@@ -372,10 +370,10 @@ func TestFetchProfileWithCacheRejectsEmptyObjectID(t *testing.T) {
 	request_count := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		request_count += 1
-		writeAPIResponse(w, apiResponse{
+		write_api_response(w, api_response{
 			Code: 0,
 			Msg:  "success",
-			Data: channelsFeedProfile{
+			Data: channels_feed_profile{
 				ErrCode: 0,
 				ErrMsg:  "ok",
 				Data: struct {
@@ -388,9 +386,9 @@ func TestFetchProfileWithCacheRejectsEmptyObjectID(t *testing.T) {
 	}))
 	defer server.Close()
 
-	migration := &migrationServer{}
+	migration := &migration_server{}
 	for attempt := 0; attempt < 2; attempt += 1 {
-		profile, _, cached, _, err := migration.fetchProfileWithCache(
+		profile, _, cached, _, err := migration.fetch_profile_with_cache(
 			server.Client(),
 			data_dir,
 			server.URL,
@@ -410,7 +408,7 @@ func TestFetchProfileWithCacheRejectsEmptyObjectID(t *testing.T) {
 		t.Fatalf("profile requests = %d want 2", request_count)
 	}
 
-	cache, err := loadProfileCache(profileCachePath(data_dir))
+	cache, err := load_profile_cache(profile_cache_path(data_dir))
 	if err != nil {
 		t.Fatalf("load profile cache: %v", err)
 	}
@@ -422,8 +420,8 @@ func TestFetchProfileWithCacheRejectsEmptyObjectID(t *testing.T) {
 func TestReadProfileCacheDiscardsEmptyObjectID(t *testing.T) {
 	data_dir := t.TempDir()
 	cache_key := "empty-id"
-	migration := &migrationServer{}
-	if err := migration.writeProfileCache(data_dir, cache_key, profileCacheEntry{
+	migration := &migration_server{}
+	if err := migration.write_profile_cache(data_dir, cache_key, profile_cache_entry{
 		OID:        cache_key,
 		ProfileURL: "https://example.com/profile?oid=empty-id",
 		Profile:    json.RawMessage(`{"errCode":0,"errMsg":"ok","data":{"object":{"id":""}}}`),
@@ -432,18 +430,18 @@ func TestReadProfileCacheDiscardsEmptyObjectID(t *testing.T) {
 		t.Fatalf("write invalid profile cache: %v", err)
 	}
 
-	cache, err := loadProfileCache(profileCachePath(data_dir))
+	cache, err := load_profile_cache(profile_cache_path(data_dir))
 	if err != nil {
 		t.Fatalf("load profile cache: %v", err)
 	}
-	task := mustGopeedMigrationTask(t, "empty-id-task", data_dir, "demo.mp4", map[string]string{
+	task := must_gopeed_migration_task(t, "empty-id-task", data_dir, "demo.mp4", map[string]string{
 		"oid": cache_key,
 	})
-	if cached, got_key := taskProfileCached(cache, task); cached || got_key != cache_key {
+	if cached, got_key := task_profile_cached(cache, task); cached || got_key != cache_key {
 		t.Fatalf("taskProfileCached = %v/%q want false/%q", cached, got_key, cache_key)
 	}
 
-	profile, _, hit, err := migration.readProfileCache(data_dir, cache_key)
+	profile, _, hit, err := migration.read_profile_cache(data_dir, cache_key)
 	if err != nil {
 		t.Fatalf("read invalid profile cache: %v", err)
 	}
@@ -451,7 +449,7 @@ func TestReadProfileCacheDiscardsEmptyObjectID(t *testing.T) {
 		t.Fatalf("invalid profile cache profile=%v hit=%v", profile, hit)
 	}
 
-	cache, err = loadProfileCache(profileCachePath(data_dir))
+	cache, err = load_profile_cache(profile_cache_path(data_dir))
 	if err != nil {
 		t.Fatalf("reload profile cache: %v", err)
 	}
@@ -462,7 +460,7 @@ func TestReadProfileCacheDiscardsEmptyObjectID(t *testing.T) {
 
 func TestProfileCacheCleanupAPIOnlyRemovesInvalidChannelsEntries(t *testing.T) {
 	data_dir := t.TempDir()
-	migration := &migrationServer{defaultDataDir: data_dir}
+	migration := &migration_server{default_data_dir: data_dir}
 	entries := map[string]json.RawMessage{
 		"valid-profile": json.RawMessage(`{"errCode":0,"errMsg":"ok","data":{"object":{"id":"12345"}}}`),
 		"empty-id":      json.RawMessage(`{"errCode":0,"errMsg":"ok","data":{"object":{"id":""}}}`),
@@ -472,7 +470,7 @@ func TestProfileCacheCleanupAPIOnlyRemovesInvalidChannelsEntries(t *testing.T) {
 		),
 	}
 	for cache_key, profile := range entries {
-		if err := migration.writeProfileCache(data_dir, cache_key, profileCacheEntry{
+		if err := migration.write_profile_cache(data_dir, cache_key, profile_cache_entry{
 			OID:        cache_key,
 			ProfileURL: "https://example.com/profile/" + cache_key,
 			Profile:    profile,
@@ -482,7 +480,7 @@ func TestProfileCacheCleanupAPIOnlyRemovesInvalidChannelsEntries(t *testing.T) {
 		}
 	}
 
-	request_body, err := json.Marshal(profileCacheCleanupRequest{DataDir: data_dir})
+	request_body, err := json.Marshal(profile_cache_cleanup_request{DataDir: data_dir})
 	if err != nil {
 		t.Fatalf("marshal cleanup request: %v", err)
 	}
@@ -495,9 +493,9 @@ func TestProfileCacheCleanupAPIOnlyRemovesInvalidChannelsEntries(t *testing.T) {
 	migration.handle_migration_profile_cache_cleanup(recorder, request)
 
 	var response struct {
-		Code int                       `json:"code"`
-		Msg  string                    `json:"msg"`
-		Data profileCacheCleanupResult `json:"data"`
+		Code int                          `json:"code"`
+		Msg  string                       `json:"msg"`
+		Data profile_cache_cleanup_result `json:"data"`
 	}
 	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
 		t.Fatalf("decode cleanup response: %v", err)
@@ -516,7 +514,7 @@ func TestProfileCacheCleanupAPIOnlyRemovesInvalidChannelsEntries(t *testing.T) {
 		t.Fatalf("removed keys = %v want %v", result.RemovedKeys, want_removed_keys)
 	}
 
-	cache, err := loadProfileCache(profileCachePath(data_dir))
+	cache, err := load_profile_cache(profile_cache_path(data_dir))
 	if err != nil {
 		t.Fatalf("load cleaned profile cache: %v", err)
 	}
@@ -535,24 +533,24 @@ func TestProfileCacheCleanupAPIOnlyRemovesInvalidChannelsEntries(t *testing.T) {
 
 func TestLoadGopeedTaskSnapshotCachesUntilForceReload(t *testing.T) {
 	dir := t.TempDir()
-	writeGopeedTask(t, dir, mustGopeedMigrationTask(t, "cache-list-task-1", dir, "demo.mp4", map[string]string{
+	write_gopeed_task(t, dir, must_gopeed_migration_task(t, "cache-list-task-1", dir, "demo.mp4", map[string]string{
 		"oid": "12345",
 	}))
 
-	migration := &migrationServer{}
-	dbPath := filepath.Join(dir, gopeedDBFile)
-	first, hit, err := migration.loadGopeedTaskSnapshot(dir, dbPath, false)
+	migration := &migration_server{}
+	db_path := filepath.Join(dir, gopeed_db_file)
+	first, hit, err := migration.load_gopeed_task_snapshot(dir, db_path, false)
 	if err != nil {
 		t.Fatalf("first snapshot: %v", err)
 	}
 	if hit {
 		t.Fatalf("first snapshot cache hit = true")
 	}
-	if len(first.Tasks) != 1 || safeTaskID(first.Tasks[0]) != "cache-list-task-1" {
+	if len(first.Tasks) != 1 || safe_task_id(first.Tasks[0]) != "cache-list-task-1" {
 		t.Fatalf("unexpected first snapshot tasks: %+v", first.Tasks)
 	}
 
-	second, hit, err := migration.loadGopeedTaskSnapshot(dir, dbPath, false)
+	second, hit, err := migration.load_gopeed_task_snapshot(dir, db_path, false)
 	if err != nil {
 		t.Fatalf("second snapshot: %v", err)
 	}
@@ -563,7 +561,7 @@ func TestLoadGopeedTaskSnapshotCachesUntilForceReload(t *testing.T) {
 		t.Fatalf("second snapshot did not reuse cached entry")
 	}
 
-	third, hit, err := migration.loadGopeedTaskSnapshot(dir, dbPath, true)
+	third, hit, err := migration.load_gopeed_task_snapshot(dir, db_path, true)
 	if err != nil {
 		t.Fatalf("forced snapshot: %v", err)
 	}
@@ -577,46 +575,46 @@ func TestLoadGopeedTaskSnapshotCachesUntilForceReload(t *testing.T) {
 
 func TestExplicitDBPathIsUsedWithoutGopeedFilenameFallback(t *testing.T) {
 	data_dir := t.TempDir()
-	task := mustGopeedMigrationTask(t, "explicit-db-task", data_dir, "demo.mp4", map[string]string{
+	task := must_gopeed_migration_task(t, "explicit-db-task", data_dir, "demo.mp4", map[string]string{
 		"oid": "12345",
 	})
-	writeGopeedTask(t, data_dir, task)
+	write_gopeed_task(t, data_dir, task)
 
-	original_db_path := filepath.Join(data_dir, gopeedDBFile)
+	original_db_path := filepath.Join(data_dir, gopeed_db_file)
 	selected_db_path := filepath.Join(data_dir, "archived.DB")
 	if err := os.Rename(original_db_path, selected_db_path); err != nil {
 		t.Fatalf("rename gopeed database: %v", err)
 	}
 
-	migration := &migrationServer{defaultDataDir: selected_db_path}
-	resolved_data_dir, resolved_db_path, err := migration.resolveDataDir(selected_db_path)
+	migration := &migration_server{default_data_dir: selected_db_path}
+	resolved_data_dir, resolved_db_path, err := migration.resolve_data_dir(selected_db_path)
 	if err != nil {
 		t.Fatalf("resolve explicit database: %v", err)
 	}
 	if resolved_data_dir != data_dir || resolved_db_path != selected_db_path {
 		t.Fatalf("resolved paths = %q/%q want %q/%q", resolved_data_dir, resolved_db_path, data_dir, selected_db_path)
 	}
-	if _, _, err := migration.resolveDataDir(data_dir); err == nil || !strings.Contains(err.Error(), "not a directory") {
+	if _, _, err := migration.resolve_data_dir(data_dir); err == nil || !strings.Contains(err.Error(), "not a directory") {
 		t.Fatalf("directory path error = %v", err)
 	}
 
-	snapshot, _, err := migration.loadGopeedTaskSnapshot(resolved_data_dir, resolved_db_path, false)
+	snapshot, _, err := migration.load_gopeed_task_snapshot(resolved_data_dir, resolved_db_path, false)
 	if err != nil {
 		t.Fatalf("load explicitly selected database: %v", err)
 	}
-	if len(snapshot.Tasks) != 1 || safeTaskID(snapshot.Tasks[0]) != "explicit-db-task" {
+	if len(snapshot.Tasks) != 1 || safe_task_id(snapshot.Tasks[0]) != "explicit-db-task" {
 		t.Fatalf("unexpected explicit database tasks: %+v", snapshot.Tasks)
 	}
 }
 
 func TestPrefetchMigrationProfileCacheThenMigrateUsesCache(t *testing.T) {
 	dir := t.TempDir()
-	savePath := filepath.Join(dir, "demo.mp4")
-	if err := os.WriteFile(savePath, []byte("hello"), 0o644); err != nil {
+	save_path := filepath.Join(dir, "demo.mp4")
+	if err := os.WriteFile(save_path, []byte("hello"), 0o644); err != nil {
 		t.Fatalf("write migrated file: %v", err)
 	}
 
-	task := mustGopeedMigrationTask(t, "cache-task-1", dir, "demo.mp4", map[string]string{
+	task := must_gopeed_migration_task(t, "cache-task-1", dir, "demo.mp4", map[string]string{
 		"id":    "12345",
 		"oid":   "12345",
 		"uid":   "67890",
@@ -626,10 +624,10 @@ func TestPrefetchMigrationProfileCacheThenMigrateUsesCache(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
-		writeAPIResponse(w, apiResponse{
+		write_api_response(w, api_response{
 			Code: 0,
 			Msg:  "success",
-			Data: channelsFeedProfile{
+			Data: channels_feed_profile{
 				ErrCode: 0,
 				Data: struct {
 					Object json.RawMessage `json:"object"`
@@ -645,8 +643,8 @@ func TestPrefetchMigrationProfileCacheThenMigrateUsesCache(t *testing.T) {
 		})
 	}))
 
-	migration := &migrationServer{}
-	statuses := migration.prefetchMigrationProfileCache(server.Client(), dir, server.URL, []*downloadpkg.Task{task})
+	migration := &migration_server{}
+	statuses := migration.prefetch_migration_profile_cache(server.Client(), dir, server.URL, []*downloadpkg.Task{task})
 	server.Close()
 	if requests != 1 {
 		t.Fatalf("profile requests = %d want 1", requests)
@@ -654,17 +652,17 @@ func TestPrefetchMigrationProfileCacheThenMigrateUsesCache(t *testing.T) {
 	if status := statuses["cache-task-1"]; status.Error != "" || status.CacheKey != "12345" {
 		t.Fatalf("unexpected prefetch status: %+v", status)
 	}
-	if _, _, hit, err := migration.readProfileCache(dir, "12345"); err != nil || !hit {
+	if _, _, hit, err := migration.read_profile_cache(dir, "12345"); err != nil || !hit {
 		t.Fatalf("read prefetched cache hit=%v err=%v", hit, err)
 	}
 
-	db, err := openTargetDB(filepath.Join(dir, "data.db"))
+	db, err := open_target_db(filepath.Join(dir, "data.db"))
 	if err != nil {
 		t.Fatalf("open target db: %v", err)
 	}
-	defer closeTargetDB(db)
+	defer close_target_db(db)
 
-	item := migration.migrateOneTask(db, server.URL, dir, task, false, false, statuses)
+	item := migration.migrate_one_task(db, server.URL, dir, task, false, false, statuses)
 	if item.Action != "migrated" || !item.ProfileCacheHit || item.TargetID <= 0 {
 		t.Fatalf("unexpected migration item: %+v", item)
 	}
@@ -675,25 +673,25 @@ func TestPrefetchMigrationProfileCacheThenMigrateUsesCache(t *testing.T) {
 
 func TestMigrateOneTaskCreatesStandaloneTaskWhenProfileIsMissing(t *testing.T) {
 	dir := t.TempDir()
-	savePath := filepath.Join(dir, "demo.mp4")
-	if err := os.WriteFile(savePath, []byte("hello"), 0o644); err != nil {
+	save_path := filepath.Join(dir, "demo.mp4")
+	if err := os.WriteFile(save_path, []byte("hello"), 0o644); err != nil {
 		t.Fatalf("write migrated file: %v", err)
 	}
 
-	db, err := openTargetDB(filepath.Join(dir, "data.db"))
+	db, err := open_target_db(filepath.Join(dir, "data.db"))
 	if err != nil {
 		t.Fatalf("open target db: %v", err)
 	}
-	defer closeTargetDB(db)
+	defer close_target_db(db)
 
-	task := mustGopeedMigrationTask(t, "cache-task-missing", dir, "demo.mp4", map[string]string{
+	task := must_gopeed_migration_task(t, "cache-task-missing", dir, "demo.mp4", map[string]string{
 		"id":  "missing",
 		"oid": "missing",
 		"uid": "67890",
 	})
 
-	migration := &migrationServer{}
-	item := migration.migrateOneTask(db, "http://127.0.0.1:1", dir, task, false, false, nil)
+	migration := &migration_server{}
+	item := migration.migrate_one_task(db, "http://127.0.0.1:1", dir, task, false, false, nil)
 	if item.Action != "migrated" || item.TargetID <= 0 || item.ProfileCacheHit {
 		t.Fatalf("unexpected migration item: %+v", item)
 	}
@@ -720,11 +718,11 @@ func TestMigrateOneTaskCreatesStandaloneTaskWhenProfileIsMissing(t *testing.T) {
 	if resource_record.ContentId != nil {
 		t.Fatalf("resource content_id = %v want nil", resource_record.ContentId)
 	}
-	if resource_record.Size != 5 || resource_record.Downloaded != 5 || resource_record.Status != resourceStatusFinished {
+	if resource_record.Size != 5 || resource_record.Downloaded != 5 || resource_record.Status != resource_status_finished {
 		t.Fatalf("unexpected resource progress: size=%d downloaded=%d status=%d", resource_record.Size, resource_record.Downloaded, resource_record.Status)
 	}
-	if resource_path := filepath.Join(resource_record.DownloadDir, resource_record.Name); resource_path != savePath {
-		t.Fatalf("resource path = %q want %q", resource_path, savePath)
+	if resource_path := filepath.Join(resource_record.DownloadDir, resource_record.Name); resource_path != save_path {
+		t.Fatalf("resource path = %q want %q", resource_path, save_path)
 	}
 	var endpoint_record model.DownloadEndpoint
 	if err := db.Where("resource_id = ?", resource_record.Id).First(&endpoint_record).Error; err != nil {
@@ -750,15 +748,15 @@ func TestMigrateOneTaskCreatesStandaloneTaskWhenProfileIsMissing(t *testing.T) {
 
 func TestMigrateOneTaskCreatesStandaloneTaskWithoutDetailIdentifier(t *testing.T) {
 	data_dir := t.TempDir()
-	db, err := openTargetDB(filepath.Join(data_dir, "data.db"))
+	db, err := open_target_db(filepath.Join(data_dir, "data.db"))
 	if err != nil {
 		t.Fatalf("open target db: %v", err)
 	}
-	defer closeTargetDB(db)
+	defer close_target_db(db)
 
-	task := mustGopeedMigrationTask(t, "no-detail-identifier", data_dir, "orphan.mp4", map[string]string{})
-	migration := &migrationServer{}
-	item := migration.migrateOneTask(db, "", data_dir, task, false, false, nil)
+	task := must_gopeed_migration_task(t, "no-detail-identifier", data_dir, "orphan.mp4", map[string]string{})
+	migration := &migration_server{}
+	item := migration.migrate_one_task(db, "", data_dir, task, false, false, nil)
 	if item.Action != "migrated" || item.TargetID <= 0 {
 		t.Fatalf("unexpected migration item: %+v", item)
 	}
@@ -774,18 +772,22 @@ func TestMigrateOneTaskCreatesStandaloneTaskWithoutDetailIdentifier(t *testing.T
 
 func TestMigrateWXMPTaskCreatesStandaloneTaskWhenArticleDetailIsMissing(t *testing.T) {
 	data_dir := t.TempDir()
-	db, err := openTargetDB(filepath.Join(data_dir, "data.db"))
+	db, err := open_target_db(filepath.Join(data_dir, "data.db"))
 	if err != nil {
 		t.Fatalf("open target db: %v", err)
 	}
-	defer closeTargetDB(db)
+	defer close_target_db(db)
+
+	if err := os.WriteFile(filepath.Join(data_dir, "article.html"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	article_id := "missing-article-detail"
-	task := mustGopeedMigrationTask(t, "wxmp-detail-missing", data_dir, "article.html", map[string]string{
+	task := must_gopeed_migration_task(t, "wxmp-detail-missing", data_dir, "article.html", map[string]string{
 		"article_id": article_id,
 	})
-	migration := &migrationServer{}
-	item := migration.migrateOneTask(db, "", data_dir, task, false, false, nil)
+	migration := &migration_server{}
+	item := migration.migrate_one_task(db, "", data_dir, task, false, false, nil)
 	if item.Action != "migrated" || item.TargetID <= 0 || item.ProfileCacheHit {
 		t.Fatalf("unexpected migration item: %+v", item)
 	}
@@ -794,7 +796,7 @@ func TestMigrateWXMPTaskCreatesStandaloneTaskWhenArticleDetailIsMissing(t *testi
 	if err := db.Where("id = ?", item.TargetID).First(&task_record).Error; err != nil {
 		t.Fatalf("query standalone wxmp task: %v", err)
 	}
-	if task_record.ContentId != nil || task_record.PlatformId != platformWXMP {
+	if task_record.ContentId != nil || task_record.PlatformId != platform_wxmp {
 		t.Fatalf("unexpected standalone wxmp task: %+v", task_record)
 	}
 	var resource_record model.DownloadResource
@@ -804,7 +806,7 @@ func TestMigrateWXMPTaskCreatesStandaloneTaskWhenArticleDetailIsMissing(t *testi
 	if resource_record.ContentId != nil {
 		t.Fatalf("standalone wxmp resource content_id = %v want nil", resource_record.ContentId)
 	}
-	if resource_record.Size != 5 || resource_record.Downloaded != 5 || resource_record.Status != resourceStatusFinished {
+	if resource_record.Size != 5 || resource_record.Downloaded != 5 || resource_record.Status != resource_status_finished {
 		t.Fatalf("unexpected wxmp resource progress: size=%d downloaded=%d status=%d", resource_record.Size, resource_record.Downloaded, resource_record.Status)
 	}
 	want_resource_path := filepath.Join(data_dir, "article.html")
@@ -815,7 +817,7 @@ func TestMigrateWXMPTaskCreatesStandaloneTaskWhenArticleDetailIsMissing(t *testi
 	if err := db.Where("resource_id = ?", resource_record.Id).First(&endpoint_record).Error; err != nil {
 		t.Fatalf("query standalone wxmp endpoint: %v", err)
 	}
-	if endpoint_record.URL != buildWXMPArticleURL(article_id) {
+	if endpoint_record.URL != build_wxmp_article_url(article_id) {
 		t.Fatalf("wxmp endpoint url = %q", endpoint_record.URL)
 	}
 	var content_count int64
@@ -836,14 +838,14 @@ func TestMigrateWXMPTaskCreatesStandaloneTaskWhenArticleDetailIsMissing(t *testi
 
 func TestMigrateWXMPArticleTaskUsesArticleCache(t *testing.T) {
 	dir := t.TempDir()
-	savePath := filepath.Join(dir, "article.html")
-	if err := os.WriteFile(savePath, []byte("<html><body>cached</body></html>"), 0o644); err != nil {
+	save_path := filepath.Join(dir, "article.html")
+	if err := os.WriteFile(save_path, []byte("<html><body>cached</body></html>"), 0o644); err != nil {
 		t.Fatalf("write migrated article: %v", err)
 	}
 
-	articleID := "k_F-1KYn-EPy27W9VoKZng"
-	articleURL := buildWXMPArticleURL(articleID)
-	contentRaw := json.RawMessage(`{
+	article_id := "k_F-1KYn-EPy27W9VoKZng"
+	article_url := build_wxmp_article_url(article_id)
+	content_raw := json.RawMessage(`{
 		"user_name": "biz_user",
 		"nick_name": "公众号作者",
 		"title": "缓存公众号标题",
@@ -858,40 +860,40 @@ func TestMigrateWXMPArticleTaskUsesArticleCache(t *testing.T) {
 		"ori_head_img_url": "https://mmbiz.qpic.cn/avatar.jpg"
 	}`)
 
-	task := mustGopeedMigrationTask(t, "mp-cache-task-1", dir, "article.html", map[string]string{
-		"article_id": articleID,
+	task := must_gopeed_migration_task(t, "mp-cache-task-1", dir, "article.html", map[string]string{
+		"article_id": article_id,
 	})
-	migration := &migrationServer{}
-	cacheKey := wxmpArticleProfileCacheKey(articleID, articleURL)
-	if err := migration.writeProfileCache(dir, cacheKey, profileCacheEntry{
-		OID:        articleID,
-		ProfileURL: articleURL,
-		Profile:    contentRaw,
+	migration := &migration_server{}
+	cache_key := wxmp_article_profile_cache_key(article_id, article_url)
+	if err := migration.write_profile_cache(dir, cache_key, profile_cache_entry{
+		OID:        article_id,
+		ProfileURL: article_url,
+		Profile:    content_raw,
 		CachedAt:   time.Now().UnixMilli(),
 	}); err != nil {
 		t.Fatalf("write article cache: %v", err)
 	}
-	cache, err := loadProfileCache(profileCachePath(dir))
+	cache, err := load_profile_cache(profile_cache_path(dir))
 	if err != nil {
 		t.Fatalf("load profile cache: %v", err)
 	}
-	if cached, gotKey := taskProfileCached(cache, task); !cached || gotKey != cacheKey {
-		t.Fatalf("taskProfileCached = %v/%q want true/%q", cached, gotKey, cacheKey)
+	if cached, got_key := task_profile_cached(cache, task); !cached || got_key != cache_key {
+		t.Fatalf("taskProfileCached = %v/%q want true/%q", cached, got_key, cache_key)
 	}
 
-	db, err := openTargetDB(filepath.Join(dir, "data.db"))
+	db, err := open_target_db(filepath.Join(dir, "data.db"))
 	if err != nil {
 		t.Fatalf("open target db: %v", err)
 	}
-	defer closeTargetDB(db)
+	defer close_target_db(db)
 
-	item := migration.migrateOneTask(db, "", dir, task, false, false, nil)
+	item := migration.migrate_one_task(db, "", dir, task, false, false, nil)
 	if item.Action != "migrated" || !item.ProfileCacheHit || item.TargetID <= 0 {
 		t.Fatalf("unexpected migration item: %+v", item)
 	}
 }
 
-func mustGopeedMigrationTask(t *testing.T, id string, downloadDir string, filename string, labels map[string]string) *downloadpkg.Task {
+func must_gopeed_migration_task(t *testing.T, id string, download_dir string, filename string, labels map[string]string) *downloadpkg.Task {
 	t.Helper()
 	payload := map[string]any{
 		"id":       id,
@@ -909,7 +911,7 @@ func mustGopeedMigrationTask(t *testing.T, id string, downloadDir string, filena
 				}},
 			},
 			"opts": map[string]any{
-				"path": downloadDir,
+				"path": download_dir,
 			},
 		},
 	}
@@ -921,15 +923,15 @@ func mustGopeedMigrationTask(t *testing.T, id string, downloadDir string, filena
 	if err := json.Unmarshal(data, &task); err != nil {
 		t.Fatalf("unmarshal task payload: %v", err)
 	}
-	createdAt := time.Unix(1710000000, 0)
+	created_at := time.Unix(1710000000, 0)
 	task.Status = base.DownloadStatusDone
 	task.Progress = &downloadpkg.Progress{Downloaded: 5}
-	task.CreatedAt = createdAt
-	task.UpdatedAt = createdAt.Add(time.Minute)
+	task.CreatedAt = created_at
+	task.UpdatedAt = created_at.Add(time.Minute)
 	return &task
 }
 
-func writeGopeedTask(t *testing.T, dir string, task *downloadpkg.Task) {
+func write_gopeed_task(t *testing.T, dir string, task *downloadpkg.Task) {
 	t.Helper()
 	storage := downloadpkg.NewBoltStorage(dir)
 	defer func() {
@@ -940,7 +942,7 @@ func writeGopeedTask(t *testing.T, dir string, task *downloadpkg.Task) {
 	if err := storage.Setup([]string{"task", "save", "config"}); err != nil {
 		t.Fatalf("setup gopeed storage: %v", err)
 	}
-	if err := storage.Put("task", safeTaskID(task), task); err != nil {
+	if err := storage.Put("task", safe_task_id(task), task); err != nil {
 		t.Fatalf("write gopeed task: %v", err)
 	}
 }

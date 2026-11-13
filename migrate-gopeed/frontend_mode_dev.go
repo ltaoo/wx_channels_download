@@ -2,4 +2,4 @@
 
 package main
 
-const defaultMode = "debug"
+const default_mode = "debug"

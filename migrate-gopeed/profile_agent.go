@@ -20,12 +20,12 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const channelsProfileAgentPath = "/ws/channels/profile-agent"
-const channelsProfileAgentFetchProfile = "fetch_profile"
+const channels_profile_agent_path = "/ws/channels/profile-agent"
+const channels_profile_agent_fetch_profile = "fetch_profile"
 
-var errProfileAgentUnavailable = errors.New("profile agent is unavailable")
+var err_profile_agent_unavailable = errors.New("profile agent is unavailable")
 
-type channelsProfileAgentRequest struct {
+type channels_profile_agent_request struct {
 	ID         string `json:"id"`
 	Type       string `json:"type"`
 	OID        string `json:"oid"`
@@ -33,7 +33,7 @@ type channelsProfileAgentRequest struct {
 	ProfileURL string `json:"profile_url,omitempty"`
 }
 
-type channelsProfileAgentResponse struct {
+type channels_profile_agent_response struct {
 	ID    string          `json:"id"`
 	Type  string          `json:"type,omitempty"`
 	OK    bool            `json:"ok"`
@@ -41,42 +41,42 @@ type channelsProfileAgentResponse struct {
 	Data  json.RawMessage `json:"data,omitempty"`
 }
 
-type channelsProfileAgentPending struct {
-	client *channelsProfileAgentConn
-	ch     chan channelsProfileAgentResponse
+type channels_profile_agent_pending struct {
+	client *channels_profile_agent_conn
+	ch     chan channels_profile_agent_response
 }
 
-type channelsProfileAgentHub struct {
+type channels_profile_agent_hub struct {
 	token    string
 	upgrader websocket.Upgrader
 
 	mu      sync.RWMutex
-	clients map[*channelsProfileAgentConn]bool
-	pending map[string]channelsProfileAgentPending
-	reqSeq  uint64
+	clients map[*channels_profile_agent_conn]bool
+	pending map[string]channels_profile_agent_pending
+	req_seq uint64
 }
 
-type channelsProfileAgentConn struct {
-	hub         *channelsProfileAgentHub
-	conn        *websocket.Conn
-	send        chan []byte
-	remoteAddr  string
-	connectedAt time.Time
+type channels_profile_agent_conn struct {
+	hub          *channels_profile_agent_hub
+	conn         *websocket.Conn
+	send         chan []byte
+	remote_addr  string
+	connected_at time.Time
 }
 
-type channelsProfileAgentRunner struct {
-	serverURL    string
-	localBaseURL string
-	token        string
-	httpClient   *http.Client
+type channels_profile_agent_runner struct {
+	server_url     string
+	local_base_url string
+	token          string
+	http_client    *http.Client
 }
 
-func defaultProfileAgentToken() string {
+func default_profile_agent_token() string {
 	return strings.TrimSpace(os.Getenv("WX_CHANNEL_PROFILE_AGENT_TOKEN"))
 }
 
-func newChannelsProfileAgentHub(token string) *channelsProfileAgentHub {
-	return &channelsProfileAgentHub{
+func new_channels_profile_agent_hub(token string) *channels_profile_agent_hub {
+	return &channels_profile_agent_hub{
 		token: strings.TrimSpace(token),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
@@ -85,49 +85,49 @@ func newChannelsProfileAgentHub(token string) *channelsProfileAgentHub {
 				return true
 			},
 		},
-		clients: make(map[*channelsProfileAgentConn]bool),
-		pending: make(map[string]channelsProfileAgentPending),
-		reqSeq:  uint64(time.Now().UnixNano()),
+		clients: make(map[*channels_profile_agent_conn]bool),
+		pending: make(map[string]channels_profile_agent_pending),
+		req_seq: uint64(time.Now().UnixNano()),
 	}
 }
 
-func (h *channelsProfileAgentHub) HandleWebsocket(w http.ResponseWriter, r *http.Request) {
+func (h *channels_profile_agent_hub) HandleWebsocket(w http.ResponseWriter, r *http.Request) {
 	if h == nil {
-		writeProfileAgentHTTPError(w, http.StatusServiceUnavailable, "profile agent hub is not initialized")
+		write_profile_agent_http_error(w, http.StatusServiceUnavailable, "profile agent hub is not initialized")
 		return
 	}
 	if r.Method != http.MethodGet {
-		writeProfileAgentHTTPError(w, http.StatusMethodNotAllowed, "method not allowed")
+		write_profile_agent_http_error(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 	if !h.authorized(r) {
-		writeProfileAgentHTTPError(w, http.StatusUnauthorized, "unauthorized profile agent")
+		write_profile_agent_http_error(w, http.StatusUnauthorized, "unauthorized profile agent")
 		return
 	}
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
-	client := &channelsProfileAgentConn{
-		hub:         h,
-		conn:        conn,
-		send:        make(chan []byte, 64),
-		remoteAddr:  r.RemoteAddr,
-		connectedAt: time.Now(),
+	client := &channels_profile_agent_conn{
+		hub:          h,
+		conn:         conn,
+		send:         make(chan []byte, 64),
+		remote_addr:  r.RemoteAddr,
+		connected_at: time.Now(),
 	}
-	h.addClient(client)
-	log.Printf("profile agent connected: %s", client.remoteAddr)
-	go client.writePump()
-	client.readPump()
+	h.add_client(client)
+	log.Printf("profile agent connected: %s", client.remote_addr)
+	go client.write_pump()
+	client.read_pump()
 }
 
-func writeProfileAgentHTTPError(w http.ResponseWriter, status int, msg string) {
+func write_profile_agent_http_error(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(apiResponse{Code: status, Msg: msg})
+	_ = json.NewEncoder(w).Encode(api_response{Code: status, Msg: msg})
 }
 
-func (h *channelsProfileAgentHub) authorized(r *http.Request) bool {
+func (h *channels_profile_agent_hub) authorized(r *http.Request) bool {
 	if h.token == "" {
 		return true
 	}
@@ -141,14 +141,14 @@ func (h *channelsProfileAgentHub) authorized(r *http.Request) bool {
 	return subtle.ConstantTimeCompare([]byte(got), []byte(h.token)) == 1
 }
 
-func (h *channelsProfileAgentHub) addClient(client *channelsProfileAgentConn) {
+func (h *channels_profile_agent_hub) add_client(client *channels_profile_agent_conn) {
 	h.mu.Lock()
 	h.clients[client] = true
 	h.mu.Unlock()
 }
 
-func (h *channelsProfileAgentHub) removeClient(client *channelsProfileAgentConn) {
-	failed := make([]channelsProfileAgentPending, 0)
+func (h *channels_profile_agent_hub) remove_client(client *channels_profile_agent_conn) {
+	failed := make([]channels_profile_agent_pending, 0)
 	h.mu.Lock()
 	if _, ok := h.clients[client]; ok {
 		delete(h.clients, client)
@@ -164,21 +164,21 @@ func (h *channelsProfileAgentHub) removeClient(client *channelsProfileAgentConn)
 
 	for _, pending := range failed {
 		select {
-		case pending.ch <- channelsProfileAgentResponse{
+		case pending.ch <- channels_profile_agent_response{
 			OK:    false,
 			Error: "profile agent disconnected",
 		}:
 		default:
 		}
 	}
-	log.Printf("profile agent disconnected: %s", client.remoteAddr)
+	log.Printf("profile agent disconnected: %s", client.remote_addr)
 }
 
-func (h *channelsProfileAgentHub) Available() bool {
+func (h *channels_profile_agent_hub) Available() bool {
 	return h.ClientCount() > 0
 }
 
-func (h *channelsProfileAgentHub) ClientCount() int {
+func (h *channels_profile_agent_hub) ClientCount() int {
 	if h == nil {
 		return 0
 	}
@@ -187,51 +187,51 @@ func (h *channelsProfileAgentHub) ClientCount() int {
 	return len(h.clients)
 }
 
-func (h *channelsProfileAgentHub) AuthRequired() bool {
+func (h *channels_profile_agent_hub) AuthRequired() bool {
 	return h != nil && h.token != ""
 }
 
-func (h *channelsProfileAgentHub) FetchProfile(ctx context.Context, profileURL string, oid string, uid string) (*channelsFeedProfile, error) {
+func (h *channels_profile_agent_hub) FetchProfile(ctx context.Context, profile_url string, oid string, uid string) (*channels_feed_profile, error) {
 	if h == nil {
-		return nil, errProfileAgentUnavailable
+		return nil, err_profile_agent_unavailable
 	}
 	oid = strings.TrimSpace(oid)
-	uid = cleanNonceID(uid)
+	uid = clean_nonce_id(uid)
 	if oid == "" {
 		return nil, errors.New("missing oid")
 	}
 
-	id := strconv.FormatUint(atomic.AddUint64(&h.reqSeq, 1), 10)
-	req := channelsProfileAgentRequest{
+	id := strconv.FormatUint(atomic.AddUint64(&h.req_seq, 1), 10)
+	req := channels_profile_agent_request{
 		ID:         id,
-		Type:       channelsProfileAgentFetchProfile,
+		Type:       channels_profile_agent_fetch_profile,
 		OID:        oid,
 		UID:        uid,
-		ProfileURL: profileURL,
+		ProfileURL: profile_url,
 	}
 	data, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
 	}
 
-	respCh := make(chan channelsProfileAgentResponse, 1)
-	var sendErr error
+	resp_ch := make(chan channels_profile_agent_response, 1)
+	var send_err error
 	h.mu.Lock()
-	client := h.pickClientLocked()
+	client := h.pick_client_locked()
 	if client == nil {
 		h.mu.Unlock()
-		return nil, errProfileAgentUnavailable
+		return nil, err_profile_agent_unavailable
 	}
-	h.pending[id] = channelsProfileAgentPending{client: client, ch: respCh}
+	h.pending[id] = channels_profile_agent_pending{client: client, ch: resp_ch}
 	select {
 	case client.send <- data:
 	default:
 		delete(h.pending, id)
-		sendErr = errors.New("profile agent send buffer is full")
+		send_err = errors.New("profile agent send buffer is full")
 	}
 	h.mu.Unlock()
-	if sendErr != nil {
-		return nil, sendErr
+	if send_err != nil {
+		return nil, send_err
 	}
 
 	cleanup := func() {
@@ -241,14 +241,14 @@ func (h *channelsProfileAgentHub) FetchProfile(ctx context.Context, profileURL s
 	}
 
 	select {
-	case resp := <-respCh:
+	case resp := <-resp_ch:
 		if !resp.OK {
-			return nil, errors.New(firstNonEmpty(resp.Error, "profile agent returned an error"))
+			return nil, errors.New(first_non_empty(resp.Error, "profile agent returned an error"))
 		}
 		if len(resp.Data) == 0 || string(resp.Data) == "null" {
 			return nil, errors.New("profile agent returned empty data")
 		}
-		var profile channelsFeedProfile
+		var profile channels_feed_profile
 		if err := json.Unmarshal(resp.Data, &profile); err != nil {
 			return nil, fmt.Errorf("parse profile agent data: %w", err)
 		}
@@ -262,14 +262,14 @@ func (h *channelsProfileAgentHub) FetchProfile(ctx context.Context, profileURL s
 	}
 }
 
-func (h *channelsProfileAgentHub) pickClientLocked() *channelsProfileAgentConn {
+func (h *channels_profile_agent_hub) pick_client_locked() *channels_profile_agent_conn {
 	for client := range h.clients {
 		return client
 	}
 	return nil
 }
 
-func (h *channelsProfileAgentHub) deliverResponse(client *channelsProfileAgentConn, resp channelsProfileAgentResponse) {
+func (h *channels_profile_agent_hub) deliver_response(client *channels_profile_agent_conn, resp channels_profile_agent_response) {
 	if resp.ID == "" {
 		return
 	}
@@ -290,9 +290,9 @@ func (h *channelsProfileAgentHub) deliverResponse(client *channelsProfileAgentCo
 	}
 }
 
-func (c *channelsProfileAgentConn) readPump() {
+func (c *channels_profile_agent_conn) read_pump() {
 	defer func() {
-		c.hub.removeClient(c)
+		c.hub.remove_client(c)
 		_ = c.conn.Close()
 	}()
 	c.conn.SetReadLimit(16 << 20)
@@ -305,15 +305,15 @@ func (c *channelsProfileAgentConn) readPump() {
 		if err != nil {
 			return
 		}
-		var resp channelsProfileAgentResponse
+		var resp channels_profile_agent_response
 		if err := json.Unmarshal(message, &resp); err != nil {
 			continue
 		}
-		c.hub.deliverResponse(c, resp)
+		c.hub.deliver_response(c, resp)
 	}
 }
 
-func (c *channelsProfileAgentConn) writePump() {
+func (c *channels_profile_agent_conn) write_pump() {
 	ticker := time.NewTicker(20 * time.Second)
 	defer func() {
 		ticker.Stop()
@@ -339,78 +339,78 @@ func (c *channelsProfileAgentConn) writePump() {
 	}
 }
 
-func (s *migrationServer) fetchProfileViaAgent(timeout time.Duration, profileURL string, oid string, uid string) (*channelsFeedProfile, error) {
-	if s == nil || s.profileAgent == nil {
-		return nil, errProfileAgentUnavailable
+func (s *migration_server) fetch_profile_via_agent(timeout time.Duration, profile_url string, oid string, uid string) (*channels_feed_profile, error) {
+	if s == nil || s.profile_agent == nil {
+		return nil, err_profile_agent_unavailable
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	return s.profileAgent.FetchProfile(ctx, profileURL, oid, uid)
+	return s.profile_agent.FetchProfile(ctx, profile_url, oid, uid)
 }
 
-func runChannelsProfileAgent(rawServerURL string, localBaseURL string, token string) error {
-	serverURL, err := normalizeChannelsProfileAgentURL(rawServerURL)
+func run_channels_profile_agent(raw_server_url string, local_base_url string, token string) error {
+	server_url, err := normalize_channels_profile_agent_url(raw_server_url)
 	if err != nil {
 		return err
 	}
-	localBaseURL = normalizeTargetBaseURL(firstNonEmpty(localBaseURL, defaultTargetBaseURL))
-	agent := &channelsProfileAgentRunner{
-		serverURL:    serverURL,
-		localBaseURL: localBaseURL,
-		token:        strings.TrimSpace(token),
-		httpClient:   &http.Client{Timeout: 30 * time.Second},
+	local_base_url = normalize_target_base_url(first_non_empty(local_base_url, default_target_base_url))
+	agent := &channels_profile_agent_runner{
+		server_url:     server_url,
+		local_base_url: local_base_url,
+		token:          strings.TrimSpace(token),
+		http_client:    &http.Client{Timeout: 30 * time.Second},
 	}
 
-	log.Printf("profile agent using local API: %s", localBaseURL)
-	retryDelay := time.Second
+	log.Printf("profile agent using local API: %s", local_base_url)
+	retry_delay := time.Second
 	for {
-		if err := agent.runOnce(); err != nil {
-			log.Printf("profile agent connection ended: %v; reconnecting in %s", err, retryDelay)
+		if err := agent.run_once(); err != nil {
+			log.Printf("profile agent connection ended: %v; reconnecting in %s", err, retry_delay)
 		}
-		time.Sleep(retryDelay)
-		if retryDelay < 30*time.Second {
-			retryDelay *= 2
-			if retryDelay > 30*time.Second {
-				retryDelay = 30 * time.Second
+		time.Sleep(retry_delay)
+		if retry_delay < 30*time.Second {
+			retry_delay *= 2
+			if retry_delay > 30*time.Second {
+				retry_delay = 30 * time.Second
 			}
 		}
 	}
 }
 
-func (a *channelsProfileAgentRunner) runOnce() error {
+func (a *channels_profile_agent_runner) run_once() error {
 	headers := http.Header{}
 	if a.token != "" {
 		headers.Set("Authorization", "Bearer "+a.token)
 	}
-	conn, resp, err := websocket.DefaultDialer.Dial(a.serverURL, headers)
+	conn, resp, err := websocket.DefaultDialer.Dial(a.server_url, headers)
 	if err != nil {
 		if resp != nil && resp.Body != nil {
 			defer resp.Body.Close()
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 			if text := strings.TrimSpace(string(body)); text != "" {
-				return fmt.Errorf("dial %s: %w: %s", a.serverURL, err, text)
+				return fmt.Errorf("dial %s: %w: %s", a.server_url, err, text)
 			}
 		}
-		return fmt.Errorf("dial %s: %w", a.serverURL, err)
+		return fmt.Errorf("dial %s: %w", a.server_url, err)
 	}
 	defer conn.Close()
 
-	log.Printf("profile agent connected to %s", a.serverURL)
+	log.Printf("profile agent connected to %s", a.server_url)
 	conn.SetReadLimit(1 << 20)
 	for {
-		var req channelsProfileAgentRequest
+		var req channels_profile_agent_request
 		if err := conn.ReadJSON(&req); err != nil {
 			return err
 		}
-		resp := a.handleRequest(req)
+		resp := a.handle_request(req)
 		if err := conn.WriteJSON(resp); err != nil {
 			return err
 		}
 	}
 }
 
-func (a *channelsProfileAgentRunner) handleRequest(req channelsProfileAgentRequest) channelsProfileAgentResponse {
-	resp := channelsProfileAgentResponse{
+func (a *channels_profile_agent_runner) handle_request(req channels_profile_agent_request) channels_profile_agent_response {
+	resp := channels_profile_agent_response{
 		ID:   req.ID,
 		Type: req.Type,
 	}
@@ -418,7 +418,7 @@ func (a *channelsProfileAgentRunner) handleRequest(req channelsProfileAgentReque
 		resp.Error = "missing request id"
 		return resp
 	}
-	if req.Type != channelsProfileAgentFetchProfile {
+	if req.Type != channels_profile_agent_fetch_profile {
 		resp.Error = "unsupported request type: " + req.Type
 		return resp
 	}
@@ -427,8 +427,8 @@ func (a *channelsProfileAgentRunner) handleRequest(req channelsProfileAgentReque
 		resp.Error = "missing oid"
 		return resp
 	}
-	profileURL := buildTargetProfileURL(a.localBaseURL, oid, req.UID).String()
-	data, err := fetchTargetProfileData(a.httpClient, profileURL)
+	profile_url := build_target_profile_url(a.local_base_url, oid, req.UID).String()
+	data, err := fetch_target_profile_data(a.http_client, profile_url)
 	if err != nil {
 		resp.Error = err.Error()
 		return resp
@@ -438,7 +438,7 @@ func (a *channelsProfileAgentRunner) handleRequest(req channelsProfileAgentReque
 	return resp
 }
 
-func normalizeChannelsProfileAgentURL(raw string) (string, error) {
+func normalize_channels_profile_agent_url(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", errors.New("missing -profile-agent-url")
@@ -463,16 +463,16 @@ func normalizeChannelsProfileAgentURL(raw string) (string, error) {
 		return "", errors.New("profile agent URL host is empty")
 	}
 	if strings.Trim(parsed.Path, "/") == "" {
-		parsed.Path = channelsProfileAgentPath
+		parsed.Path = channels_profile_agent_path
 	}
 	return parsed.String(), nil
 }
 
-func fetchTargetProfileData(client *http.Client, rawURL string) (json.RawMessage, error) {
+func fetch_target_profile_data(client *http.Client, raw_url string) (json.RawMessage, error) {
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
-	resp, err := client.Get(rawURL)
+	resp, err := client.Get(raw_url)
 	if err != nil {
 		return nil, fmt.Errorf("fetch profile: %w", err)
 	}
@@ -484,7 +484,7 @@ func fetchTargetProfileData(client *http.Client, rawURL string) (json.RawMessage
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("profile http %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	var envelope targetAPIEnvelope
+	var envelope target_api_envelope
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return nil, fmt.Errorf("parse profile response: %w", err)
 	}
@@ -494,7 +494,7 @@ func fetchTargetProfileData(client *http.Client, rawURL string) (json.RawMessage
 	if len(envelope.Data) == 0 || string(envelope.Data) == "null" {
 		return nil, errors.New("profile data is empty")
 	}
-	var profile channelsFeedProfile
+	var profile channels_feed_profile
 	if err := json.Unmarshal(envelope.Data, &profile); err != nil {
 		return nil, fmt.Errorf("parse profile data: %w", err)
 	}
@@ -504,19 +504,19 @@ func fetchTargetProfileData(client *http.Client, rawURL string) (json.RawMessage
 	return append(json.RawMessage(nil), envelope.Data...), nil
 }
 
-func validate_channels_feed_profile(profile *channelsFeedProfile) error {
+func validate_channels_feed_profile(profile *channels_feed_profile) error {
 	if profile == nil {
 		return errors.New("profile is nil")
 	}
 	if profile.ErrCode != 0 {
 		return fmt.Errorf("profile business error code=%d: %s", profile.ErrCode, profile.ErrMsg)
 	}
-	object_data := normalizeRawJSONObject(profile.Data.Object)
+	object_data := normalize_raw_json_object(profile.Data.Object)
 	if len(object_data) == 0 || strings.TrimSpace(string(object_data)) == "null" {
 		return errors.New("profile object is empty")
 	}
 	var object_value struct {
-		ID flexibleString `json:"id"`
+		ID flexible_string `json:"id"`
 	}
 	if err := json.Unmarshal(object_data, &object_value); err != nil {
 		return fmt.Errorf("parse profile object: %w", err)

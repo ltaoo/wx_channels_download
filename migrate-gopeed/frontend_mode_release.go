@@ -2,4 +2,4 @@
 
 package main
 
-const defaultMode = "release"
+const default_mode = "release"

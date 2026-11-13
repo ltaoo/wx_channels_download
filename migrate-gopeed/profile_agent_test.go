@@ -39,7 +39,7 @@ func TestNormalizeChannelsProfileAgentURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := normalizeChannelsProfileAgentURL(tt.raw)
+			got, err := normalize_channels_profile_agent_url(tt.raw)
 			if err != nil {
 				t.Fatalf("normalize URL: %v", err)
 			}
@@ -58,7 +58,7 @@ func TestProfileAgentRunnerHandleRequestFetchesLocalProfile(t *testing.T) {
 		if r.URL.Query().Get("oid") != "oid-1" || r.URL.Query().Get("nid") != "nid-1" {
 			t.Fatalf("query = %s", r.URL.RawQuery)
 		}
-		writeAPIOK(w, json.RawMessage(`{
+		write_apiok(w, json.RawMessage(`{
 			"errCode": 0,
 			"errMsg": "",
 			"data": {
@@ -71,20 +71,20 @@ func TestProfileAgentRunnerHandleRequestFetchesLocalProfile(t *testing.T) {
 	}))
 	defer local.Close()
 
-	runner := &channelsProfileAgentRunner{
-		localBaseURL: local.URL,
-		httpClient:   local.Client(),
+	runner := &channels_profile_agent_runner{
+		local_base_url: local.URL,
+		http_client:    local.Client(),
 	}
-	resp := runner.handleRequest(channelsProfileAgentRequest{
+	resp := runner.handle_request(channels_profile_agent_request{
 		ID:   "req-1",
-		Type: channelsProfileAgentFetchProfile,
+		Type: channels_profile_agent_fetch_profile,
 		OID:  "oid-1",
 		UID:  "nid-1",
 	})
 	if !resp.OK {
 		t.Fatalf("agent response error: %s", resp.Error)
 	}
-	var profile channelsFeedProfile
+	var profile channels_feed_profile
 	if err := json.Unmarshal(resp.Data, &profile); err != nil {
 		t.Fatalf("parse agent data: %v", err)
 	}
@@ -94,27 +94,27 @@ func TestProfileAgentRunnerHandleRequestFetchesLocalProfile(t *testing.T) {
 }
 
 func TestHandleChannelsFeedProfileForceAgentRequiresConnectedClient(t *testing.T) {
-	targetCalled := false
+	target_called := false
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		targetCalled = true
-		writeAPIOK(w, json.RawMessage(validChannelsProfileJSON()))
+		target_called = true
+		write_apiok(w, json.RawMessage(valid_channels_profile_json()))
 	}))
 	defer target.Close()
 
-	dataDir := t.TempDir()
-	server := &migrationServer{
-		defaultDataDir: dataDir,
-		targetBaseURL:  target.URL,
-		profileAgent:   newChannelsProfileAgentHub("abc"),
+	data_dir := t.TempDir()
+	server := &migration_server{
+		default_data_dir: data_dir,
+		target_base_url:  target.URL,
+		profile_agent:    new_channels_profile_agent_hub("abc"),
 	}
-	req := httptest.NewRequest(http.MethodGet, "/api/channels/feed/profile?oid=oid-1&uid=nid-1&force_agent=1&data_dir="+url.QueryEscape(dataDir), nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/channels/feed/profile?oid=oid-1&uid=nid-1&force_agent=1&data_dir="+url.QueryEscape(data_dir), nil)
 	rr := httptest.NewRecorder()
-	server.handleChannelsFeedProfile(rr, req)
+	server.handle_channels_feed_profile(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d want %d; body=%s", rr.Code, http.StatusOK, rr.Body.String())
 	}
-	if targetCalled {
+	if target_called {
 		t.Fatalf("target HTTP fallback was called despite force_agent=1")
 	}
 	var resp struct {
@@ -130,30 +130,30 @@ func TestHandleChannelsFeedProfileForceAgentRequiresConnectedClient(t *testing.T
 }
 
 func TestHandleChannelsFeedProfileReportsHTTPSourceWhenNotForced(t *testing.T) {
-	targetCalled := false
+	target_called := false
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		targetCalled = true
+		target_called = true
 		if r.URL.Query().Get("oid") != "oid-1" || r.URL.Query().Get("nid") != "nid-1" {
 			t.Fatalf("query = %s", r.URL.RawQuery)
 		}
-		writeAPIOK(w, json.RawMessage(validChannelsProfileJSON()))
+		write_apiok(w, json.RawMessage(valid_channels_profile_json()))
 	}))
 	defer target.Close()
 
-	dataDir := t.TempDir()
-	server := &migrationServer{
-		defaultDataDir: dataDir,
-		targetBaseURL:  target.URL,
-		profileAgent:   newChannelsProfileAgentHub("abc"),
+	data_dir := t.TempDir()
+	server := &migration_server{
+		default_data_dir: data_dir,
+		target_base_url:  target.URL,
+		profile_agent:    new_channels_profile_agent_hub("abc"),
 	}
-	req := httptest.NewRequest(http.MethodGet, "/api/channels/feed/profile?oid=oid-1&uid=nid-1&data_dir="+url.QueryEscape(dataDir), nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/channels/feed/profile?oid=oid-1&uid=nid-1&data_dir="+url.QueryEscape(data_dir), nil)
 	rr := httptest.NewRecorder()
-	server.handleChannelsFeedProfile(rr, req)
+	server.handle_channels_feed_profile(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d want %d; body=%s", rr.Code, http.StatusOK, rr.Body.String())
 	}
-	if !targetCalled {
+	if !target_called {
 		t.Fatalf("target HTTP fallback was not called")
 	}
 	var resp struct {
@@ -172,12 +172,12 @@ func TestHandleChannelsFeedProfileReportsHTTPSourceWhenNotForced(t *testing.T) {
 }
 
 func TestHandleChannelsProfileAgentStatusReportsAuthRequired(t *testing.T) {
-	server := &migrationServer{
-		profileAgent: newChannelsProfileAgentHub("abc"),
+	server := &migration_server{
+		profile_agent: new_channels_profile_agent_hub("abc"),
 	}
 	req := httptest.NewRequest(http.MethodGet, "/api/channels/profile-agent/status", nil)
 	rr := httptest.NewRecorder()
-	server.handleChannelsProfileAgentStatus(rr, req)
+	server.handle_channels_profile_agent_status(rr, req)
 
 	var resp struct {
 		Code int `json:"code"`
@@ -195,7 +195,7 @@ func TestHandleChannelsProfileAgentStatusReportsAuthRequired(t *testing.T) {
 	}
 }
 
-func validChannelsProfileJSON() string {
+func valid_channels_profile_json() string {
 	return `{
 		"errCode": 0,
 		"errMsg": "",
