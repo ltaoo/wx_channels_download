@@ -19,8 +19,14 @@ function setup(page, { loading = true, target = false, parsing = false, mounted 
       children: [], attributes: {}, style: {}, className: "",
       setAttribute(key, value) { this.attributes[key] = value; },
       appendChild(child) { child.parentElement = this; this.children.push(child); },
+      matches(selector) { return selector.split(".").filter(Boolean).every((name) => this.className.split(" ").includes(name)); },
+      closest(selector) { return this.matches(selector) ? this : this.parentElement?.closest(selector) || null; },
       querySelector(selector) {
-        return this.children.find((child) => child.className.split(" ").includes(selector.slice(1))) || null;
+        for (const child of this.children) {
+          const match = child.matches(selector) ? child : child.querySelector(selector);
+          if (match) return match;
+        }
+        return null;
       },
     };
     node.classList = {
@@ -65,7 +71,7 @@ function setup(page, { loading = true, target = false, parsing = false, mounted 
   vm.runInContext(fs.readFileSync(path.join(root,
     `pkg/scraper/wxchannels/inject/channels.${page}.js`), "utf8"), context);
   return {
-    body, app, operation, document, listeners, nodes, selector, timers, context,
+    body, app, operation, op_item, element, observers, document, listeners, nodes, selector, timers, context,
     set_target() { nodes.set(selector, page === "profile" ? operation : op_item); },
     mutate() {
       for (const observer of observers) {
@@ -163,6 +169,51 @@ test("home: repeated insertion into the same action container is ignored", () =>
   env.context.__wx_insert_download_btn(env.operation);
   assert.equal(env.button_count(), 1);
 });
+
+for (const page of ["home", "feed"]) {
+  for (const nested_first of [false, true]) {
+    test(`${page}: nested share action uses the same download button, nested first=${nested_first}`, () => {
+      const env = setup(page);
+      env.operation.className = "feed-interact";
+      const wrapper = env.element();
+      const share = env.element();
+      wrapper.appendChild(share);
+      env.operation.appendChild(wrapper);
+      const actions = nested_first ? [share, env.op_item] : [env.op_item, share];
+      env.document.querySelectorAll = () => actions;
+      env.set_target();
+      env.nodes.delete(".loading-content");
+      env.mutate();
+      assert.equal(env.operation.children.filter((node) => node.matches(`.wx-${page}-download-btn`)).length, 1);
+      assert.equal(wrapper.children.length, 1);
+    });
+  }
+
+  test(`${page}: dynamically added nested share action inserts into the feed action bar`, () => {
+    const env = setup(page);
+    const scroll = env.element();
+    scroll.className = "slides-scroll";
+    scroll.nodeType = 1;
+    const mount_observer = env.observers.at(-1);
+    mount_observer.callback([{ type: "childList", addedNodes: [scroll] }], mount_observer);
+    const slide = env.element();
+    slide.className = "slides-item";
+    env.operation.className = "feed-interact";
+    slide.appendChild(env.operation);
+    const wrapper = env.element();
+    const share = env.element();
+    share.className = "click-box op-item";
+    share.nodeType = 1;
+    wrapper.appendChild(share);
+    env.operation.appendChild(wrapper);
+    const observer = env.observers.at(-1);
+    const mutation = [{ type: "childList", addedNodes: [share] }];
+    observer.callback(mutation);
+    observer.callback(mutation);
+    assert.equal(env.operation.children.filter((node) => node.matches(`.wx-${page}-download-btn`)).length, 1);
+    assert.equal(wrapper.children.length, 1);
+  });
+}
 
 test("observe_node: callers without a loading selector retain timeout fallback", () => {
   const env = setup("profile");
