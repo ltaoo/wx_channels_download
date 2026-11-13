@@ -281,7 +281,7 @@ function AutomationPipelineList(props) {
       {
         name: "actions",
         title: "操作",
-        width: 230,
+        width: 140,
         cellClass: "flex flex-nowrap items-center justify-end gap-1-5 max-900:justify-start",
         render(pipeline) {
           return [
@@ -369,7 +369,7 @@ function AutomationDefinitionsDrawer(props) {
         emptyDescription: "创建或导入一个流程，再添加配置实例。",
         columns: [
           { name: "name", title: "自动化流程", width: "minmax(180px, 1fr)", render(definition) {
-            return [View({ class: "font-semibold text-color-text-primary overflow-wrap-anywhere", attributes: { n: `automation-definition-name-${definition.id}` } }, [definition.name])];
+            return [View({ class: "text-base font-semibold text-color-text-primary overflow-wrap-anywhere", attributes: { n: `automation-definition-name-${definition.id}` } }, [definition.name])];
           } },
           { name: "instances", title: "配置实例", width: 95, render(definition) { return [String(definition.instance_count)]; } },
           { name: "config", title: "配置", width: "minmax(240px, 1fr)", cellClass: "min-w-0 flex flex-col items-start gap-3", render(definition) {
@@ -385,7 +385,7 @@ function AutomationDefinitionsDrawer(props) {
               ]),
             ].filter(Boolean);
           } },
-          { name: "actions", title: "操作", width: 320, cellClass: "flex flex-nowrap items-center justify-end gap-2 whitespace-nowrap", render(definition) {
+          { name: "actions", title: "操作", width: 192, cellClass: "flex flex-nowrap items-center justify-end gap-2 whitespace-nowrap", render(definition) {
             return [
               TextButton({ store: vm$.ui.btn_definition_instance$.bind(definition), attributes: { n: `automation-definition-create-instance-${definition.id}`, type: "button" } }, ["新增配置实例"]),
               AutomationPipelineLink({ flowId: definition.id, mode: "edit", label: "编辑流程" }),
