@@ -121,6 +121,7 @@ var tool_declarations = concat_tools(
 	tools_pipeline_editor,
 	tools_data,
 	tools_sync,
+	tools_file_organizer,
 )
 
 func build_tool_registry(declarations []tool) map[string]tool {

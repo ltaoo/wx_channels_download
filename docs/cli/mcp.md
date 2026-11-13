@@ -30,6 +30,7 @@ title: MCP Server
 - `get_download_task_detail`：获取下载任务、文件和关联内容详情。
 - `delete_download_tasks`：批量删除下载任务，可通过 `delete_files` 选择是否同时删除关联的本地文件。
 - `get_accounts`：分页获取数据库中的平台账号。
+- `organize_account_files`：按账号移动并重命名已完成的视频，更新数据库文件路径，每个视频生成独立的 Kodi 电影目录与 NFO，默认只预览；使用方法见[按账号整理 Kodi 媒体库](/feature/mcp/commands#按账号整理-kodi-媒体库)。
 - `get_browse_history`：分页获取浏览记录。
 - `get_logs`：分页读取并筛选应用日志。
 - `get_certificate_status`：获取代理根证书的安装及信任状态。

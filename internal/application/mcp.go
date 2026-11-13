@@ -35,6 +35,7 @@ func new_mcp_service(
 		ZhihuCollections:    zhihu.NewClient(cookie_reader, api_config.Original.Logger()),
 		ZhihuCredentials:    cookie_reader,
 		Automation:          new_mcp_automation_backend(automation_service),
+		FileOrganizer:       download_task_service,
 	}
 	var mcp_service *services.MCPService
 	var err error

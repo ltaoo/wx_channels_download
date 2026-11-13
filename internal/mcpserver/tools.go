@@ -35,6 +35,7 @@ type Config struct {
 	ZhihuCollections    ZhihuCollectionReader
 	ZhihuCredentials    ZhihuCredentialReader
 	Automation          AutomationBackend
+	FileOrganizer       FileOrganizer
 }
 
 // ToolSet owns the business tool backends and registers their tools into an MCP
@@ -51,6 +52,7 @@ type ToolSet struct {
 	zhihu_collections     ZhihuCollectionReader
 	zhihu_credentials     ZhihuCredentialReader
 	automation            AutomationBackend
+	file_organizer        FileOrganizer
 }
 
 // NewToolSet validates the configured tool backends and builds the business
@@ -67,7 +69,7 @@ func NewToolSet(config Config) (*ToolSet, error) {
 	if (config.ZhihuCollections == nil) != (config.ZhihuCredentials == nil) {
 		return nil, fmt.Errorf("知乎 MCP 工具需要同时配置收藏夹读取器和凭证读取器")
 	}
-	if client == nil && config.DataReader == nil && config.ScraperJobs == nil && config.DownloadTaskCreator == nil && config.DownloadTaskDeleter == nil && config.WXChannels == nil && config.SphDeployer == nil && config.ZhihuCollections == nil && config.Automation == nil {
+	if client == nil && config.DataReader == nil && config.ScraperJobs == nil && config.DownloadTaskCreator == nil && config.DownloadTaskDeleter == nil && config.WXChannels == nil && config.SphDeployer == nil && config.ZhihuCollections == nil && config.Automation == nil && config.FileOrganizer == nil {
 		return nil, fmt.Errorf("至少需要配置一种工具后端")
 	}
 	toolset := &ToolSet{
@@ -82,6 +84,7 @@ func NewToolSet(config Config) (*ToolSet, error) {
 		zhihu_collections:     config.ZhihuCollections,
 		zhihu_credentials:     config.ZhihuCredentials,
 		automation:            config.Automation,
+		file_organizer:        config.FileOrganizer,
 	}
 	if err := validate_tool_registry(); err != nil {
 		return nil, err

@@ -1,0 +1,61 @@
+{
+  "post": {
+    "tags": ["账号"],
+    "summary": "按账号移动并重命名视频、更新数据库路径、生成 Kodi NFO",
+    "description": "按账号分目录，每个已完成的本地视频资源移动到独立电影目录并生成同名 movie 格式 NFO，无季集编号。目录和文件名附资源 ID 区分同名视频。更新 download_resource 的 download_dir、name 和 updated_at，提交成功后移除原路径。同一文件系统无需复制视频数据；跨盘时先复制再提交数据库并移除源文件。提交前失败保留源文件并清理本次新建文件。共享源路径和符号链接文件拒绝移动。相同目标可重试，冲突不覆盖。dry_run 默认 true，只预览且不更新数据库。逐项检查 files[].status/error；部分失败时成功项不撤销。",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "required": ["account_id", "output_dir"],
+            "properties": {
+              "account_id": {"type": "string", "description": "归档账号完整主键"},
+              "output_dir": {"type": "string", "description": "下载器主机上的绝对路径"},
+              "dry_run": {"type": "boolean", "default": true}
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "code=0 表示请求完成，仍须检查逐项错误。非零 code 表示请求失败，data 可包含已经处理的部分结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {"type": "integer"},
+                "msg": {"type": "string"},
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "account_id": {"type": "string"},
+                    "directory": {"type": "string"},
+                    "dry_run": {"type": "boolean"},
+                    "files": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "resource_id": {"type": "integer"},
+                          "source": {"type": "string"},
+                          "video": {"type": "string"},
+                          "nfo": {"type": "string"},
+                          "status": {"type": "string", "enum": ["planned", "ready", "error"]},
+                          "error": {"type": "string"}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
