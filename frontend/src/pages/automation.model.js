@@ -2509,7 +2509,7 @@ function AutomationPageViewModel(props, options) {
         execution_run_status_.as(selected.status);
       }
       if (view_mode_.value === "detail") {
-        const run_id = selected_run_id_.value || active?.id;
+        const run_id = selected_run_id_.value || active?.id || runs_.value[0]?.id;
         if (run_id) await select_run(run_id, flow_id);
       }
     } finally {
