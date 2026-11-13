@@ -7,6 +7,7 @@
    * @param {HTMLElement} $parent
    */
   function insert_download_btn($parent) {
+    $parent = $parent.closest(".feed-interact") || $parent;
     if ($parent.querySelector(".wx-feed-download-btn")) {
       return;
     }
