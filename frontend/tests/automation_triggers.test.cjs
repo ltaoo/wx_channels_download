@@ -1709,6 +1709,26 @@ test("a stale history response cannot overwrite a live completion status", async
   model.methods.destroy();
 });
 
+test("detail defaults to the first active run or the first history record", async () => {
+  for (const status of ["QUEUED", "RUNNING", "WAITING", "COMPLETED", "FAILED", "CANCELLED"]) {
+    const runs = [
+      { id: "first", flow_id: "flow-test", status: "COMPLETED" },
+      { id: "second", flow_id: "flow-test", status },
+      { id: "third", flow_id: "flow-test", status },
+    ];
+    const { model } = setup({ mode: "detail", runs });
+    await model.methods.ready();
+    const expected_id = ["QUEUED", "RUNNING", "WAITING"].includes(status) ? "second" : "first";
+    assert.equal(model.state.selected_run_id.value, expected_id, status);
+    assert.equal(model.state.selected_run.value.id, expected_id, status);
+    assert.equal(model.state.execution_run_id.value, expected_id, status);
+    await model.methods.selectRun("third");
+    await model.methods.refreshRuns();
+    assert.equal(model.state.selected_run_id.value, "third", "refresh preserves manual selection");
+    model.methods.destroy();
+  }
+});
+
 test("historical selection survives manual refresh and ignores other runs on the live channel", async () => {
   const channel = test_editor_channel();
   const runs = [
