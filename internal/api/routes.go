@@ -96,6 +96,7 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/api/account/:scope/content/list", c.handle_account_details_content_list)
 	c.engine.GET("/api/account/details/:scope/content/list", c.handle_account_details_content_list)
 	c.engine.POST("/api/account/synchronize", c.handle_account_synchronize)
+	c.engine.POST("/api/account/organize_files", c.handle_account_organize_files)
 	c.engine.GET("/api/content/list", c.handle_content_list)
 	c.engine.GET("/api/content/detail", c.handle_content_detail)
 	c.engine.GET("/api/content/relations", c.handle_content_relations)

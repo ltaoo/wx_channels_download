@@ -270,6 +270,9 @@
     "/api/account/synchronize": {
       "$ref": "./account/synchronize.json"
     },
+    "/api/account/organize_files": {
+      "$ref": "./account/organize_files.json"
+    },
     "/api/content/list": {
       "$ref": "./content/list.json"
     },
