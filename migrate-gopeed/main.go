@@ -714,7 +714,7 @@ func (s *migration_server) prefetch_migration_profile_cache(client *http.Client,
 	for _, task := range tasks {
 		labels := task_labels(task)
 		if article_id := first_label(labels, "article_id", "articleid", "mp_article_id"); article_id != "" {
-			article_url := build_wxmp_article_url(article_id)
+			article_url := gopeed_article_url(task, article_id)
 			status := migration_profile_cache_status{
 				CacheKey:   wxmp_article_profile_cache_key(article_id, article_url),
 				ProfileURL: article_url,
@@ -962,7 +962,7 @@ func (s *migration_server) migrate_one_task(db *gorm.DB, target_base_url string,
 	if len(profile_object) > 0 {
 		target_id, err = import_target_download_record(db, task, labels, oid, uid, save_path, profile_object)
 	} else {
-		target_id, err = import_target_download_task_without_content(
+		target_id, err = import_target_download_task_from_history(
 			db,
 			task,
 			labels,
@@ -991,7 +991,7 @@ func (s *migration_server) migrate_one_task(db *gorm.DB, target_base_url string,
 
 func (s *migration_server) migrate_wxmp_article_task(db *gorm.DB, data_dir string, task *downloadpkg.Task, labels map[string]string, article_id string, dry_run bool, allow_missing bool) migration_execute_item {
 	save_path := task_file_path(task, data_dir)
-	article_url := build_wxmp_article_url(article_id)
+	article_url := gopeed_article_url(task, article_id)
 	cache_key := wxmp_article_profile_cache_key(article_id, article_url)
 	item := migration_execute_item{
 		TaskID:          safe_task_id(task),
@@ -1064,7 +1064,7 @@ func (s *migration_server) migrate_wxmp_article_task(db *gorm.DB, data_dir strin
 	if len(content_raw) > 0 {
 		target_id, err = import_target_wxmp_download_record(db, task, labels, article_id, article_url, save_path, content_raw)
 	} else {
-		target_id, err = import_target_download_task_without_content(
+		target_id, err = import_target_download_task_from_history(
 			db,
 			task,
 			labels,
@@ -1102,6 +1102,10 @@ func fetch_wxmp_article_content(article_url string) (json.RawMessage, error) {
 	}
 	if len(strings.TrimSpace(string(content))) == 0 || strings.TrimSpace(string(content)) == "null" {
 		return nil, fmt.Errorf("wxmp article content is empty")
+	}
+	var profile wxmp.ArticleCgiDataNew
+	if err := json.Unmarshal(content, &profile); err != nil || profile.UserName == "" || profile.Title == "" {
+		return nil, fmt.Errorf("公众号接口未返回完整详情")
 	}
 	return content, nil
 }
@@ -1311,6 +1315,10 @@ func (s *migration_server) read_wxmp_article_cache(data_dir string, key string) 
 		return nil, "", false, nil
 	}
 	content := normalize_raw_json_object(entry.Profile)
+	var profile wxmp.ArticleCgiDataNew
+	if json.Unmarshal(content, &profile) != nil || profile.UserName == "" || profile.Title == "" {
+		return nil, "", false, nil
+	}
 	if len(content) == 0 || strings.TrimSpace(string(content)) == "null" {
 		return nil, "", false, fmt.Errorf("article cache is empty for %s", key)
 	}
@@ -2085,8 +2093,8 @@ func must_raw_json(value any) json.RawMessage {
 
 func migration_suffix_config(filename string) string {
 	switch strings.ToLower(filepath.Ext(filename)) {
-	case ".mp4":
-		return ".mp4"
+	case ".mp4", ".mp3", ".jpg", ".jpeg", ".png":
+		return strings.ToLower(filepath.Ext(filename))
 	default:
 		return ""
 	}

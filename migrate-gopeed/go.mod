@@ -7,6 +7,7 @@ require github.com/GopeedLab/gopeed v0.0.0
 require github.com/ltaoo/velo v1.1.2
 
 require (
+	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/gorilla/websocket v1.5.3
 	gorm.io/gorm v1.31.1
 	wx_channel v0.0.0
@@ -17,7 +18,6 @@ require (
 	github.com/Danny-Dasilva/CycleTLS/cycletls v1.0.23 // indirect
 	github.com/Danny-Dasilva/fhttp v0.0.0-20231127034941-9494939f30fa // indirect
 	github.com/JohannesKaufmann/html-to-markdown v1.4.1 // indirect
-	github.com/PuerkitoBio/goquery v1.8.1 // indirect
 	github.com/adrg/xdg v0.4.0 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/andybalholm/cascadia v1.3.2 // indirect

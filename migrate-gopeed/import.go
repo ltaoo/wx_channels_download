@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/GopeedLab/gopeed/pkg/base"
@@ -40,8 +41,12 @@ func import_target_wxmp_download_record(db *gorm.DB, task *downloadpkg.Task, lab
 	return recreate_gopeed_task(db, task, labels, platform_wxmp, article_id, article_url, save_path, info)
 }
 
-func import_target_download_task_without_content(db *gorm.DB, task *downloadpkg.Task, labels map[string]string, platform_id, external_id, source_url, save_path string) (int, error) {
-	return recreate_gopeed_task(db, task, labels, platform_id, external_id, source_url, save_path, &adapter.DownloadTaskResult{Task: &model.DownloadTask{}})
+func import_target_download_task_from_history(db *gorm.DB, task *downloadpkg.Task, labels map[string]string, platform_id, external_id, source_url, save_path string) (int, error) {
+	info, err := build_gopeed_history_content(task, labels, platform_id, external_id, source_url, save_path)
+	if err != nil {
+		return 0, err
+	}
+	return recreate_gopeed_task(db, task, labels, platform_id, external_id, source_url, save_path, info)
 }
 
 // Gopeed owns the downloaded file; adapters supply the current content graph.
@@ -101,6 +106,9 @@ func recreate_gopeed_task(db *gorm.DB, task *downloadpkg.Task, labels map[string
 	resource.ContentId = task_record.ContentId
 	resource.DownloadDir, resource.Name = download_dir, filename
 	resource.Type, resource.Kind = model.ResourceTypeFile, resource_kind_for_path(save_path)
+	if platform_id == platform_wxmp && resource.Kind == "file" {
+		resource.Kind = "html"
+	}
 	resource.UniqueID = first_non_empty(resource.UniqueID, task_record.UniqueID)
 	resource.Timestamps = timestamps
 	resource.Size = migrated_size(task, save_path)
@@ -121,7 +129,11 @@ func recreate_gopeed_task(db *gorm.DB, task *downloadpkg.Task, labels map[string
 		resource.Size, resource.Downloaded = file_info.Size(), file_info.Size()
 		resource.StartTime, resource.FinishTime = &created_at, &updated_at
 	}
-	resource.Extra = merge_migration_metadata_json(resource.Extra, map[string]any{"gopeedid": safe_task_id(task), "file_path": save_path, "migrated": true})
+	extra := map[string]any{"gopeedid": safe_task_id(task), "file_path": save_path, "migrated": true}
+	if spec := strings.TrimSpace(labels["spec"]); spec != "" {
+		extra["spec"] = spec
+	}
+	resource.Extra = merge_migration_metadata_json(resource.Extra, extra)
 	endpoint_url := task_url(task)
 	if platform_id == platform_wxmp || (endpoint_url == "" && len(resource_info.Endpoints) == 0) {
 		endpoint_url = first_non_empty(source_url, endpoint_url)

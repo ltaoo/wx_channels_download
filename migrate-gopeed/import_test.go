@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -158,5 +159,26 @@ func TestGopeedRecreationRollsBackWholeGraph(t *testing.T) {
 	file, err := os.ReadFile(save_path)
 	if err != nil || string(file) != "hello" {
 		t.Fatalf("source file changed: %q %v", file, err)
+	}
+}
+
+func TestGopeedRestoresImageArchiveWithoutArticleText(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "gallery")
+	body := `<html><title>Archived gallery</title><body><div class="split-container"><div class="additional-images"><img src="data:image/png;base64,aGVsbG8="/></div><div class="rich_media_content"></div></div></body></html>`
+	if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+		t.Fatal(err)
+	}
+	task := must_gopeed_migration_task(t, "gallery", directory, "gallery", nil)
+	info, err := build_gopeed_history_content(task, nil, platform_wxmp, "123_1", "https://mp.weixin.qq.com/s?__biz=biz&mid=123&idx=1", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Content == nil || info.Content.Title != "Archived gallery" || len(info.ContentDetails) != 1 {
+		t.Fatalf("gallery metadata missing: %+v", info)
+	}
+	article, ok := info.ContentDetails[0].Data.(*model.ContentArticle)
+	if !ok || !strings.Contains(article.HTML, "data:image/png;base64,aGVsbG8=") {
+		t.Fatalf("archive images lost: %+v", info.ContentDetails)
 	}
 }

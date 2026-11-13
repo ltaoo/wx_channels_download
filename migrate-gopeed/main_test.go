@@ -671,168 +671,96 @@ func TestPrefetchMigrationProfileCacheThenMigrateUsesCache(t *testing.T) {
 	}
 }
 
-func TestMigrateOneTaskCreatesStandaloneTaskWhenProfileIsMissing(t *testing.T) {
-	dir := t.TempDir()
-	save_path := filepath.Join(dir, "demo.mp4")
-	if err := os.WriteFile(save_path, []byte("hello"), 0o644); err != nil {
-		t.Fatalf("write migrated file: %v", err)
-	}
-
-	db, err := open_target_db(filepath.Join(dir, "data.db"))
-	if err != nil {
-		t.Fatalf("open target db: %v", err)
-	}
-	defer close_target_db(db)
-
-	task := must_gopeed_migration_task(t, "cache-task-missing", dir, "demo.mp4", map[string]string{
-		"id":  "missing",
-		"oid": "missing",
-		"uid": "67890",
-	})
-
-	migration := &migration_server{}
-	item := migration.migrate_one_task(db, "http://127.0.0.1:1", dir, task, false, false, nil)
-	if item.Action != "migrated" || item.TargetID <= 0 || item.ProfileCacheHit {
-		t.Fatalf("unexpected migration item: %+v", item)
-	}
-
-	var task_record model.DownloadTask
-	if err := db.Where("id = ?", item.TargetID).First(&task_record).Error; err != nil {
-		t.Fatalf("query standalone task: %v", err)
-	}
-	if task_record.ContentId != nil {
-		t.Fatalf("standalone task content_id = %v want nil", task_record.ContentId)
-	}
-	var metadata map[string]any
-	if err := json.Unmarshal([]byte(task_record.MetadataJSON), &metadata); err != nil {
-		t.Fatalf("parse standalone task metadata: %v", err)
-	}
-	if metadata["gopeedid"] != "cache-task-missing" || metadata["detail_missing"] != true {
-		t.Fatalf("unexpected standalone task metadata: %v", metadata)
-	}
-
-	var resource_record model.DownloadResource
-	if err := db.Where("task_id = ?", item.TargetID).First(&resource_record).Error; err != nil {
-		t.Fatalf("query resource without content: %v", err)
-	}
-	if resource_record.ContentId != nil {
-		t.Fatalf("resource content_id = %v want nil", resource_record.ContentId)
-	}
-	if resource_record.Size != 5 || resource_record.Downloaded != 5 || resource_record.Status != resource_status_finished {
-		t.Fatalf("unexpected resource progress: size=%d downloaded=%d status=%d", resource_record.Size, resource_record.Downloaded, resource_record.Status)
-	}
-	if resource_path := filepath.Join(resource_record.DownloadDir, resource_record.Name); resource_path != save_path {
-		t.Fatalf("resource path = %q want %q", resource_path, save_path)
-	}
-	var endpoint_record model.DownloadEndpoint
-	if err := db.Where("resource_id = ?", resource_record.Id).First(&endpoint_record).Error; err != nil {
-		t.Fatalf("query endpoint without content: %v", err)
-	}
-	if endpoint_record.Protocol != "https" || endpoint_record.URL != "https://example.com/demo.mp4" {
-		t.Fatalf("unexpected endpoint: %+v", endpoint_record)
-	}
-
-	for name, value := range map[string]any{
-		"content": &model.Content{},
-		"account": &model.Account{},
-	} {
-		var count int64
-		if err := db.Model(value).Count(&count).Error; err != nil {
-			t.Fatalf("count %s: %v", name, err)
-		}
-		if count != 0 {
-			t.Fatalf("%s count = %d want 0", name, count)
-		}
-	}
-}
-
-func TestMigrateOneTaskCreatesStandaloneTaskWithoutDetailIdentifier(t *testing.T) {
-	data_dir := t.TempDir()
-	db, err := open_target_db(filepath.Join(data_dir, "data.db"))
-	if err != nil {
-		t.Fatalf("open target db: %v", err)
-	}
-	defer close_target_db(db)
-
-	task := must_gopeed_migration_task(t, "no-detail-identifier", data_dir, "orphan.mp4", map[string]string{})
-	migration := &migration_server{}
-	item := migration.migrate_one_task(db, "", data_dir, task, false, false, nil)
-	if item.Action != "migrated" || item.TargetID <= 0 {
-		t.Fatalf("unexpected migration item: %+v", item)
-	}
-
-	var task_record model.DownloadTask
-	if err := db.Where("id = ?", item.TargetID).First(&task_record).Error; err != nil {
-		t.Fatalf("query standalone task: %v", err)
-	}
-	if task_record.ContentId != nil || strings.TrimSpace(task_record.UniqueID) == "" {
-		t.Fatalf("unexpected standalone task: %+v", task_record)
-	}
-}
-
-func TestMigrateWXMPTaskCreatesStandaloneTaskWhenArticleDetailIsMissing(t *testing.T) {
-	data_dir := t.TempDir()
-	db, err := open_target_db(filepath.Join(data_dir, "data.db"))
-	if err != nil {
-		t.Fatalf("open target db: %v", err)
-	}
-	defer close_target_db(db)
-
-	if err := os.WriteFile(filepath.Join(data_dir, "article.html"), []byte("hello"), 0o644); err != nil {
+func TestMigrateOneTaskPreservesContentWhenProfileIsMissing(t *testing.T) {
+	directory := t.TempDir()
+	filename := filepath.Join(directory, "video.mp4")
+	if err := os.WriteFile(filename, []byte("hello"), 0644); err != nil {
 		t.Fatal(err)
 	}
-
-	article_id := "missing-article-detail"
-	task := must_gopeed_migration_task(t, "wxmp-detail-missing", data_dir, "article.html", map[string]string{
-		"article_id": article_id,
-	})
+	db, err := open_target_db(filepath.Join(directory, "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer close_target_db(db)
+	task := must_gopeed_migration_task(t, "missing-profile", directory, "video.mp4", map[string]string{"id": "missing", "title": "Archived title", "key": "42"})
 	migration := &migration_server{}
-	item := migration.migrate_one_task(db, "", data_dir, task, false, false, nil)
-	if item.Action != "migrated" || item.TargetID <= 0 || item.ProfileCacheHit {
-		t.Fatalf("unexpected migration item: %+v", item)
+	item := migration.migrate_one_task(db, "", directory, task, false, false, nil)
+	if item.Action != "migrated" {
+		t.Fatalf("migration failed: %+v", item)
 	}
+	var record model.DownloadTask
+	if err := db.First(&record, item.TargetID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if record.ContentId == nil {
+		t.Fatal("content association missing")
+	}
+	var content model.Content
+	if err := db.First(&content, "id = ?", *record.ContentId).Error; err != nil {
+		t.Fatal(err)
+	}
+	if content.ExternalId != "missing" || content.Title != "Archived title" || !strings.Contains(content.Metadata, `"detail_missing":true`) {
+		t.Fatalf("history lost: %+v", content)
+	}
+	var accounts int64
+	if err := db.Model(&model.Account{}).Count(&accounts).Error; err != nil || accounts != 0 {
+		t.Fatalf("invented account: %d %v", accounts, err)
+	}
+}
 
-	var task_record model.DownloadTask
-	if err := db.Where("id = ?", item.TargetID).First(&task_record).Error; err != nil {
-		t.Fatalf("query standalone wxmp task: %v", err)
+func TestMigrateRejectsHistoryWithoutContentIdentifier(t *testing.T) {
+	directory := t.TempDir()
+	db, err := open_target_db(filepath.Join(directory, "data.db"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if task_record.ContentId != nil || task_record.PlatformId != platform_wxmp {
-		t.Fatalf("unexpected standalone wxmp task: %+v", task_record)
+	defer close_target_db(db)
+	task := must_gopeed_migration_task(t, "no-id", directory, "video.mp4", nil)
+	migration := &migration_server{}
+	item := migration.migrate_one_task(db, "", directory, task, false, true, nil)
+	if item.Action != "failed" {
+		t.Fatalf("missing ID was accepted: %+v", item)
 	}
-	var resource_record model.DownloadResource
-	if err := db.Where("task_id = ?", item.TargetID).First(&resource_record).Error; err != nil {
-		t.Fatalf("query standalone wxmp resource: %v", err)
+}
+
+func TestMigrateWXMPRecoversArchivedHTMLAndOriginalURL(t *testing.T) {
+	directory := t.TempDir()
+	body := `<html><title>Archived article</title><body><div class="rich_media_meta_nickname">Author</div><div class="rich_media_content"><p>Actual archived body</p></div></body></html>`
+	if err := os.WriteFile(filepath.Join(directory, "article.html"), []byte(body), 0644); err != nil {
+		t.Fatal(err)
 	}
-	if resource_record.ContentId != nil {
-		t.Fatalf("standalone wxmp resource content_id = %v want nil", resource_record.ContentId)
+	db, err := open_target_db(filepath.Join(directory, "data.db"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if resource_record.Size != 5 || resource_record.Downloaded != 5 || resource_record.Status != resource_status_finished {
-		t.Fatalf("unexpected wxmp resource progress: size=%d downloaded=%d status=%d", resource_record.Size, resource_record.Downloaded, resource_record.Status)
+	defer close_target_db(db)
+	task := must_gopeed_migration_task(t, "article-history", directory, "article.html", map[string]string{"article_id": "123_1"})
+	task.Meta.Req.URL = "officialaccount://https://mp.weixin.qq.com/s?__biz=biz&mid=123&idx=1&sn=real"
+	if got := gopeed_article_url(task, "123_1"); got != "https://mp.weixin.qq.com/s?__biz=biz&mid=123&idx=1&sn=real" {
+		t.Fatalf("lost original URL: %s", got)
 	}
-	want_resource_path := filepath.Join(data_dir, "article.html")
-	if resource_path := filepath.Join(resource_record.DownloadDir, resource_record.Name); resource_path != want_resource_path {
-		t.Fatalf("wxmp resource path = %q want %q", resource_path, want_resource_path)
+	migration := &migration_server{}
+	item := migration.migrate_one_task(db, "", directory, task, false, false, nil)
+	if item.Action != "migrated" {
+		t.Fatalf("HTML recovery failed: %+v", item)
 	}
-	var endpoint_record model.DownloadEndpoint
-	if err := db.Where("resource_id = ?", resource_record.Id).First(&endpoint_record).Error; err != nil {
-		t.Fatalf("query standalone wxmp endpoint: %v", err)
+	var record model.DownloadTask
+	if err := db.First(&record, item.TargetID).Error; err != nil {
+		t.Fatal(err)
 	}
-	if endpoint_record.URL != build_wxmp_article_url(article_id) {
-		t.Fatalf("wxmp endpoint url = %q", endpoint_record.URL)
+	if record.ContentId == nil {
+		t.Fatal("article content missing")
 	}
-	var content_count int64
-	if err := db.Model(&model.Content{}).Count(&content_count).Error; err != nil {
-		t.Fatalf("count wxmp content: %v", err)
+	var article model.ContentArticle
+	if err := db.First(&article, "id = ?", *record.ContentId).Error; err != nil {
+		t.Fatal(err)
 	}
-	if content_count != 0 {
-		t.Fatalf("wxmp content count = %d want 0", content_count)
+	if article.HTML != "<p>Actual archived body</p>" {
+		t.Fatalf("body lost: %s", article.HTML)
 	}
-	var account_count int64
-	if err := db.Model(&model.Account{}).Count(&account_count).Error; err != nil {
-		t.Fatalf("count wxmp account: %v", err)
-	}
-	if account_count != 0 {
-		t.Fatalf("wxmp account count = %d want 0", account_count)
+	var accounts int64
+	if err := db.Model(&model.Account{}).Count(&accounts).Error; err != nil || accounts != 0 {
+		t.Fatalf("invented account: %d %v", accounts, err)
 	}
 }
 
