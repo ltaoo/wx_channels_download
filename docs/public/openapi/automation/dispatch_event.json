@@ -1,0 +1,74 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "派发自动化事件",
+    "description": "请求体上限 1 MiB，event_key 与工作流 Event 触发规则匹配；返回 {list:[运行记录]}。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "list": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "../components.json#/schemas/model_FlowRunRecord"
+                      }
+                    }
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_automation_dispatch_event",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "event_key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "event_key"
+            ]
+          },
+          "example": {
+            "event_key": "content.updated",
+            "data": {
+              "content_id": "bilibili:BV1xx411c7mD"
+            }
+          }
+        }
+      }
+    }
+  }
+}

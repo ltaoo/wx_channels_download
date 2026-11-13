@@ -1,0 +1,502 @@
+{
+  "id": "03_creator_new_video_notify",
+  "name": "监控创作者新视频并推送消息",
+  "start_node": "start",
+  "context_schema": [],
+  "nodes": {
+    "start": {
+      "type": "StartNode",
+      "name": "开始",
+      "config": {},
+      "next_node_ids": [
+        "config"
+      ],
+      "id": "start",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    "config": {
+      "type": "SetVariableNode",
+      "name": "配置分页扫描上限",
+      "config": {
+        "variables": {
+          "max_pages": 1000,
+          "max_videos": 100000
+        }
+      },
+      "next_node_ids": [
+        "validate"
+      ],
+      "id": "config",
+      "position": {
+        "x": 340,
+        "y": 0
+      }
+    },
+    "validate": {
+      "type": "JSCodeNode",
+      "name": "校验创作者参数",
+      "config": {
+        "code": "(function () {\nif (typeof config.username !== 'string') throw new Error('必须配置字符串 username');\nvar username = config.username.trim().replace(/^wxchannels:/, '').trim();\nif (!username || username.indexOf('REPLACE_') >= 0) throw new Error('请在自动化配置中填写创作者 username');\nif (!/@finder$/.test(username)) username += '@finder';\nreturn {username:username,remark:String(config.remark || '')};\n})()",
+        "output_key": "creator"
+      },
+      "next_node_ids": [
+        "configure_push"
+      ],
+      "id": "validate",
+      "position": {
+        "x": 680,
+        "y": 0
+      },
+      "config_schema": [
+        {
+          "key": "username",
+          "label": "username",
+          "description": "填写创作者账号标识，例如 xxx@finder，不是昵称；自动移除开头的 wxchannels: 和首尾空白，未带 @finder 时自动补齐。",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "remark",
+          "label": "备注",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    "configure_push": {
+      "id": "configure_push",
+      "type": "JSCodeNode",
+      "name": "配置消息推送",
+      "config_schema": [
+        {
+          "key": "push_method",
+          "label": "消息推送方式",
+          "type": "string",
+          "required": true,
+          "options": [
+            {
+              "label": "企业微信机器人",
+              "value": "wecom"
+            },
+            {
+              "label": "通用 HTTP Webhook",
+              "value": "webhook"
+            }
+          ]
+        },
+        {
+          "key": "push_url",
+          "label": "接口地址",
+          "description": "完整 HTTP(S) 地址。企业微信可填 https://qyapi.weixin.qq.com/cgi-bin/webhook/send，并在 token 中填写机器人 key。",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "push_token",
+          "label": "token",
+          "description": "企业微信填机器人 key（也可放在接口地址中）；通用 Webhook 使用可选的 Bearer token。",
+          "type": "string",
+          "required": false,
+          "secret": true
+        },
+        {
+          "key": "message_template",
+          "label": "消息模板",
+          "description": "可选，留空使用默认通知。支持 {username}、{remark}、{title}、{video_id}、{published_at}，可换行。",
+          "type": "string",
+          "required": false,
+          "multiline": true
+        }
+      ],
+      "config": {
+        "output_key": "push_settings",
+        "code": "(function () {\nvar method = String(config.push_method || '').trim();\nif (method !== 'wecom' && method !== 'webhook') throw new Error('消息推送方式必须选择企业微信机器人或通用 HTTP Webhook');\nvar address = String(config.push_url || '').trim();\nif (!/^https?:\\/\\/[^\\s#]+$/i.test(address) || address.indexOf('REPLACE_') >= 0) throw new Error('请配置完整 HTTP(S) 推送接口地址');\nvar token = String(config.push_token || '').trim();\nif (/[\\r\\n]/.test(token)) throw new Error('token 不能包含换行');\nif (method === 'wecom') {\n  if (token) {\n    var encoded = encodeURIComponent(token);\n    address = /([?&])key=[^&]*/.test(address) ? address.replace(/([?&])key=[^&]*/, function (_, separator) { return separator + 'key=' + encoded; }) : address + (address.indexOf('?') >= 0 ? '&' : '?') + 'key=' + encoded;\n  } else if (!/[?&]key=[^&#]+/.test(address)) throw new Error('企业微信推送需要在 token 或接口地址中填写机器人 key');\n}\nvar template = String(config.message_template || '');\nif (!template.trim()) template = '创作者发布了新视频\\n账号：{username}\\n标题：{title}\\n视频 ID：{video_id}\\n发布时间：{published_at}';\nvar allowed = {username:true,remark:true,title:true,video_id:true,published_at:true};\n(template.match(/\\{([^{}]+)\\}/g) || []).forEach(function (placeholder) {\n  var name = placeholder.slice(1, -1);\n  if (!Object.prototype.hasOwnProperty.call(allowed, name)) throw new Error('消息模板包含未知占位符：' + placeholder);\n});\nreturn {method:method,url:address,auth_type:method === 'webhook' && token ? 'bearer' : 'none',token:method === 'webhook' ? token : '',message_template:template};\n})()"
+      },
+      "next_node_ids": [
+        "init_scan"
+      ],
+      "position": {
+        "x": 1020,
+        "y": 0
+      }
+    },
+    "init_scan": {
+      "type": "SetVariableNode",
+      "name": "初始化分页与去重状态",
+      "config": {
+        "variables": {
+          "scan_state": {
+            "cursor": "",
+            "page": 0,
+            "items": [],
+            "pending": [],
+            "videos": [],
+            "candidate_ids": {},
+            "all_existing": false,
+            "next_cursor": "",
+            "has_more": false,
+            "visited_cursors": [
+              ""
+            ],
+            "seen_ids": {},
+            "checked": 0,
+            "skipped": 0
+          }
+        }
+      },
+      "next_node_ids": [
+        "fetch_page"
+      ],
+      "id": "init_scan",
+      "position": {
+        "x": 1360,
+        "y": 0
+      }
+    },
+    "fetch_page": {
+      "type": "ServiceNode",
+      "name": "获取创作者一页视频",
+      "config": {
+        "tool_name": "get_wxchannels_account_videos",
+        "arguments": {
+          "username": "{{output.validate.creator.username}}",
+          "next_marker": "{{global.scan_state.cursor}}"
+        },
+        "output_key": "page_result",
+        "timeout_seconds": 120
+      },
+      "next_node_ids": [
+        "parse_page"
+      ],
+      "id": "fetch_page",
+      "position": {
+        "x": 1700,
+        "y": 240
+      }
+    },
+    "parse_page": {
+      "type": "JSCodeNode",
+      "name": "校验分页并筛选本页视频",
+      "config": {
+        "code": "(function () {\nif (!(global.max_pages > 0) || Math.floor(global.max_pages) !== global.max_pages || !(global.max_videos > 0) || Math.floor(global.max_videos) !== global.max_videos) throw new Error('max_pages 和 max_videos 必须为正整数');\nvar response = output.fetch_page.page_result;\nif (!response || (response.errCode !== undefined && Number(response.errCode) !== 0) || (response.code !== undefined && Number(response.code) !== 0)) throw new Error('获取视频列表失败');\nvar data = response.data;\nif (!data || !Array.isArray(data.object)) throw new Error('视频列表响应缺少 data.object');\nif (data.BaseResponse && Number(data.BaseResponse.ret || 0) !== 0) throw new Error('视频列表 BaseResponse 返回错误');\nif (data.continueFlag === undefined || data.continueFlag === null || !isFinite(Number(data.continueFlag))) throw new Error('视频列表缺少有效 continueFlag');\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nstate.page += 1;\nif (state.page > global.max_pages) throw new Error('超过 max_pages，本次同步未完成');\nstate.items = []; state.pending = []; state.all_existing = false;\nvar page_ids = {};\nfunction id_string(value) {\n  if (typeof value === 'number' && (!isFinite(value) || Math.floor(value) !== value || Math.abs(value) > 9007199254740991)) throw new Error('平台返回不安全的数字 ID，需要字符串 ID');\n  return value === undefined || value === null ? '' : String(value);\n}\nfor (var i = 0; i < data.object.length; i++) {\n  var item = data.object[i], desc = item.objectDesc || {}, media = desc.media || [];\n  if (Number(desc.mediaType) !== 4 && !media.some(function (m) { return Number(m.mediaType) === 4; })) continue;\n  var oid = id_string(item.id), nid = id_string(item.objectNonceId);\n  if (!oid || !nid) throw new Error('视频缺少 id 或 objectNonceId');\n  if (page_ids[oid]) continue;\n  page_ids[oid] = true; state.seen_ids[oid] = true;\n  state.items.push({oid: oid, nid: nid, title: String(desc.description || ''), published_at: item.createtime || item.createTime || 0});\n}\nif (Object.keys(state.seen_ids).length > global.max_videos) throw new Error('超过 max_videos，本次扫描未完成');\nstate.has_more = Number(data.continueFlag) !== 0;\nstate.next_cursor = data.lastBuffer || '';\nreturn state;\n})()",
+        "output_key": "page_state"
+      },
+      "next_node_ids": [
+        "store_page"
+      ],
+      "id": "parse_page",
+      "position": {
+        "x": 2040,
+        "y": 240
+      }
+    },
+    "store_page": {
+      "type": "SetVariableNode",
+      "name": "保存当前页状态",
+      "config": {
+        "variables": {
+          "scan_state": "{{output.parse_page.page_state}}"
+        }
+      },
+      "next_node_ids": [
+        "prepare_checks"
+      ],
+      "id": "store_page",
+      "position": {
+        "x": 2380,
+        "y": 240
+      }
+    },
+    "prepare_checks": {
+      "id": "prepare_checks",
+      "type": "JSCodeNode",
+      "name": "收集本页视频的内容 ID",
+      "config": {
+        "code": "(function () {\nreturn global.scan_state.items.map(function (video) { return 'wxchannels:' + video.oid; });\n})()",
+        "output_key": "content_ids"
+      },
+      "next_node_ids": [
+        "check_videos"
+      ],
+      "position": {
+        "x": 2720,
+        "y": 240
+      }
+    },
+    "check_videos": {
+      "id": "check_videos",
+      "type": "ServiceNode",
+      "name": "一次批量检查本页视频是否已有下载任务",
+      "config": {
+        "tool_name": "check_download_task_contents",
+        "arguments": {
+          "content_ids": "{{output.prepare_checks.content_ids}}"
+        },
+        "output_key": "checks",
+        "timeout_seconds": 30
+      },
+      "next_node_ids": [
+        "aggregate_checks"
+      ],
+      "position": {
+        "x": 3060,
+        "y": 240
+      }
+    },
+    "aggregate_checks": {
+      "id": "aggregate_checks",
+      "type": "JSCodeNode",
+      "name": "校验批量查询结果，筛选本地不存在的视频",
+      "config": {
+        "output_key": "checked_state",
+        "code": "(function () {\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nvar response = output.check_videos.checks;\nif (!response || !Array.isArray(response.list) || response.total !== state.items.length || response.list.length !== state.items.length) throw new Error('批量视频存在性检查结果不完整');\nvar checks = Object.create(null);\nresponse.list.forEach(function (check) {\n  if (!check || typeof check.content_id !== 'string' || Object.prototype.hasOwnProperty.call(checks, check.content_id) || typeof check.exists !== 'boolean' || typeof check.task_count !== 'number' || !isFinite(check.task_count) || check.task_count < 0 || Math.floor(check.task_count) !== check.task_count || check.exists !== (check.task_count > 0)) throw new Error('批量视频存在性检查结果无效');\n  checks[check.content_id] = check;\n});\nstate.pending = [];\nfor (var i = 0; i < state.items.length; i++) {\n  var video = state.items[i], content_id = 'wxchannels:' + video.oid;\n  if (!Object.prototype.hasOwnProperty.call(checks, content_id)) throw new Error('批量检查缺少视频 ' + video.oid);\n  var check = checks[content_id];\n  state.checked += 1;\n  if (check.exists) state.skipped += 1;\n  else {\n    state.pending.push(video);\n    if (!Object.prototype.hasOwnProperty.call(state.candidate_ids, video.oid)) {\n      state.candidate_ids[video.oid] = true;\n      state.videos.push(video);\n    }\n  }\n}\nstate.all_existing = state.items.length > 0 && state.pending.length === 0;\nreturn state;\n})()"
+      },
+      "next_node_ids": [
+        "store_checks"
+      ],
+      "position": {
+        "x": 3400,
+        "y": 240
+      }
+    },
+    "store_checks": {
+      "id": "store_checks",
+      "type": "SetVariableNode",
+      "name": "保存本页新视频判断结果",
+      "config": {
+        "variables": {
+          "scan_state": "{{output.aggregate_checks.checked_state}}"
+        }
+      },
+      "next_node_ids": [
+        "page_gate"
+      ],
+      "position": {
+        "x": 3740,
+        "y": 240
+      }
+    },
+    "page_gate": {
+      "type": "GatewayNode",
+      "name": "本页全部已存在，或没有下一页？",
+      "config": {
+        "gateway_type": "Exclusive",
+        "condition_language": "js",
+        "rules": [
+          {
+            "condition": "global.scan_state.all_existing || !global.scan_state.has_more",
+            "target_id": "plan_notifications"
+          },
+          {
+            "condition": "true",
+            "target_id": "advance_page"
+          }
+        ]
+      },
+      "next_node_ids": [
+        "plan_notifications",
+        "advance_page"
+      ],
+      "id": "page_gate",
+      "position": {
+        "x": 4080,
+        "y": 240
+      }
+    },
+    "advance_page": {
+      "type": "JSCodeNode",
+      "name": "校验 next_marker，准备继续扫描",
+      "config": {
+        "code": "(function () {\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nif (state.has_more) {\n  if (typeof state.next_cursor !== 'string' || !state.next_cursor || state.visited_cursors.indexOf(state.next_cursor) >= 0) throw new Error('分页游标缺失或重复，停止以避免漏数据或无限循环');\n  if (state.page >= global.max_pages) throw new Error('达到 max_pages 但仍有下一页，本次扫描未完成');\n  state.cursor = state.next_cursor;\n  state.visited_cursors.push(state.cursor);\n}\nreturn state;\n})()",
+        "output_key": "next_page_state"
+      },
+      "next_node_ids": [
+        "store_cursor"
+      ],
+      "id": "advance_page",
+      "position": {
+        "x": 4420,
+        "y": 720
+      }
+    },
+    "store_cursor": {
+      "type": "SetVariableNode",
+      "name": "保存分页游标",
+      "config": {
+        "variables": {
+          "scan_state": "{{output.advance_page.next_page_state}}"
+        }
+      },
+      "next_node_ids": [
+        "fetch_page"
+      ],
+      "id": "store_cursor",
+      "position": {
+        "x": 1700,
+        "y": 1080
+      }
+    },
+    "plan_notifications": {
+      "type": "JSCodeNode",
+      "name": "将本地不存在的视频作为待通知列表",
+      "config": {
+        "code": "(function () {\nreturn {pending:global.scan_state.videos,index:0};\n})()",
+        "output_key": "notification_plan"
+      },
+      "next_node_ids": [
+        "store_plan"
+      ],
+      "id": "plan_notifications",
+      "position": {
+        "x": 4420,
+        "y": 0
+      }
+    },
+    "store_plan": {
+      "type": "SetVariableNode",
+      "name": "保存待通知列表",
+      "config": {
+        "variables": {
+          "notification_state": "{{output.plan_notifications.notification_plan}}"
+        }
+      },
+      "next_node_ids": [
+        "notification_gate"
+      ],
+      "id": "store_plan",
+      "position": {
+        "x": 4760,
+        "y": 0
+      }
+    },
+    "notification_gate": {
+      "type": "GatewayNode",
+      "name": "逐条推送本次发现的新视频",
+      "config": {
+        "gateway_type": "Exclusive",
+        "condition_language": "js",
+        "rules": [
+          {
+            "condition": "global.notification_state.index < global.notification_state.pending.length",
+            "target_id": "build_message"
+          },
+          {
+            "condition": "true",
+            "target_id": "summary"
+          }
+        ]
+      },
+      "next_node_ids": [
+        "build_message",
+        "summary"
+      ],
+      "id": "notification_gate",
+      "position": {
+        "x": 5100,
+        "y": 0
+      }
+    },
+    "build_message": {
+      "type": "JSCodeNode",
+      "name": "按模板构建新视频通知",
+      "config": {
+        "code": "(function () {\nvar settings = output.configure_push.push_settings;\nvar creator = output.validate.creator;\nvar video = global.notification_state.pending[global.notification_state.index];\nif (!video) throw new Error('待通知视频不存在');\nvar values = {username:creator.username,remark:creator.remark,title:video.title.slice(0, 1500),video_id:video.oid,published_at:String(video.published_at)};\nvar content = settings.message_template.replace(/\\{([^{}]+)\\}/g, function (_, name) {\n  if (!Object.prototype.hasOwnProperty.call(values, name)) throw new Error('消息模板包含未知占位符：' + name);\n  return String(values[name]);\n});\nvar body = settings.method === 'wecom' ? {msgtype:'text',text:{content:content}} : {content:content,username:creator.username,remark:creator.remark,video_id:video.oid,title:video.title,published_at:video.published_at};\nreturn {body:body};\n})()",
+        "output_key": "message"
+      },
+      "next_node_ids": [
+        "notify"
+      ],
+      "id": "build_message",
+      "position": {
+        "x": 5440,
+        "y": 0
+      }
+    },
+    "notify": {
+      "type": "APICallNode",
+      "name": "发送新视频消息",
+      "config": {
+        "url": "{{output.configure_push.push_settings.url}}",
+        "method": "POST",
+        "body": "{{output.build_message.message.body}}",
+        "authentication": {
+          "type": "{{output.configure_push.push_settings.auth_type}}",
+          "token": "{{output.configure_push.push_settings.token}}"
+        },
+        "output_key": "webhook_response",
+        "timeout_seconds": 30
+      },
+      "next_node_ids": [
+        "ack_notification"
+      ],
+      "id": "notify",
+      "position": {
+        "x": 5780,
+        "y": 0
+      }
+    },
+    "ack_notification": {
+      "type": "JSCodeNode",
+      "name": "确认推送成功并移到下一个视频",
+      "config": {
+        "code": "(function () {\nvar response = output.notify.webhook_response;\nvar status = output.notify.webhook_response_status;\nif (!(status >= 200 && status < 300)) throw new Error('消息推送失败，本次运行停止，可下次重新检查');\nif (output.configure_push.push_settings.method === 'wecom') {\n  if (!response || Number(response.errcode) !== 0) throw new Error('企业微信通知失败，本次运行停止，可下次重新检查');\n} else if (response && typeof response === 'object') {\n  if (response.success === false || response.ok === false || (response.code !== undefined && Number(response.code) !== 0 && Number(response.code) !== 200) || (response.errcode !== undefined && Number(response.errcode) !== 0)) throw new Error('Webhook 返回推送失败，本次运行停止，可下次重新检查');\n}\nvar state = JSON.parse(JSON.stringify(global.notification_state));\nstate.index += 1;\nreturn state;\n})()",
+        "output_key": "ack_state"
+      },
+      "next_node_ids": [
+        "store_ack"
+      ],
+      "id": "ack_notification",
+      "position": {
+        "x": 6120,
+        "y": 0
+      }
+    },
+    "store_ack": {
+      "type": "SetVariableNode",
+      "name": "保存本次发送结果",
+      "config": {
+        "variables": {
+          "notification_state": "{{output.ack_notification.ack_state}}"
+        }
+      },
+      "next_node_ids": [
+        "notification_gate"
+      ],
+      "id": "store_ack",
+      "position": {
+        "x": 5100,
+        "y": 720
+      }
+    },
+    "summary": {
+      "type": "JSCodeNode",
+      "name": "输出本次监控结果",
+      "config": {
+        "code": "(function () {\nreturn {username:output.validate.creator.username,pages:global.scan_state.page,checked:global.scan_state.checked,skipped:global.scan_state.skipped,new_videos:global.notification_state.pending.length,notified:global.notification_state.index,stop_reason:global.scan_state.all_existing ? 'all_existing' : 'no_more_pages'};\n})()",
+        "output_key": "monitor_summary"
+      },
+      "next_node_ids": [
+        "end"
+      ],
+      "id": "summary",
+      "position": {
+        "x": 5440,
+        "y": 480
+      }
+    },
+    "end": {
+      "type": "EndNode",
+      "name": "结束",
+      "config": {},
+      "next_node_ids": [],
+      "id": "end",
+      "position": {
+        "x": 5780,
+        "y": 480
+      }
+    }
+  }
+}

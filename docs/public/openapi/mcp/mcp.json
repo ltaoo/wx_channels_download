@@ -1,0 +1,155 @@
+{
+  "post": {
+    "tags": [
+      "MCP"
+    ],
+    "summary": "MCP Streamable HTTP 传输",
+    "description": "当前实现为无状态 MCP HTTP：仅支持 POST，单请求上限 4 MiB，Content-Type 必须为 application/json。普通 JSON-RPC 请求返回 HTTP 200；无 id 或 id=null 的通知返回 HTTP 202 且无响应体。GET、DELETE 虽已注册，当前均返回 HTTP 405（Allow: POST）。不创建会话或 SSE 流；可用 MCP-Protocol-Version 指定协议版本，Origin 如有提供必须与请求 Host 相同。MCP 未启用时返回 HTTP 503。",
+    "responses": {
+      "403": {
+        "description": "Origin 不受信任"
+      },
+      "405": {
+        "description": "仅支持 POST"
+      },
+      "500": {
+        "description": "MCP 服务未初始化"
+      },
+      "503": {
+        "description": "MCP 服务未启用"
+      },
+      "200": {
+        "description": "JSON-RPC 响应（成功或协议/工具错误）",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "jsonrpc": {
+                  "type": "string"
+                },
+                "id": {},
+                "result": {},
+                "error": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      },
+      "202": {
+        "description": "通知已接受，无响应体"
+      },
+      "400": {
+        "description": "无效 JSON-RPC 请求"
+      },
+      "415": {
+        "description": "Content-Type 不是 application/json"
+      }
+    },
+    "operationId": "post_mcp",
+    "parameters": [
+      {
+        "name": "MCP-Protocol-Version",
+        "in": "header",
+        "required": false,
+        "description": "可选 MCP 协议版本",
+        "schema": {
+          "type": "string"
+        }
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "example": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+              "protocolVersion": "2025-03-26",
+              "capabilities": {},
+              "clientInfo": {
+                "name": "example",
+                "version": "1.0"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "get": {
+    "tags": [
+      "MCP"
+    ],
+    "summary": "MCP Streamable HTTP 传输",
+    "description": "当前实现为无状态 MCP HTTP：仅支持 POST，单请求上限 4 MiB，Content-Type 必须为 application/json。普通 JSON-RPC 请求返回 HTTP 200；无 id 或 id=null 的通知返回 HTTP 202 且无响应体。GET、DELETE 虽已注册，当前均返回 HTTP 405（Allow: POST）。不创建会话或 SSE 流；可用 MCP-Protocol-Version 指定协议版本，Origin 如有提供必须与请求 Host 相同。MCP 未启用时返回 HTTP 503。",
+    "responses": {
+      "403": {
+        "description": "Origin 不受信任"
+      },
+      "405": {
+        "description": "仅支持 POST"
+      },
+      "500": {
+        "description": "MCP 服务未初始化"
+      },
+      "503": {
+        "description": "MCP 服务未启用"
+      }
+    },
+    "operationId": "get_mcp",
+    "parameters": [
+      {
+        "name": "MCP-Protocol-Version",
+        "in": "header",
+        "required": false,
+        "description": "可选 MCP 协议版本",
+        "schema": {
+          "type": "string"
+        }
+      }
+    ]
+  },
+  "delete": {
+    "tags": [
+      "MCP"
+    ],
+    "summary": "MCP Streamable HTTP 传输",
+    "description": "当前实现为无状态 MCP HTTP：仅支持 POST，单请求上限 4 MiB，Content-Type 必须为 application/json。普通 JSON-RPC 请求返回 HTTP 200；无 id 或 id=null 的通知返回 HTTP 202 且无响应体。GET、DELETE 虽已注册，当前均返回 HTTP 405（Allow: POST）。不创建会话或 SSE 流；可用 MCP-Protocol-Version 指定协议版本，Origin 如有提供必须与请求 Host 相同。MCP 未启用时返回 HTTP 503。",
+    "responses": {
+      "403": {
+        "description": "Origin 不受信任"
+      },
+      "405": {
+        "description": "仅支持 POST"
+      },
+      "500": {
+        "description": "MCP 服务未初始化"
+      },
+      "503": {
+        "description": "MCP 服务未启用"
+      }
+    },
+    "operationId": "delete_mcp",
+    "parameters": [
+      {
+        "name": "MCP-Protocol-Version",
+        "in": "header",
+        "required": false,
+        "description": "可选 MCP 协议版本",
+        "schema": {
+          "type": "string"
+        }
+      }
+    ]
+  }
+}

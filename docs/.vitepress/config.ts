@@ -124,10 +124,22 @@ export default defineConfig(async () => {
           text: "功能",
           items: [
             { text: "API", link: "/feature/api" },
+            { text: "设置下载目录", link: "/feature/download-directory" },
             { text: "指定文件名", link: "/feature/filename" },
+            {
+              text: "自动化",
+              link: "/feature/automation",
+              items: [
+                { text: "流程示例", link: "/feature/pipelines/" },
+                { text: "创作者视频同步", link: "/feature/pipelines/creator-video-sync" },
+                { text: "创作者直播录制", link: "/feature/pipelines/creator-live-record" },
+                { text: "创作者新视频通知", link: "/feature/pipelines/creator-new-video-notify" },
+              ],
+            },
             {
               text: "视频号",
               items: [
+                { text: "分享链接解析", link: "/feature/wxchannels/share-link" },
                 { text: "下载mp3", link: "/feature/wxchannels/mp3" },
                 { text: "下载直播", link: "/feature/wxchannels/live" },
                 {

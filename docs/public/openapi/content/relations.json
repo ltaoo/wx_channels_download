@@ -1,0 +1,121 @@
+{
+  "get": {
+    "tags": [
+      "内容"
+    ],
+    "summary": "查询内容关联关系",
+    "description": "content_id 优先，id 为兼容字段；至少提供一个。direction 默认为 both，可选 incoming/outgoing。limit、offset 可覆盖分页。 content_id 和 id 至少提供一个。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/services_ContentRelationListResult"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "get_api_content_relations",
+    "parameters": [
+      {
+        "name": "direction",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "both",
+            "incoming",
+            "outgoing"
+          ],
+          "default": "both"
+        },
+        "description": "关联方向，默认 both"
+      },
+      {
+        "name": "relation_type",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "关联关系类型筛选"
+      },
+      {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 1,
+          "minimum": 1
+        },
+        "description": "页码，从 1 开始"
+      },
+      {
+        "name": "page_size",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 20,
+          "minimum": 1
+        },
+        "description": "每页条数"
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer"
+        },
+        "description": "数量限制，可覆盖 page_size"
+      },
+      {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer"
+        },
+        "description": "分页偏移，可覆盖按 page 计算的偏移"
+      },
+      {
+        "name": "content_id",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "内容主键字符串；兼容字段 id 的优先级较低"
+      },
+      {
+        "name": "id",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "对象主键；具体对象类型见接口说明"
+      }
+    ]
+  }
+}

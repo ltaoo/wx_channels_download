@@ -79,6 +79,12 @@ type FetchDownloadTaskBuilder interface {
 	BuildDownloadTaskFromFetch(data any, config_json json.RawMessage) (*DownloadTaskResult, error)
 }
 
+// FetchDownloadTaskResourcePreparer refreshes platform download state before a
+// fetch result is built into a task. Empty resource_indexes means all files.
+type FetchDownloadTaskResourcePreparer interface {
+	PrepareDownloadTaskResources(data any, resource_indexes []int) (any, error)
+}
+
 // HomeContentsBuilder declares platform-specific account tabs and fetches only
 // the tab explicitly selected by the caller.
 type HomeContentsBuilder interface {
@@ -252,6 +258,11 @@ type PostprocessDeps struct {
 // Postprocessor is an optional adapter capability.
 type Postprocessor interface {
 	Postprocess(context.Context, *hermes.TaskJob, PostprocessDeps) error
+}
+
+// DownloadPreparer resolves an adapter's deferred resource list at task start.
+type DownloadPreparer interface {
+	PrepareDownload(context.Context, *hermes.TaskJob, PostprocessDeps) error
 }
 
 // ---------- Global registry ----------

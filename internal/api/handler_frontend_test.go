@@ -17,6 +17,29 @@ import (
 	"wx_channel/internal/config"
 )
 
+func TestFrontendLoggingFollowsLoggerState(t *testing.T) {
+	original_level := zerolog.GlobalLevel()
+	t.Cleanup(func() { zerolog.SetGlobalLevel(original_level) })
+	logger := zerolog.New(io.Discard)
+	client := &APIClient{
+		logger: &logger,
+		cfg:    &APIConfig{Original: config.New("test", "debug", &logger, nil, "/tmp/test.log")},
+	}
+	zerolog.SetGlobalLevel(zerolog.Disabled)
+	if client.is_logging_enabled() {
+		t.Fatal("a configured log path must not enable terminal output")
+	}
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	if !client.is_logging_enabled() {
+		t.Fatal("an enabled logger must allow terminal output")
+	}
+	disabled_logger := zerolog.Nop()
+	client.logger = &disabled_logger
+	if client.is_logging_enabled() {
+		t.Fatal("a disabled logger must not enable terminal output")
+	}
+}
+
 func TestHandlerFrontendReport_DefaultDisabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
@@ -92,8 +115,8 @@ func TestHandlerFrontendReport_LoggingEnabled(t *testing.T) {
 	}
 	engine.POST("/report", client.handle_frontend_report)
 
-	if !client.isLoggingEnabled() {
-		t.Fatalf("expected logging to be enabled when LogPath is non-empty")
+	if !client.is_logging_enabled() {
+		t.Fatalf("expected logging to be enabled for the active logger")
 	}
 
 	report := map[string]interface{}{

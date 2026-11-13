@@ -1,0 +1,390 @@
+package api
+
+import (
+	"errors"
+	"io"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+
+	result "wx_channel/internal/apiresult"
+	"wx_channel/internal/database/model"
+	"wx_channel/internal/services"
+)
+
+type automation_schedule_create_body struct {
+	InstanceID  string                 `json:"instance_id"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	CronExpr    string                 `json:"cron_expr"`
+	FlowID      string                 `json:"flow_id"`
+	InitialData map[string]interface{} `json:"initial_data"`
+	Enabled     *bool                  `json:"enabled"`
+	TimeoutSec  int                    `json:"timeout_sec"`
+}
+
+type automation_schedule_list_body struct {
+	InstanceID string `json:"instance_id"`
+	Page       int    `json:"page"`
+	PageSize   int    `json:"page_size"`
+	FlowID     string `json:"flow_id"`
+	Keyword    string `json:"keyword"`
+	Enabled    *bool  `json:"enabled"`
+}
+
+type automation_id_body struct {
+	ID string `json:"id"`
+}
+
+type automation_schedule_trigger_body struct {
+	ID          string `json:"id"`
+	TriggerType string `json:"trigger_type"`
+	EventKey    string `json:"event_key"`
+}
+
+type automation_schedule_update_body struct {
+	InstanceID  *string                `json:"instance_id"`
+	ID          string                 `json:"id"`
+	Name        *string                `json:"name"`
+	Description *string                `json:"description"`
+	CronExpr    *string                `json:"cron_expr"`
+	FlowID      *string                `json:"flow_id"`
+	InitialData map[string]interface{} `json:"initial_data"`
+	Enabled     *bool                  `json:"enabled"`
+	TimeoutSec  *int                   `json:"timeout_sec"`
+}
+
+type automation_run_list_body struct {
+	InstanceID string `json:"instance_id"`
+	Summary    bool   `json:"summary"`
+	Page       int    `json:"page"`
+	PageSize   int    `json:"page_size"`
+	ScheduleID string `json:"schedule_id"`
+	FlowID     string `json:"flow_id"`
+	Status     string `json:"status"`
+}
+
+// automation_list_payload mirrors the paging envelope used by the other v1 list
+// endpoints so clients can reuse the same parsing.
+func automation_list_payload(list interface{}, total int64, page int, page_size int) gin.H {
+	return gin.H{
+		"list":      list,
+		"total":     total,
+		"page":      page,
+		"page_size": page_size,
+	}
+}
+
+func (c *APIClient) automation_service_or_error(ctx *gin.Context) (*services.AutomationService, bool) {
+	if c == nil || c.service_automation == nil {
+		result.Err(ctx, api_code_invalid_params, "自动化服务未初始化")
+		return nil, false
+	}
+	return c.service_automation, true
+}
+
+func (c *APIClient) handle_list_automation_schedules(ctx *gin.Context) {
+	service, ok := c.automation_service_or_error(ctx)
+	if !ok {
+		return
+	}
+	var body automation_schedule_list_body
+	if err := ctx.ShouldBindJSON(&body); err != nil && !errors.Is(err, io.EOF) {
+		result.Err(ctx, api_code_invalid_params, "请求参数无效")
+		return
+	}
+	input := services.ListSchedulesInput{
+		InstanceID: body.InstanceID,
+		Page:       body.Page,
+		PageSize:   body.PageSize,
+		FlowID:     strings.TrimSpace(body.FlowID),
+		Keyword:    strings.TrimSpace(body.Keyword),
+		Enabled:    body.Enabled,
+	}
+	schedules, total, err := service.ListSchedules(input)
+	if err != nil {
+		result.Err(ctx, api_code_invalid_params, err.Error())
+		return
+	}
+	result.Ok(ctx, automation_list_payload(schedules, total, input.Page, input.PageSize))
+}
+
+func (c *APIClient) handle_create_automation_schedule(ctx *gin.Context) {
+	service, ok := c.automation_service_or_error(ctx)
+	if !ok {
+		return
+	}
+	var body automation_schedule_create_body
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, api_code_invalid_params, "请求参数无效")
+		return
+	}
+	schedule, err := service.CreateSchedule(services.CreateScheduleInput{
+		InstanceID:  body.InstanceID,
+		Name:        body.Name,
+		Description: body.Description,
+		CronExpr:    body.CronExpr,
+		FlowID:      body.FlowID,
+		InitialData: body.InitialData,
+		Enabled:     body.Enabled,
+		TimeoutSec:  body.TimeoutSec,
+	})
+	if err != nil {
+		result.Err(ctx, api_code_invalid_params, err.Error())
+		return
+	}
+	result.Ok(ctx, schedule)
+}
+
+func (c *APIClient) handle_get_automation_schedule(ctx *gin.Context) {
+	service, ok := c.automation_service_or_error(ctx)
+	if !ok {
+		return
+	}
+	var body automation_id_body
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, api_code_invalid_params, "请求参数无效")
+		return
+	}
+	schedule, err := service.GetSchedule(strings.TrimSpace(body.ID))
+	if err != nil {
+		result.Err(ctx, api_code_invalid_params, err.Error())
+		return
+	}
+	result.Ok(ctx, schedule)
+}
+
+func (c *APIClient) handle_update_automation_schedule(ctx *gin.Context) {
+	service, ok := c.automation_service_or_error(ctx)
+	if !ok {
+		return
+	}
+	var body automation_schedule_update_body
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, api_code_invalid_params, "请求参数无效")
+		return
+	}
+	schedule, err := service.UpdateSchedule(strings.TrimSpace(body.ID), services.UpdateScheduleInput{
+		InstanceID:  body.InstanceID,
+		Name:        body.Name,
+		Description: body.Description,
+		CronExpr:    body.CronExpr,
+		FlowID:      body.FlowID,
+		InitialData: body.InitialData,
+		Enabled:     body.Enabled,
+		TimeoutSec:  body.TimeoutSec,
+	})
+	if err != nil {
+		result.Err(ctx, api_code_invalid_params, err.Error())
+		return
+	}
+	result.Ok(ctx, schedule)
+}
+
+func (c *APIClient) handle_delete_automation_schedule(ctx *gin.Context) {
+	service, ok := c.automation_service_or_error(ctx)
+	if !ok {
+		return
+	}
+	var body automation_id_body
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, api_code_invalid_params, "请求参数无效")
+		return
+	}
+	id := strings.TrimSpace(body.ID)
+	if err := service.DeleteSchedule(id); err != nil {
+		result.Err(ctx, api_code_invalid_params, err.Error())
+		return
+	}
+	result.Ok(ctx, gin.H{"id": id})
+}
+
+func (c *APIClient) handle_toggle_automation_schedule(ctx *gin.Context) {
+	service, ok := c.automation_service_or_error(ctx)
+	if !ok {
+		return
+	}
+	var body automation_id_body
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, api_code_invalid_params, "请求参数无效")
+		return
+	}
+	schedule, err := service.ToggleSchedule(strings.TrimSpace(body.ID))
+	if err != nil {
+		result.Err(ctx, api_code_invalid_params, err.Error())
+		return
+	}
+	result.Ok(ctx, schedule)
+}
+
+func (c *APIClient) handle_trigger_automation_schedule(ctx *gin.Context) {
+	service, ok := c.automation_service_or_error(ctx)
+	if !ok {
+		return
+	}
+	var body automation_schedule_trigger_body
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, api_code_invalid_params, "请求参数无效")
+		return
+	}
+	trigger_type := strings.TrimSpace(body.TriggerType)
+	if trigger_type == "" {
+		trigger_type = model.FlowRunTriggerManual
+	}
+	run, err := service.TriggerScheduleAs(strings.TrimSpace(body.ID), trigger_type, strings.TrimSpace(body.EventKey))
+	if err != nil {
+		result.Err(ctx, api_code_invalid_params, err.Error())
+		return
+	}
+	result.Ok(ctx, run)
+}
+
+func (c *APIClient) handle_list_automation_runs(ctx *gin.Context) {
+	service, ok := c.automation_service_or_error(ctx)
+	if !ok {
+		return
+	}
+	var body automation_run_list_body
+	if err := ctx.ShouldBindJSON(&body); err != nil && !errors.Is(err, io.EOF) {
+		result.Err(ctx, api_code_invalid_params, "请求参数无效")
+		return
+	}
+	input := services.ListRunsInput{
+		InstanceID: body.InstanceID,
+		Summary:    body.Summary,
+		Page:       body.Page,
+		PageSize:   body.PageSize,
+		ScheduleID: strings.TrimSpace(body.ScheduleID),
+		FlowID:     strings.TrimSpace(body.FlowID),
+		Status:     strings.TrimSpace(body.Status),
+	}
+	runs, total, err := service.ListRuns(input)
+	if err != nil {
+		result.Err(ctx, api_code_invalid_params, err.Error())
+		return
+	}
+	if body.Summary {
+		type run_summary struct {
+			ID        string `json:"id"`
+			CreatedAt int64  `json:"created_at"`
+			Status    string `json:"status"`
+		}
+		summaries := make([]run_summary, 0, len(runs))
+		for _, run := range runs {
+			summaries = append(summaries, run_summary{ID: run.ID, CreatedAt: run.CreatedAt, Status: run.Status})
+		}
+		result.Ok(ctx, automation_list_payload(summaries, total, input.Page, input.PageSize))
+		return
+	}
+	result.Ok(ctx, automation_list_payload(runs, total, input.Page, input.PageSize))
+}
+
+func (c *APIClient) handle_clear_automation_runs(ctx *gin.Context) {
+	service, ok := c.automation_service_or_error(ctx)
+	if !ok {
+		return
+	}
+	var body struct {
+		InstanceID string `json:"instance_id"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, api_code_invalid_params, "请求参数无效")
+		return
+	}
+	cleared, err := service.ClearRuns(body.InstanceID)
+	if err != nil {
+		result.Err(ctx, api_code_invalid_params, err.Error())
+		return
+	}
+	result.Ok(ctx, gin.H{"cleared": cleared})
+}
+
+func (c *APIClient) handle_get_automation_run(ctx *gin.Context) {
+	service, ok := c.automation_service_or_error(ctx)
+	if !ok {
+		return
+	}
+	var body struct {
+		ID           string `json:"id"`
+		MetadataOnly bool   `json:"metadata_only"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, api_code_invalid_params, "请求参数无效")
+		return
+	}
+	var run *model.FlowRunRecord
+	var err error
+	if body.MetadataOnly {
+		run, err = service.GetRunMetadata(strings.TrimSpace(body.ID))
+	} else {
+		run, err = service.GetRun(strings.TrimSpace(body.ID))
+	}
+	if err != nil {
+		result.Err(ctx, api_code_invalid_params, err.Error())
+		return
+	}
+	result.Ok(ctx, run)
+}
+
+func (c *APIClient) handle_get_automation_run_node_states(ctx *gin.Context) {
+	service, ok := c.automation_service_or_error(ctx)
+	if !ok {
+		return
+	}
+	var body struct {
+		ID     string `json:"id"`
+		FlowID string `json:"flow_id"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, api_code_invalid_params, "请求参数无效")
+		return
+	}
+	states, err := service.GetRunNodeStates(body.ID, body.FlowID)
+	if err != nil {
+		result.Err(ctx, api_code_invalid_params, err.Error())
+		return
+	}
+	result.Ok(ctx, states)
+}
+
+func (c *APIClient) handle_get_automation_run_node_logs(ctx *gin.Context) {
+	service, ok := c.automation_service_or_error(ctx)
+	if !ok {
+		return
+	}
+	var body struct {
+		BeforeID int64  `json:"before_id"`
+		PageSize int    `json:"page_size"`
+		ID       string `json:"id"`
+		NodeID   string `json:"node_id"`
+		FlowID   string `json:"flow_id"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, api_code_invalid_params, "请求参数无效")
+		return
+	}
+	logs, err := service.GetRunNodeLogPage(body.ID, body.NodeID, body.FlowID, body.BeforeID, body.PageSize)
+	if err != nil {
+		result.Err(ctx, api_code_invalid_params, err.Error())
+		return
+	}
+	result.Ok(ctx, logs)
+}
+
+func (c *APIClient) handle_cancel_automation_run(ctx *gin.Context) {
+	service, ok := c.automation_service_or_error(ctx)
+	if !ok {
+		return
+	}
+	var body automation_id_body
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		result.Err(ctx, api_code_invalid_params, "请求参数无效")
+		return
+	}
+	id := strings.TrimSpace(body.ID)
+	if err := service.CancelRun(id); err != nil {
+		result.Err(ctx, api_code_invalid_params, err.Error())
+		return
+	}
+	result.Ok(ctx, gin.H{"id": id, "cancelled": true})
+}

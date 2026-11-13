@@ -1,0 +1,87 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "通过 Webhook 触发自动化",
+    "description": "id 为 Webhook 触发规则 ID。请求体必须且只能包含一个 JSON 对象，上限 1 MiB；需要 Authorization: Bearer <token>。成功为 HTTP 202、{data:运行记录}；失败 HTTP 400/401、{error:消息}，不使用统一 code/msg 包装。",
+    "responses": {
+      "202": {
+        "description": "运行已接受",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "data": {
+                  "$ref": "../components.json#/schemas/model_FlowRunRecord"
+                }
+              }
+            }
+          }
+        }
+      },
+      "400": {
+        "description": "JSON 或触发规则无效",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "401": {
+        "description": "令牌缺失或无效",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_automation_webhook_id",
+    "parameters": [
+      {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "对象主键；具体对象类型见接口说明"
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "example": {
+            "url": "https://example.com/video.mp4"
+          }
+        }
+      }
+    },
+    "security": [
+      {
+        "automationWebhookToken": []
+      }
+    ]
+  }
+}

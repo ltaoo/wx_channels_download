@@ -1,0 +1,64 @@
+{
+  "post": {
+    "tags": [
+      "服务"
+    ],
+    "summary": "启动指定服务",
+    "description": "name 可通过 JSON 或 query 传入，JSON 优先；proxy 规范化为 interceptor。发布启动命令后立即返回当前服务状态，并不保证已启动完成。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_service_start",
+    "parameters": [
+      {
+        "name": "name",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "服务名称；JSON 请求体的 name 优先，proxy 等同 interceptor"
+      }
+    ],
+    "requestBody": {
+      "required": false,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "../components.json#/schemas/api_service_action_body"
+          },
+          "example": {
+            "name": "interceptor"
+          }
+        }
+      }
+    }
+  }
+}

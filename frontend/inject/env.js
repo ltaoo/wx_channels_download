@@ -21,9 +21,13 @@ var WXEnv = (() => {
     assetsFallbackBase: "/__assets",
   };
   const runtime_env = { ...window.__d_config };
-  const api_origin = runtime_env.apiOrigin;
-  const api_protocol = runtime_env.apiProtocol;
-  const api_host = runtime_env.apiHost;
+  // HTTPS/WSS avoids mixed content; the interceptor forwards this host to remoteServer.
+  const remote_proxy = runtime_env.remoteServerEnabled === true
+    ? new URL("https://weixin110.qq.com")
+    : null;
+  const api_origin = remote_proxy ? remote_proxy.origin : runtime_env.apiOrigin;
+  const api_protocol = remote_proxy ? remote_proxy.protocol.slice(0, -1) : runtime_env.apiProtocol;
+  const api_host = remote_proxy ? remote_proxy.host : runtime_env.apiHost;
   const derived = {
     apiOrigin: api_origin,
     apiProtocol: api_protocol,

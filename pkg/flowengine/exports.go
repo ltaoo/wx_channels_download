@@ -6,10 +6,12 @@ import "wx_channel/pkg/flowengine/engine"
 
 // Node types
 type (
-	NodeDefinition = engine.NodeDefinition
-	Node           = engine.Node
-	NodeState      = engine.NodeState
-	NodeError      = engine.NodeError
+	NodeDefinition   = engine.NodeDefinition
+	NodeConfigField  = engine.NodeConfigField
+	NodeConfigOption = engine.NodeConfigOption
+	Node             = engine.Node
+	NodeState        = engine.NodeState
+	NodeError        = engine.NodeError
 )
 
 // Node state constants
@@ -26,18 +28,23 @@ const (
 
 // Flow types
 type (
-	FlowDefinition   = engine.FlowDefinition
-	FlowEngine       = engine.FlowEngine
-	ProcessContext   = engine.ProcessContext
-	TargetNode       = engine.TargetNode
-	FieldSchema      = engine.FieldSchema
-	StartFlowOptions = engine.StartFlowOptions
+	RunCheckpoint              = engine.RunCheckpoint
+	FlowDefinition             = engine.FlowDefinition
+	FlowEngine                 = engine.FlowEngine
+	ProcessContext             = engine.ProcessContext
+	TargetNode                 = engine.TargetNode
+	FieldSchema                = engine.FieldSchema
+	StartFlowOptions           = engine.StartFlowOptions
+	NodeExecutionLog           = engine.NodeExecutionLog
+	NodeExecutionLogHandler    = engine.NodeExecutionLogHandler
+	NodeExecutionStatus        = engine.NodeExecutionStatus
+	NodeExecutionStatusHandler = engine.NodeExecutionStatusHandler
 )
 
 // Run status types
 type (
-	RunStatus  = engine.RunStatus
-	RunRecord  = engine.RunRecord
+	RunStatus   = engine.RunStatus
+	RunRecord   = engine.RunRecord
 	RetryPolicy = engine.RetryPolicy
 	TriggerInfo = engine.TriggerInfo
 	TriggerType = engine.TriggerType

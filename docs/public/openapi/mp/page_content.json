@@ -1,0 +1,53 @@
+{
+  "get": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "获取公众号文章正文",
+    "description": "由已连接的公众号页面获取文章正文；token 使用公众号读取令牌。",
+    "responses": {
+      "200": {
+        "description": "HTTP 200；code=0 成功，非零为业务失败，以 msg 判断错误。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "parameters": [
+      {
+        "name": "url",
+        "in": "query",
+        "required": true,
+        "description": "url",
+        "schema": {
+          "type": "string"
+        }
+      },
+      {
+        "name": "token",
+        "in": "query",
+        "required": false,
+        "description": "配置读取令牌时必填",
+        "schema": {
+          "type": "string"
+        }
+      }
+    ]
+  }
+}

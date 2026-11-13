@@ -1,0 +1,85 @@
+{
+  "post": {
+    "tags": [
+      "浏览历史"
+    ],
+    "summary": "查询浏览历史",
+    "description": "platform_id 优先于 platform_ids；两者都省略时使用实现中的默认平台集合。page 默认 1，page_size 默认 20，兼容旧字段 pageSize。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/services_BrowseHistoryListResult"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_browse_history_list",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "username": {
+                "type": "string",
+                "nullable": true
+              },
+              "keyword": {
+                "type": "string"
+              },
+              "platform_id": {
+                "type": "string"
+              },
+              "platform_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "page": {
+                "type": "integer",
+                "nullable": true
+              },
+              "page_size": {
+                "type": "integer",
+                "nullable": true
+              },
+              "pageSize": {
+                "type": "integer",
+                "nullable": true
+              }
+            }
+          },
+          "example": {
+            "platform_ids": [
+              "wxchannels",
+              "bilibili"
+            ],
+            "page": 1,
+            "page_size": 20
+          }
+        }
+      }
+    }
+  }
+}

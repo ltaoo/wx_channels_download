@@ -39,7 +39,7 @@ func (d *default_http_driver) Prepare(ctx context.Context, endpoint Endpoint) (P
 	if err != nil {
 		return PreparedResource{}, err
 	}
-	resp, err := d.do(req, endpoint.ProxyServer)
+	resp, err := d.do(req, endpoint)
 	if err != nil {
 		return PreparedResource{}, err
 	}
@@ -103,7 +103,7 @@ func (d *default_http_driver) Open(ctx context.Context, endpoint Endpoint, reque
 	if err != nil {
 		return nil, err
 	}
-	resp, err := d.do(req, endpoint.ProxyServer)
+	resp, err := d.do(req, endpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -172,8 +172,11 @@ func (d *default_http_driver) new_request(ctx context.Context, endpoint Endpoint
 	return req, nil
 }
 
-func (d *default_http_driver) do(req *http.Request, proxy_server ProxyServer) (*http.Response, error) {
-	proxy_url, err := proxy_server.URL()
+func (d *default_http_driver) do(req *http.Request, endpoint Endpoint) (*http.Response, error) {
+	if endpoint.HTTPClient != nil {
+		return endpoint.HTTPClient.Do(req)
+	}
+	proxy_url, err := endpoint.ProxyServer.URL()
 	if err != nil {
 		return nil, err
 	}

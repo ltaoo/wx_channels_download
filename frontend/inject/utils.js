@@ -476,7 +476,48 @@ var WXU = (() => {
     // create_dropdown_menu: __wx_create_dropdown_menu,
     // create_popover: __wx_create_popover,
     fetch: __wx_fetch,
-    observe_node({ selector, container, onOk, onError }) {
+    observe_node({ selector, container, loading, onOk, onError }) {
+      if (loading) {
+        var fallback_ready = document.readyState === "complete";
+        var loading_observer = new MutationObserver(check_loaded);
+        function check_loaded() {
+          if (document.querySelector(loading)) {
+            fallback_ready = true;
+            return;
+          }
+          if (document.readyState === "loading") {
+            return;
+          }
+          var $root = typeof container === "string"
+            ? document.querySelector(container)
+            : container;
+          // 等待应用挂载，避免把尚未出现的加载节点当成加载完成。
+          if (!$root || $root.children.length === 0) {
+            return;
+          }
+          var $target = $root.querySelector(selector);
+          // 页面外壳可能先于加载节点挂载，不能据此提前回退。
+          if (!$target && !fallback_ready) {
+            return;
+          }
+          loading_observer.disconnect();
+          document.removeEventListener("DOMContentLoaded", check_loaded);
+          if ($target) {
+            onOk($target);
+          } else if (onError) {
+            onError();
+          }
+        }
+        loading_observer.observe(document.documentElement, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["class"],
+        });
+        document.addEventListener("DOMContentLoaded", check_loaded);
+        check_loaded();
+        return;
+      }
       var $existing = document.querySelector(selector);
       if ($existing) {
         onOk($existing);

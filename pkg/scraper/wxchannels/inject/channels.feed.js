@@ -7,7 +7,12 @@
    * @param {HTMLElement} $parent
    */
   function insert_download_btn($parent) {
+    if ($parent.querySelector(".wx-feed-download-btn")) {
+      return;
+    }
     var $btn = Icons.download_btn2();
+    $btn.setAttribute("data-n", "feed-download-button");
+    $btn.classList.add("wx-feed-download-btn");
     WXU.attach_download_dropdown_menu($btn);
     $btn.onclick = WXU.downloadBtnHandler;
     $parent.appendChild($btn);
@@ -66,12 +71,16 @@
    */
   function render_sider_tools() {
     const $fixed_sider = document.createElement("div");
+    $fixed_sider.setAttribute("data-n", "feed-download-sidebar");
     $fixed_sider.className = "wx-sider";
     const $sider_bg = document.createElement("div");
+    $sider_bg.setAttribute("data-n", "feed-download-sidebar-background");
     $sider_bg.className = "wx-sider-bg";
     const $tools = document.createElement("div");
+    $tools.setAttribute("data-n", "feed-download-sidebar-tools");
     $tools.className = "wx-sider-tools";
     const $btn = document.createElement("div");
+    $btn.setAttribute("data-n", "feed-sidebar-download-button");
     $btn.className = "wx-sider-tools-btn";
     $btn.innerHTML = Icons.download_icon1;
     $btn.onclick = WXU.downloadBtnHandler;
@@ -105,8 +114,9 @@
     }
   }
   WXU.observe_node({
-    selector: ".slides-item",
+    selector: ".slides-item .click-box.op-item",
     container: "#app",
+    loading: ".loading-content",
     onOk: function () {
       insert_download_btn_to_feed_profile_page();
     },

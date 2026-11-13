@@ -22,6 +22,7 @@ import (
 	"wx_channel/internal/database"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/events"
+	"wx_channel/pkg/dm"
 	"wx_channel/pkg/hermes"
 )
 
@@ -136,6 +137,35 @@ func SelectDownloadTaskResources(info *adapter.DownloadTaskResult, resource_inde
 		)
 	}
 	return nil
+}
+
+func validate_download_task_endpoints(info *adapter.DownloadTaskResult) error {
+	if info == nil {
+		return fmt.Errorf("下载任务为空")
+	}
+	for _, resource_info := range info.Resources {
+		if len(resource_info.Endpoints) == 0 {
+			return fmt.Errorf("资源 %s 没有下载端点", resource_info.Resource.Name)
+		}
+		for _, endpoint := range resource_info.Endpoints {
+			if strings.TrimSpace(endpoint.URL) == "" {
+				return fmt.Errorf("资源 %s 的下载端点缺少 URL", resource_info.Resource.Name)
+			}
+		}
+	}
+	return nil
+}
+
+func prepare_download_task_resources(
+	h adapter.AdapterHandler,
+	content any,
+	resource_indexes []int,
+) (any, error) {
+	preparer, ok := h.(adapter.FetchDownloadTaskResourcePreparer)
+	if !ok {
+		return content, nil
+	}
+	return preparer.PrepareDownloadTaskResources(content, resource_indexes)
 }
 
 type TaskV1IDBody struct {
@@ -299,50 +329,8 @@ type TaskListResult struct {
 // DownloadTaskRecord & DownloadTaskFileRecord
 // ---------------------------------------------------------------------------
 
-type DownloadTaskRecord struct {
-	ID           int                      `json:"id"`
-	ContentID    *string                  `json:"content_id,omitempty"`
-	ContentType  string                   `json:"content_type,omitempty"`
-	ParentTaskID *int                     `json:"parent_task_id,omitempty"`
-	RootTaskID   int                      `json:"root_task_id"`
-	RelationType string                   `json:"relation_type,omitempty"`
-	ChildCount   int                      `json:"child_count"`
-	Name         string                   `json:"name"`
-	PlatformID   string                   `json:"platform_id"`
-	Status       int                      `json:"status"`
-	SourceURL    string                   `json:"source_url"`
-	CoverURL     string                   `json:"cover_url"`
-	CoverWidth   string                   `json:"cover_width"`
-	CoverHeight  string                   `json:"cover_height"`
-	ConfigJSON   string                   `json:"config_json"`
-	MetadataJSON string                   `json:"metadata_json"`
-	URL          string                   `json:"url"`
-	Size         int64                    `json:"size"`
-	Downloaded   int64                    `json:"downloaded"`
-	Speed        int64                    `json:"speed"`
-	Progress     float64                  `json:"progress"`
-	Error        string                   `json:"error"`
-	Files        []DownloadTaskFileRecord `json:"files"`
-	FileCount    int                      `json:"file_count"`
-	CreatedAt    int64                    `json:"created_at"`
-	UpdatedAt    int64                    `json:"updated_at"`
-}
-
-type DownloadTaskFileRecord struct {
-	ID          int     `json:"id"`
-	DownloadDir string  `json:"download_dir"`
-	Name        string  `json:"name"`
-	FilePath    string  `json:"file_path"`
-	Kind        string  `json:"kind"`
-	Type        string  `json:"type"`
-	Status      string  `json:"status"`
-	Size        int64   `json:"size"`
-	Downloaded  int64   `json:"downloaded"`
-	Speed       int64   `json:"speed"`
-	Progress    float64 `json:"progress"`
-	URL         string  `json:"url"`
-	Error       string  `json:"error"`
-}
+type DownloadTaskRecord = dm.DownloadTask
+type DownloadTaskFileRecord = dm.DownloadTaskFile
 
 // DownloadTaskStats holds counts of download tasks by status.
 type DownloadTaskStats struct {
@@ -633,12 +621,23 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 
 	stage = "build_platform_task"
 	var info *adapter.DownloadTaskResult
+	build_content := any(body.Content)
 	if body.BuildFromFetch {
+		// ponytail: resolve signed URLs at creation; move into StartCreatedTask if expiry causes queue failures.
+		prepared_content, err := prepare_download_task_resources(
+			h,
+			body.Content,
+			body.ResourceIndexes,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("准备下载资源失败: %w", err)
+		}
+		build_content = prepared_content
 		fetch_builder, ok := h.(adapter.FetchDownloadTaskBuilder)
 		if !ok {
 			return nil, fmt.Errorf("平台 %s 不支持从抓取结果构建下载任务", body.Platform)
 		}
-		info, err = fetch_builder.BuildDownloadTaskFromFetch(body.Content, json.RawMessage(config_json))
+		info, err = fetch_builder.BuildDownloadTaskFromFetch(build_content, json.RawMessage(config_json))
 	} else {
 		info, err = h.BuildDownloadTask(body.Content, json.RawMessage(config_json))
 	}
@@ -672,10 +671,10 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 	resource_infos := info.Resources
 	s.logger.Info().Str("file", "/services/download_task.go").Str("platform", body.Platform).Str("task_name", info.Task.Name).Int("resource_count", len(resource_infos)).Msg("platform download task built successfully")
 	endpoint_count := 0
+	if err := validate_download_task_endpoints(info); err != nil {
+		return nil, err
+	}
 	for _, ri := range resource_infos {
-		if len(ri.Endpoints) == 0 {
-			return nil, fmt.Errorf("资源 %s 没有下载端点", ri.Resource.Name)
-		}
 		endpoint_count += len(ri.Endpoints)
 	}
 
@@ -760,100 +759,18 @@ func (s *DownloadTaskService) CreateTask(body CreateDownloadTaskBody) (result *C
 		Int("resource_count", len(resource_infos)).
 		Int("endpoint_count", endpoint_count).
 		Msg("persisting download task graph")
+	var persisted *CreateTaskResult
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		tx = tx.Session(&gorm.Session{DisableNestedTransaction: true})
-		stage = "persist_task_lineage"
-		if err := database.ApplyTaskLineage(tx, &task, body.ParentTaskID, body.RelationType); err != nil {
-			return err
-		}
-		stage = "persist_task"
-		if err := tx.Create(&task).Error; err != nil {
-			return fmt.Errorf("创建下载任务失败: %w", err)
-		}
-		stage = "finalize_task_root"
-		if err := database.FinalizeTaskRoot(tx, &task); err != nil {
-			return err
-		}
-
-		stage = "persist_content"
-		if content != nil {
-			content.UpdatedAt = now
-			if err := save_content_with_text_tracks(tx, content, now); err != nil {
-				return fmt.Errorf("保存 Content 失败: %w", err)
-			}
-		}
-
-		stage = "persist_account"
-		if account != nil && account.ExternalId != "" {
-			content_id := ""
-			if content != nil {
-				content_id = content.Id
-			}
-			persisted_account, err := NewContentService(tx).UpsertAccountAndLinkContent(content_id, account, "owner", now)
-			if err != nil {
-				return err
-			}
-			account = persisted_account
-		}
-
-		stage = "persist_content_details"
-		if err := save_content_details(tx, content, info.ContentDetail, info.ContentDetails, resource_infos, now); err != nil {
-			return fmt.Errorf("保存内容详情与关联关系失败: %w", err)
-		}
-
-		if len(resource_infos) == 0 {
-			return fmt.Errorf("平台未返回可下载资源或端点")
-		}
-		stage = "persist_resources"
-		task_id := task.Id
-		resources = make([]model.DownloadResource, len(resource_infos))
-		for resource_index := range resource_infos {
-			resource := resource_infos[resource_index].Resource
-			resource.TaskId = &task_id
-			resource.DownloadDir = save_dir
-			if resource.CreatedAt == 0 {
-				resource.CreatedAt = now
-			}
-			resource.UpdatedAt = now
-			resources[resource_index] = resource
-		}
-		if err := tx.CreateInBatches(&resources, download_task_persistence_batch_size).Error; err != nil {
-			return fmt.Errorf("批量创建资源失败: %w", err)
-		}
-
-		stage = "persist_resource_assets"
-		for resource_index := range resources {
-			if err := save_download_resource_assets(
-				tx,
-				&resources[resource_index],
-				resource_infos[resource_index],
-				content,
-				info.ContentDetail,
-				now,
-			); err != nil {
-				return fmt.Errorf("关联下载资源与内容资产失败: %w", err)
-			}
-			for endpoint_index := range resource_infos[resource_index].Endpoints {
-				endpoint := resource_infos[resource_index].Endpoints[endpoint_index]
-				endpoint.ResourceId = resources[resource_index].Id
-				if endpoint.CreatedAt == 0 {
-					endpoint.CreatedAt = now
-				}
-				endpoint.UpdatedAt = now
-				endpoints = append(endpoints, endpoint)
-			}
-		}
-		stage = "persist_endpoints"
-		if len(endpoints) == 0 {
-			return fmt.Errorf("平台未返回可下载资源或端点")
-		}
-		if err := tx.CreateInBatches(&endpoints, download_task_persistence_batch_size).Error; err != nil {
-			return fmt.Errorf("批量创建端点失败: %w", err)
-		}
-		return nil
+		var err error
+		persisted, err = persist_download_task_graph(tx, info, &task, save_dir, body.ParentTaskID, body.RelationType, now, false)
+		return err
 	}); err != nil {
 		s.logger.Error().Str("platform", body.Platform).Err(err).Msg("failed to persist download task graph")
 		return nil, err
+	}
+	resources, endpoints = persisted.Resources, persisted.Endpoints
+	if persisted.Account != nil {
+		account = persisted.Account.(*model.Account)
 	}
 	task_persisted = true
 	s.logger.Info().Int("task_id", task.Id).Str("task_name", task.Name).Str("platform", body.Platform).Msg("download task written to database")
@@ -1216,25 +1133,6 @@ func (s *DownloadTaskService) CancelTask(task_id int) error {
 	return nil
 }
 
-// DeleteTask deletes a download task and returns the deleted task's record.
-func (s *DownloadTaskService) DeleteTask(task_id int) (*DownloadTaskRecord, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("应用未初始化，数据库不可用")
-	}
-
-	var task model.DownloadTask
-	if err := s.db.Where("id = ?", task_id).First(&task).Error; err != nil {
-		return nil, fmt.Errorf("下载任务不存在")
-	}
-
-	s.downloader.DeleteTask(task.Id)
-	deleted_record, _ := s.BuildTaskRecord(task.Id)
-	if err := s.soft_delete_task_graph([]int{task.Id}, time.Now().UnixMilli()); err != nil {
-		return nil, fmt.Errorf("删除下载任务失败: %w", err)
-	}
-	return deleted_record, nil
-}
-
 // ListTasks queries the download task list.
 func (s *DownloadTaskService) ListTasks(task_id int, page int, page_size int, status_filter string) (*TaskListResult, error) {
 	if s.db == nil {
@@ -1394,36 +1292,6 @@ func (s *DownloadTaskService) PauseAllTasks(status string) (int, []int, error) {
 	return paused, stream_task_ids, nil
 }
 
-// ClearTasks clears completed/failed/cancelled download tasks.
-func (s *DownloadTaskService) ClearTasks(delete_files bool) (int, error) {
-	if s.db == nil {
-		return 0, fmt.Errorf("应用未初始化，数据库不可用")
-	}
-
-	var tasks []model.DownloadTask
-	if err := s.db.Where("deleted_at IS NULL").
-		Where("status IN (?, ?, ?)",
-			model.TaskStatusFinished, model.TaskStatusFailed, model.TaskStatusCancelled).
-		Find(&tasks).Error; err != nil {
-		return 0, fmt.Errorf("查询下载任务失败: %w", err)
-	}
-
-	task_ids := make([]int, 0, len(tasks))
-	for _, task := range tasks {
-		s.downloader.DeleteTask(task.Id)
-		task_ids = append(task_ids, task.Id)
-	}
-	if len(task_ids) == 0 {
-		return 0, nil
-	}
-
-	if err := s.soft_delete_task_graph(task_ids, time.Now().UnixMilli()); err != nil {
-		return 0, fmt.Errorf("清理下载任务失败: %w", err)
-	}
-
-	return len(task_ids), nil
-}
-
 func (s *DownloadTaskService) soft_delete_task_graph(task_ids []int, deleted_at int64) error {
 	if len(task_ids) == 0 {
 		return nil
@@ -1527,6 +1395,9 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 	progress_resource_by_task := make(map[int]map[int]hermes.ResourceProgress, len(tasks))
 	if s.downloader != nil {
 		for _, task := range tasks {
+			if task.Status == model.TaskStatusFinished {
+				continue
+			}
 			progress := s.downloader.CurrentProgress(task.Id)
 			if progress == nil {
 				continue
@@ -1674,6 +1545,9 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 			resource_size := r.Size
 			resource_downloaded := downloaded_by_resource[r.ID]
 			resource_speed := speed_by_resource[r.ID]
+			if task.Status == model.TaskStatusFinished {
+				resource_downloaded, resource_speed = resource_size, 0
+			}
 			if resource_progress, ok := progress_resources[r.ID]; ok {
 				if resource_progress.Size > resource_size {
 					resource_size = resource_progress.Size
@@ -1713,7 +1587,7 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 				Name:        r.Name,
 				FilePath:    filepath.Join(r.DownloadDir, r.Name),
 				Kind:        r.Kind,
-				Type:        r.ResourceType,
+				Type:        strings.ToUpper(r.ResourceType),
 				Status:      file_status,
 				Size:        resource_size,
 				Downloaded:  resource_downloaded,
@@ -1724,6 +1598,9 @@ func (s *DownloadTaskService) BuildTaskRecords(tasks []model.DownloadTask) ([]Do
 			})
 		}
 		effective_status := ComputeEffectiveTaskStatus(task.Status, files)
+		if effective_status == model.TaskStatusFinished {
+			downloaded_by_task[task.Id], speed_by_task[task.Id] = total_size, 0
+		}
 		content_type := ""
 		if task.ContentId != nil {
 			content_type = content_type_by_id[*task.ContentId]
@@ -3283,7 +3160,7 @@ func (s *DownloadTaskService) check_duplicate(save_dir string, task_unique_id st
 				if _, deleted := deleted_task_ids[conflict.TaskID]; deleted {
 					continue
 				}
-				if err := s.delete_task_with_files(conflict.TaskID); err != nil {
+				if err := s.delete_terminal_task_record(conflict.TaskID); err != nil {
 					return fmt.Errorf("覆盖已存在任务失败: %w", err)
 				}
 				deleted_task_ids[conflict.TaskID] = struct{}{}
@@ -3318,7 +3195,10 @@ func (s *DownloadTaskService) check_duplicate(save_dir string, task_unique_id st
 	return err_resp
 }
 
-func (s *DownloadTaskService) delete_task_with_files(task_id int) error {
+// delete_terminal_task_record soft-deletes a finished/failed/cancelled task's
+// record so a re-download can reuse its unique ID. It intentionally leaves the
+// previous files on disk untouched.
+func (s *DownloadTaskService) delete_terminal_task_record(task_id int) error {
 	var task model.DownloadTask
 	if err := s.db.First(&task, task_id).Error; err != nil {
 		return fmt.Errorf("任务不存在: %w", err)

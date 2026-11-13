@@ -1,0 +1,37 @@
+{
+  "get": {
+    "tags": [
+      "视频号"
+    ],
+    "summary": "查询视频号页面连接状态",
+    "description": "查询视频号页面连接状态。",
+    "responses": {
+      "200": {
+        "description": "HTTP 200；code=0 成功，非零为业务失败，以 msg 判断错误。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "available": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

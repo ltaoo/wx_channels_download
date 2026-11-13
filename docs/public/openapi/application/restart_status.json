@@ -1,0 +1,48 @@
+{
+  "get": {
+    "tags": [
+      "应用"
+    ],
+    "summary": "确认应用重启与配置生效状态",
+    "description": "restart_token 使用 POST /api/config 返回的令牌。只有 status=completed、restart_completed=true 且 config_applied=true 才能确认重启和配置生效。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/services_RestartConfirmation"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "get_api_restart_status",
+    "parameters": [
+      {
+        "name": "restart_token",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "保存配置后返回的重启确认令牌"
+      }
+    ]
+  }
+}

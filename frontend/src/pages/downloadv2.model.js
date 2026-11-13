@@ -1,3 +1,4 @@
+import { track_error } from "@/utils.js";
 import { proxy_image_url } from "@/image-proxy.model.js";
 
 const DOWNLOAD_PAGE_SIZE_DEFAULT = 50;
@@ -189,7 +190,8 @@ function DownloadV2Model(props = {}) {
   const active_status_ = ref("total");
   const initial_ = ref(true);
   const loading_ = ref(false);
-  const error_ = ref("");
+  const error_ = track_error(ref(""), props.tip);
+  const task_error_ = ref("");
   const list_render_enabled_ = ref(true);
   const selected_task_ids_ = refarr([]);
   const delete_task_ = ref(null);
@@ -237,21 +239,7 @@ function DownloadV2Model(props = {}) {
     (state) =>
       Math.max(1, Math.ceil(state.total / Math.max(1, state.pageSize))),
   );
-  const range_text_ = combine(
-    {
-      total: filtered_task_count_,
-      page: page_,
-      pageSize: page_size_,
-      count: computed(tasks_, (tasks) => tasks.length),
-    },
-    (state) => {
-      if (!state.total || !state.count) {
-        return `共 ${state.total || 0} 条`;
-      }
-      const start = (state.page - 1) * state.pageSize + 1;
-      return `第 ${start}-${start + state.count - 1} 条，共 ${state.total} 条`;
-    },
-  );
+  const range_text_ = computed(filtered_task_count_, (total) => `共 ${total || 0} 条`);
   const loaded_task_selection_ = combine(
     {
       tasks: tasks_,
@@ -299,7 +287,13 @@ function DownloadV2Model(props = {}) {
     },
   );
 
-  const methods = {};
+  const methods = {
+    tip: props.tip,
+    requestTaskError(error) {
+      task_error_.as(error?.message || String(error || "下载失败"));
+      ui.taskErrorDialog$.show();
+    },
+  };
   const ui = {
     btn_refresh_tasks$: new Timeless.vm.ButtonCore({
       variant: "outline",
@@ -408,6 +402,11 @@ function DownloadV2Model(props = {}) {
     }),
     taskPreviewDrawer$: new Timeless.vm.DialogCore({
       title: "任务详情",
+      closeable: true,
+      footer: false,
+    }),
+    taskErrorDialog$: new Timeless.vm.DialogCore({
+      title: "错误原因",
       closeable: true,
       footer: false,
     }),
@@ -583,7 +582,7 @@ function DownloadV2Model(props = {}) {
 
   function report_error(error, fallback) {
     const message = (error && error.message) || String(error || fallback);
-    DLUtils.error({ msg: message || fallback });
+    props.tip({ msg: [message || fallback], type: "error" });
     return error;
   }
 
@@ -855,7 +854,7 @@ function DownloadV2Model(props = {}) {
   function request_task_preview(task) {
     const task_id = task_identifier(task);
     if (task_id === undefined || task_id === null || task_id === "") {
-      DLUtils.error({ msg: "无法打开详情：下载任务 ID 为空" });
+      props.tip({ msg: ["无法打开详情：下载任务 ID 为空"], type: "error" });
       return;
     }
     preview_task_id_.as(String(task_id));
@@ -1036,7 +1035,7 @@ function DownloadV2Model(props = {}) {
           : await downloader.create(object);
       await load_page(page_.value);
       if (options.hideDialog) options.hideDialog.hide();
-      DLUtils.toast(success_message);
+      props.tip({ msg: [success_message], type: "success" });
       return task$;
     } catch (error) {
       if (!options.overwriteRetry && duplicate_error(error)) {
@@ -1235,6 +1234,7 @@ function DownloadV2Model(props = {}) {
     loading: loading_,
     error: error_,
     overwrite: overwrite_,
+    task_error: task_error_,
     overwrite_apply_all: overwrite_apply_all_,
     overwrite_processing: overwrite_processing_,
     overwrite_conflict: overwrite_conflict_,

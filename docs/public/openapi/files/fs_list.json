@@ -1,0 +1,93 @@
+{
+  "post": {
+    "tags": [
+      "文件"
+    ],
+    "summary": "列出本地目录文件",
+    "description": "dir 为空时使用当前用户 Documents 目录。默认忽略 .DS_Store；offset、limit 为负数时按 0 处理。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/services_FileResult"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_fs_list",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "dir": {
+                "type": "string"
+              },
+              "ignore": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "accept": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "recursive": {
+                "type": "boolean"
+              },
+              "depth": {
+                "type": "integer"
+              },
+              "sort": {
+                "allOf": [
+                  {
+                    "$ref": "../components.json#/schemas/services_FileSortOption"
+                  }
+                ],
+                "nullable": true
+              },
+              "offset": {
+                "type": "integer"
+              },
+              "limit": {
+                "type": "integer"
+              }
+            }
+          },
+          "example": {
+            "dir": "/data/downloads",
+            "recursive": false,
+            "limit": 50,
+            "sort": {
+              "by": "name",
+              "ascending": true
+            }
+          }
+        }
+      }
+    }
+  }
+}

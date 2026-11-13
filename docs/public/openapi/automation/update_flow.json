@@ -1,0 +1,94 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "更新自定义工作流定义",
+    "description": "修改共享流程图、名称和默认配置；不会创建实例。节点声明改变时清理不兼容的默认值与实例覆盖值。触发器和实例覆盖值使用实例接口。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/model_UserFlow"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_automation_update_flow",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "nullable": true
+              },
+              "description": {
+                "type": "string",
+                "nullable": true
+              },
+              "default_node_configs": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "共用流程的默认配置，省略时保留。"
+              },
+              "context_schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "../components.json#/schemas/engine_FieldSchema"
+                }
+              },
+              "start_node_id": {
+                "type": "string"
+              },
+              "nodes": {
+                "type": "array",
+                "items": {
+                  "$ref": "../components.json#/schemas/services_UserFlowNodeInput"
+                }
+              },
+              "subflows": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object"
+                },
+                "description": "本自动化内声明的可复用 FlowDefinition，键为 config.flow_id 引用名。"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

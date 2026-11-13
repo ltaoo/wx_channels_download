@@ -1,0 +1,67 @@
+{
+  "post": {
+    "tags": [
+      "服务"
+    ],
+    "summary": "保存服务配置",
+    "description": "values 使用配置键到值的映射。仅支持 api.hostname/port、proxy.hostname/port/enabled/system/tun/defaultInterface/upstreamProxy/skipInstallRootCert、proxy.tcpRelay.hostname/port/enabled、cert.file/key/name。保存配置，是否重启由调用方决定。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "values": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_service_config",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "values": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "values"
+            ]
+          },
+          "example": {
+            "values": {
+              "proxy.port": 2023
+            }
+          }
+        }
+      }
+    }
+  }
+}

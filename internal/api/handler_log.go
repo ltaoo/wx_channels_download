@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	result "wx_channel/internal/apiresult"
+	"wx_channel/internal/logfile"
 )
 
 const (
@@ -152,12 +153,12 @@ func (c *APIClient) handle_clear_logs(ctx *gin.Context) {
 		return
 	}
 
-	var active_log_file *os.File
+	var active_log_writer *logfile.Writer
 	if c.cfg.Original != nil {
-		active_log_file = c.cfg.Original.LogFile()
+		active_log_writer = c.cfg.Original.LogWriter()
 	}
 	for file_index := range files {
-		if err := truncate_log_file(files[file_index].Path, active_log_file); err != nil {
+		if err := truncate_log_file(files[file_index].Path, active_log_writer); err != nil {
 			result.Err(ctx, 500, "清空日志文件失败: "+err.Error())
 			return
 		}
@@ -170,7 +171,7 @@ func (c *APIClient) handle_clear_logs(ctx *gin.Context) {
 	})
 }
 
-func truncate_log_file(log_path string, active_log_file *os.File) error {
+func truncate_log_file(log_path string, active_log_writer *logfile.Writer) error {
 	path_info, path_err := os.Stat(log_path)
 	if path_err != nil {
 		return path_err
@@ -179,20 +180,24 @@ func truncate_log_file(log_path string, active_log_file *os.File) error {
 		return fmt.Errorf("日志路径是目录")
 	}
 
-	if active_log_file != nil {
-		active_info, active_err := active_log_file.Stat()
-		if active_err == nil && os.SameFile(path_info, active_info) {
-			if err := active_log_file.Truncate(0); err != nil {
-				return err
-			}
-			if _, err := active_log_file.Seek(0, io.SeekStart); err != nil {
-				return err
-			}
-			return nil
-		}
+	// The live application log is emptied through its own writer so the
+	// rotation state stays consistent.
+	if active_log_writer != nil && same_log_path(active_log_writer.Filename, log_path) {
+		return active_log_writer.Truncate()
 	}
 
 	return os.Truncate(log_path, 0)
+}
+
+// same_log_path compares two log paths by absolute, cleaned form so a relative
+// configured path still matches the discovered one.
+func same_log_path(first string, second string) bool {
+	first_abs, first_err := filepath.Abs(first)
+	second_abs, second_err := filepath.Abs(second)
+	if first_err == nil && second_err == nil {
+		return first_abs == second_abs
+	}
+	return filepath.Clean(first) == filepath.Clean(second)
 }
 
 func sort_log_entries(entries []api_log_entry) {

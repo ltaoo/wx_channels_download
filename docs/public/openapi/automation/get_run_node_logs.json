@@ -1,0 +1,69 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "按节点读取执行尝试",
+    "description": "只查询指定运行/作用域/节点的尝试；返回 list、has_more、next_before_id，每项包含唯一 log_id。循环重置不删除日志。",
+    "operationId": "post_api_v1_automation_get_run_node_logs",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "node_id": {
+                "type": "string"
+              },
+              "flow_id": {
+                "type": "string",
+                "description": "可选的子流程作用域。"
+              },
+              "before_id": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "page_size": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 200,
+                "default": 100
+              }
+            },
+            "required": [
+              "id",
+              "node_id"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "code=0 表示成功。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
