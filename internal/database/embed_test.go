@@ -41,24 +41,12 @@ func TestAutomationMigrationsRoundTrip(t *testing.T) {
 	}
 
 	for cycle := 0; cycle < 2; cycle++ {
-		if err := migrator.Migrate(5); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := sql_db.Exec(`INSERT INTO user_flow(id,name,definition,default_triggers) VALUES ('legacy-defaults','Defaults','{}','[{"id":"daily","type":"Cron","initial_data":{"seed":1}}]');
-			INSERT INTO user_flow_instance(id,flow_id,name,inherit_triggers) VALUES ('legacy-instance','legacy-defaults','Defaults',1);
-			INSERT INTO flow_schedule(id,instance_id,flow_id,name,cron_expr,initial_data) VALUES ('legacy-rule','legacy-instance','legacy-defaults','daily','@daily','{"seed":1,"cursor":"keep","__automation":{"default_trigger_id":"daily"}}');`); err != nil {
-			t.Fatal(err)
-		}
 		if err := migrator.Up(); err != nil {
 			t.Fatalf("migrate up: %v", err)
 		}
 		version, dirty, err := migrator.Version()
-		if err != nil || version != 6 || dirty {
+		if err != nil || version != 3 || dirty {
 			t.Fatalf("migration state: version=%d dirty=%v err=%v", version, dirty, err)
-		}
-		var input_key, cursor string
-		if err := sql_db.QueryRow(`SELECT json_extract(initial_data,'$.__automation.configured_input_keys[0]'), json_extract(initial_data,'$.cursor') FROM flow_schedule WHERE id='legacy-rule'`).Scan(&input_key, &cursor); err != nil || input_key != "seed" || cursor != "keep" {
-			t.Fatalf("trigger migration lost declared input keys or runtime progress: key=%q cursor=%q err=%v", input_key, cursor, err)
 		}
 		var table_count, platform_count int
 		if err := sql_db.QueryRow(`SELECT COUNT(*) FROM sqlite_master
@@ -94,12 +82,15 @@ func TestAutomationMigrationsRoundTrip(t *testing.T) {
 		if _, err := sql_db.Exec("INSERT INTO user_flow_instance (id, name, flow_id) VALUES ('test-instance', 'Test instance', 'test-flow')"); err != nil {
 			t.Fatal(err)
 		}
-		var node_configs string
-		if err := sql_db.QueryRow("SELECT node_configs FROM user_flow_instance WHERE id = 'test-instance'").Scan(&node_configs); err != nil {
+		var node_configs, trigger_overrides, default_triggers, node_states string
+		var inherit_triggers bool
+		if err := sql_db.QueryRow(`SELECT instance.node_configs, instance.trigger_overrides, instance.inherit_triggers, flow.default_triggers, run.node_states
+			FROM user_flow_instance AS instance JOIN user_flow AS flow ON flow.id = instance.flow_id
+			JOIN flow_run_record AS run ON run.instance_id = instance.id WHERE instance.id = 'test-instance'`).Scan(&node_configs, &trigger_overrides, &inherit_triggers, &default_triggers, &node_states); err != nil {
 			t.Fatal(err)
 		}
-		if node_configs != "{}" {
-			t.Fatalf("got default node configs %q, want {}", node_configs)
+		if node_configs != "{}" || trigger_overrides != "{}" || inherit_triggers || default_triggers != "[]" || node_states != "{}" {
+			t.Fatalf("unexpected defaults: configs=%q overrides=%q inherit=%v triggers=%q states=%q", node_configs, trigger_overrides, inherit_triggers, default_triggers, node_states)
 		}
 		var plan_id, parent_id, unused int
 		var plan_detail string
@@ -157,55 +148,5 @@ func TestAutomationMigrationsRoundTrip(t *testing.T) {
 		if content_count != 1 {
 			t.Fatalf("rollback left %d original content rows, want 1", content_count)
 		}
-	}
-}
-
-func TestSubflowStateMigrationPreservesRunHistory(t *testing.T) {
-	sql_db, err := sql.Open("sqlite3", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sql_db.Close()
-	sql_db.SetMaxOpenConns(1)
-	driver, err := sqlite3.WithInstance(sql_db, &sqlite3.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	source, err := iofs.New(Migrations, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	migrator, err := migrate.NewWithInstance("iofs", source, "sqlite3", driver)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer migrator.Close()
-	if err := migrator.Migrate(3); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := sql_db.Exec(`INSERT INTO flow_run_record (id, flow_id, instance_id, status) VALUES ('existing', 'flow', 'instance', 'COMPLETED')`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := sql_db.Exec(`INSERT INTO flow_run_node_log (run_id,flow_id,node_id,entry) VALUES ('existing','flow','first','{"node_id":"first"}')`); err != nil {
-		t.Fatal(err)
-	}
-	if err := migrator.Up(); err != nil {
-		t.Fatal(err)
-	}
-	var states, logs, status string
-	if err := sql_db.QueryRow(`SELECT r.node_states,l.entry,r.status FROM flow_run_record r JOIN flow_run_node_log l ON l.run_id=r.id WHERE r.id='existing'`).Scan(&states, &logs, &status); err != nil {
-		t.Fatal(err)
-	}
-	if states != "{}" || logs != `{"node_id":"first"}` || status != "COMPLETED" {
-		t.Fatalf("upgrade changed history: states=%s logs=%s status=%s", states, logs, status)
-	}
-	if err := migrator.Migrate(3); err != nil {
-		t.Fatal(err)
-	}
-	if err := sql_db.QueryRow(`SELECT l.entry,r.status FROM flow_run_record r JOIN flow_run_node_log l ON l.run_id=r.id WHERE r.id='existing'`).Scan(&logs, &status); err != nil {
-		t.Fatal(err)
-	}
-	if logs != `{"node_id":"first"}` || status != "COMPLETED" {
-		t.Fatal("rollback changed run history")
 	}
 }

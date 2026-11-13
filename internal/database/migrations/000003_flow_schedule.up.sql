@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS `flow_run_record` (
   `current_node` TEXT,
   `node_attempts` TEXT,
   `node_outputs` TEXT,
+  `node_states` TEXT NOT NULL DEFAULT '{}',
   `error` TEXT,
   `started_at` INTEGER,
   `completed_at` INTEGER,
@@ -108,6 +109,7 @@ WHERE content.tags IS NOT NULL AND content.tags != '' AND content.tags != '[]'
 CREATE TABLE `user_flow` (
  `id` TEXT PRIMARY KEY, `name` TEXT NOT NULL, `description` TEXT,
  `definition` TEXT NOT NULL, `default_node_configs` TEXT NOT NULL DEFAULT '{}',
+ `default_triggers` TEXT NOT NULL DEFAULT '[]',
  `created_at` INTEGER NOT NULL DEFAULT 0, `updated_at` INTEGER NOT NULL DEFAULT 0, `deleted_at` INTEGER
 );
 CREATE INDEX `idx_user_flow_deleted_at` ON `user_flow` (`deleted_at`);
@@ -115,6 +117,8 @@ CREATE TABLE `user_flow_instance` (
  `id` TEXT PRIMARY KEY, `flow_id` TEXT NOT NULL REFERENCES user_flow(id),
  `name` TEXT NOT NULL, `description` TEXT,
  `node_configs` TEXT NOT NULL DEFAULT '{}',
+ `inherit_triggers` BOOLEAN NOT NULL DEFAULT 0,
+ `trigger_overrides` TEXT NOT NULL DEFAULT '{}',
  `trigger_type` TEXT NOT NULL DEFAULT 'Manual', `event_key` TEXT,
  `created_at` INTEGER NOT NULL DEFAULT 0, `updated_at` INTEGER NOT NULL DEFAULT 0, `deleted_at` INTEGER
 );
