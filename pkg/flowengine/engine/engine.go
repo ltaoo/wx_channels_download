@@ -608,9 +608,9 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 				Attempt:           attempt,
 				Outcome:           outcome,
 				DurationMs:        duration.Milliseconds(),
-				Input:             redact_log_map(input_snapshot),
+				Input:             input_snapshot,
 				Behavior:          node_execution_behavior(node_def, ctx.ExecutionDetails),
-				Output:            redact_log_map(changed_values),
+				Output:            changed_values,
 				RemovedOutputKeys: removed_context_keys(input_snapshot, output_snapshot),
 				Success:           success,
 				NextNodeIDs:       append([]string(nil), next_node_ids...),
@@ -1146,22 +1146,20 @@ func node_execution_status_state(outcome string, returned_state NodeState) NodeS
 // ProcessContext.SetExecutionDetail (e.g. resolved service arguments) and is
 // merged in last so a node can expose what it actually ran with.
 func node_execution_behavior(def NodeDefinition, details map[string]interface{}) map[string]interface{} {
-	behavior := map[string]interface{}{
-		"config":             redact_log_map(snapshot_map(def.Config)),
-		"next_node_ids":      append([]string(nil), def.NextNodeIDs...),
-		"error_next_node_id": def.ErrorNextNodeID,
-		"input_schema":       def.InputSchema,
-		"output_schema":      def.OutputSchema,
+	config := make(map[string]interface{}, len(def.Config))
+	for key, value := range def.Config {
+		// The run definition already contains the complete nested graph.
+		if key != "workflow" {
+			config[key] = value
+		}
 	}
-	if len(def.NextNodes) > 0 {
-		behavior["next_nodes"] = append([]TargetNode(nil), def.NextNodes...)
-	}
+	behavior := map[string]interface{}{"config": config}
 	if def.RetryPolicy != nil {
 		policy := *def.RetryPolicy
 		behavior["retry"] = policy
 	}
 	for key, value := range details {
-		behavior[key] = redact_log_value(key, value)
+		behavior[key] = value
 	}
 	return behavior
 }
@@ -1207,7 +1205,7 @@ func (e *FlowEngine) emit_node_execution_log(entry NodeExecutionLog) {
 	defer func() {
 		_ = recover()
 	}()
-	handler(entry)
+	handler(compact_node_execution_log(entry))
 }
 
 func (e *FlowEngine) emit_node_execution_status(status NodeExecutionStatus) {
@@ -1221,45 +1219,6 @@ func (e *FlowEngine) emit_node_execution_status(status NodeExecutionStatus) {
 		_ = recover()
 	}()
 	handler(status)
-}
-
-func redact_log_map(values map[string]interface{}) map[string]interface{} {
-	redacted := make(map[string]interface{}, len(values))
-	for key, value := range values {
-		redacted[key] = redact_log_value(key, value)
-	}
-	return redacted
-}
-
-func redact_log_value(key string, value interface{}) interface{} {
-	if is_sensitive_log_key(key) {
-		return "[REDACTED]"
-	}
-	switch typed_value := value.(type) {
-	case nil, string, bool,
-		int, int8, int16, int32, int64,
-		uint, uint8, uint16, uint32, uint64, uintptr,
-		float32, float64, json.Number:
-		return typed_value
-	case map[string]interface{}:
-		return redact_log_map(typed_value)
-	case []interface{}:
-		redacted := make([]interface{}, len(typed_value))
-		for index, item := range typed_value {
-			redacted[index] = redact_log_value("", item)
-		}
-		return redacted
-	default:
-		raw, err := json.Marshal(typed_value)
-		if err != nil {
-			return fmt.Sprintf("[UNSERIALIZABLE:%T]", typed_value)
-		}
-		var normalized interface{}
-		if err := json.Unmarshal(raw, &normalized); err != nil {
-			return fmt.Sprintf("[UNSERIALIZABLE:%T]", typed_value)
-		}
-		return redact_log_value(key, normalized)
-	}
 }
 
 func is_sensitive_log_key(key string) bool {

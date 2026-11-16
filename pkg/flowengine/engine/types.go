@@ -61,9 +61,9 @@ type RunRecord struct {
 }
 
 // NodeExecutionLog records one execution attempt at the common node boundary.
-// Input is the context visible to the node before Execute, Behavior describes
-// the node configuration/routing, and Output contains only context values that
-// were added or changed by that attempt.
+// Input, Behavior and Output are bounded, redacted previews. Output includes
+// only values added or changed by the attempt; full execution data lives in
+// the context and recovery checkpoint rather than being repeated in each log.
 type NodeExecutionLog struct {
 	// NodeStates replaces all states when NodeID is empty, or patches them otherwise.
 	NodeStates        map[string]NodeState   `json:"node_states,omitempty"`
