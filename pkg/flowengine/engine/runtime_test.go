@@ -21,6 +21,39 @@ func runtime_node(id, node_type string, config map[string]interface{}, next ...s
 	return flowengine.NodeDefinition{ID: id, Type: node_type, Config: config, NextNodeIDs: next, NextNodes: targets}
 }
 
+func TestNodeLogSummariesKeepFullExecutionAndRecoveryData(t *testing.T) {
+	flow_engine := flowengine.NewWorkflowEngine()
+	body := strings.Repeat("完整结果", 20000)
+	flow_engine.RegisterFlow(flowengine.FlowDefinition{ID: "log-summary", StartNodeID: "fetch", Nodes: map[string]flowengine.NodeDefinition{
+		"fetch": runtime_node("fetch", "FuncNode", map[string]interface{}{
+			"output_key": "result",
+			"func":       func(map[string]interface{}) (interface{}, error) { return body, nil },
+		}, "end"),
+		"end": runtime_node("end", "EndNode", nil),
+	}})
+	var checkpoint *flowengine.RunCheckpoint
+	flow_engine.SetCheckpointHandler(func(value *flowengine.RunCheckpoint) error { checkpoint = value; return nil })
+	var logs []flowengine.NodeExecutionLog
+	flow_engine.SetNodeExecutionLogHandler(func(entry flowengine.NodeExecutionLog) { logs = append(logs, entry) })
+	run_id, err := flow_engine.StartFlow("log-summary", map[string]interface{}{"username": "owner", "payload": body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := flow_engine.GetRunContext(run_id)
+	if data["result"] != body || data["payload"] != body || checkpoint == nil || checkpoint.Data["result"] != body {
+		t.Fatal("audit summaries truncated runtime output or the recovery checkpoint")
+	}
+	if len(logs) != 2 || logs[0].Input["username"] != "owner" || logs[0].Output["result"] == body {
+		t.Fatal("audit sink did not receive bounded previews with useful parameters")
+	}
+	for _, entry := range logs {
+		raw, err := json.Marshal(entry)
+		if err != nil || len(raw) > 16*1024 {
+			t.Fatalf("unbounded audit entry: bytes=%d err=%v", len(raw), err)
+		}
+	}
+}
+
 func TestNodeStatusHandoffFollowsBoundaryPersistence(t *testing.T) {
 	flow_engine := flowengine.NewWorkflowEngine()
 	flow_engine.RegisterFlow(flowengine.FlowDefinition{ID: "handoff", StartNodeID: "first", Nodes: map[string]flowengine.NodeDefinition{
