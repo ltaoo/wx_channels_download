@@ -42,10 +42,11 @@ function setup({ definitions = null, legacy_event = false, schedules = [], rejec
     context,
   );
   const actual_request_core = context.Timeless.kit.RequestCore;
-  const TestRequestCore = class {
-    constructor(fn) { this.fn = fn; }
+  const TestRequestCore = class extends actual_request_core {
+    constructor(fn, options) { super(fn, options); this.fn = fn; }
     async run(params) {
       const { url, body } = this.fn(params);
+      if (url === "list") return super.run(params);
       calls.push({ url, body: JSON.parse(JSON.stringify(body)) });
       if (url.endsWith("list_runs")) {
         if (run_list_handler) return run_list_handler(body);
@@ -182,6 +183,7 @@ function setup({ definitions = null, legacy_event = false, schedules = [], rejec
   context.Timeless = { ...context.Timeless, kit: { ...context.Timeless.kit, RequestCore: TestRequestCore,
     ...(live_channel ? { ChannelCore: class { constructor() { return live_channel; } } } : {}),
   } };
+  vm.runInContext(fs.readFileSync(path.join(frontend, "src/list.model.js"), "utf8").replace(/^import.*\n/gm, "").replace(/^export /gm, ""), context);
   const executable = source.replace(/^import[\s\S]*?;\n/gm, "");
   vm.runInContext(executable.slice(0, executable.lastIndexOf("\nexport {")), context);
   const tips = [];
@@ -193,12 +195,12 @@ function setup({ definitions = null, legacy_event = false, schedules = [], rejec
 }
 
 function load_canvas_components(context) {
-  for (const name of ["View", "For", "Show", "Fragment", "SVG"]) context[name] = context.Timeless[name];
+  for (const name of ["View", "For", "Show", "Match", "Fragment", "SVG"]) context[name] = context.Timeless[name];
   context.vm = context.Timeless.vm;
   context.ui = context.Timeless.ui;
   vm.runInContext(fs.readFileSync(path.join(frontend, "src/dmui.js"), "utf8")
     .replace(/^export \{[^}]+\};\n/gm, "").replace(/^export /gm, ""), context);
-  vm.runInContext(fs.readFileSync(path.join(frontend, "src/pages/flow.components.js"), "utf8")
+  vm.runInContext(fs.readFileSync(path.join(frontend, "src/pages/automation.components.js"), "utf8")
     .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export /gm, ""), context);
 }
 
@@ -218,13 +220,14 @@ test("the page reads independent flow and instance lists, including flows with n
   assert.equal(model.state.total.value, 2);
   assert.equal(model.state.definitions.value.length, 2);
   assert.equal(model.state.definitions.value.find((item) => item.id === "notify").instance_count, 0);
-  model.ui.input_keyword$.setValue("账号 A"); model.methods.search();
+  model.ui.input_keyword$.setValue("账号 A"); await model.methods.search();
   assert.equal(model.state.paged_pipelines.value[0].id, "account-a");
   assert.equal(model.state.filtered_definitions.value.length, 2);
   model.ui.input_definition_keyword$.setValue("通知");
+  await new Promise(setImmediate);
   assert.equal(model.state.filtered_definitions.value.length, 1);
   assert.equal(model.state.paged_pipelines.value[0].id, "account-a");
-  model.ui.input_keyword$.setValue("共享采集"); model.methods.search();
+  model.ui.input_keyword$.setValue("共享采集"); await model.methods.search();
   assert.equal(model.state.total.value, 2);
   await model.ui.btn_definitions$.click(); assert.equal(model.ui.definitions_drawer$.state.visible, true);
   model.methods.destroy();
@@ -904,10 +907,10 @@ test("automation pagination shows bounded pages and clamps the last page after a
   assert.equal(model.state.page_count.value, 3);
   assert.equal(model.state.paged_pipelines.value.length, 50);
   assert.equal(model.state.range_text.value, "共 101 条");
-  model.methods.changePage(2);
+  await model.methods.changePage(2);
   assert.equal(model.state.paged_pipelines.value[0].id, "flow-50");
   assert.equal(model.state.range_text.value, "共 101 条");
-  model.methods.changePage(99);
+  await model.methods.changePage(99);
   assert.equal(model.state.page.value, 3);
   assert.equal(model.state.paged_pipelines.value.length, 1);
   assert.equal(model.state.paged_pipelines.value[0].id, "flow-100");
@@ -916,7 +919,7 @@ test("automation pagination shows bounded pages and clamps the last page after a
   assert.equal(model.state.page.value, 2);
   assert.equal(model.state.range_text.value, "共 100 条");
   assert.equal(model.state.paged_pipelines.value.length, 50);
-  model.methods.changePage(-1);
+  await model.methods.changePage(-1);
   assert.equal(model.state.page.value, 1);
   model.methods.destroy();
 });
@@ -927,24 +930,25 @@ test("automation search and reset return to page one and paginate the matching n
   }));
   const { model } = setup({ flows });
   await model.methods.refresh();
-  model.methods.changePage(3);
+  await model.methods.changePage(3);
   model.ui.input_keyword$.setValue("  下载  ");
-  model.methods.search();
+  await model.methods.search();
   assert.equal(model.state.page.value, 1);
   assert.equal(model.state.total.value, 60);
   assert.equal(model.state.page_count.value, 2);
-  model.methods.changePage(2);
+  await model.methods.changePage(2);
   assert.equal(model.state.paged_pipelines.value.length, 10);
   assert.equal(model.state.range_text.value, "共 60 条");
   assert.ok(model.state.paged_pipelines.value.every((flow) => flow.name.includes("下载")));
-  model.methods.search();
+  await model.methods.search();
   assert.equal(model.state.page.value, 1, "resubmitting the same search resets pagination");
   model.ui.input_keyword$.setValue("不存在");
-  model.methods.search();
+  await model.methods.search();
   assert.equal(model.state.paged_pipelines.value.length, 0);
   assert.equal(model.state.page_count.value, 1);
   assert.equal(model.state.range_text.value, "共 0 条");
   await model.ui.btn_reset$.click();
+  await new Promise(setImmediate);
   assert.equal(model.state.page.value, 1);
   assert.equal(model.state.total.value, 120);
   assert.equal(model.state.range_text.value, "共 120 条");

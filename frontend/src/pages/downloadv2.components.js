@@ -632,7 +632,7 @@ export function DownloadV2TaskSkeletonRow() {
       View(
         {
           class:
-            "dm-min-w-0 dm-table-selection-cell dm-items-center dm-justify-center dm-flex",
+            "dm-table-selection-cell dm-flex dm-items-center dm-justify-center dm-min-w-0",
           attributes: { n: "download-task-skeleton-selection", role: "cell" },
         },
         [
@@ -1232,7 +1232,7 @@ function PreviewDialogContent(props) {
   const { platform, preview: preview_ } = props;
   return DialogBody(
     {
-      class: "dm-grid dm-dialog-body--scrollable dm-gap-3",
+      class: "dm-grid dm-gap-3 dm-dialog-body--scrollable",
     },
     [
       View({}, [
@@ -1501,7 +1501,7 @@ function OverwriteConflictCard(props) {
           Timeless.Icon({ name: "circle-alert", size: 18 }),
           View(
             {
-              class: "dm-flex-1 dm-text-sm dm-font-semibold dm-truncate",
+              class: "dm-truncate dm-flex-1 dm-text-sm dm-font-semibold",
               attributes: {
                 title: computed(conflict_, (conflict) => conflict.name || ""),
               },

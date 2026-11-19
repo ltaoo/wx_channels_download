@@ -65,7 +65,7 @@ func (s *DownloadTaskService) delete_download_task_local_files(task model.Downlo
 		}
 		for _, candidate := range candidates {
 			info, err := os.Lstat(candidate.path)
-			if os.IsNotExist(err) {
+			if is_missing_download_task_local_file_error(err) {
 				continue
 			}
 			if err != nil {
@@ -83,7 +83,7 @@ func (s *DownloadTaskService) delete_download_task_local_files(task model.Downlo
 			if is_sidecar_dir {
 				remove = os.RemoveAll
 			}
-			if err := remove(candidate.path); err != nil && !os.IsNotExist(err) {
+			if err := remove(candidate.path); err != nil && !is_missing_download_task_local_file_error(err) {
 				deletion_errors = append(deletion_errors, fmt.Sprintf("删除 %q 失败: %v", candidate.path, err))
 			}
 		}

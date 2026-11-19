@@ -1922,10 +1922,6 @@ body {
   border-color: var(--dm-color-primary-border);
 }
 
-.p-\[var\(--dm-space-3\)_var\(--dm-space-2\)\] {
-  padding: var(--dm-space-3) var(--dm-space-2);
-}
-
 .group-content-page.\[\.group-content-page\&\]\:h-full {
   height: 100%;
 }

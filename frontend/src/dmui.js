@@ -2481,17 +2481,20 @@ export function pagination_items(page, page_count) {
 function create_pagination_model(props) {
   const page_ = pagination_source(props.page, 1);
   const page_count_ = pagination_source(props.pageCount, 1);
-  const loading_ = pagination_source(props.loading, false);
+  const initial_ = pagination_source(props.list?.state.initial ?? props.initial, false);
+  const loading_ = pagination_source(props.list?.state.loading ?? props.loading, false);
+  const busy_ = combine({ initial: initial_, loading: loading_ }, ({ initial, loading }) => initial || loading);
+  const refreshing_ = combine({ initial: initial_, loading: loading_ }, ({ initial, loading }) => !initial && loading);
   const has_change_handler = typeof props.onChange === "function";
   const previous_disabled_ = combine(
-    { page: page_, loading: loading_ },
+    { page: page_, loading: busy_ },
     (state) =>
       state.loading ||
       (!has_change_handler && typeof props.onPrevious !== "function") ||
       Number(state.page) <= 1,
   );
   const next_disabled_ = combine(
-    { page: page_, pageCount: page_count_, loading: loading_ },
+    { page: page_, pageCount: page_count_, loading: busy_ },
     (state) =>
       state.loading ||
       (!has_change_handler && typeof props.onNext !== "function") ||
@@ -2506,7 +2509,7 @@ function create_pagination_model(props) {
     const current = Math.max(1, Number(page_.value) || 1);
     const page_count = Math.max(1, Number(page_count_.value) || 1);
     const target = Math.min(page_count, Math.max(1, Number(target_page) || 1));
-    if (loading_.value || target === current) return null;
+    if (busy_.value || target === current) return null;
     if (has_change_handler) {
       return props.onChange(target, source_value(props.pageSize));
     }
@@ -2560,7 +2563,10 @@ function create_pagination_model(props) {
 
   return {
     state: {
+      initial: initial_,
       loading: loading_,
+      busy: busy_,
+      refreshing: refreshing_,
       page: page_,
       page_items: page_items_,
     },
@@ -2573,6 +2579,8 @@ function create_pagination_model(props) {
         previous_disabled_.destroy?.();
         next_disabled_.destroy?.();
         page_items_.destroy?.();
+        busy_.destroy?.();
+        refreshing_.destroy?.();
       },
     },
   };
@@ -2599,22 +2607,22 @@ export function Pagination(props = {}) {
     [
       View(
         {
-          class: computed(model.state.loading, (loading) =>
+          class: computed(model.state.initial, (initial) =>
             static_classes([
               "dm-pagination__summary",
-              loading ? "is-loading" : "",
+              initial ? "is-loading" : "",
             ]),
           ),
           attributes: {
             n: "pagination-summary",
             "aria-live": "polite",
-            "aria-busy": model.state.loading,
+            "aria-busy": model.state.busy,
           },
         },
         [
           props.summary || "",
           Show({
-            when: model.state.loading,
+            when: model.state.initial,
             ok() {
               return Skeleton({
                 class: "dm-pagination__summary-skeleton",
@@ -2625,19 +2633,29 @@ export function Pagination(props = {}) {
               });
             },
           }),
+          Show({
+            when: model.state.refreshing,
+            ok() {
+              return View({
+                class: "dm-spinner",
+                style: { display: "inline-block", "margin-inline-start": "var(--dm-space-2)", "vertical-align": "middle" },
+                attributes: { n: "pagination-loading", role: "status", "aria-label": "分页加载中" },
+              });
+            },
+          }),
         ],
       ),
       View(
         {
-          class: computed(model.state.loading, (loading) =>
+          class: computed(model.state.initial, (initial) =>
             static_classes([
               "dm-pagination__controls",
-              loading ? "is-loading" : "",
+              initial ? "is-loading" : "",
             ]),
           ),
           attributes: {
             n: "pagination-controls",
-            "aria-busy": model.state.loading,
+            "aria-busy": model.state.busy,
           },
         },
         [
@@ -2698,8 +2716,8 @@ export function Pagination(props = {}) {
                         "aria-current": computed(model.state.page, (page) =>
                           Number(page) === item.page ? "page" : undefined,
                         ),
-                        disabled: computed(model.state.loading, (loading) =>
-                          loading || typeof props.onChange !== "function"
+                        disabled: computed(model.state.busy, (busy) =>
+                          busy || typeof props.onChange !== "function"
                             ? true
                             : undefined,
                         ),
@@ -2734,7 +2752,7 @@ export function Pagination(props = {}) {
             ],
           ),
           Show({
-            when: model.state.loading,
+            when: model.state.initial,
             ok() {
               return Skeleton({
                 class: "dm-pagination__controls-skeleton",
@@ -3333,7 +3351,8 @@ export function Waterfall(props = {}) {
       },
       onMounted(event) {
         if (!mount_root(event)) schedule_fallback_mount();
-        onMounted?.(event);
+        const cleanup = onMounted?.(event);
+        if (typeof cleanup === "function") cleanups.push(cleanup);
       },
       onUnmounted() {
         if (distribute_frame) window.cancelAnimationFrame(distribute_frame);
@@ -4355,7 +4374,43 @@ function table_scroll_to_top(scroll_view) {
   scroll_view?.setScrollTop(0);
 }
 
-function TablePagination(props, scroll_to_top) {
+export function list_scroll_props(list) {
+  return {
+    onMounted(event) {
+      const element = table_scroll_element(event);
+      return list.state.completed.subscribe({ onChange() {
+        if (typeof element?.scrollTo === "function") element.scrollTo({ top: 0 });
+        else if (element) element.scrollTop = 0;
+      } });
+    },
+  };
+}
+
+export function ListState(props) {
+  const name = props.name;
+  return Match({ when: props.list.state.status, cases: {
+    initial() {
+      return View({ attributes: { n: `${name}-skeleton`, "aria-busy": "true" } },
+        Array.from({ length: props.skeletonCount || 3 }, () =>
+          Skeleton({ attributes: { n: `${name}-skeleton-row` }, style: { height: "64px", margin: "8px 0" } })));
+    },
+    loading() { return BrandLoading({ name: `${name}-loading`, labelVisible: true }); },
+    error() {
+      return EmptyCard({ name: `${name}-error`, title: props.errorTitle || "列表加载失败",
+        description: props.list.state.error,
+        action: props.retry ? Button({ store: props.retry, attributes: { n: `${name}-retry`, type: "button" } }, ["重试"]) : null });
+    },
+    empty() { return props.renderEmpty ? props.renderEmpty() : EmptyCard({ name: `${name}-empty`, title: props.emptyTitle || "暂无数据" }); },
+    normal() {
+      return Fragment({}, [
+        Show({ when: props.list.state.loading, ok() { return BrandLoading({ name: `${name}-refreshing` }); } }),
+        props.render(),
+      ]);
+    },
+  } });
+}
+
+function TablePagination(props) {
   const pagination = props.pagination;
   if (!pagination) return null;
   return Show({
@@ -4363,18 +4418,8 @@ function TablePagination(props, scroll_to_top) {
     ok() {
       return Pagination({
         ...pagination,
-        loading: table_loading_state(
-          props.status || "normal",
-          pagination.loading,
-          true,
-        ),
-        onChange:
-          typeof pagination.onChange === "function"
-            ? (page, page_size) => {
-                scroll_to_top();
-                return pagination.onChange(page, page_size);
-              }
-            : undefined,
+        list: props.list,
+        loading: props.loading ?? pagination.loading,
       });
     },
   });
@@ -4384,6 +4429,9 @@ function table_render(props, render_list) {
   const name = props.name || "table";
   const scrollbar_model = create_table_scrollbar_model();
   let scroll_view = null;
+  const unlisten_completed = props.list?.state.completed.subscribe({
+    onChange() { table_scroll_to_top(scroll_view); },
+  });
   const status = props.status || "normal";
   const show_header_when_empty = props.showHeaderWhenEmpty !== false;
   const header_visible = table_source(status)
@@ -4429,6 +4477,7 @@ function table_render(props, render_list) {
         ...(props.containerAttributes || {}),
       },
       onUnmounted() {
+        unlisten_completed?.();
         scrollbar_model.methods.destroy();
         props.onUnmounted?.();
       },
@@ -4438,6 +4487,9 @@ function table_render(props, render_list) {
         Match({
           when: status,
           cases: {
+            loading() {
+              return render_list({ ...table_props, rows: [], renderEmpty: () => null });
+            },
             initial() {
               return TableLoading({
                 ...table_props,
@@ -4477,7 +4529,7 @@ function table_render(props, render_list) {
   if (!props.pagination) return table;
   return Fragment({}, [
     table,
-    TablePagination(props, () => table_scroll_to_top(scroll_view)),
+    TablePagination(props),
   ]);
 }
 

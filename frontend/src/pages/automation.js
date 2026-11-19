@@ -306,6 +306,7 @@ function AutomationPipelineList(props) {
         },
       },
     ],
+    list: vm$.state.list,
     rows: vm$.state.paged_pipelines,
     pagination: {
       class: " dm-px-4",
@@ -318,9 +319,10 @@ function AutomationPipelineList(props) {
         return vm$.methods.changePage(page);
       },
     },
-    status: computed(vm$.state.filtered_pipelines, (pipelines) =>
-      pipelines.length === 0 ? "empty" : "normal",
-    ),
+    status: vm$.state.status,
+    error: vm$.state.error,
+    errorTitle: "配置实例加载失败",
+    retry: { store: vm$.ui.btn_refresh$ },
     loading: vm$.state.loading,
     emptyTitle: combine(
       { loading: vm$.state.loading, keyword: vm$.state.search_keyword },
@@ -362,9 +364,14 @@ function AutomationDefinitionsDrawer(props) {
         containerAttributes: { n: "automation-definition-table-container" },
         panelAttributes: { n: "automation-definition-table-panel" },
         rowKey: (definition) => `${definition.id}:${definition.updated_at}:${definition.instance_count}:${definition.id}`,
+        list: vm$.state.definition_list,
         rows: vm$.state.filtered_definitions,
         loading: vm$.state.loading,
-        status: computed(vm$.state.filtered_definitions, (definitions) => definitions.length ? "normal" : "empty"),
+        status: combine({ main: vm$.state.status, definitions: vm$.state.definition_list.state.status },
+          ({ main, definitions }) => main === "initial" || main === "error" ? main : definitions),
+        error: vm$.state.error,
+        errorTitle: "自动化流程加载失败",
+        retry: { store: vm$.ui.btn_refresh$ },
         emptyTitle: "暂无匹配的自动化流程",
         emptyDescription: "创建或导入一个流程，再添加配置实例。",
         columns: [

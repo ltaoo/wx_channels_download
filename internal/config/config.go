@@ -899,7 +899,12 @@ func (c *Config) LoadConfig() error {
 func (c *Config) configure_logging() error {
 	zerolog.SetGlobalLevel(zerolog.Disabled)
 	c.Debug = c.GetBool("debug.enabled")
-	if !c.Debug {
+	log_enabled := c.Debug || c.GetBool("log.enabled")
+	for _, env_name := range []string{"ENABLE_LOG", "WX_ENABLE_LOG"} {
+		env_enabled, _ := strconv.ParseBool(strings.TrimSpace(os.Getenv(env_name)))
+		log_enabled = log_enabled || env_enabled
+	}
+	if !log_enabled {
 		return nil
 	}
 	if c.log_writer != nil {
@@ -911,7 +916,11 @@ func (c *Config) configure_logging() error {
 			return fmt.Errorf("初始化日志文件失败: %w", err)
 		}
 	}
-	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	log_level := zerolog.InfoLevel
+	if c.Debug {
+		log_level = zerolog.DebugLevel
+	}
+	zerolog.SetGlobalLevel(log_level)
 	return nil
 }
 

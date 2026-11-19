@@ -22,7 +22,7 @@ function setup() {
     .replace(/^import[\s\S]*?;\n/gm, "")
     .replace(/^export \{[^}]+\};\s*$/gm, "")
     .replace(/^export /gm, "");
-  for (const file of ["src/utils.js", "src/image-proxy.model.js", "src/dmui.js",
+  for (const file of ["src/utils.js", "src/list.model.js", "src/image-proxy.model.js", "src/dmui.js",
     "src/pages/downloadv2.model.js", "src/pages/downloadv2.components.js"]) {
     vm.runInContext(script(file), context);
   }

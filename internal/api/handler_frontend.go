@@ -591,10 +591,10 @@ func set_frontend_html_cache_headers(header http.Header) {
 }
 
 func (c *APIClient) is_logging_enabled() bool {
-	if c.cfg == nil || c.cfg.Original == nil {
+	if c.cfg == nil || c.cfg.Original == nil || c.logger == nil {
 		return false
 	}
-	return c.cfg.Original.LogPath() != "" || c.cfg.Original.GetBool("log.enabled")
+	return zerolog.GlobalLevel() < zerolog.Disabled && c.logger.GetLevel() < zerolog.Disabled
 }
 
 // handle_frontend_tip handles frontend log/tip messages posted from injected pages.

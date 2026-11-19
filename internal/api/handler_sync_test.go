@@ -92,7 +92,11 @@ func new_sync_test_client(t *testing.T) *APIClient {
 			t.Fatalf("%s: %v", entry.Name(), err)
 		}
 	}
-	return &APIClient{db: db, cfg: &APIConfig{WorkDir: root, DBPath: filepath.Join(root, "data.db"), DownloadDir: root}}
+	return &APIClient{
+		db:                    db,
+		cfg:                   &APIConfig{WorkDir: root, DBPath: filepath.Join(root, "data.db"), DownloadDir: root},
+		service_download_task: services.NewDownloadTaskService(db, nil, nil, nil, root, root, nil),
+	}
 }
 
 func sync_test_insert(t *testing.T, client *APIClient, records ...any) {

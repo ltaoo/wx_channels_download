@@ -788,6 +788,7 @@ function LogsPageList(props) {
     listClass: "min-h-0 h-auto flex-[1_1_auto] overflow-y-auto",
     listStyle: { "overflow-x": "hidden" },
     columns: LogsPageTableColumns({ store: vm$ }),
+    list: vm$.state.list,
     rows: vm$.state.entries,
     rowKey(entry, index) {
       return `${entry.index || index}-${entry.time || ""}-${entry.message || ""}`;

@@ -193,13 +193,13 @@ const routes_configure = {
   flow_detail: {
     title: "Pipeline 详情",
     pathname: "/automation/detail",
-    component: lazy("src/pages/flow_detail.js"),
+    component: lazy("src/pages/automation_detail.js"),
     // options: animated_route_options,
   },
   flow_edit: {
     title: "编辑 Pipeline",
     pathname: "/automation/edit",
-    component: lazy("src/pages/flow_edit.js"),
+    component: lazy("src/pages/automation_edit.js"),
     // options: animated_route_options,
   },
 };

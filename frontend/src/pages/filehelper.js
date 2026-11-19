@@ -1,3 +1,4 @@
+import { ListState, list_scroll_props } from "@/dmui.js";
 import { FileHelperViewModel } from "./filehelper.model.js";
 
 function FileHelperHeaderView(props) {
@@ -261,37 +262,27 @@ function FileHelperEmptyMessagesView() {
 
 function FileHelperMessageListView(props) {
   const vm$ = props.store;
-  return View(
-    {
-      class: "flex min-h-0 flex-1 flex-col gap-3 p-4 overflow-y-auto",
-      onMounted(event) {
-        vm$.methods.setMessageListElement(event);
-      },
-      onUnmounted() {
-        vm$.methods.setMessageListElement(null);
-      },
+  const scroll_props = list_scroll_props(vm$.state.message_list);
+  return View({
+    class: "flex min-h-0 flex-1 flex-col gap-3 p-4 overflow-y-auto",
+    attributes: { n: "filehelper-message-list" },
+    onMounted(event) {
+      vm$.methods.setMessageListElement(event);
+      return scroll_props.onMounted(event);
     },
-    [
-      Show({
-        when: computed(vm$.state.messages, (messages) => messages.length > 0),
-        ok() {
-          return For({
-            each: vm$.state.messages,
-            render(message_) {
-              const message =
-                message_ && message_.value !== undefined
-                  ? message_.value
-                  : message_;
-              return FileHelperMessageView({ store: vm$, message });
-            },
-          });
-        },
-        else() {
-          return FileHelperEmptyMessagesView();
-        },
-      }),
-    ],
-  );
+    onUnmounted() { vm$.methods.setMessageListElement(null); },
+  }, [
+    ListState({
+      list: vm$.state.message_list, name: "filehelper-messages", retry: vm$.ui.btn_retry_messages$,
+      renderEmpty: FileHelperEmptyMessagesView,
+      render() {
+        return For({ each: vm$.state.messages, render(message_) {
+          const message = message_?.value !== undefined ? message_.value : message_;
+          return FileHelperMessageView({ store: vm$, message });
+        } });
+      },
+    }),
+  ]);
 }
 
 function FileHelperComposerView(props) {

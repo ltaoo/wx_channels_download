@@ -218,11 +218,6 @@ func (c *Client) DownloadTasks(ctx context.Context, query DownloadTaskListQuery)
 	return c.get(ctx, "/api/v1/download_task/list", values)
 }
 
-// CheckDownloadTaskContents checks task existence/counts for a batch of content IDs.
-func (c *Client) CheckDownloadTaskContents(ctx context.Context, content_ids []string) (json.RawMessage, error) {
-	return c.do(ctx, http.MethodPost, "/api/v1/download_task/check_contents", nil, map[string]any{"content_ids": content_ids})
-}
-
 // DownloadTaskDetail returns the same typed detail as WaitDownloadTask.
 func (c *Client) DownloadTaskDetail(ctx context.Context, task_id int) (*DownloadTask, error) {
 	raw_data, err := c.get(ctx, "/api/v1/download_task/detail", url.Values{"id": []string{strconv.Itoa(task_id)}})
@@ -260,4 +255,9 @@ func join_ints(values []int) string {
 		parts[index] = strconv.Itoa(value)
 	}
 	return strings.Join(parts, ",")
+}
+
+// CheckDownloadTaskContents checks task existence/counts for a batch of content IDs.
+func (c *Client) CheckDownloadTaskContents(ctx context.Context, content_ids []string) (json.RawMessage, error) {
+	return c.do(ctx, http.MethodPost, "/api/v1/download_task/check_contents", nil, map[string]any{"content_ids": content_ids})
 }
