@@ -1,3 +1,4 @@
+import { create_list_model, create_list_request } from "@/list.model.js";
 import { track_error } from "@/utils.js";
 import {
   fetchPipelineList,
@@ -667,39 +668,63 @@ function AutomationPageViewModel(props, options) {
   const pipelines_ = refarr([]);
   const definitions_ = refarr([]);
   const definition_keyword_ = ref("");
-  const filtered_definitions_ = combine({ definitions: definitions_, keyword: definition_keyword_ }, ({ definitions, keyword }) =>
-    definitions.filter((definition) => String(definition.name || "").toLowerCase().includes(keyword.trim().toLowerCase())),
-  );
   const filtered_pipelines_ = refarr([]);
   const keyword_ = ref("");
   const search_keyword_ = ref("");
-  const page_ = ref(1);
-  const page_size_ = ref(50);
-  const total_ = computed(filtered_pipelines_, (pipelines) => pipelines.length);
-  const page_count_ = combine(
-    { total: total_, pageSize: page_size_ },
-    ({ total, pageSize }) => Math.max(1, Math.ceil(total / pageSize)),
-  );
-  const paged_pipelines_ = combine(
-    { pipelines: filtered_pipelines_, page: page_, pageSize: page_size_ },
-    ({ pipelines, page, pageSize }) => {
-      const start = (page - 1) * pageSize;
-      return pipelines.slice(start, start + pageSize);
-    },
-  );
+  let data_version = 0;
+  let loaded_data_version = -1;
+  const list$ = create_list_model({
+    request: create_list_request(async (params) => {
+      if (params.version !== loaded_data_version) {
+        await fetch_data();
+        loaded_data_version = params.version;
+      }
+      const keyword = String(params.keyword || "").toLowerCase();
+      const filtered = pipelines_.value.filter((pipeline) =>
+        [pipeline.name, pipeline.definition_name, definitions_.value.find((definition) => definition.id === pipeline.flow_id)?.name]
+          .some((value) => String(value || "").toLowerCase().includes(keyword)),
+      );
+      filtered_pipelines_.as(filtered, { reset: true });
+      const page = Math.min(params.page, Math.max(1, Math.ceil(filtered.length / params.page_size)));
+      const offset = (page - 1) * params.page_size;
+      return { list: filtered.slice(offset, offset + params.page_size), total: filtered.length, page, page_size: params.page_size };
+    }),
+    page_size: 50,
+    tip: props.tip,
+  });
+  const { rows: paged_pipelines_, total: total_, page: page_, page_size: page_size_,
+    loading: loading_, error: error_, status: list_status_ } = list$.state;
+  const page_count_ = combine({ total: total_, size: page_size_ }, ({ total, size }) => Math.max(1, Math.ceil(total / size)));
+  const definition_list$ = create_list_model({
+    request: create_list_request(({ keyword = "" }) => {
+      const list = definitions_.value.filter((definition) => String(definition.name || "").toLowerCase().includes(keyword.toLowerCase()));
+      return { list, total: list.length, page: 1, page_size: Math.max(1, list.length) };
+    }),
+    tip: props.tip,
+  });
+  const filtered_definitions_ = definition_list$.state.rows;
   const range_text_ = computed(total_, (total) => `共 ${total || 0} 条`);
   const catalog_ = refarr([]);
   const schedules_ = refarr([]);
   const selected_flow_id_ = ref(view_query.flow_id);
   const selected_pipeline_ = refobj(null);
-  const loading_ = ref(false);
-  const error_ = track_error(ref(""), props.tip);
   const dirty_ = ref(false);
   const saving_ = ref(false);
   const execution_channel_connected_ = ref(false);
   const execution_run_id_ = ref("");
   const execution_run_status_ = ref("");
-  const runs_ = refarr([]);
+  const run_list$ = create_list_model({
+    request: new Timeless.kit.RequestCore(fetchPipelineRunList, { client: props.client }),
+    page_size: 20,
+    tip: props.tip,
+    normalize(data, params) {
+      const list = (data.list || []).map((run) => ({ ...run,
+        status: pending_run_statuses?.flow_id === params.instance_id
+          ? pending_run_statuses.statuses[run.id] || run.status : run.status }));
+      return { ...data, list, page: params.page, page_size: params.page_size };
+    },
+  });
+  const runs_ = run_list$.state.rows;
   const selected_run_ = refobj(null);
   const run_action_busy_ = ref(false);
   const manual_response_ = ref("{}");
@@ -710,7 +735,7 @@ function AutomationPageViewModel(props, options) {
   let pending_run_statuses = null;
   let clearing_runs = false;
   const selected_run_id_ = ref("");
-  const runs_loading_ = ref(false);
+  const runs_loading_ = run_list$.state.loading;
   const canvas_revision_ = ref(0);
   const node_execution_states_ = refobj({});
   const execution_logs_ = refarr([]);
@@ -833,7 +858,6 @@ function AutomationPageViewModel(props, options) {
     new Timeless.kit.RequestCore(fn, { client: props.client });
   const reqs = {
     run: {
-      list: run_request(fetchPipelineRunList),
       clear: run_request(clearPipelineRuns),
       cancel: run_request(cancelPipelineRun),
       resume: run_request(resumePipelineRun),
@@ -892,7 +916,7 @@ function AutomationPageViewModel(props, options) {
     definitions_drawer$: new Timeless.vm.DialogCore({ footer: false }),
     btn_definitions$: new Timeless.vm.ButtonCore({ variant: "outline", onClick() { ui.definitions_drawer$.show(); } }),
     btn_create_instance$: new Timeless.vm.ButtonCore({ variant: "primary", onClick() { ui.definitions_drawer$.show(); } }),
-    input_definition_keyword$: new Timeless.vm.InputCore({ placeholder: "搜索自动化流程", allowClear: true, onChange(value) { definition_keyword_.as(String(value || "")); } }),
+    input_definition_keyword$: new Timeless.vm.InputCore({ placeholder: "搜索自动化流程", allowClear: true, onChange(value) { definition_keyword_.as(String(value || "")); void definition_list$.search({ keyword: definition_keyword_.value.trim() }); } }),
     btn_definition_instance$: new Timeless.vm.ButtonInListCore({ variant: "link", size: "sm", onClick(pipeline) { return copy_pipeline(pipeline, true); } }),
     btn_definition_delete$: new Timeless.vm.ButtonInListCore({ variant: "link", size: "sm", onClick(pipeline) { return ask_delete_pipeline(pipeline); } }),
     btn_definition_config$: new Timeless.vm.ButtonInListCore({ variant: "outline", size: "sm", onClick(pipeline) { ui.definitions_drawer$.hide(); return open_pipeline_config(pipeline, true, true); } }),
@@ -936,8 +960,8 @@ function AutomationPageViewModel(props, options) {
       disabled: loading_.value,
       onClick() {
         ui.input_keyword$.setValue("");
-        search_pipelines();
-        return load_data();
+        search_keyword_.as("");
+        return load_data(1);
       },
     }),
     create_dialog$: new Timeless.vm.DialogCore({
@@ -1239,7 +1263,7 @@ function AutomationPageViewModel(props, options) {
     },
   });
   pipelines_.subscribe({ onChange: filter_pipelines });
-  search_keyword_.subscribe({ onChange: filter_pipelines });
+  definitions_.subscribe({ onChange() { void definition_list$.search({ keyword: definition_keyword_.value.trim() }); } });
   [pipelines_, selected_pipeline_, selected_flow_id_, run_submitting_].forEach((state) => state.subscribe({ onChange: update_trigger_buttons }));
 
   function pipeline_is_active(pipeline) {
@@ -1278,13 +1302,18 @@ function AutomationPageViewModel(props, options) {
       ),
       { reset: true },
     );
-    page_.as(Math.min(page_.value, page_count_.value));
+    if (loading_.value) return;
+    const total = filtered_pipelines_.value.length;
+    const page = Math.min(page_.value, Math.max(1, Math.ceil(total / page_size_.value)));
+    const start = (page - 1) * page_size_.value;
+    list$.modifyResponse((response) => ({ ...response, total, page,
+      dataSource: filtered_pipelines_.value.slice(start, start + page_size_.value) }));
   }
 
   function search_pipelines() {
     if (loading_.value) return;
-    page_.as(1);
     search_keyword_.as(keyword_.value.trim());
+    return list$.search({ keyword: search_keyword_.value, version: data_version });
   }
 
   function change_page(target_page) {
@@ -1293,7 +1322,7 @@ function AutomationPageViewModel(props, options) {
       page_count_.value,
       Math.max(1, Math.floor(Number(target_page) || 1)),
     );
-    page_.as(page);
+    return list$.goto(page);
   }
   create_submitting_.subscribe({
     onChange(submitting) {
@@ -2001,7 +2030,7 @@ function AutomationPageViewModel(props, options) {
       const known_run = runs_.value.some((run) => run.id === message.run_id);
       if (lifecycle_status && message.run_id) {
         if (pending_run_statuses?.flow_id === flow_id) pending_run_statuses.statuses[message.run_id] = run_status;
-        if (known_run) runs_.as(runs_.value.map((run) => run.id === message.run_id ? { ...run, status: run_status } : run), { reset: true });
+        if (known_run) run_list$.setDataSource(runs_.value.map((run) => run.id === message.run_id ? { ...run, status: run_status } : run));
       }
       if ((!selected_run_id_.value && message.type === "automation_run_started") || (lifecycle_status && message.run_id && !known_run)) {
         load_runs().catch(set_error);
@@ -2094,6 +2123,9 @@ function AutomationPageViewModel(props, options) {
 
   function dispose() {
     disposed = true;
+    list$.destroy();
+    definition_list$.destroy();
+    run_list$.destroy();
     editor_bridge.destroy();
     request_sequence += 1;
     execution_channel_connected_.as(false);
@@ -2137,10 +2169,12 @@ function AutomationPageViewModel(props, options) {
     return schedules;
   }
 
-  async function load_data() {
+  function load_data(target_page = page_.value) {
+    return list$.search({ keyword: search_keyword_.value, version: ++data_version, page: target_page });
+  }
+
+  async function fetch_data() {
     const sequence = ++request_sequence;
-    loading_.as(true);
-    error_.as("");
     try {
       const [pipelines, definitions, catalog, schedules] = await Promise.all([
         load_pipelines(),
@@ -2171,11 +2205,10 @@ function AutomationPageViewModel(props, options) {
         }
       }
       if (sequence !== request_sequence) return;
-      loading_.as(false);
       if (execution_channel_connected_.value) editor_bridge.register();
     } catch (err) {
       if (sequence !== request_sequence) return;
-      set_error(err);
+      throw err;
     }
   }
 
@@ -2493,10 +2526,9 @@ function AutomationPageViewModel(props, options) {
     pending_run_statuses = live_statuses;
     runs_loading_.as(true);
     try {
-      const response = await reqs.run.list.run({ instance_id: flow_id, page: 1, page_size: 20, summary: true });
+      const response = await run_list$.search({ instance_id: flow_id, summary: true });
       if (sequence !== run_query_sequence || flow_id !== selected_flow_id_.value || disposed) return;
       if (response.error) throw request_result_error(response, "运行记录加载失败");
-      runs_.as((response.data.list || []).map((run) => ({ ...run, status: live_statuses.statuses[run.id] || run.status })), { reset: true });
       const active = runs_.value.find((run) => ["QUEUED", "RUNNING", "WAITING"].includes(run.status));
       if (active) update_active_run(flow_id, active.id);
       else {
@@ -2540,7 +2572,7 @@ function AutomationPageViewModel(props, options) {
       close_all_node_execution_windows();
       selected_run_id_.as("");
       selected_run_.as(null);
-      runs_.as([], { reset: true });
+      run_list$.clear();
       apply_run_to_canvas(null);
       props.tip({ msg: ["已清除已结束的执行记录，排队、运行中及等待确认的记录已保留"], type: "success" });
     } catch (error) { set_error(error); }
@@ -2847,7 +2879,7 @@ function AutomationPageViewModel(props, options) {
 
   async function select_pipeline(flow_id, options) {
     options = options || {};
-    if (selected_flow_id_.value !== flow_id) { reset_execution_tracking(); close_all_node_execution_windows(); selected_run_.as(null); selected_run_id_.as(""); runs_.as([], { reset: true }); }
+    if (selected_flow_id_.value !== flow_id) { reset_execution_tracking(); close_all_node_execution_windows(); selected_run_.as(null); selected_run_id_.as(""); run_list$.clear(); }
     selected_flow_id_.as(flow_id);
     const pipeline = find_pipeline(flow_id);
     if (pipeline) enter_edit(pipeline);
@@ -3743,6 +3775,10 @@ function AutomationPageViewModel(props, options) {
   };
 
   const state = {
+    list: list$,
+    status: list_status_,
+    definition_list: definition_list$,
+    run_list: run_list$,
     view_mode: view_mode_,
     pipelines: pipelines_,
     definitions: definitions_,

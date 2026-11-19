@@ -31,8 +31,8 @@ function setup(filters = []) {
   }
   const requests = [];
   context.Timeless = { ...context.Timeless, kit: { ...context.Timeless.kit,
-    RequestCore: class {
-      constructor(request) { this.request = request; }
+    RequestCore: class extends context.Timeless.kit.RequestCore {
+      constructor(request, options) { super(request, options); this.request = request; }
       async run(params) {
         const url = this.request(params).url.split("?")[0];
         requests.push({ url, params: JSON.parse(JSON.stringify(params)) });
@@ -41,6 +41,7 @@ function setup(filters = []) {
       }
     },
   } };
+  vm.runInContext(read("src/list.model.js").replace(/^import.*\n/gm, "").replace(/^export /gm, ""), context);
   const source = read("src/pages/content.model.js").replace(/^import[\s\S]*?;\n/gm, "");
   vm.runInContext(source.slice(0, source.lastIndexOf("\nexport {")), context);
   const model = context.ContentViewModel({ client: {}, tip(tip) { tips.push(tip); } });

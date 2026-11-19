@@ -181,15 +181,17 @@ test("account retries and separate detail dialogs each show a card for identical
   context.content_type_label = () => "";
   const detail_requests = [];
   context.Timeless = { ...context.Timeless, kit: { ...context.Timeless.kit,
-    RequestCore: class {
-      constructor(handler) { this.handler = handler; }
+    RequestCore: class extends context.Timeless.kit.RequestCore {
+      constructor(handler, options) { super(handler, options); this.handler = handler; }
       async run(params) {
+        if (this.handler(params).url === "list") return super.run(params);
         if (this.handler === context.fetchAccountContents) detail_requests.push(params);
         return context.Timeless.Result.Err(new Error("账号读取失败"));
       }
     },
   } };
   vm.runInContext(fs.readFileSync(path.join(frontend, "src/biz/request.js"), "utf8").replace(/^export /gm, ""), context);
+  vm.runInContext(fs.readFileSync(path.join(frontend, "src/list.model.js"), "utf8").replace(/^import.*\n/gm, "").replace(/^export /gm, ""), context);
   const source = fs.readFileSync(path.join(frontend, "src/pages/account.model.js"), "utf8")
     .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export \{[^}]+\};\s*$/m, "");
   vm.runInContext(source, context);

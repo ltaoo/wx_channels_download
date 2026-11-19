@@ -1,3 +1,4 @@
+import { create_list_model, create_list_request } from "@/list.model.js";
 import {
   fetchFileHelperStatus,
   fetchFileHelperQRCode,
@@ -130,7 +131,22 @@ function FileHelperViewModel(props) {
     "请使用微信扫描二维码登录\n登录后可同步接收和发送消息",
   );
   const channels_status_ = ref("idle");
-  const messages_ = refarr([]);
+  const message_list$ = create_list_model({
+    request: create_list_request(async () => {
+      const result = await sync_request.run();
+      if (!active || !logged_in_.value) throw new Error("消息同步已停止");
+      if (result.error) throw result.error;
+      const response = result.data || {};
+      if (response.BaseResponse && response.BaseResponse.Ret !== 0) {
+        throw new Error(response.BaseResponse.ErrMsg || "同步消息失败");
+      }
+      const list = merge_messages(Array.isArray(response.AddMsgList) ? response.AddMsgList : []);
+      return { list, total: list.length, page: 1, page_size: 200 };
+    }),
+    page_size: 200,
+    tip: props.tip,
+  });
+  const messages_ = message_list$.state.rows;
   const message_text_ = ref("");
   const sending_ = ref(false);
   const logout_loading_ = ref(false);
@@ -153,6 +169,7 @@ function FileHelperViewModel(props) {
   );
 
   const ui = {
+    btn_retry_messages$: new Timeless.vm.ButtonCore({ variant: "outline", onClick: fetch_and_render_messages }),
     btn_logout$: new Timeless.vm.ButtonCore({
       disabled: logout_loading_.value,
       loading: logout_loading_.value,
@@ -365,6 +382,7 @@ function FileHelperViewModel(props) {
     stop_login_polling();
     logged_in_.as(true);
     check_channels_status();
+    void fetch_and_render_messages();
     start_sync_check_polling();
   }
 
@@ -445,7 +463,7 @@ function FileHelperViewModel(props) {
     }
   }
 
-  function append_messages(raw_messages) {
+  function merge_messages(raw_messages) {
     const next = messages_.value.slice();
     const ids = new Set(next.map((message) => String(message.MsgId || "")));
 
@@ -466,31 +484,16 @@ function FileHelperViewModel(props) {
       next.push(normalize_message(raw));
     }
 
-    messages_.as(next.slice(-200), { reset: true });
+    return next.slice(-200);
+  }
+
+  function append_messages(raw_messages) {
+    message_list$.setDataSource(merge_messages(raw_messages));
     scroll_to_latest_message();
   }
 
-  async function fetch_and_render_messages() {
-    const result = await sync_request.run();
-    if (!active || !logged_in_.value) {
-      return result;
-    }
-    if (result.error) {
-      console.error("获取消息失败:", result.error);
-      return result;
-    }
-    const response = result.data || {};
-    if (response.BaseResponse && response.BaseResponse.Ret !== 0) {
-      console.error("同步消息失败:", response);
-      return result;
-    }
-    const messages = Array.isArray(response.AddMsgList)
-      ? response.AddMsgList
-      : [];
-    if (messages.length > 0) {
-      append_messages(messages);
-    }
-    return result;
+  function fetch_and_render_messages() {
+    return message_list$.search({});
   }
 
   async function start_sync_check_polling() {
@@ -623,7 +626,7 @@ function FileHelperViewModel(props) {
 
     stop_login_polling();
     stop_sync_polling();
-    messages_.as([], { reset: true });
+    message_list$.clear();
     show_login_section();
     refresh_qrcode();
     return result;
@@ -631,6 +634,7 @@ function FileHelperViewModel(props) {
 
   function destroy() {
     active = false;
+    message_list$.destroy();
     stop_login_polling();
     stop_sync_polling();
     qrcode_sequence += 1;
@@ -693,6 +697,7 @@ function FileHelperViewModel(props) {
   };
 
   const state = {
+    message_list: message_list$,
     logged_in: logged_in_,
     login_stage: login_stage_,
     qrcode_url: qrcode_url_,

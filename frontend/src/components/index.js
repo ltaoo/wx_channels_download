@@ -1,5 +1,6 @@
+import { create_list_model, create_list_request } from "@/list.model.js";
 import { request } from "@/biz/request.js";
-import { ErrorMessage, LazyImg } from "@/dmui.js";
+import { ErrorMessage, LazyImg, ListState, list_scroll_props } from "@/dmui.js";
 
 const Runtime = window.Timeless;
 
@@ -1123,7 +1124,7 @@ function ContentTagBadge(props) {
 // TagSelect is an antd Select mode="tags" style control: a "+" trigger opens a
 // popover with a searchable tag list, supports creating a new tag on Enter/Space
 // when there is no exact match, and persists the selection immediately.
-export function TagSelect(props = {}) {
+function TagSelectModel(props = {}) {
   const SEARCH_DEBOUNCE_MS = 300;
   const content_id = props.contentId || props.content_id || "";
   const popover_store = new Runtime.vm.PopoverCore();
@@ -1143,12 +1144,14 @@ export function TagSelect(props = {}) {
     }
     if (immediate) {
       keyword_.as(String(value || ""));
+      void search_tags();
       return;
     }
     keyword_timer = window.setTimeout(() => {
       keyword_timer = null;
       if (tag_select_destroyed) return;
       keyword_.as(String(value || ""));
+      void search_tags();
     }, SEARCH_DEBOUNCE_MS);
   }
 
@@ -1189,16 +1192,29 @@ export function TagSelect(props = {}) {
     { client: props.client },
   );
 
-  async function load_all() {
-    const result = await tag_list_request.run({});
-    if (result.error) return;
-    const data =
-      result.data && result.data.data
-        ? result.data.data
-        : Array.isArray(result.data)
-          ? result.data
-          : [];
-    all_tags_.as(Array.isArray(data) ? data : []);
+  let version = 0;
+  let loaded_version = -1;
+  const list$ = create_list_model({
+    request: create_list_request(async (params) => {
+      if (params.version !== loaded_version) {
+        const result = await tag_list_request.run({});
+        if (result.error) throw result.error;
+        const data = result.data?.data || result.data || [];
+        all_tags_.as(Array.isArray(data) ? data : []);
+        loaded_version = params.version;
+      }
+      const list = filter_select_options(all_tags_.value.map((tag) => ({ label: tag.name, value: tag.id, name: tag.name })), params.keyword);
+      return { list, total: list.length, page: 1, page_size: Math.max(1, list.length) };
+    }),
+    tip: props.tip,
+  });
+  const retry$ = new Runtime.vm.ButtonCore({ variant: "outline", onClick: load_all });
+  function search_tags() {
+    return list$.search({ keyword: keyword_.value, version });
+  }
+  function load_all() {
+    version += 1;
+    return search_tags();
   }
 
   async function persist(next) {
@@ -1242,7 +1258,9 @@ export function TagSelect(props = {}) {
   const popover_unlisten = popover_store.onStateChange((state) => {
     const visible = Boolean(state && state.visible);
     if (visible && !popover_was_visible) {
-      set_search_keyword("", true);
+      if (keyword_timer) window.clearTimeout(keyword_timer);
+      keyword_timer = null;
+      keyword_.as("");
       load_all();
       setTimeout(() => search_input.focus(), 0);
     }
@@ -1252,16 +1270,34 @@ export function TagSelect(props = {}) {
     set_search_keyword("", true);
   });
 
-  const filtered_ = Runtime.combine({ all: all_tags_, kw: keyword_ }, (s) =>
-    filter_select_options(
-      (s.all || []).map((t) => ({ label: t.name, value: t.id, name: t.name })),
-      s.kw,
-    ),
-  );
+  const filtered_ = list$.state.rows;
 
   const selected_ids_ = Runtime.computed(selected_, (list) =>
     (list || []).map((t) => t.id),
   );
+
+  function destroy() {
+    tag_select_destroyed = true;
+    if (keyword_timer) window.clearTimeout(keyword_timer);
+    popover_unlisten?.();
+    popover_hide_unlisten?.();
+    list$.destroy();
+    tag_list_request.destroy();
+    tag_set_request.destroy();
+    tag_create_request.destroy();
+    retry$.destroy();
+    search_input.destroy();
+    popover_store.destroy();
+  }
+  return { state: { filtered_, selected_ids_, list: list$ }, ui: { search_input, popover_store, retry$ },
+    methods: { set_search_keyword, toggle, destroy } };
+}
+
+export function TagSelect(props = {}) {
+  const model = TagSelectModel(props);
+  const { filtered_, selected_ids_ } = model.state;
+  const { search_input, popover_store } = model.ui;
+  const { set_search_keyword, toggle } = model.methods;
 
   const trigger = View(
     {
@@ -1317,13 +1353,15 @@ export function TagSelect(props = {}) {
             },
           }),
         ]),
-        Show({
-          when: Runtime.computed(filtered_, (list) => (list || []).length > 0),
-          ok() {
+        ListState({
+          name: "tag-select", list: model.state.list, retry: model.ui.retry$,
+          emptyTitle: "没有匹配的标签，回车可创建",
+          render() {
             return View(
               {
                 class: "flex flex-row flex-wrap items-center content-flex-start gap-[var(--dm-space-1,_4px)] max-h-220px overflow-y-auto",
                 attributes: { n: "tag-select-list", role: "listbox" },
+                ...list_scroll_props(model.state.list),
               },
               [
                 Runtime.For({
@@ -1358,24 +1396,9 @@ export function TagSelect(props = {}) {
               ],
             );
           },
-          else() {
-            return View({ class: "p-[var(--dm-space-3)_var(--dm-space-2)] text-content-muted text-center" }, [
-              "没有匹配的标签，回车可创建",
-            ]);
-          },
         }),
       ],
-      onUnmounted() {
-        tag_select_destroyed = true;
-        if (keyword_timer) {
-          window.clearTimeout(keyword_timer);
-          keyword_timer = null;
-        }
-        if (typeof popover_unlisten === "function") popover_unlisten();
-        if (typeof popover_hide_unlisten === "function")
-          popover_hide_unlisten();
-        popover_store.destroy?.();
-      },
+      onUnmounted: model.methods.destroy,
     },
     [trigger],
   );

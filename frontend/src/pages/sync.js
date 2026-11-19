@@ -1,3 +1,4 @@
+import { list_scroll_props, EmptyCard } from "@/dmui.js";
 import { SyncPageModel } from "./sync.model.js";
 
 function SyncServerCard(props) {
@@ -203,38 +204,31 @@ export default function SyncPageView(props) {
         {
           class: "group-content-main flex-[1_1_auto] min-w-0 p-4 group-sync-main",
           attributes: { n: "sync-main" },
+          style: { overflow: "auto" },
+          ...list_scroll_props(model.state.list),
         },
         [
 
-          Show({
-            when: computed(
-              model.state.visible_servers,
-              (servers) => servers.length > 0,
-            ),
-            ok() {
-              return View(
-                {
-                  class: "grid gap-3",
-                  attributes: { n: "sync-server-list" },
-                },
-                [
-                  For({
-                    each: model.state.visible_servers,
-                    render(server) {
-                      return SyncServerCard({ server });
-                    },
-                  }),
-                ],
-              );
-            },
-            else() {
-              return View(
-                {
-                  class: "text-content-muted p-8 text-center",
-                  attributes: { n: "sync-page-empty" },
-                },
-                [model.state.empty_message],
-              );
+          Match({
+            when: model.state.status,
+            cases: {
+              initial() {
+                return View({ class: "grid gap-3", attributes: { n: "sync-list-skeleton", "aria-busy": "true" } },
+                  Array.from({ length: 4 }, () => Skeleton({ attributes: { n: "sync-server-skeleton" }, style: { height: "88px" } })));
+              },
+              loading() { return BrandLoading({ name: "sync-list-loading", labelVisible: true }); },
+              error() {
+                return EmptyCard({ name: "sync-list-error", title: "下载服务加载失败",
+                  description: model.state.error,
+                  action: Button({ store: model.ui.refresh_button$, attributes: { n: "sync-list-retry", type: "button" } }, ["重试"]) });
+              },
+              empty() { return EmptyCard({ name: "sync-list-empty", title: model.state.empty_message }); },
+              normal() {
+                return View({ class: "grid gap-3", attributes: { n: "sync-server-list", "aria-busy": model.state.list.state.loading } }, [
+                  Show({ when: model.state.list.state.loading, ok() { return BrandLoading({ name: "sync-list-refreshing" }); } }),
+                  For({ each: model.state.visible_servers, key: "id", render(server) { return SyncServerCard({ server }); } }),
+                ]);
+              },
             },
           }),
         ],

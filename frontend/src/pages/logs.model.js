@@ -1,3 +1,4 @@
+import { create_list_model, create_list_request } from "@/list.model.js";
 import { track_error } from "@/utils.js";
 import { fetchLogs, clearLogs } from "@/biz/request.js";
 
@@ -438,14 +439,7 @@ function unique_components(entries) {
 function LogsPageViewModel(props) {
   const PAGE_SIZE_DEFAULT = 300;
   const LOAD_MORE_THRESHOLD = 280;
-  const entries_ = refarr([]);
-  const total_ = ref(0);
-  const page_ = ref(1);
-  const page_size_ = ref(PAGE_SIZE_DEFAULT);
-  const initial_ = ref(true);
-  const loading_ = ref(false);
   const clearing_ = ref(false);
-  const error_ = track_error(ref(""), props.tip);
   const keyword_ = ref("");
   const source_ = ref("all");
   const level_ = ref("error");
@@ -468,6 +462,27 @@ function LogsPageViewModel(props) {
       reload_current();
     }
   });
+  const list$ = create_list_model({
+    request: create_list_request(async (params) => {
+      let data;
+      if (imported_.value) {
+        const filtered = (imported_entries || []).filter(matches_imported_entry);
+        const offset = (params.page - 1) * params.page_size;
+        data = { entries: filtered.slice(offset, offset + params.page_size), total: filtered.length,
+          page: params.page, page_size: params.page_size, files: [] };
+      } else {
+        const result = await logs_request_core.run(params);
+        if (result.error) throw result.error;
+        data = normalize_logs_response(result.data, params.page, params.page_size);
+      }
+      return { ...data, list: data.entries };
+    }),
+    page_size: PAGE_SIZE_DEFAULT,
+    tip: props.tip,
+  });
+  const { rows: entries_, total: total_, page: page_, page_size: page_size_,
+    loading: loading_, error: error_, status: list_status_ } = list$.state;
+
   const ui = {
     input_keyword$: new Timeless.vm.InputCore({
       defaultValue: keyword_.value,
@@ -644,33 +659,12 @@ function LogsPageViewModel(props) {
   let timer = null;
   let request_sequence = 0;
 
-  const logs_request_core = new Timeless.kit.RequestCore(
-    fetchLogs,
-    {
-      client: props.client,
-      process(response) {
-        if (response.error) {
-          return Timeless.Result.Err(response.error);
-        }
-        return Timeless.Result.Ok(
-          normalize_logs_response(response.data, page_.value, page_size_.value),
-        );
-      },
-    },
-  );
+  const logs_request_core = new Timeless.kit.RequestCore(fetchLogs, { client: props.client });
   const clear_logs_request_core = new Timeless.kit.RequestCore(
     clearLogs,
     { client: props.client },
   );
 
-  const list_status_ = combine(
-    { initial: initial_, error: error_, entries: entries_ },
-    (state) => {
-      if (state.initial) return "initial";
-      if (state.error) return "error";
-      return state.entries.length === 0 ? "empty" : "normal";
-    },
-  );
   const imported_label_ = combine(
     {
       fileName: imported_file_name_,
@@ -702,59 +696,24 @@ function LogsPageViewModel(props) {
     }
   }
 
-  async function load(targetPage = 1, append = false) {
-    if (loading_.value) {
-      return null;
-    }
-    const sequence = ++request_sequence;
-    const requestedPage = Math.max(1, Number(targetPage) || 1);
-    loading_.as(true);
-    error_.as("");
-    let result;
-    try {
-      result = await logs_request_core.run({
-        levels: level_.value === "all" ? "" : level_.value,
-        keyword: String(keyword_.value || "").trim(),
-        source: source_.value,
-        page: requestedPage,
-        page_size: page_size_.value,
-      });
-    } catch (error) {
-      if (sequence === request_sequence) {
-        error_.as(error && error.message ? error.message : String(error));
-        initial_.as(false);
-      }
-      return Timeless.Result.Err(error);
-    } finally {
-      if (sequence === request_sequence) {
-        loading_.as(false);
-      }
-    }
-    if (sequence !== request_sequence) {
-      return result;
-    }
-    if (result.error) {
-      error_.as(
-        result.error.message || result.error.msg || String(result.error),
-      );
-      initial_.as(false);
-      return result;
-    }
-    const data = result.data || {};
-    const loaded_entries = data.entries || [];
-    entries_.as(
-      append ? [...(entries_.value || []), ...loaded_entries] : loaded_entries,
-      { reset: true },
-    );
-    const log_file = (data.files || []).find((file) => file && file.path);
+  async function query_logs(target_page = 1, append = false) {
+    const result = await (append ? list$.loadMore() : list$.search({
+      levels: level_.value === "all" ? "" : level_.value,
+      keyword: String(keyword_.value || "").trim(),
+      source: source_.value,
+      page: Math.max(1, Number(target_page) || 1),
+    }));
+    if (!result || result.error || destroyed) return result;
+    const log_file = (list$.request.response?.files || []).find((file) => file?.path);
     log_file_path_.as(log_file ? String(log_file.path) : "");
-    total_.as(data.total || 0);
-    page_.as(data.page || requestedPage);
-    page_size_.as(data.page_size || page_size_.value);
     last_loaded_at_.as(format_datetime(new Date()));
-    sync_source_options();
-    initial_.as(false);
+    sync_source_options(imported_.value ? imported_entries : entries_.value);
     return result;
+  }
+
+  function load(target_page = 1, append = false) {
+    if (loading_.value) return null;
+    return query_logs(target_page, append);
   }
 
   function matches_imported_entry(entry) {
@@ -794,31 +753,7 @@ function LogsPageViewModel(props) {
   }
 
   function apply_imported_entries(target_page = 1, append = false) {
-    const all_entries = Array.isArray(imported_entries) ? imported_entries : [];
-    const filtered_entries = all_entries.filter(matches_imported_entry);
-    const page_size = PAGE_SIZE_DEFAULT;
-    const page_count = Math.max(
-      1,
-      Math.ceil(filtered_entries.length / page_size),
-    );
-    const requested_page = Math.min(
-      page_count,
-      Math.max(1, Number(target_page) || 1),
-    );
-    const offset = (requested_page - 1) * page_size;
-    const loaded_entries = filtered_entries.slice(offset, offset + page_size);
-    entries_.as(
-      append ? [...(entries_.value || []), ...loaded_entries] : loaded_entries,
-      { reset: true },
-    );
-    total_.as(filtered_entries.length);
-    page_.as(requested_page);
-    page_size_.as(page_size);
-    log_file_path_.as("");
-    last_loaded_at_.as(format_datetime(new Date()));
-    sync_source_options(all_entries);
-    initial_.as(false);
-    return true;
+    return query_logs(target_page, append);
   }
 
   function reload_current() {
@@ -900,7 +835,7 @@ function LogsPageViewModel(props) {
       level_.as("error");
       ui.select_source$.setValue("all");
       ui.select_level$.setValue("error");
-      apply_imported_entries(1);
+      await apply_imported_entries(1);
       ui.import_dialog$.hide();
       show_toast(`已导入 ${parsed_entries.length} 条日志`);
       return true;
@@ -983,7 +918,8 @@ function LogsPageViewModel(props) {
         (file) => file && file.path,
       );
       clear_imported_entries();
-      entries_.as([], { reset: true });
+      list$.modifyResponse((response) => ({ ...response, dataSource: [], total: 0, page: 1,
+        pageSize: PAGE_SIZE_DEFAULT, initial: false, empty: true, noMore: true, error: null }));
       total_.as(0);
       page_.as(1);
       page_size_.as(PAGE_SIZE_DEFAULT);
@@ -1142,6 +1078,7 @@ function LogsPageViewModel(props) {
     },
     destroy() {
       destroyed = true;
+      list$.destroy();
       if (timer) {
         clearInterval(timer);
       }
@@ -1155,6 +1092,7 @@ function LogsPageViewModel(props) {
   };
 
   const state = {
+    list: list$,
     entries: entries_,
     total: total_,
     status: list_status_,

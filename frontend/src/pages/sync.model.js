@@ -1,4 +1,4 @@
-import { track_error } from "@/utils.js";
+import { create_list_model, create_list_request } from "@/list.model.js";
 import { fetchSyncServers, syncToServer } from "@/biz/request.js";
 
 const STATUS_TIMEOUT = 5000;
@@ -48,22 +48,31 @@ function remote_service_detail(data) {
 
 export function SyncPageModel(props) {
   const servers_ = refarr([]);
-  const loading_ = ref(false);
-  const error_ = track_error(ref(""), props.tip);
+  const syncing_ = ref(false);
   const keyword_ = ref("");
   const status_controllers = new Map();
-  const visible_servers_ = combine(
-    { servers: servers_, keyword: keyword_ },
-    (state) => {
-      const needle = String(state.keyword || "")
-        .trim()
-        .toLowerCase();
-      if (!needle) return state.servers;
-      return state.servers.filter((server) =>
-        `${server.name} ${server.url}`.toLowerCase().includes(needle),
-      );
-    },
-  );
+  let version = 0;
+  let loaded_version = -1;
+  const list$ = create_list_model({
+    request: create_list_request(async (params) => {
+      if (params.version !== loaded_version) {
+        const response = await list_request.run();
+        if (response.error) throw response.error;
+        abort_status_checks();
+        destroy_servers();
+        servers_.as((response.data?.servers || []).map(make_server), { reset: true });
+        loaded_version = params.version;
+        check_servers_status();
+      }
+      const keyword = String(params.keyword || "").trim().toLowerCase();
+      const list = servers_.value.filter((server) => `${server.name} ${server.url}`.toLowerCase().includes(keyword));
+      return { list, total: list.length, page: 1, page_size: Math.max(1, list.length) };
+    }),
+    tip: props.tip,
+  });
+  const visible_servers_ = list$.state.rows;
+  const error_ = list$.state.error;
+  const loading_ = combine({ syncing: syncing_, loading: list$.state.loading }, ({ syncing, loading }) => syncing || loading);
   const empty_message_ = combine(
     { loading: loading_, servers: servers_, keyword: keyword_ },
     (state) => {
@@ -90,6 +99,7 @@ export function SyncPageModel(props) {
       allowClear: true,
       onChange(value) {
         keyword_.as(String(value || ""));
+        void list$.search({ keyword: keyword_.value, version });
       },
     }),
     refresh_button$: new Timeless.vm.ButtonCore({
@@ -210,26 +220,17 @@ export function SyncPageModel(props) {
 
   async function load() {
     if (loading_.value) return null;
-    loading_.as(true);
-    error_.as("");
     ui.refresh_button$.setLoading(true);
-    const response = await list_request.run();
-    ui.refresh_button$.setLoading(false);
-    loading_.as(false);
-    if (response.error) {
-      error_.as(response.error.message || String(response.error));
-      return response;
+    try {
+      return await list$.search({ keyword: keyword_.value, version: ++version });
+    } finally {
+      ui.refresh_button$.setLoading(false);
     }
-    destroy_servers();
-    const data = response.data || {};
-    servers_.as((data.servers || []).map(make_server), { reset: true });
-    check_servers_status();
-    return response;
   }
 
   async function sync_to(server) {
     if (loading_.value) return null;
-    loading_.as(true);
+    syncing_.as(true);
     error_.as("");
     set_buttons_enabled(false);
     server.button$.setLoading(true);
@@ -238,7 +239,7 @@ export function SyncPageModel(props) {
     const response = await sync_request.run(server.id);
     server.button$.setLoading(false);
     set_buttons_enabled(true);
-    loading_.as(false);
+    syncing_.as(false);
     if (response.error) {
       server.status.as("error");
       server.message.as(response.error.message || String(response.error));
@@ -251,6 +252,7 @@ export function SyncPageModel(props) {
   }
 
   function destroy() {
+    list$.destroy();
     abort_status_checks();
     destroy_servers();
     list_request.destroy();
@@ -260,6 +262,8 @@ export function SyncPageModel(props) {
 
   return {
     state: {
+      list: list$,
+      status: list$.state.status,
       servers: servers_,
       visible_servers: visible_servers_,
       loading: loading_,

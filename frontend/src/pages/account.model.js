@@ -1,3 +1,4 @@
+import { create_list_model, create_list_request } from "@/list.model.js";
 import { track_error } from "@/utils.js";
 import { fetchAccountList, fetchAccountContents } from "@/biz/request.js";
 import { proxy_image_url } from "@/image-proxy.model.js";
@@ -321,72 +322,81 @@ function AccountViewModel(props) {
   const initial_search = account_search_from_query(
     props.view && props.view.query,
   );
-  const accounts_ = refarr([]);
-  const total_ = ref(0);
-  const page_ = ref(1);
-  const page_size_ = ref(PAGE_SIZE_DEFAULT);
   const keyword_ = ref(initial_search.keyword);
   const account_id_ = ref(initial_search.account_id);
   const platform_id_ = ref(initial_search.platform_id);
-  const initial_ = ref(true);
-  const loading_ = ref(false);
-  const error_ = track_error(ref(""), props.tip);
   const copied_account_id_ = ref("");
   const selected_account_ = ref(null);
   const drawer_tabs_ = refarr([]);
   const drawer_scope_ = ref("");
-  const drawer_contents_ = refarr([]);
-  const drawer_initial_ = ref(true);
-  const drawer_loading_ = ref(false);
   const drawer_loading_more_ = ref(false);
   const drawer_next_marker_ = ref("");
   const drawer_more_error_ = track_error(ref(""), props.tip);
-  const drawer_error_ = track_error(ref(""), props.tip);
   const drawer_player_content_ = ref(null);
   const drawer_player_download_loading_ = ref(false);
   const drawer_player_download_error_ = track_error(ref(""), props.tip);
   const drawer_player_download_success_ = ref("");
-  let request_sequence = 0;
-  let drawer_request_sequence = 0;
   let copy_feedback_timer = null;
 
   const reqs = {
     account: {
-      list: new Timeless.kit.RequestCore(fetchAccountList, {
-        client: props.client,
-      }),
       details: new Timeless.kit.RequestCore(fetchAccountContents, {
         client: props.client,
       }),
     },
   };
 
+  const drawer_list$ = create_list_model({
+    request: create_list_request(async (params) => {
+      const result = await reqs.account.details.run({
+        scope: params.scope,
+        params: { id: params.account.id, page: String(params.next_marker || "") },
+      });
+      if (result.error) throw result.error;
+      const details = normalize_home_details_response(result.data);
+      const seen = new Set(params.page > 1 ? drawer_contents_.value.map((content) => content.id) : []);
+      const list = details.contents.map((content) => normalize_home_detail_content(content, params.account))
+        .filter((content) => {
+          if (!content.id) return true;
+          if (seen.has(content.id)) return false;
+          seen.add(content.id);
+          return true;
+        });
+      return { ...details, list, page: params.page, page_size: Math.max(1, list.length),
+        isEnd: !details.next_marker };
+    }),
+    tip(tip) { if (!drawer_loading_more_.value) props.tip(tip); },
+  });
+  const { rows: drawer_contents_, initial: drawer_initial_, loading: drawer_loading_, error: drawer_error_ } = drawer_list$.state;
+
+  const list$ = create_list_model({
+    request: new Timeless.kit.RequestCore(fetchAccountList, { client: props.client }),
+    page_size: PAGE_SIZE_DEFAULT,
+    tip: props.tip,
+    normalize(data, params) {
+      const response = normalize_account_list_response(data, params.page, params.page_size);
+      return { ...response, list: response.list.map(normalize_account_item) };
+    },
+  });
+  const { rows: accounts_, total: total_, page: page_, page_size: page_size_,
+    initial: initial_, loading: loading_, error: error_, status: list_status_ } = list$.state;
+
   const page_count_ = combine(
     { total: total_, pageSize: page_size_ },
     (state) =>
       Math.max(1, Math.ceil(state.total / Math.max(1, state.pageSize))),
   );
-  const list_status_ = combine(
-    {
-      initial: initial_,
-      error: error_,
-      accounts: accounts_,
-    },
-    (state) => {
-      if (state.initial) return "initial";
-      if (state.error) return "error";
-      return state.accounts.length === 0 ? "empty" : "normal";
-    },
-  );
   const range_text_ = computed(total_, (total) => `共 ${total || 0} 个账号`);
   const drawer_status_ = combine(
     {
       initial: drawer_initial_,
+      loading: drawer_loading_,
       error: drawer_error_,
       count: computed(drawer_contents_, (contents) => contents.length),
     },
     (state) => {
       if (state.initial) return "initial";
+      if (state.loading && state.count === 0) return "loading";
       if (state.error && state.count === 0) return "error";
       return state.count === 0 ? "empty" : "normal";
     },
@@ -521,15 +531,8 @@ function AccountViewModel(props) {
     );
   }
 
-  async function load(targetPage = page_.value) {
-    const sequence = ++request_sequence;
-    const requestedPage = Math.max(1, Number(targetPage) || 1);
-    loading_.as(true);
-    error_.as("");
-
+  function load(target_page = 1) {
     const params = {
-      page: requestedPage,
-      page_size: page_size_.value,
     };
     const keyword = String(keyword_.value || "").trim();
     if (keyword && keyword !== account_id_.value) {
@@ -543,27 +546,7 @@ function AccountViewModel(props) {
     if (platform_id) {
       params.platform_id = platform_id;
     }
-    const r = await reqs.account.list.run(params);
-    if (sequence !== request_sequence) {
-      return r;
-    }
-    loading_.as(false);
-    if (r.error) {
-      error_.as(r.error.message || String(r.error));
-      initial_.as(false);
-      return r;
-    }
-    const data = normalize_account_list_response(
-      r.data,
-      requestedPage,
-      page_size_.value,
-    );
-    accounts_.as(data.list.map(normalize_account_item), { reset: true });
-    total_.as(data.total);
-    page_.as(data.page);
-    page_size_.as(data.page_size);
-    initial_.as(false);
-    return r;
+    return list$.search({ ...params, page: Math.max(1, Number(target_page) || 1) });
   }
 
   function set_keyword(value) {
@@ -580,67 +563,27 @@ function AccountViewModel(props) {
       Math.max(1, Number(target_page) || 1),
     );
     if (page === page_.value || loading_.value) return null;
-    return load(page);
+    return list$.goto(page);
   }
 
   async function load_account_contents(account, scope, options = {}) {
-    if (!account || !account.id || !scope) return null;
+    if (!account?.id || !scope) return null;
     const append = Boolean(options.append);
     if (append && drawer_loading_more_.value) return null;
-    const sequence = ++drawer_request_sequence;
     drawer_scope_.as(String(scope));
     drawer_loading_more_.as(append);
     drawer_more_error_.as("");
-    if (!append) {
-      drawer_initial_.as(true);
-      drawer_loading_.as(true);
-      drawer_error_.as("");
-      drawer_next_marker_.as("");
-      drawer_contents_.as([], { reset: true });
-    }
-
-    const result = await reqs.account.details.run({
-      scope: String(scope),
-      params: {
-        id: account.id,
-        page: String(options.page || (append ? drawer_next_marker_.value : "")),
-      },
-    });
-    if (sequence !== drawer_request_sequence) return result;
-    drawer_loading_.as(false);
+    const result = await (append ? drawer_list$.loadMore() : drawer_list$.search({ account, scope: String(scope) }));
     drawer_loading_more_.as(false);
-    drawer_initial_.as(false);
+    if (!result) return result;
     if (result.error) {
-      const message = result.error.message || String(result.error);
-      if (append) {
-        drawer_more_error_.as(message);
-      } else {
-        drawer_error_.as(message);
-      }
+      if (append) drawer_more_error_.as(result.error.message || String(result.error));
       return result;
     }
-    const details = normalize_home_details_response(result.data);
-    drawer_tabs_.as(
-      details.scopes.map(normalize_home_tab).filter((tab) => tab.scope),
-      { reset: true },
-    );
+    const details = drawer_list$.request.response;
+    drawer_tabs_.as(details.scopes.map(normalize_home_tab).filter((tab) => tab.scope), { reset: true });
     drawer_scope_.as(details.scope || String(scope));
-    const loaded_contents = details.contents.map((content) =>
-      normalize_home_detail_content(content, account),
-    );
-    const contents = append
-      ? [...drawer_contents_.value, ...loaded_contents]
-      : loaded_contents;
-    const unique_contents = [];
-    const seen = new Set();
-    contents.forEach((content, index) => {
-      const key = String(content.id || `${content.content_type}:${index}`);
-      if (seen.has(key)) return;
-      seen.add(key);
-      unique_contents.push(content);
-    });
-    drawer_contents_.as(unique_contents, { reset: true });
-    drawer_next_marker_.as(details.next_marker);
+    drawer_next_marker_.as(details.next_marker || "");
     return result;
   }
 
@@ -677,6 +620,11 @@ function AccountViewModel(props) {
 
   const methods = {
     tip: props.tip,
+    destroy() {
+      list$.destroy();
+      drawer_list$.destroy();
+      clearTimeout(copy_feedback_timer);
+    },
     ready() {
       return load(1);
     },
@@ -690,10 +638,10 @@ function AccountViewModel(props) {
     setKeyword: set_keyword,
     changePage: change_page,
     previousPage() {
-      return change_page(page_.value - 1);
+      return page_.value > 1 && !loading_.value ? list$.prev() : null;
     },
     nextPage() {
-      return change_page(page_.value + 1);
+      return page_.value < page_count_.value && !loading_.value ? list$.next() : null;
     },
     copyId(account) {
       const result = props.app.copy(account.id);
@@ -750,6 +698,8 @@ function AccountViewModel(props) {
   };
 
   const state = {
+    drawer_list: drawer_list$,
+    list: list$,
     accounts: accounts_,
     total: total_,
     page: page_,

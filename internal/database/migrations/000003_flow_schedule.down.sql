@@ -1,3 +1,7 @@
+-- The initial schema already declares TEXT IDs. Keep that type on rollback:
+-- newly recorded string IDs cannot be converted to INTEGER without data loss.
+SELECT 1;
+
 -- Remove the platform seeds introduced with automation and video support.
 DELETE FROM platform WHERE id = 'iqiyi';
 DELETE FROM platform WHERE id IN ('youku', 'tencent', 'mgtv', 'hongguo');

@@ -1,4 +1,4 @@
-import { track_error } from "@/utils.js";
+import { create_list_model } from "@/list.model.js";
 import {
   fetchContentList,
   fetchAccountList,
@@ -383,27 +383,31 @@ function persist_saved_filters(filters) {
 
 function ContentViewModel(props) {
   const PAGE_SIZE_DEFAULT = 48;
-  const contents_ = refarr([]);
-  const total_ = ref(0);
-  const page_ = ref(1);
-  const page_size_ = ref(PAGE_SIZE_DEFAULT);
   const keyword_ = ref("");
   const content_type_ = ref("");
   const platform_id_ = ref("");
   const account_id_ = ref("");
   const scope_ = ref("task");
-  const initial_ = ref(true);
-  const loading_ = ref(false);
-  const error_ = track_error(ref(""), props.tip);
   const detail_id_ = ref("");
   const copied_content_id_ = ref("");
   const saved_filters_ = refarr(load_saved_filters());
   const selected_filter_id_ = ref("");
   const layout_ = ref(load_content_layout());
-  let request_sequence = 0;
   let account_request_sequence = 0;
   let copy_feedback_timer = null;
   let save_filter_hide_timer = null;
+
+  const list$ = create_list_model({
+    request: new Timeless.kit.RequestCore(fetchContentList, { client: props.client }),
+    page_size: PAGE_SIZE_DEFAULT,
+    tip: props.tip,
+    normalize(data, params) {
+      const response = normalize_content_list_response(data, params.page, params.page_size);
+      return { ...response, list: response.list.map(normalize_content_item) };
+    },
+  });
+  const { rows: contents_, total: total_, page: page_, page_size: page_size_,
+    initial: initial_, loading: loading_, error: error_, status: list_status_ } = list$.state;
 
   const ui = {
     input_keyword$: new Timeless.vm.InputCore({
@@ -568,28 +572,12 @@ function ContentViewModel(props) {
     },
   });
 
-  const list_request = new Timeless.kit.RequestCore(
-    fetchContentList,
-    {
-      client: props.client,
-      process(response) {
-        if (response.error) {
-          return Timeless.Result.Err(response.error);
-        }
-        return Timeless.Result.Ok(
-          normalize_content_list_response(
-            response.data,
-            page_.value,
-            page_size_.value,
-          ),
-        );
-      },
-    },
-  );
-  const account_list_request = new Timeless.kit.RequestCore(
-    fetchAccountList,
-    { client: props.client },
-  );
+  const account_list$ = create_list_model({
+    request: new Timeless.kit.RequestCore(fetchAccountList, { client: props.client }),
+    page_size: 200,
+    tip: props.tip,
+    normalize(data, params) { return normalize_content_list_response(data, params.page, params.page_size); },
+  });
   const set_tags_request = new Timeless.kit.RequestCore(
     setContentTags,
     { client: props.client },
@@ -601,18 +589,6 @@ function ContentViewModel(props) {
       Math.max(1, Math.ceil(state.total / Math.max(1, state.pageSize))),
   );
   const range_text_ = computed(total_, (total) => `共 ${total || 0} 条`);
-  const list_status_ = combine(
-    {
-      initial: initial_,
-      error: error_,
-      contents: contents_,
-    },
-    (state) => {
-      if (state.initial) return "initial";
-      if (state.error) return "error";
-      return state.contents.length > 0 ? "normal" : "empty";
-    },
-  );
   const active_filter_id_ = combine(
     {
       filters: saved_filters_,
@@ -639,14 +615,8 @@ function ContentViewModel(props) {
       );
     },
   );
-  async function load(targetPage = page_.value) {
-    const sequence = ++request_sequence;
-    const requestedPage = Math.max(1, Number(targetPage) || 1);
-    loading_.as(true);
-
+  function load(target_page = 1) {
     const params = {
-      page: requestedPage,
-      page_size: page_size_.value,
       scope: scope_.value,
     };
     const keyword = String(keyword_.value || "").trim();
@@ -666,26 +636,7 @@ function ContentViewModel(props) {
       params.account_id = account_id;
     }
 
-    const result = await list_request.run(params);
-    if (sequence !== request_sequence) {
-      return result;
-    }
-    if (result.error) {
-      error_.as(result.error.message || String(result.error));
-      loading_.as(false);
-      initial_.as(false);
-      return result;
-    }
-
-    const data = result.data;
-    error_.as("");
-    contents_.as(data.list.map(normalize_content_item), { reset: true });
-    total_.as(data.total);
-    page_.as(data.page);
-    page_size_.as(data.page_size);
-    loading_.as(false);
-    initial_.as(false);
-    return result;
+    return list$.search({ ...params, page: Math.max(1, Number(target_page) || 1) });
   }
 
   function content_layout_items() {
@@ -711,15 +662,11 @@ function ContentViewModel(props) {
     }
 
     ui.select_account$.setLoading(true);
-    const result = await account_list_request.run(params);
+    const result = await account_list$.search(params);
     if (sequence !== account_request_sequence) return result;
 
     const source = result.error ? {} : result.data || {};
-    const list = Array.isArray(source.list)
-      ? source.list
-      : Array.isArray(source.List)
-        ? source.List
-        : [];
+    const list = source.dataSource || [];
     const accounts = list.map(normalize_filter_account);
     const options = [
       select_item("全部账号", ""),
@@ -898,7 +845,7 @@ function ContentViewModel(props) {
       Math.max(1, Number(target_page) || 1),
     );
     if (page === page_.value || loading_.value) return null;
-    return load(page);
+    return list$.goto(page);
   }
 
   function content_tags(content) {
@@ -923,6 +870,13 @@ function ContentViewModel(props) {
 
   const methods = {
     tip: props.tip,
+    destroy() {
+      list$.destroy();
+      account_list$.destroy();
+      account_request_sequence += 1;
+      clearTimeout(copy_feedback_timer);
+      clearTimeout(save_filter_hide_timer);
+    },
     ready() {
       return Promise.all([load_accounts(), load(1)]);
     },
@@ -943,10 +897,10 @@ function ContentViewModel(props) {
     setKeyword: set_keyword,
     changePage: change_page,
     previousPage() {
-      return change_page(page_.value - 1);
+      return page_.value > 1 && !loading_.value ? list$.prev() : null;
     },
     nextPage() {
-      return change_page(page_.value + 1);
+      return page_.value < page_count_.value && !loading_.value ? list$.next() : null;
     },
     contentTags: content_tags,
     removeTag: remove_tag,
@@ -980,6 +934,7 @@ function ContentViewModel(props) {
   };
 
   const state = {
+    list: list$,
     contents: contents_,
     total: total_,
     page: page_,

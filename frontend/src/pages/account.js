@@ -1,4 +1,4 @@
-import { ErrorMessage } from "@/dmui.js";
+import { ErrorMessage, list_scroll_props } from "@/dmui.js";
 import { WxChannelsPlayerView } from "@/components/wxchannels.player.js";
 
 import { AccountViewModel } from "./account.model.js";
@@ -32,6 +32,7 @@ function AccountPageView(props) {
         console.count("AccountPage onMounted");
         vm$.methods.ready();
       },
+      onUnmounted() { vm$.methods.destroy(); },
     },
     [
       View(
@@ -470,11 +471,13 @@ function AccountContentsCollection(props) {
           (status) => status === "initial",
         ),
         ok() {
-          return AccountContentState({
-            loading: true,
-            title: "正在加载账号内容",
-          });
+          return View({ class: "grid gap-3", attributes: { n: "account-content-skeleton", "aria-busy": "true" } },
+            Array.from({ length: 6 }, () => Skeleton({ attributes: { n: "account-content-skeleton-card" }, style: { height: "120px" } })));
         },
+      }),
+      Show({
+        when: computed(vm$.state.drawer_status, (status) => status === "loading"),
+        ok() { return AccountContentState({ loading: true, title: "正在加载账号内容" }); },
       }),
       Show({
         when: computed(vm$.state.drawer_status, (status) => status === "error"),
@@ -508,6 +511,7 @@ function AccountContentsCollection(props) {
         ),
         ok() {
           return Waterfall({
+            ...list_scroll_props(vm$.state.drawer_list),
             class: "w-full min-h-0 flex-[1_1_0] p-[0_var(--dm-space-1)_var(--dm-space-2)_0] overflow-x-hidden overflow-y-auto overscroll-behavior-contain",
             attributes: {
               n: "account-content-waterfall",
@@ -1002,6 +1006,7 @@ function AccountPageBody(props) {
         },
       },
     ],
+    list: vm$.state.list,
     rows: vm$.state.accounts,
     pagination: {
       class: " dm-px-4",

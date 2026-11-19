@@ -91,20 +91,6 @@ CREATE TABLE IF NOT EXISTS `account_tag` (
 );
 CREATE INDEX IF NOT EXISTS `idx_account_tag_tag_id` ON `account_tag` (`tag_id`);
 
--- 迁移已有 JSON tags 数据
-INSERT OR IGNORE INTO `tag` (`name`, `created_at`, `updated_at`)
-SELECT DISTINCT j.value, strftime('%s','now')*1000, strftime('%s','now')*1000
-FROM `content`, json_each(content.tags) AS j
-WHERE content.tags IS NOT NULL AND content.tags != '' AND content.tags != '[]'
-    AND json_valid(content.tags) = 1;
-
-INSERT OR IGNORE INTO `content_tag` (`content_id`, `tag_id`, `created_at`)
-SELECT content.id, tag.id, strftime('%s','now')*1000
-FROM `content`, json_each(content.tags) AS j
-JOIN `tag` ON tag.name = j.value
-WHERE content.tags IS NOT NULL AND content.tags != '' AND content.tags != '[]'
-    AND json_valid(content.tags) = 1;
-
 -- A flow can exist without any instances. Only instances are executable.
 CREATE TABLE `user_flow` (
  `id` TEXT PRIMARY KEY, `name` TEXT NOT NULL, `description` TEXT,
@@ -141,9 +127,46 @@ INSERT OR IGNORE INTO platform (id, code, name, homepage, entry_url) VALUES
  ('mgtv', 'mgtv', '芒果TV', 'https://www.mgtv.com', 'https://www.mgtv.com'),
  ('hongguo', 'hongguo', '红果短剧', 'https://hongguoduanju.com', 'https://hongguoduanju.com');
 
-INSERT OR IGNORE INTO platform (id, code, name, homepage, entry_url)
-VALUES ('iqiyi', 'iqiyi', '爱奇艺', 'https://www.iqiyi.com', 'https://www.iqiyi.com');
+INSERT OR IGNORE INTO platform (id, code, name, homepage, entry_url) VALUES
+ ('iqiyi', 'iqiyi', '爱奇艺', 'https://www.iqiyi.com', 'https://www.iqiyi.com');
 
 -- Composite index for expiring waiting automation runs.
 CREATE INDEX IF NOT EXISTS `idx_flow_run_record_status_deleted_deadline`
 ON `flow_run_record` (`status`, `deleted_at`, `deadline_at`);
+
+-- Legacy databases may still have an INTEGER primary key; preserve its value
+-- as text so existing browse_history_account links keep resolving.
+CREATE TABLE `browse_history_text_id` (
+  `id` TEXT PRIMARY KEY,
+  `platform_id` TEXT NOT NULL,
+  `visited_times` INTEGER NOT NULL DEFAULT 1,
+  `type` TEXT,
+  `external_id` TEXT,
+  `title` TEXT,
+  `url` TEXT,
+  `source_url` TEXT,
+  `cover_url` TEXT,
+  `cover_width` TEXT,
+  `cover_height` TEXT,
+  `publish_time` INTEGER,
+  `extra_data` TEXT,
+  `created_at` INTEGER NOT NULL DEFAULT 0,
+  `updated_at` INTEGER NOT NULL DEFAULT 0,
+  `deleted_at` INTEGER
+);
+
+INSERT INTO `browse_history_text_id` (
+  `id`, `platform_id`, `visited_times`, `type`, `external_id`, `title`,
+  `url`, `source_url`, `cover_url`, `cover_width`, `cover_height`,
+  `publish_time`, `extra_data`, `created_at`, `updated_at`, `deleted_at`
+)
+SELECT CAST(`id` AS TEXT), `platform_id`, `visited_times`, `type`, `external_id`, `title`,
+  `url`, `source_url`, `cover_url`, `cover_width`, `cover_height`,
+  `publish_time`, `extra_data`, `created_at`, `updated_at`, `deleted_at`
+FROM `browse_history`;
+
+DROP TABLE `browse_history`;
+ALTER TABLE `browse_history_text_id` RENAME TO `browse_history`;
+
+CREATE INDEX `idx_browse_history_time` ON `browse_history` (`visited_times`);
+CREATE INDEX `idx_browse_history_external` ON `browse_history` (`platform_id`, `external_id`);

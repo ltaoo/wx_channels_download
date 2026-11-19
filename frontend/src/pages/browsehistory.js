@@ -8,6 +8,7 @@ function BrowseHistoryPageView(props) {
       onMounted() {
         vm$.methods.ready();
       },
+      onUnmounted() { vm$.methods.destroy(); },
     },
     [
       View({ class: "group-content-toolbar-wrap p-[var(--dm-space-4)_var(--dm-space-4)_0]" }, [
@@ -394,6 +395,7 @@ function BrowseHistoryPageBody(props) {
         },
       },
     ],
+    list: vm$.state.list,
     rows: vm$.state.histories,
     pagination: {
       class: " dm-px-4",

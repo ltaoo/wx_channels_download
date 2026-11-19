@@ -32,6 +32,7 @@ function DownloadV2TaskTable(props) {
     headerCellClass: "overflow-hidden text-ellipsis whitespace-nowrap",
     listClass: "flex flex-1 flex-col min-h-0 relative [&_[data-list-view-root]]:h-full [&_[data-list-view-root]]:max-h-full [&_[data-list-view-root]]:flex-1 [&_[data-list-view-root]]:min-h-0 [&_[data-list-view-root]]:overflow-auto [&_[data-list-view-content]]:w-full [&_[data-list-view-content]]:box-sizing-border-box [&_[data-list-view-viewport]]:w-full [&_[data-list-view-viewport]]:box-sizing-border-box [&_[data-list-view-item]]:w-full [&_[data-list-view-item]]:box-sizing-border-box [&_[data-list-view-viewport]]:flex [&_[data-list-view-viewport]]:flex-col [&_[data-list-view-viewport]]:gap-0 [&_[data-list-view-item]]:flex [&_[data-list-view-item]]:justify-stretch [&_[data-list-view-item]]:bg-color-bg-surface",
     columns: props.columns,
+    list: vm$.state.list,
     rows: vm$.state.tasks,
     pagination: {
       class: " dm-px-4",

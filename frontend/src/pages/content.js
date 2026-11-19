@@ -1,5 +1,5 @@
 import { TagSelect, ContentTagBadge } from "@/components/index.js";
-import { EmptyCard } from "@/dmui.js";
+import { EmptyCard, list_scroll_props } from "@/dmui.js";
 
 import { ContentViewModel } from "./content.model.js";
 import ContentDetailPageView from "./content_detail.js";
@@ -50,6 +50,7 @@ function ContentPageView(props) {
       onMounted() {
         vm$.methods.ready();
       },
+      onUnmounted() { vm$.methods.destroy(); },
     },
     [
       SplitView({
@@ -1211,10 +1212,14 @@ function ContentCardBody(props) {
               retry: vm$.ui.btn_retry$,
             });
           },
+          loading() {
+            return BrandLoading({ name: "content-card-loading", labelVisible: true });
+          },
           normal() {
             return View(
               {
                 class: "relative min-h-0 flex-[1_1_auto] grid [align-items:start] grid-auto-rows-360px grid-cols-[repeat(auto-fill,_minmax(240px,_1fr))] gap-3 p-4 overflow-y-auto",
+                ...list_scroll_props(vm$.state.list),
                 attributes: {
                   n: "content-card-grid",
                   role: "list",
@@ -1265,6 +1270,7 @@ function ContentCardBody(props) {
         },
       }),
       Pagination({
+        list: vm$.state.list,
         class: " dm-px-4",
         summary: vm$.state.range_text,
         page: vm$.state.page,
@@ -1347,6 +1353,7 @@ function ContentPageBody(props) {
               },
             },
           ],
+          list: vm$.state.list,
           rows: vm$.state.contents,
           pagination: {
             class: " dm-px-4",
@@ -1354,7 +1361,7 @@ function ContentPageBody(props) {
             page: vm$.state.page,
             pageCount: vm$.state.page_count,
             pageSize: vm$.state.page_size,
-            loading: vm$.state.initial,
+            loading: vm$.state.loading,
             onChange(page) {
               return vm$.methods.changePage(page);
             },

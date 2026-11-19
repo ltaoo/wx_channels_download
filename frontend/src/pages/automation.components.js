@@ -1,4 +1,4 @@
-import { ErrorMessage } from "@/dmui.js";
+import { ErrorMessage, ListState, list_scroll_props } from "@/dmui.js";
 import {
   calculate_flow_minimap_geometry,
   calculate_pipeline_node_positions,
@@ -2129,8 +2129,9 @@ export function AutomationRunHistory(props) {
         Button({ store: vm$.ui.btn_refresh_runs$, attributes: { n: "automation-refresh-runs", type: "button", "aria-label": "刷新运行记录" } }, ["刷新"]),
       ]),
     ]),
-    View({ class: "flex-1 min-h-0 overflow-auto p-2 grid gap-2 content-start", attributes: { n: "automation-run-list", "aria-label": "选择执行记录" } }, [
-      For({ each: vm$.state.runs, key: "id", render(value) {
+    View({ class: "flex-1 min-h-0 overflow-auto p-2 grid gap-2 content-start", ...list_scroll_props(vm$.state.run_list), attributes: { n: "automation-run-list", "aria-label": "选择执行记录" } }, [
+      ListState({ list: vm$.state.run_list, name: "automation-runs", retry: vm$.ui.btn_refresh_runs$, emptyTitle: "暂无执行记录，点击顶部「手动执行」开始。", render() {
+        return For({ each: vm$.state.runs, key: "id", render(value) {
         const run = value && value.value !== undefined ? value.value : value;
         const current_ = computed(vm$.state.runs, (runs) => runs.find((item) => item.id === run.id) || run);
         return Button({
@@ -2145,8 +2146,8 @@ export function AutomationRunHistory(props) {
             } }),
           ]),
         ]);
+      } });
       } }),
-      Show({ when: computed(vm$.state.runs, (runs) => !runs.length), ok() { return View({ class: "text-color-text-secondary text-sm p-2" }, [computed(vm$.state.runs_loading, (loading) => loading ? "正在加载执行记录…" : "暂无执行记录，点击顶部「手动执行」开始。")]); } }),
     ]),
     For({ each: computed(vm$.state.selected_run, (run) => run ? [{ ...run, render_key: `${run.id}-${run.status}-${run.updated_at}-${run.current_node}` }] : []), key: "render_key", render(value) {
       const run = value && value.value !== undefined ? value.value : value;
