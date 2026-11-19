@@ -57,14 +57,22 @@ type update_manifest_asset struct {
 	Name     string `json:"name"`
 }
 
-func new_application_update_service(current_version string, restart_service *services.ApplicationRestartService) *services.ApplicationUpdateService {
-	return services.NewApplicationUpdateService(services.ApplicationUpdateServiceOptions{
-		CurrentVersion: current_version,
-		Repository:     update_repository,
-		FetchReleases:  fetch_service_update_releases,
-		DownloadUpdate: download_and_apply_update_with_progress,
-		RestartService: restart_service,
+func new_app_service(current_version string, request_shutdown func()) *services.AppService {
+	restart_service := services.NewApplicationRestartService(services.ApplicationRestartServiceOptions{
+		RequestRestart: func() error {
+			return restart_current_process(request_shutdown)
+		},
 	})
+	return &services.AppService{
+		Restart: restart_service,
+		Update: services.NewApplicationUpdateService(services.ApplicationUpdateServiceOptions{
+			CurrentVersion: current_version,
+			Repository:     update_repository,
+			FetchReleases:  fetch_service_update_releases,
+			DownloadUpdate: download_and_apply_update_with_progress,
+			RestartService: restart_service,
+		}),
+	}
 }
 
 func fetch_service_update_releases(ctx context.Context, repository string) ([]services.UpdateRelease, error) {

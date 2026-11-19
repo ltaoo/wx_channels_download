@@ -1,0 +1,34 @@
+{
+  "get": {
+    "tags": [
+      "抓取"
+    ],
+    "summary": "订阅抓取与平台状态",
+    "description": "连接建立后先推送平台状态快照，随后推送 platform_status 和 scraper_job 消息。客户端按 job.id 筛选任务，使用 event.sequence 排序；断线后通过 /api/scraper/job 恢复完整快照。",
+    "responses": {
+      "101": {
+        "description": "升级为 WebSocket，服务端每 10 秒发 Ping，30 秒未收到 Pong 会断开。"
+      }
+    },
+    "operationId": "get_ws_scraper",
+    "x-websocket-server-message-schema": {
+      "$ref": "../components.json#/schemas/api_scraper_ws_message"
+    },
+    "x-websocket-server-messages": [
+      {
+        "type": "scraper_job",
+        "job": {
+          "id": "fetch-demo",
+          "status": "running"
+        },
+        "event": {
+          "job_id": "fetch-demo",
+          "sequence": 1,
+          "stage": "started",
+          "status": "running",
+          "timestamp": 1792454400000
+        }
+      }
+    ]
+  }
+}

@@ -57,7 +57,7 @@ func (c *ChannelsPluginConfig) ConfigSchema() []config.ConfigField {
 			Key:         "download.cover",
 			Type:        config.ConfigTypeBool,
 			Default:     false,
-			Description: "下载视频或图集时是否同时下载封面",
+			Description: "下载视频或图集时是否同时下载封面；与顶层 download.cover 任一开启即生效",
 			Title:       "同时下载封面",
 			Group:       "Channels",
 			HotReload:   true,

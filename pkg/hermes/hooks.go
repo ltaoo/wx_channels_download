@@ -8,6 +8,10 @@ import (
 	"sync"
 
 	"github.com/dop251/goja"
+	"github.com/evanw/esbuild/pkg/api"
+	"github.com/rs/zerolog"
+
+	"wx_channel/pkg/dm"
 )
 
 // HookManager manages the lifecycle of JS hook functions, compiling and executing user-defined
@@ -15,6 +19,9 @@ import (
 type HookManager struct {
 	mu                sync.Mutex
 	vm                *goja.Runtime
+	runtime           *hook_runtime
+	logger            zerolog.Logger
+	exports           *goja.Object
 	has_create_hook   bool
 	has_success_hook  bool
 	has_failed_hook   bool
@@ -55,19 +62,6 @@ type TaskInput struct {
 	Resources []ResourceInfo `json:"resources"`
 }
 
-// FinishContext is the context for the terminal task hooks. Status is "success"
-// or "failed"; Error is populated only when Status is "failed".
-type FinishContext struct {
-	Task        TaskInfo       `json:"task"`
-	Config      map[string]any `json:"config"`
-	Metadata    map[string]any `json:"metadata"`
-	Resources   []ResourceInfo `json:"resources"`
-	FilePaths   []string       `json:"filePaths"`
-	DownloadDir string         `json:"downloadDir"`
-	Status      string         `json:"status"`
-	Error       string         `json:"error,omitempty"`
-}
-
 // ResourceMeta is the arbitrary resource metadata exposed to onFilename.
 // It mirrors resource.Extra and adds download_at at hook invocation time.
 type ResourceMeta map[string]any
@@ -87,8 +81,12 @@ type FilenameHookResult struct {
 }
 
 // NewHookManager creates an empty HookManager.
-func NewHookManager() *HookManager {
-	return &HookManager{}
+func NewHookManager(loggers ...*zerolog.Logger) *HookManager {
+	logger := zerolog.Nop()
+	if len(loggers) > 0 && loggers[0] != nil {
+		logger = *loggers[0]
+	}
+	return &HookManager{logger: logger}
 }
 
 // HasCreateHook returns whether an onTaskCreate hook is registered.
@@ -116,24 +114,45 @@ func (hm *HookManager) HasFilenameHook() bool {
 	return hm.has_filename_hook
 }
 
-// Load compiles a JS hook script, detecting the hook functions it defines.
+// Load registers named function exports, with legacy global onFilename support.
 func (hm *HookManager) Load(script string) error {
+	return hm.load(script, "hooks.js")
+}
+
+func (hm *HookManager) load(script, filename string) error {
 	hm.mu.Lock()
 	defer hm.mu.Unlock()
 
-	vm := goja.New()
-	register_builtins(vm)
+	transformed := api.Transform(script, api.TransformOptions{
+		Sourcefile: filename, Loader: api.LoaderJS, Target: api.ES2020,
+		Charset: api.CharsetUTF8, Format: api.FormatCommonJS, TreeShaking: api.TreeShakingFalse,
+	})
+	if len(transformed.Errors) > 0 {
+		return fmt.Errorf("failed to compile hook script %s: %s", filename, transformed.Errors[0].Text)
+	}
+	runtime, err := new_hook_runtime(hm.logger)
+	if err != nil {
+		return fmt.Errorf("failed to initialize hook runtime: %w", err)
+	}
+	vm := runtime.vm
 
-	if _, err := vm.RunString(script); err != nil {
+	if _, err := runtime.run(func() (goja.Value, error) { return vm.RunScript(filename, string(transformed.Code)) }); err != nil {
 		return fmt.Errorf("failed to execute hook script: %w", err)
 	}
 
 	hm.vm = vm
-	hm.has_create_hook = is_defined_function(vm, "onTaskCreate")
-	hm.has_success_hook = is_defined_function(vm, "onTaskSuccess")
-	hm.has_failed_hook = is_defined_function(vm, "onTaskFailed")
-	hm.has_finish_hook = is_defined_function(vm, "onTaskFinish")
-	hm.has_filename_hook = is_defined_function(vm, "onFilename")
+	hm.runtime = runtime
+	hm.exports = vm.NewObject()
+	if module, ok := vm.Get("module").(*goja.Object); ok {
+		if exports, ok := module.Get("exports").(*goja.Object); ok {
+			hm.exports = exports
+		}
+	}
+	_, hm.has_create_hook = hm.hook_function("onTaskCreate")
+	_, hm.has_success_hook = hm.hook_function("onTaskSuccess")
+	_, hm.has_failed_hook = hm.hook_function("onTaskFailed")
+	_, hm.has_finish_hook = hm.hook_function("onTaskFinish")
+	_, hm.has_filename_hook = hm.hook_function("onFilename")
 
 	return nil
 }
@@ -145,7 +164,7 @@ func (hm *HookManager) LoadFile(path string) error {
 		return fmt.Errorf("failed to read hook script %s: %w", path, err)
 	}
 
-	return hm.Load(string(data))
+	return hm.load(string(data), path)
 }
 
 // InvokeCreateHook calls onTaskCreate with the original task/resources/config and returns the modified result.
@@ -160,7 +179,7 @@ func (hm *HookManager) InvokeCreateHook(input *TaskInput) (*TaskInput, error) {
 
 	hm.vm.Set("__basePath", input.Task.DownloadDir)
 
-	fn, ok := goja.AssertFunction(hm.vm.Get("onTaskCreate"))
+	fn, ok := hm.hook_function("onTaskCreate")
 	if !ok {
 		return nil, fmt.Errorf("onTaskCreate is not a function")
 	}
@@ -175,7 +194,9 @@ func (hm *HookManager) InvokeCreateHook(input *TaskInput) (*TaskInput, error) {
 	}
 	config_val := hm.vm.ToValue(input.Config)
 
-	result, err := fn(goja.Undefined(), task_val, resources_val, config_val)
+	result, err := hm.runtime.run(func() (goja.Value, error) {
+		return fn(goja.Undefined(), task_val, resources_val, config_val)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("onTaskCreate execution failed: %w", err)
 	}
@@ -199,21 +220,21 @@ func (hm *HookManager) InvokeCreateHook(input *TaskInput) (*TaskInput, error) {
 }
 
 // InvokeSuccessHook calls onTaskSuccess after a task has completed successfully.
-func (hm *HookManager) InvokeSuccessHook(ctx *FinishContext) error {
-	return hm.invoke_terminal_hook("onTaskSuccess", ctx)
+func (hm *HookManager) InvokeSuccessHook(task *dm.DownloadTask, download_dir string) error {
+	return hm.invoke_terminal_hook("onTaskSuccess", task, download_dir)
 }
 
 // InvokeFailedHook calls onTaskFailed after a task has failed.
-func (hm *HookManager) InvokeFailedHook(ctx *FinishContext) error {
-	return hm.invoke_terminal_hook("onTaskFailed", ctx)
+func (hm *HookManager) InvokeFailedHook(task *dm.DownloadTask, download_dir string) error {
+	return hm.invoke_terminal_hook("onTaskFailed", task, download_dir)
 }
 
 // InvokeFinishHook calls onTaskFinish after a task reaches either terminal state.
-func (hm *HookManager) InvokeFinishHook(ctx *FinishContext) error {
-	return hm.invoke_terminal_hook("onTaskFinish", ctx)
+func (hm *HookManager) InvokeFinishHook(task *dm.DownloadTask, download_dir string) error {
+	return hm.invoke_terminal_hook("onTaskFinish", task, download_dir)
 }
 
-func (hm *HookManager) invoke_terminal_hook(hook_name string, ctx *FinishContext) error {
+func (hm *HookManager) invoke_terminal_hook(hook_name string, task *dm.DownloadTask, download_dir string) error {
 	hm.mu.Lock()
 	defer hm.mu.Unlock()
 
@@ -232,22 +253,22 @@ func (hm *HookManager) invoke_terminal_hook(hook_name string, ctx *FinishContext
 	if !has_hook {
 		return nil
 	}
-	if ctx == nil {
+	if task == nil {
 		return fmt.Errorf("%s context is nil", hook_name)
 	}
 
-	hm.vm.Set("__basePath", ctx.DownloadDir)
+	hm.vm.Set("__basePath", download_dir)
 
-	fn, ok := goja.AssertFunction(hm.vm.Get(hook_name))
+	fn, ok := hm.hook_function(hook_name)
 	if !ok {
 		return fmt.Errorf("%s is not a function", hook_name)
 	}
 
-	ctx_val, err := hm.to_hook_value(ctx)
+	ctx_val, err := hm.to_hook_value(task)
 	if err != nil {
 		return fmt.Errorf("failed to prepare %s context value: %w", hook_name, err)
 	}
-	_, err = fn(goja.Undefined(), ctx_val)
+	_, err = hm.runtime.run(func() (goja.Value, error) { return fn(goja.Undefined(), ctx_val) })
 	if err != nil {
 		return fmt.Errorf("%s execution failed: %w", hook_name, err)
 	}
@@ -265,12 +286,10 @@ func (hm *HookManager) InvokeFilenameHook(params *FilenameParams) (*FilenameHook
 		return nil, nil
 	}
 
-	// Filename resolution is intentionally isolated from the task's output
-	// container. Clear any base path left by another hook invocation so filename
-	// hooks cannot accidentally perform filesystem operations against it.
+	// Legacy task-scoped helpers have no output directory during filename resolution.
 	hm.vm.Set("__basePath", goja.Undefined())
 
-	fn, ok := goja.AssertFunction(hm.vm.Get("onFilename"))
+	fn, ok := hm.hook_function("onFilename")
 	if !ok {
 		return nil, fmt.Errorf("onFilename is not a function")
 	}
@@ -288,7 +307,9 @@ func (hm *HookManager) InvokeFilenameHook(params *FilenameParams) (*FilenameHook
 	}
 	config_val := hm.vm.ToValue(filename_hook_config(params.Config))
 
-	result, err := fn(goja.Undefined(), meta_val, task_val, config_val)
+	result, err := hm.runtime.run(func() (goja.Value, error) {
+		return fn(goja.Undefined(), meta_val, task_val, config_val)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("onFilename execution failed: %w", err)
 	}
@@ -347,11 +368,16 @@ func (hm *HookManager) to_hook_value(v any) (goja.Value, error) {
 	return hm.vm.ToValue(data), nil
 }
 
-func is_defined_function(vm *goja.Runtime, name string) bool {
-	val := vm.Get(name)
-	if val == nil || goja.IsUndefined(val) || goja.IsNull(val) {
-		return false
+func (hm *HookManager) hook_function(name string) (goja.Callable, bool) {
+	if hm.exports != nil {
+		for _, exported_name := range hm.exports.GetOwnPropertyNames() {
+			if exported_name == name {
+				return goja.AssertFunction(hm.exports.Get(name))
+			}
+		}
 	}
-	_, ok := goja.AssertFunction(val)
-	return ok
+	if name == "onFilename" && hm.vm != nil {
+		return goja.AssertFunction(hm.vm.Get(name))
+	}
+	return nil, false
 }

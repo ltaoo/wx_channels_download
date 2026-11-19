@@ -31,7 +31,7 @@ func (c *APIClient) handle_influencer_list(ctx *gin.Context) {
 	}
 
 	// Use service
-	page_result, err := c.account_service.ListInfluencers(page, size)
+	page_result, err := c.service_account.ListInfluencers(page, size)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
@@ -48,7 +48,7 @@ func (c *APIClient) handle_influencer_get(ctx *gin.Context) {
 	}
 
 	// Use service
-	influencer, err := c.account_service.GetInfluencer(id)
+	influencer, err := c.service_account.GetInfluencer(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			result.Err(ctx, 404, err.Error())
@@ -90,7 +90,7 @@ func (c *APIClient) handle_influencer_create(ctx *gin.Context) {
 	}
 
 	// Use service
-	influencer, err := c.account_service.CreateInfluencer(&services.CreateInfluencerInput{
+	influencer, err := c.service_account.CreateInfluencer(&services.CreateInfluencerInput{
 		Name:               body.Name,
 		Alias:              body.Alias,
 		AvatarURL:          body.AvatarURL,
@@ -146,7 +146,7 @@ func (c *APIClient) handle_influencer_update(ctx *gin.Context) {
 	}
 
 	// Use service
-	influencer, err := c.account_service.UpdateInfluencer(id, &services.UpdateInfluencerInput{
+	influencer, err := c.service_account.UpdateInfluencer(id, &services.UpdateInfluencerInput{
 		Name:               body.Name,
 		Alias:              body.Alias,
 		AvatarURL:          body.AvatarURL,
@@ -191,7 +191,7 @@ func (c *APIClient) handle_account_list(ctx *gin.Context) {
 	if page_size > 200 {
 		page_size = 200
 	}
-	page_result, err := c.account_service.ListAccounts(ctx.Request.Context(), services.AccountListInput{
+	page_result, err := c.service_account.ListAccounts(ctx.Request.Context(), services.AccountListInput{
 		Page:       page,
 		PageSize:   page_size,
 		Keyword:    ctx.Query("keyword"),

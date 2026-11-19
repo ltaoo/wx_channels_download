@@ -3,84 +3,87 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"net"
+	"io"
 	"os"
-	"strconv"
-	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"wx_channel/internal/application"
-	"wx_channel/internal/config"
 	"wx_channel/internal/mcpserver"
 	"wx_channel/pkg/cookies"
+	"wx_channel/pkg/dm"
+	mcp "wx_channel/pkg/mcp"
 	"wx_channel/pkg/scraper/zhihu"
 )
 
-var mcp_api_base_url string
-var mcp_standalone bool
-
 var mcp_cmd = &cobra.Command{
 	Use:   "mcp",
-	Short: "运行 MCP stdio server",
-	Long:  "通过 stdio 运行 MCP server；可连接已启动的下载器 API，或使用 --standalone 在进程内启动查询、抓取与下载任务服务",
+	Short: "以 stdio 运行 MCP server",
+	Long: "通过 stdio 运行 MCP server，把全部工具调用转发给已运行的下载器 API。\n" +
+		"需要先执行 wx_video_download server 启动 API server，本命令不建立数据库、下载引擎或平台 adapter。\n" +
+		"API 地址取自 api.protocol、api.hostname 和 api.port 配置。",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if mcp_standalone {
-			if strings.TrimSpace(mcp_api_base_url) != "" {
-				return fmt.Errorf("--standalone 与 --api-base-url 不能同时使用")
-			}
-			return application.ServeMCPStdio(cmd.Context(), Cfg, application.MCPStdioConfig{
-				Input:       cmd.InOrStdin(),
-				Output:      cmd.OutOrStdout(),
-				ErrorOutput: cmd.ErrOrStderr(),
-			})
-		}
-		api_base_url := strings.TrimSpace(mcp_api_base_url)
-		if api_base_url == "" {
-			api_base_url = configured_api_base_url()
-		}
-		cookie_reader := cookies.NewPersistentReader(Cfg.WorkDir)
-		server, err := mcpserver.NewServer(mcpserver.Config{
-			APIBaseURL:       api_base_url,
-			Version:          Version,
-			Input:            cmd.InOrStdin(),
-			Output:           cmd.OutOrStdout(),
-			ErrorOutput:      cmd.ErrOrStderr(),
-			SphDeployer:      application.NewMCPSphDeployer(Cfg),
-			ZhihuCollections: zhihu.NewClient(cookie_reader, Cfg.Logger()),
-			ZhihuCredentials: cookie_reader,
-		})
+		api_base_url := configured_api_base_url()
+		server, _, err := new_remote_tool_server(
+			api_base_url,
+			cmd.InOrStdin(),
+			cmd.OutOrStdout(),
+			cmd.ErrOrStderr(),
+		)
 		if err != nil {
 			return err
 		}
-		return server.Serve(context.Background())
+		warn_if_downloader_api_down(cmd.Context(), api_base_url, cmd.ErrOrStderr())
+		return server.Serve(cmd.Context())
 	},
 }
 
 func init() {
-	mcp_cmd.Flags().BoolVar(
-		&mcp_standalone,
-		"standalone",
-		false,
-		"不启动 API server，在当前进程中提供数据库查询、证书状态、页面抓取和下载任务工具",
-	)
-	mcp_cmd.Flags().StringVar(
-		&mcp_api_base_url,
-		"api-base-url",
-		"",
-		"下载器 API 地址，默认读取 api.protocol、api.hostname 和 api.port 配置",
-	)
 	root_cmd.AddCommand(mcp_cmd)
 }
 
-func configured_api_base_url() string {
-	protocol := strings.TrimSpace(Cfg.GetString("api.protocol"))
-	if protocol == "" {
-		protocol = "http"
+// new_remote_tool_server builds a tool registry whose backends all reach an
+// already-running downloader over its HTTP API. It never opens the database or
+// the download engine itself, so it depends on `wx_video_download server` being
+// up.
+func new_remote_tool_server(api_base_url string, input io.Reader, output io.Writer, error_output io.Writer) (*mcp.Server, *mcpserver.ToolSet, error) {
+	cookie_reader := cookies.NewPersistentReader(Cfg.WorkDir)
+	return mcpserver.NewRuntime(mcpserver.Config{
+		APIBaseURL:       api_base_url,
+		Version:          Version,
+		Input:            input,
+		Output:           output,
+		ErrorOutput:      error_output,
+		SphDeployer:      application.NewMCPSphDeployer(Cfg),
+		ZhihuCollections: zhihu.NewClient(cookie_reader, Cfg.Logger()),
+		ZhihuCredentials: cookie_reader,
+	})
+}
+
+// warn_if_downloader_api_down probes the downloader once before a long-lived
+// stdio session starts serving. Every tool call reaches the downloader over
+// HTTP, so a missing API server fails all of them; saying it up front beats
+// repeating the same failure on each call. The probe only warns and never
+// aborts, because the downloader may legitimately be started later.
+func warn_if_downloader_api_down(ctx context.Context, api_base_url string, warning_writer io.Writer) {
+	probe_ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	client, err := dm.NewClient(dm.ClientOptions{BaseURL: api_base_url})
+	if err == nil {
+		_, err = client.Status(probe_ctx)
 	}
-	hostname := config.APIClientHostname(Cfg.GetString("api.hostname"))
-	port := Cfg.GetInt("api.port")
-	return fmt.Sprintf("%s://%s", protocol, net.JoinHostPort(hostname, strconv.Itoa(port)))
+	if err == nil {
+		return
+	}
+	fmt.Fprintf(
+		warning_writer,
+		"警告: 无法连接下载器 API Server (%s): %v\n"+
+			"请保证 wx_video_download server 处于运行状态，否则本次会话的全部工具调用都会失败。\n",
+		api_base_url,
+		err,
+	)
 }
 
 func report_mcp_startup_error(err error) {

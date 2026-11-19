@@ -24,7 +24,6 @@ wx_video_download deploy <command>
 |------|------|
 | `wx_video_download deploy mp` | 部署公众号 RSS/API Worker |
 | `wx_video_download deploy sph` | 部署视频号查询 Worker |
-| `wx_video_download deploy bridge` | 部署 Bridge 桥接/转发 Worker 和 Pages 管理页面 |
 
 ## 通用配置
 
@@ -38,42 +37,6 @@ cloudflare:
 |--------|------|
 | `cloudflare.accountId` | Cloudflare 账户 ID，可在 Workers 页面找到 |
 | `cloudflare.apiToken` | Cloudflare API Token，需 Workers 读写权限 |
-
-## deploy bridge
-
-一次部署用于桥接/转发远程调用的 Durable Objects Bridge Worker 和受密码保护的 Pages 管理页面。
-
-部署完成后的设备注册、调用 Token 创建、API 协议和多语言示例请参阅 [Bridge 使用](/feature/bridge)。
-
-```sh
-wx_video_download deploy bridge
-```
-
-### 配置
-
-```yaml
-cloudflare:
-  accountId: "your-cloudflare-account-id"
-  apiToken: "your-cloudflare-api-token"
-
-bridge:
-  deploy:
-    workerName: "dm-bridge"
-    pagesProjectName: "" # 留空时使用 dm-bridge-admin
-    token: "bridge-client-token"
-    adminToken: "bridge-admin-token"
-```
-
-API Token 需要 Workers Scripts:Edit 和 Pages:Edit 权限。`token` 与 `adminToken` 必须使用不同的高强度随机值。
-
-部署命令会依次执行：
-
-1. 上传 Worker，并配置 Durable Objects、`BRIDGE_TOKEN` 和 `BRIDGE_ADMIN_TOKEN`；
-2. 创建或更新 Pages 项目；
-3. 为 Pages 配置 `BRIDGE_ADMIN_TOKEN` Secret 和指向 Worker 的 `BRIDGE` Service Binding；
-4. 上传管理页面静态资源和高级模式 Worker。
-
-任一步骤失败都会停止后续部署；如果 Pages 阶段失败，命令会明确提示 Worker 已经部署成功，不会回滚 Worker。
 
 ## deploy mp
 
@@ -129,6 +92,8 @@ mp:
 
 部署视频号视频信息查询页面到 Cloudflare Worker，提供 Web 界面查询视频号视频下载地址。
 
+首次使用请参考[分享链接解析](../feature/wxchannels/share-link.md)，其中包含 Cookie 获取、分平台部署命令和页面使用步骤。
+
 !!不要提供给外部使用，仅自己使用即可，有被限制使用 yuanbao 的风险!!
 
 ```sh
@@ -144,8 +109,8 @@ cloudflare:
   accountId: "your-cloudflare-account-id"
   apiToken: "your-cloudflare-api-token"
   sphWorkerName: "worker-name"
-  sphCookie: "元宝 web 端 cookie"
-  sphCredential: "页面及 API 的访问凭证"
+  sphCookie: "hy_token=替换为你的实际值"
+  sphCredential: "自己设置的 API 访问凭证"
 ```
 
 | 配置项 | 说明 |
@@ -153,11 +118,12 @@ cloudflare:
 | `cloudflare.accountId` | Cloudflare 账户 ID，可在 Workers 页面找到 |
 | `cloudflare.apiToken` | Cloudflare API Token，需 Workers 读写权限 |
 | `cloudflare.sphWorkerName` | 视频号查询 Worker 名称，部署后标识该 Worker |
-| `cloudflare.sphCookie` | 视频号接口所需的元宝 Web 端 Cookie |
-| `cloudflare.sphCredential` | 访问页面和 API 所需的凭证，部署时注入 `ACCESS_CREDENTIAL` 环境变量 |
+| `cloudflare.sphCookie` | 元宝 Web 端 Cookie，关键字段为 `hy_token`，也可填写完整 Cookie |
+| `cloudflare.sphCredential` | 访问 API 所需的凭证，部署时注入 `ACCESS_CREDENTIAL` 环境变量 |
 
-元宝 Web 端指 https://yuanbao.tencent.com/ 网站，登录后获取 `cookie` 作为配置即可。
-元宝 Web 端 Cookie 有效期约 1 个月，失效后重新登录获取新的 Cookie，并到 Cloudflare Worker 更新 `COOKIE` 环境变量即可。
+元宝 Web 端指 <https://yuanbao.tencent.com/>，登录后复制 Cookie。可以使用 [dm-extension](https://github.com/ltaoo/dm-extension) 插件的「复制已选」，或在开发者工具中复制 `hy_token`，详细操作见[获取元宝 Cookie](../feature/wxchannels/share-link.md#cookie)。
+
+Cookie 失效后，更新本地 `cloudflare.sphCookie` 并重新执行部署命令，或到 Cloudflare Worker 更新 `COOKIE` 环境变量并部署生效。仅修改本地配置不会自动更新 Worker。
 
 !!不要提供给外部使用，仅自己使用即可，有被限制使用 yuanbao 的风险!!
 
@@ -170,7 +136,7 @@ cloudflare:
 
 ### 访问认证
 
-浏览器访问 Worker 时会显示 HTTP Basic Auth 登录框。用户名固定为 `wxchannels`，密码填写 `cloudflare.sphCredential`。登录后，页面对同源 API 的请求会自动携带认证信息。
+浏览器可直接打开 Worker 页面。在页面的「访问凭证（调用接口需要）」输入框填写 `cloudflare.sphCredential`，点击「保存凭证」，然后粘贴分享链接并点击「查询」。页面会在 API 请求中携带保存的凭证。
 
 直接调用 API 时可使用 Bearer Token：
 
@@ -193,4 +159,4 @@ curl -H 'Authorization: Bearer <sphCredential>' \
 | POST | `/api/fetch_video_profile` | 通过分享链接获取视频号视频信息 |
 | POST | `/api/download_feed_zip` | 将图集及 BGM 打包为 ZIP |
 
-除 CORS 预检请求外，以上页面、静态资源和 API 均需认证。认证失败返回 `401`；Worker 未配置 `ACCESS_CREDENTIAL` 时返回 `503`。
+页面和静态资源可直接访问；除 CORS 预检请求外，API 均需认证。认证失败返回 `401`；Worker 未配置 `ACCESS_CREDENTIAL` 时 API 返回 `503`。

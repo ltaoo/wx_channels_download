@@ -1,3 +1,7 @@
+import { create_list_model } from "@/list.model.js";
+import { fetchBrowseHistoryList } from "@/biz/request.js";
+import { format_time } from "@/utils.js";
+
 function number_or_default(value, fallback) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -92,10 +96,7 @@ function normalize_browse_history_item(raw) {
       source.content_url,
       source.ContentURL,
     ),
-    source_url: first_non_empty(
-      source.source_url,
-      source.SourceURL,
-    ),
+    source_url: first_non_empty(source.source_url, source.SourceURL),
     visited_times: number_or_default(
       first_non_empty(
         source.visited_times,
@@ -171,16 +172,20 @@ function normalize_author_name(raw) {
 
 function BrowseHistoryViewModel(props) {
   const PAGE_SIZE_DEFAULT = 50;
-  const histories_ = refarr([]);
-  const total_ = ref(0);
-  const page_ = ref(1);
-  const page_size_ = ref(PAGE_SIZE_DEFAULT);
   const keyword_ = ref("");
   const platform_id_ = ref("");
-  const initial_ = ref(true);
-  const loading_ = ref(false);
-  const error_ = ref("");
-  let request_sequence = 0;
+
+  const list$ = create_list_model({
+    request: new Timeless.kit.RequestCore(fetchBrowseHistoryList, { client: props.client }),
+    page_size: PAGE_SIZE_DEFAULT,
+    tip: props.tip,
+    normalize(data, params) {
+      const response = normalize_browse_history_list_response(data, params.page, params.page_size);
+      return { ...response, list: response.list.map(normalize_browse_history_item) };
+    },
+  });
+  const { rows: histories_, total: total_, page: page_, page_size: page_size_,
+    initial: initial_, loading: loading_, error: error_, status: list_status_ } = list$.state;
 
   const ui = {
     input_keyword$: new Timeless.vm.InputCore({
@@ -205,10 +210,7 @@ function BrowseHistoryViewModel(props) {
         autocomplete: false,
       }),
       position: "popper",
-      options: [
-        ["", "全部平台"],
-        ...Object.entries(window.PLATFORM_NAMES),
-      ].map(
+      options: [["", "全部平台"], ...Object.entries(window.PLATFORM_NAMES)].map(
         ([value, label]) => new Timeless.vm.SelectItemCore({ label, value }),
       ),
       onChange(value) {
@@ -260,66 +262,16 @@ function BrowseHistoryViewModel(props) {
     },
   });
 
-  const list_request = new Timeless.kit.RequestCore(
-    (params) =>
-      window.request.post("/api/browse_history/list", params),
-    {
-      client: props.client,
-      process(response) {
-        if (response.error) {
-          return Timeless.Result.Err(response.error);
-        }
-        return Timeless.Result.Ok(
-          normalize_browse_history_list_response(
-            response.data,
-            page_.value,
-            page_size_.value,
-          ),
-        );
-      },
-    },
-  );
 
   const page_count_ = combine(
     { total: total_, pageSize: page_size_ },
     (state) =>
       Math.max(1, Math.ceil(state.total / Math.max(1, state.pageSize))),
   );
-  const range_text_ = combine(
-    {
-      total: total_,
-      page: page_,
-      pageSize: page_size_,
-      count: computed(histories_, (histories) => histories.length),
-    },
-    (state) => {
-      if (!state.total || !state.count) {
-        return `共 ${state.total || 0} 条`;
-      }
-      const start = (state.page - 1) * state.pageSize + 1;
-      return `第 ${start}-${start + state.count - 1} 条，共 ${state.total} 条`;
-    },
-  );
-  const list_status_ = combine(
-    {
-      initial: initial_,
-      error: error_,
-      histories: histories_,
-    },
-    (state) => {
-      if (state.initial) return "initial";
-      if (state.error) return "error";
-      return state.histories.length > 0 ? "normal" : "empty";
-    },
-  );
+  const range_text_ = computed(total_, (total) => `共 ${total || 0} 条`);
 
-  async function load(targetPage = page_.value) {
-    const sequence = ++request_sequence;
-    const requestedPage = Math.max(1, Number(targetPage) || 1);
-    loading_.as(true);
+  function load(target_page = 1) {
     const params = {
-      page: requestedPage,
-      page_size: page_size_.value,
     };
     const platformId = String(platform_id_.value || "").trim();
     if (platformId) {
@@ -330,26 +282,7 @@ function BrowseHistoryViewModel(props) {
       params.keyword = keyword;
     }
 
-    const result = await list_request.run(params);
-    if (sequence !== request_sequence) {
-      return result;
-    }
-    if (result.error) {
-      error_.as(result.error.message || String(result.error));
-      loading_.as(false);
-      initial_.as(false);
-      return result;
-    }
-
-    const data = result.data;
-    error_.as("");
-    histories_.as(data.list.map(normalize_browse_history_item), { reset: true });
-    total_.as(data.total);
-    page_.as(data.page || requestedPage);
-    page_size_.as(data.page_size);
-    loading_.as(false);
-    initial_.as(false);
-    return result;
+    return list$.search({ ...params, page: Math.max(1, Number(target_page) || 1) });
   }
 
   function set_keyword(value) {
@@ -362,10 +295,12 @@ function BrowseHistoryViewModel(props) {
       Math.max(1, Number(target_page) || 1),
     );
     if (page === page_.value || loading_.value) return null;
-    return load(page);
+    return list$.goto(page);
   }
 
   const methods = {
+    tip: props.tip,
+    destroy() { list$.destroy(); },
     ready() {
       return load(1);
     },
@@ -378,10 +313,10 @@ function BrowseHistoryViewModel(props) {
     setKeyword: set_keyword,
     changePage: change_page,
     previousPage() {
-      return change_page(page_.value - 1);
+      return page_.value > 1 && !loading_.value ? list$.prev() : null;
     },
     nextPage() {
-      return change_page(page_.value + 1);
+      return page_.value < page_count_.value && !loading_.value ? list$.next() : null;
     },
     openSource(history) {
       if (!history || !history.source_url) {
@@ -392,11 +327,12 @@ function BrowseHistoryViewModel(props) {
     platformFavicon: browse_history_platform_favicon,
     platformName: browse_history_platform_name,
     typeLabel: browse_history_type_label,
-    formatTime: window.format_time,
+    formatTime: format_time,
     authorName: normalize_author_name,
   };
 
   const state = {
+    list: list$,
     histories: histories_,
     total: total_,
     page: page_,

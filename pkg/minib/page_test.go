@@ -34,6 +34,36 @@ func TestCallJavaScriptHonorsContext(t *testing.T) {
 	}
 }
 
+func TestNavigateRetriesTransientConnectionReset(t *testing.T) {
+	request_count := 0
+	var request_mutex sync.Mutex
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		request_mutex.Lock()
+		request_count++
+		current_request_count := request_count
+		request_mutex.Unlock()
+		if current_request_count == 1 {
+			panic(http.ErrAbortHandler)
+		}
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(response_writer, `<!doctype html><title>recovered</title>`)
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.StatusCode != 200 || !strings.Contains(page.RenderedHTML, "<title>recovered</title>") {
+		t.Fatalf("navigation did not recover: status=%d html=%s", page.StatusCode, page.RenderedHTML)
+	}
+}
+
 func TestJavaScriptEnginePanicsBecomeErrors(t *testing.T) {
 	vm := goja.New()
 	if err := vm.Set("panicHost", func() { panic("host panic") }); err != nil {
@@ -117,6 +147,72 @@ window.addEventListener('load', function() { document.body.setAttribute('data-lo
 	}
 	if strings.Contains(page.RenderedHTML, `data-load="done"`) {
 		t.Fatalf("load fired before the requested milestone: %s", page.RenderedHTML)
+	}
+}
+
+func TestNavigateFetchCredentialsIncludeSendsCrossOriginCookie(t *testing.T) {
+	api_server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(response_writer, `{"cookie":%d}`, len(request.Header.Values("Cookie")))
+	}))
+	defer api_server.Close()
+
+	page_server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprintf(response_writer, `<!doctype html><body><script>
+fetch(%q, {credentials: 'include'}).then(function(r) { return r.json(); }).then(function(r) { document.body.setAttribute('data-include', r.cookie); });
+fetch(%q).then(function(r) { return r.json(); }).then(function(r) { document.body.setAttribute('data-same-origin', r.cookie); });
+</script></body>`, api_server.URL+"/api", api_server.URL+"/api")
+	}))
+	defer page_server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	if err := browser.SetCookieHeader(api_server.URL+"/api", "session=include-cookie"); err != nil {
+		t.Fatal(err)
+	}
+	page, err := browser.Navigate(context.Background(), page_server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-include="1"`) {
+		t.Fatalf(`credentials include did not send cookie: %s`, page.RenderedHTML)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-same-origin="0"`) {
+		t.Fatalf(`default credentials leaked cross-origin cookie: %s`, page.RenderedHTML)
+	}
+}
+
+func TestNavigateFetchAfterPageOverridesRequest(t *testing.T) {
+	api_server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(response_writer, `{"ok":true}`)
+	}))
+	defer api_server.Close()
+
+	page_server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprintf(response_writer, `<!doctype html><body><script>
+function Request(input, init) { this.signal = init.signal; this.url = String(input); }
+fetch(%q).then(function(r) { return r.json(); }).then(function(r) { document.body.setAttribute('data-fetch', r.ok); });
+</script></body>`, api_server.URL+"/api")
+	}))
+	defer page_server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), page_server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-fetch="true"`) {
+		t.Fatalf(`page Request override broke fetch: failures=%+v html=%s`, page.ScriptFailures, page.RenderedHTML)
 	}
 }
 
@@ -613,6 +709,35 @@ channel.port2.postMessage('ready');
 	}
 }
 
+func TestNamedNodeMapIsIterable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(response_writer, `<!doctype html><html data-a="1" data-b="2"><body><script>
+var attrs = [...document.documentElement.attributes];
+var names = [];
+for (var attr of document.documentElement.attributes) names.push(attr.name);
+document.body.setAttribute('data-attributes', [attrs.length, attrs.map(function(a){return a.name;}).join(','), names.join(','), document.documentElement.attributes instanceof NamedNodeMap, typeof document.documentElement.attributes[Symbol.iterator]].join(':'));
+</script></body></html>`)
+	}))
+	defer server.Close()
+
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.ScriptFailures) != 0 {
+		t.Fatalf("unexpected script failures: %+v", page.ScriptFailures)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-attributes="2:data-a,data-b:data-a,data-b:true:function"`) {
+		t.Fatalf("NamedNodeMap is not iterable: %s", page.RenderedHTML)
+	}
+}
+
 func TestXMLHttpRequestUsesEventTargetPrototypeChain(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
 		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -1078,7 +1203,7 @@ document.body.setAttribute('data-browser-api', detached.title + ':' + typeof new
 document.body.setAttribute('data-canvas-api', (canvas.getContext('webgl') === null) + ':' + (document.location === location));
 var iframe = document.createElement('iframe');
 document.body.appendChild(iframe);
-document.body.setAttribute('data-native-dom', [new TextDecoder().decode(new Uint8Array([111, 107])), new TextDecoder().decode() === '', document instanceof HTMLDocument, document.body instanceof HTMLBodyElement, document.documentElement instanceof HTMLHtmlElement, new Image() instanceof HTMLImageElement, iframe instanceof HTMLIFrameElement, new Audio() instanceof HTMLAudioElement, new Audio().canPlayType('audio/mpeg'), document.createElement('video') instanceof HTMLVideoElement, document.createElement('video').canPlayType('video/mp4'), document.createTextNode('x') instanceof CharacterData, location instanceof Location, iframe.contentWindow === window, document.createElement('div') instanceof HTMLDivElement, document.body.isConnected, document.createElement('div').isConnected, typeof Node.prototype.appendChild === 'function', Element.prototype.getAttribute.call(probe, 'onsubmit') === 'test', Object.getOwnPropertyDescriptor(Node.prototype, 'firstChild').get.call(document.body) === document.body.firstChild, Node.prototype.constructor === Node, Element.prototype.constructor === Element, HTMLElement.prototype.constructor === HTMLElement, CustomEvent.prototype.constructor === CustomEvent].join(':'));
+document.body.setAttribute('data-native-dom', [new TextDecoder().decode(new Uint8Array([111, 107])), new TextDecoder().decode() === '', document instanceof HTMLDocument, document.body instanceof HTMLBodyElement, document.documentElement instanceof HTMLHtmlElement, new Image() instanceof HTMLImageElement, iframe instanceof HTMLIFrameElement, new Audio() instanceof HTMLAudioElement, new Audio().canPlayType('audio/mpeg'), document.createElement('video') instanceof HTMLVideoElement, document.createElement('video').canPlayType('video/mp4'), document.createTextNode('x') instanceof CharacterData, location instanceof Location, iframe.contentWindow !== window, iframe.contentWindow.parent === window, iframe.contentDocument === iframe.contentWindow.document, iframe.contentDocument !== document, iframe.contentDocument.body !== document.body, document.createElement('div') instanceof HTMLDivElement, document.body.isConnected, document.createElement('div').isConnected, typeof Node.prototype.appendChild === 'function', Element.prototype.getAttribute.call(probe, 'onsubmit') === 'test', Object.getOwnPropertyDescriptor(Node.prototype, 'firstChild').get.call(document.body) === document.body.firstChild, Node.prototype.constructor === Node, Element.prototype.constructor === Element, HTMLElement.prototype.constructor === HTMLElement, CustomEvent.prototype.constructor === CustomEvent].join(':'));
 var bodyRect = document.body.getBoundingClientRect();
 document.body.setAttribute('data-layout', bodyRect.right + ':' + bodyRect.bottom + ':' + document.createElement('div').getBoundingClientRect().right + ':' + document.body.getClientRects().length + ':' + document.createElement('div').getClientRects().length);
 new IntersectionObserver(function(entries) { document.body.setAttribute('data-intersection', entries[0].isIntersecting + ':' + entries[0].target.tagName); }).observe(document.body);
@@ -1232,7 +1357,7 @@ fetch('/fetch-api?source=fetch', { method: 'POST', headers: { 'Content-Type': 'a
 	if !strings.Contains(page.RenderedHTML, `data-navigator-prototype="true:true"`) {
 		t.Fatalf("navigator prototype semantics missing from rendered HTML: %s", page.RenderedHTML)
 	}
-	if !strings.Contains(page.RenderedHTML, `external-inline`) || !strings.Contains(page.RenderedHTML, `data-initial-script-load="done"`) || !strings.Contains(page.RenderedHTML, `data-written="done"`) || !strings.Contains(page.RenderedHTML, `data-apply-null="0"`) || !strings.Contains(page.RenderedHTML, `data-single-argument-timer="done"`) || !strings.Contains(page.RenderedHTML, `data-dynamic="done"`) || !strings.Contains(page.RenderedHTML, `data-dynamic-style="loaded"`) || !strings.Contains(page.RenderedHTML, `data-dynamic-image="loaded"`) || !strings.Contains(page.RenderedHTML, `data-defer-saw-body="yes"`) || !strings.Contains(page.RenderedHTML, `data-anchor="/jobs?q=go#details"`) || !strings.Contains(page.RenderedHTML, `data-attribute="test"`) || !strings.Contains(page.RenderedHTML, `data-has-attributes="true:false"`) || !strings.Contains(page.RenderedHTML, `data-class-list="one,two"`) || !strings.Contains(page.RenderedHTML, `data-event-prototype="ready"`) || !strings.Contains(page.RenderedHTML, `data-wrapped-event="wrapped"`) || !strings.Contains(page.RenderedHTML, `data-invalid-event="true"`) || !strings.Contains(page.RenderedHTML, `data-adjacent="done"`) || !strings.Contains(page.RenderedHTML, `data-module="done"`) || !strings.Contains(page.RenderedHTML, `data-named-global="done"`) || !strings.Contains(page.RenderedHTML, `data-browser-api="detached:function"`) || !strings.Contains(page.RenderedHTML, `data-youtube-apis="true:en-US:en-US:click:Enter:detail:0 0 1 1:true:false:true:true:true:16px:true"`) || !strings.Contains(page.RenderedHTML, `data-custom-elements="true:upgraded:yes:true:yes:on&gt;null:true:true:true"`) || !strings.Contains(page.RenderedHTML, `data-template-inert="0:1"`) || !strings.Contains(page.RenderedHTML, `data-upgraded="yes"`) || !strings.Contains(page.RenderedHTML, `data-connect-order="parent,child"`) || !strings.Contains(page.RenderedHTML, `data-wrapped-import="BODY"`) || !strings.Contains(page.RenderedHTML, `data-message-channel="ready"`) || !strings.Contains(page.RenderedHTML, `<strong data-n="template-clone">template</strong>`) || !strings.Contains(page.RenderedHTML, `data-fragment-query="nested:1"`) || !strings.Contains(page.RenderedHTML, `<b data-n="nested-template-content">nested</b>`) || !strings.Contains(page.RenderedHTML, `<em data-n="fragment-insert-child"></em><b data-n="fragment-replace-child"></b>`) || !strings.Contains(page.RenderedHTML, `<i data-n="range-fragment">range</i>`) || !strings.Contains(page.RenderedHTML, `data-canvas-api="true:true"`) || !strings.Contains(page.RenderedHTML, `data-native-dom="ok:true:true:true:true:true:true:true:probably:true:probably:true:true:true:true:true:false:true:true:true:true:true:true:true"`) || !strings.Contains(page.RenderedHTML, `data-layout="100:20:0:1:0"`) || !strings.Contains(page.RenderedHTML, `data-intersection="true:BODY"`) || !strings.Contains(page.RenderedHTML, `data-mutation="sync,after,observer"`) || !strings.Contains(page.RenderedHTML, `data-xhr="200:{&#34;ok&#34;:true}"`) || !strings.Contains(page.RenderedHTML, `data-promise-xhr="200"`) || !strings.Contains(page.RenderedHTML, `data-axios-xhr="200:{&#34;axios&#34;:true}"`) || !strings.Contains(page.RenderedHTML, `data-async-finally="mounted"`) || !strings.Contains(page.RenderedHTML, `data-delayed-xhr="done"`) || !strings.Contains(page.RenderedHTML, `data-kv-xhr="ready"`) || !strings.Contains(page.RenderedHTML, `data-fetch="true"`) || !strings.Contains(page.RenderedHTML, `<span>fragment</span>`) {
+	if !strings.Contains(page.RenderedHTML, `external-inline`) || !strings.Contains(page.RenderedHTML, `data-initial-script-load="done"`) || !strings.Contains(page.RenderedHTML, `data-written="done"`) || !strings.Contains(page.RenderedHTML, `data-apply-null="0"`) || !strings.Contains(page.RenderedHTML, `data-single-argument-timer="done"`) || !strings.Contains(page.RenderedHTML, `data-dynamic="done"`) || !strings.Contains(page.RenderedHTML, `data-dynamic-style="loaded"`) || !strings.Contains(page.RenderedHTML, `data-dynamic-image="loaded"`) || !strings.Contains(page.RenderedHTML, `data-defer-saw-body="yes"`) || !strings.Contains(page.RenderedHTML, `data-anchor="/jobs?q=go#details"`) || !strings.Contains(page.RenderedHTML, `data-attribute="test"`) || !strings.Contains(page.RenderedHTML, `data-has-attributes="true:false"`) || !strings.Contains(page.RenderedHTML, `data-class-list="one,two"`) || !strings.Contains(page.RenderedHTML, `data-event-prototype="ready"`) || !strings.Contains(page.RenderedHTML, `data-wrapped-event="wrapped"`) || !strings.Contains(page.RenderedHTML, `data-invalid-event="true"`) || !strings.Contains(page.RenderedHTML, `data-adjacent="done"`) || !strings.Contains(page.RenderedHTML, `data-module="done"`) || !strings.Contains(page.RenderedHTML, `data-named-global="done"`) || !strings.Contains(page.RenderedHTML, `data-browser-api="detached:function"`) || !strings.Contains(page.RenderedHTML, `data-youtube-apis="true:en-US:en-US:click:Enter:detail:0 0 1 1:true:false:true:true:true:16px:true"`) || !strings.Contains(page.RenderedHTML, `data-custom-elements="true:upgraded:yes:true:yes:on&gt;null:true:true:true"`) || !strings.Contains(page.RenderedHTML, `data-template-inert="0:1"`) || !strings.Contains(page.RenderedHTML, `data-upgraded="yes"`) || !strings.Contains(page.RenderedHTML, `data-connect-order="parent,child"`) || !strings.Contains(page.RenderedHTML, `data-wrapped-import="BODY"`) || !strings.Contains(page.RenderedHTML, `data-message-channel="ready"`) || !strings.Contains(page.RenderedHTML, `<strong data-n="template-clone">template</strong>`) || !strings.Contains(page.RenderedHTML, `data-fragment-query="nested:1"`) || !strings.Contains(page.RenderedHTML, `<b data-n="nested-template-content">nested</b>`) || !strings.Contains(page.RenderedHTML, `<em data-n="fragment-insert-child"></em><b data-n="fragment-replace-child"></b>`) || !strings.Contains(page.RenderedHTML, `<i data-n="range-fragment">range</i>`) || !strings.Contains(page.RenderedHTML, `data-canvas-api="true:true"`) || !strings.Contains(page.RenderedHTML, `data-native-dom="ok:true:true:true:true:true:true:true:probably:true:probably:true:true:true:true:true:true:true:true:true:false:true:true:true:true:true:true:true"`) || !strings.Contains(page.RenderedHTML, `data-layout="1440:20:0:1:0"`) || !strings.Contains(page.RenderedHTML, `data-intersection="true:BODY"`) || !strings.Contains(page.RenderedHTML, `data-mutation="sync,after,observer"`) || !strings.Contains(page.RenderedHTML, `data-xhr="200:{&#34;ok&#34;:true}"`) || !strings.Contains(page.RenderedHTML, `data-promise-xhr="200"`) || !strings.Contains(page.RenderedHTML, `data-axios-xhr="200:{&#34;axios&#34;:true}"`) || !strings.Contains(page.RenderedHTML, `data-async-finally="mounted"`) || !strings.Contains(page.RenderedHTML, `data-delayed-xhr="done"`) || !strings.Contains(page.RenderedHTML, `data-kv-xhr="ready"`) || !strings.Contains(page.RenderedHTML, `data-fetch="true"`) || !strings.Contains(page.RenderedHTML, `<span>fragment</span>`) {
 		t.Fatalf("script DOM changes missing from rendered HTML: %s", page.RenderedHTML)
 	}
 	if !strings.Contains(page.RenderedHTML, `data-event-dispatch="ready:true:true:true:true"`) || !strings.Contains(page.RenderedHTML, `data-event-result="false"`) {
@@ -1369,4 +1494,90 @@ func TestNavigateZhipin(t *testing.T) {
 		t.Logf("rendered HTML saved to %s", output_path)
 	}
 	t.Logf("runtime=%s title=%q rendered=%d resources=%d scripts=%d xhr=%d", runtime_state.String(), text_content(find_element(page.Document, "title")), len(page.RenderedHTML), len(page.Resources), page.ExecutedScripts, len(page.XHRRequests))
+}
+
+func TestNavigateSVGGeometryAPIs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(response_writer, `<!doctype html><body><script>
+var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+var m = svg.createSVGMatrix().translate(10, 20).multiply(svg.getScreenCTM().inverse());
+var p = svg.createSVGPoint(); p.x = 2; p.y = 3; p.matrixTransform(m);
+document.body.setAttribute('data-svg', m.toArray().join(',') + '|' + svg.getBBox().width + '|' + svg.getCTM().inverse().a);
+</script></body>`)
+	}))
+	defer server.Close()
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-svg="1,0,0,1,10,20|0|1"`) {
+		t.Fatalf("svg geometry failed: failures=%+v html=%s", page.ScriptFailures, page.RenderedHTML)
+	}
+}
+
+func TestCompileJavaScriptStripsUnresolvableSourceMapPragma(t *testing.T) {
+	program, err := compile_javascript("https://example.com/a.js", "var a = 1;\n//# sourceMappingURL=a.js.map\n")
+	if err != nil {
+		t.Fatalf("source map pragma broke compilation: %v", err)
+	}
+	if program == nil {
+		t.Fatal("expected compiled program")
+	}
+}
+
+func TestNavigateRegExpNamedGroups(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(response_writer, `<!doctype html><body><script>
+var selector = /(?<tag>[\w\-]+)?(?:#(?<id>[\w\-]+))?(?<class>(?:\.(?:[\w\-]+))*)/.exec('div.monaco-diff-editor.side-by-side');
+var color = 'rgba(1, 2, 3, 0.5)'.match(/rgba\((?<r>\d+), *(?<g>\d+), *(?<b>\d+), *(?<a>[\d.]+)\)/);
+var unmatched = /(?<x>a)(?<y>b)/.exec('zz');
+document.body.setAttribute('data-groups', selector.groups.tag + '|' + selector.groups.id + '|' + selector.groups.class + '|' + color.groups.g + '|' + color.groups.a + '|' + String(unmatched === null));
+</script></body>`)
+	}))
+	defer server.Close()
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-groups="div|undefined|.monaco-diff-editor.side-by-side|2|0.5|true"`) {
+		t.Fatalf("named capture groups failed: failures=%+v html=%s", page.ScriptFailures, page.RenderedHTML)
+	}
+}
+
+func TestNavigateVarHoistedIIFEExportsPattern(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response_writer http.ResponseWriter, request *http.Request) {
+		response_writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(response_writer, `<!doctype html><body><script>
+var e = {}; var writes = []; var stored;
+Object.defineProperty(e, 'P', { configurable: true, enumerable: true, get: function() { return stored; }, set: function(v) { writes.push(typeof v); stored = v; } });
+e.P = void 0;
+(function(Q, ex) { "use strict"; ex.A = ex.P = void 0; var o; (function(v) { v.x = 1; })(o || (ex.P = o = {})); ex.done = o; })(null, e);
+document.body.setAttribute('data-iife', typeof e.P + ':' + writes.join(',') + ':' + String(e.P && e.P.x === 1) + ':' + typeof e.done);
+</script></body>`)
+	}))
+	defer server.Close()
+	browser, err := NewMiniBrowser(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.Navigate(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page.RenderedHTML, `data-iife="object:undefined,undefined,object:true:object"`) {
+		t.Fatalf("var-hoisted IIFE exports pattern failed: failures=%+v html=%s", page.ScriptFailures, page.RenderedHTML)
+	}
 }

@@ -1,0 +1,90 @@
+{
+  "post": {
+    "tags": [
+      "三方下载器"
+    ],
+    "summary": "创建三方下载器任务",
+    "description": "在指定三方下载器创建任务。连接配置与 probe 相同；支持的资源协议由下载器决定，ED2K 仅允许 Gopeed。不会创建本应用的 v1 下载任务记录。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/api_third_party_downloader_result"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_third_party_downloader_create",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "minLength": 1
+              },
+              "endpoint": {
+                "type": "string"
+              },
+              "token": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1
+              },
+              "filename": {
+                "type": "string"
+              },
+              "directory": {
+                "type": "string"
+              },
+              "referer": {
+                "type": "string"
+              },
+              "cookie": {
+                "type": "string"
+              },
+              "user_agent": {
+                "type": "string"
+              },
+              "task_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "url"
+            ]
+          },
+          "example": {
+            "kind": "aria2",
+            "url": "https://example.com/video.mp4",
+            "filename": "example.mp4"
+          }
+        }
+      }
+    }
+  }
+}

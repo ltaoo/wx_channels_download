@@ -35,10 +35,10 @@ func (c *APIClient) CreateBrowseHistory(browse_history *model.BrowseHistory, acc
 }
 
 func (c *APIClient) RecordBrowseHistory(unique_mark string, info adapter.BrowseHistoryInfo) error {
-	if c.browse_history_service == nil {
+	if c.service_browse_history == nil {
 		return ErrDBNotInitialized
 	}
-	return c.browse_history_service.Record(unique_mark, info)
+	return c.service_browse_history.Record(unique_mark, info)
 }
 
 type browseHistoryCreateRequest struct {
@@ -48,11 +48,11 @@ type browseHistoryCreateRequest struct {
 // createBrowseHistorySingle creates one browse history item through the
 // service layer. Platform payload parsing and persistence stay out of the API.
 func (c *APIClient) createBrowseHistorySingle(body services.CreateBrowseHistoryBody) (gin.H, error) {
-	if c.browse_history_service == nil {
+	if c.service_browse_history == nil {
 		return nil, fmt.Errorf("browse history service not initialized")
 	}
 
-	created, err := c.browse_history_service.CreateBrowseHistory(body)
+	created, err := c.service_browse_history.CreateBrowseHistory(body)
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +212,7 @@ func (c *APIClient) handle_fetch_browse_history_list(ctx *gin.Context) {
 		page_size = *body.PageSizeLegacy
 	}
 
-	if c.browse_history_service == nil {
+	if c.service_browse_history == nil {
 		if c.logger != nil {
 			c.logger.Warn().
 				Str("api", "POST /api/browse_history/list").
@@ -221,7 +221,7 @@ func (c *APIClient) handle_fetch_browse_history_list(ctx *gin.Context) {
 		result.Err(ctx, 500, "browse history service not initialized")
 		return
 	}
-	browse_histories, err := c.browse_history_service.ListPlatforms(
+	browse_histories, err := c.service_browse_history.ListPlatforms(
 		platform_ids,
 		body.Username,
 		page,

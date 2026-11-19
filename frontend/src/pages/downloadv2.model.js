@@ -1,3 +1,4 @@
+import { create_list_model, create_list_request } from "@/list.model.js";
 import { proxy_image_url } from "@/image-proxy.model.js";
 
 const DOWNLOAD_PAGE_SIZE_DEFAULT = 50;
@@ -180,16 +181,17 @@ function DownloadV2Model(props = {}) {
     throw new TypeError("DownloadV2Model requires the global dl$ instance");
   }
 
-  const tasks_ = refarr([]);
   const task_count_ = ref(0);
-  const filtered_task_count_ = ref(0);
-  const page_ = ref(1);
-  const page_size_ = ref(DOWNLOAD_PAGE_SIZE_DEFAULT);
   const status_counts_ = refobj(empty_status_counts());
   const active_status_ = ref("total");
-  const initial_ = ref(true);
-  const loading_ = ref(false);
-  const error_ = ref("");
+  const list$ = create_list_model({
+    request: create_list_request(fetch_task_page),
+    page_size: DOWNLOAD_PAGE_SIZE_DEFAULT,
+    tip: props.tip,
+  });
+  const { rows: tasks_, total: filtered_task_count_, page: page_, page_size: page_size_,
+    initial: initial_, loading: loading_, error: error_, status: list_status_ } = list$.state;
+  const task_error_ = ref("");
   const list_render_enabled_ = ref(true);
   const selected_task_ids_ = refarr([]);
   const delete_task_ = ref(null);
@@ -237,21 +239,7 @@ function DownloadV2Model(props = {}) {
     (state) =>
       Math.max(1, Math.ceil(state.total / Math.max(1, state.pageSize))),
   );
-  const range_text_ = combine(
-    {
-      total: filtered_task_count_,
-      page: page_,
-      pageSize: page_size_,
-      count: computed(tasks_, (tasks) => tasks.length),
-    },
-    (state) => {
-      if (!state.total || !state.count) {
-        return `共 ${state.total || 0} 条`;
-      }
-      const start = (state.page - 1) * state.pageSize + 1;
-      return `第 ${start}-${start + state.count - 1} 条，共 ${state.total} 条`;
-    },
-  );
+  const range_text_ = computed(filtered_task_count_, (total) => `共 ${total || 0} 条`);
   const loaded_task_selection_ = combine(
     {
       tasks: tasks_,
@@ -286,20 +274,14 @@ function DownloadV2Model(props = {}) {
       };
     },
   );
-  const list_status_ = combine(
-    {
-      initial: initial_,
-      error: error_,
-      tasks: tasks_,
-    },
-    (state) => {
-      if (state.initial) return "initial";
-      if (state.error) return "error";
-      return state.tasks.length > 0 ? "normal" : "empty";
-    },
-  );
 
-  const methods = {};
+  const methods = {
+    tip: props.tip,
+    requestTaskError(error) {
+      task_error_.as(error?.message || String(error || "下载失败"));
+      ui.taskErrorDialog$.show();
+    },
+  };
   const ui = {
     btn_refresh_tasks$: new Timeless.vm.ButtonCore({
       variant: "outline",
@@ -411,6 +393,11 @@ function DownloadV2Model(props = {}) {
       closeable: true,
       footer: false,
     }),
+    taskErrorDialog$: new Timeless.vm.DialogCore({
+      title: "错误原因",
+      closeable: true,
+      footer: false,
+    }),
     deleteConfirmDialog$: new Timeless.vm.DialogCore({
       onOk() {
         return methods.confirmDeleteTask();
@@ -464,16 +451,6 @@ function DownloadV2Model(props = {}) {
     create_platform_filename_,
   );
 
-  function page_request_options(target_page) {
-    const options = {
-      all: false,
-      page: Math.max(1, Number(target_page) || 1),
-      page_size: page_size_.value,
-    };
-    const status = server_status_filter(active_status_.value);
-    if (status) options.status = status;
-    return options;
-  }
 
   function apply_list_meta(meta) {
     if (!meta || typeof meta !== "object") return;
@@ -490,9 +467,7 @@ function DownloadV2Model(props = {}) {
       counts.total = response_total;
     }
     task_count_.as(counts.total);
-    filtered_task_count_.as(filtered_total);
-    page_.as(response_page);
-    page_size_.as(response_page_size);
+    list$.modifyResponse((response) => ({ ...response, total: filtered_total, page: response_page, pageSize: response_page_size }));
     status_counts_.as(counts);
   }
 
@@ -512,64 +487,45 @@ function DownloadV2Model(props = {}) {
     }
     // Keep DownloadTaskModel instances intact. Their `state.*` refs drive row
     // updates without rebuilding plain records for every progress event.
-    tasks_.assign(domain_tasks);
+    list$.setDataSource(domain_tasks);
   }
 
-  async function load_page(target_page = page_.value) {
-    const requested_page = Math.max(1, Number(target_page) || 1);
+  async function fetch_task_page(params) {
+    let requested_page = params.page;
     const sequence = ++request_sequence;
-    const options = page_request_options(requested_page);
-    loading_.as(true);
-    try {
+    for (;;) {
+      const options = { all: false, page: requested_page, page_size: params.page_size };
+      if (params.status) options.status = params.status;
       let meta;
       if (typeof downloader.loadPage === "function") {
         meta = await downloader.loadPage(options);
-      } else if (
-        downloader.handler &&
-        typeof downloader.handler.fetch_task_page === "function" &&
-        typeof downloader.handler.replace_server_tasks === "function"
-      ) {
+      } else if (downloader.handler?.fetch_task_page && downloader.handler?.replace_server_tasks) {
         const request_options = { ...options };
         delete request_options.all;
-        const data = await downloader.handler.fetch_task_page(request_options);
-        if (sequence !== request_sequence || disposed) return null;
-        downloader.handler.replace_server_tasks(data.records || []);
-        meta = data;
+        meta = await downloader.handler.fetch_task_page(request_options);
+        if (sequence !== request_sequence || disposed) throw new Error("列表已关闭");
+        downloader.handler.replace_server_tasks(meta.records || []);
       } else {
         await downloader.refresh(options);
-        meta = downloader.list_meta && downloader.list_meta.value;
+        meta = downloader.list_meta?.value;
       }
-      if (sequence !== request_sequence || disposed) return null;
-      const meta_counts = normalize_server_status_counts(meta && meta.stats);
-      const total =
-        Math.max(0, Number(meta && meta.total) || 0) ||
-        Math.max(0, Number(meta_counts[active_status_.value]) || 0);
-      const page_size = Math.max(
-        1,
-        Number(meta && meta.page_size) || page_size_.value,
-      );
+      if (sequence !== request_sequence || disposed) throw new Error("列表已关闭");
+      const counts = normalize_server_status_counts(meta?.stats);
+      const total = Math.max(0, Number(meta?.total) || 0) || Math.max(0, Number(counts[active_status_.value]) || 0);
+      const page_size = Math.max(1, Number(meta?.page_size) || params.page_size);
       const last_page = Math.max(1, Math.ceil(total / page_size));
       if (requested_page > last_page) {
-        return load_page(last_page);
+        requested_page = last_page;
+        continue;
       }
       sync_domain_tasks();
       apply_list_meta(meta);
-      error_.as("");
-      return tasks_;
-    } catch (error) {
-      if (sequence === request_sequence) {
-        error_.as(
-          (error && error.message) || String(error || "获取下载任务失败"),
-        );
-        report_error(error, "获取下载任务失败");
-      }
-      return null;
-    } finally {
-      if (sequence === request_sequence) {
-        loading_.as(false);
-        initial_.as(false);
-      }
+      return { list: tasks_.value, total, page: requested_page, page_size };
     }
+  }
+
+  function load_page(target_page = page_.value) {
+    return list$.search({ page: target_page, status: server_status_filter(active_status_.value) });
   }
 
   function sync_domain_tasks() {
@@ -583,7 +539,7 @@ function DownloadV2Model(props = {}) {
 
   function report_error(error, fallback) {
     const message = (error && error.message) || String(error || fallback);
-    DLUtils.error({ msg: message || fallback });
+    props.tip({ msg: [message || fallback], type: "error" });
     return error;
   }
 
@@ -614,10 +570,10 @@ function DownloadV2Model(props = {}) {
         ? status
         : "total";
     active_status_.as(value);
-    page_.as(1);
-    reset_list_scroll();
     return load_page(1);
   }
+
+  const unlisten_scroll = list$.state.completed.subscribe({ onChange: reset_list_scroll });
 
   function reset_list_scroll() {
     scroll_top = 0;
@@ -630,21 +586,18 @@ function DownloadV2Model(props = {}) {
       Math.max(1, Number(target_page) || 1),
     );
     if (page === page_.value || loading_.value) return null;
-    reset_list_scroll();
-    return load_page(page);
+    return list$.goto(page);
   }
 
   function previous_page() {
-    return change_page(page_.value - 1);
+    return page_.value > 1 && !loading_.value ? list$.prev() : null;
   }
 
   function next_page() {
-    return change_page(page_.value + 1);
+    return page_.value < page_count_.value && !loading_.value ? list$.next() : null;
   }
 
   function refresh_tasks() {
-    page_.as(1);
-    reset_list_scroll();
     return load_page(1);
   }
 
@@ -855,7 +808,7 @@ function DownloadV2Model(props = {}) {
   function request_task_preview(task) {
     const task_id = task_identifier(task);
     if (task_id === undefined || task_id === null || task_id === "") {
-      DLUtils.error({ msg: "无法打开详情：下载任务 ID 为空" });
+      props.tip({ msg: ["无法打开详情：下载任务 ID 为空"], type: "error" });
       return;
     }
     preview_task_id_.as(String(task_id));
@@ -1036,7 +989,7 @@ function DownloadV2Model(props = {}) {
           : await downloader.create(object);
       await load_page(page_.value);
       if (options.hideDialog) options.hideDialog.hide();
-      DLUtils.toast(success_message);
+      props.tip({ msg: [success_message], type: "success" });
       return task$;
     } catch (error) {
       if (!options.overwriteRetry && duplicate_error(error)) {
@@ -1198,6 +1151,7 @@ function DownloadV2Model(props = {}) {
   });
 
   const state = {
+    list: list$,
     tasks: tasks_,
     task_count: task_count_,
     total: filtered_task_count_,
@@ -1235,6 +1189,7 @@ function DownloadV2Model(props = {}) {
     loading: loading_,
     error: error_,
     overwrite: overwrite_,
+    task_error: task_error_,
     overwrite_apply_all: overwrite_apply_all_,
     overwrite_processing: overwrite_processing_,
     overwrite_conflict: overwrite_conflict_,
@@ -1297,6 +1252,8 @@ function DownloadV2Model(props = {}) {
   function clean() {
     if (disposed) return;
     disposed = true;
+    unlisten_scroll();
+    list$.destroy();
     request_sequence += 1;
     loading_.as(false);
     disposables.splice(0).forEach((unlisten) => {

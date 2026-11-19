@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 132 96" role="img" aria-labelledby="content-type-icons-title">
+  <title id="content-type-icons-title">D&amp;M content type watermark system</title>
+  <defs>
+    <g id="dm-letters" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 31v29M22 31h6c10 0 16 5 16 14.5S38 60 28 60h-6" stroke-width="8"/>
+      <path d="M53 60V37c0-5 2-8 6-8s6 4 7 13c.5 4 2.5 4 3 0 1-9 3-13 7-13s6 3 6 8v23" stroke-width="8"/>
+    </g>
+
+    <g id="dm-type-lockup">
+      <use href="#dm-letters" transform="translate(78 48) scale(.32)"/>
+      <path d="M28 79q38 12 76 0" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" opacity=".58"/>
+    </g>
+
+    <g id="type-default" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M107 46h16M115 38v16"/>
+    </g>
+    <g id="type-video" fill="currentColor">
+      <path d="M108 44v20l17-10Z"/>
+    </g>
+    <g id="type-long-video" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M107 46v16l14-8Z" fill="currentColor"/>
+      <path d="M106 68h18"/>
+    </g>
+    <g id="type-episode" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M106 46v16l14-8Z" fill="currentColor"/>
+      <path d="M123 39h5M125.5 36.5v5"/>
+    </g>
+    <g id="type-series" fill="currentColor">
+      <rect x="102" y="45" width="5" height="18" rx="2.5"/>
+      <rect x="112" y="38" width="5" height="25" rx="2.5"/>
+      <path d="M122 46v16l12-8Z"/>
+    </g>
+    <g id="type-collection" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linejoin="round">
+      <circle cx="97" cy="38" r="4" fill="currentColor" stroke="none"/>
+      <path d="M97 44v24M97 51h10M97 68h10" stroke-linecap="round"/>
+      <rect x="107" y="46" width="18" height="10" rx="4"/>
+      <rect x="107" y="63" width="18" height="10" rx="4"/>
+    </g>
+    <g id="type-short-video" fill="currentColor">
+      <path d="M119 35 105 55h8l-4 18 17-25h-9Z"/>
+    </g>
+    <g id="type-image" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="100" y="40" width="30" height="20" rx="5"/>
+      <path d="m104 55 7-7 5 4 7-9 7 10"/>
+    </g>
+    <g id="type-image-set" fill="none" stroke="currentColor" stroke-width="3.8" stroke-linejoin="round">
+      <rect x="97" y="38" width="17" height="12" rx="3.5"/>
+      <rect x="107" y="47" width="17" height="12" rx="3.5" fill="currentColor"/>
+      <rect x="117" y="56" width="17" height="12" rx="3.5"/>
+    </g>
+    <g id="type-album" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="99" y="40" width="32" height="20" rx="5"/>
+      <path d="m104 55 7-7 5 4 8-10 6 8"/>
+      <path d="M105 36h20" opacity=".65"/>
+    </g>
+    <g id="type-article" fill="none" stroke="currentColor" stroke-width="4.4" stroke-linecap="round">
+      <path d="M101 43h28M101 53h28M101 63h18"/>
+    </g>
+    <g id="type-answer" fill="none" stroke="currentColor" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m107 52 5 5 11-12"/>
+    </g>
+    <g id="type-question">
+      <text x="115" y="64" fill="currentColor" font-family="Arial, sans-serif" font-size="24" font-weight="700" text-anchor="middle">?</text>
+    </g>
+    <g id="type-post" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M105 65 123 46l6 6-18 19h-6Z"/>
+      <path d="m119 50 6 6"/>
+    </g>
+    <g id="type-blog" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M104 40h22v28h-22Z"/>
+      <path d="M110 50h10M110 58h7"/>
+    </g>
+    <g id="type-webpage" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round">
+      <circle cx="115" cy="51" r="16"/>
+      <ellipse cx="115" cy="51" rx="7.5" ry="16"/>
+      <path d="M99 51h32M102 42c8 5 18 5 26 0M102 60c8-5 18-5 26 0"/>
+    </g>
+    <g id="type-novel" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M115 44c-4-4-10-5-16-4v23c6-1 12 0 16 4 4-4 10-5 16-4V40c-6-1-12 0-16 4Z"/>
+      <path d="M115 44v23"/>
+    </g>
+    <g id="type-audio" fill="none" stroke="currentColor" stroke-width="4.4" stroke-linecap="round">
+      <path d="M101 51v6M109 43v22M117 48v12M125 39v28M132 51v6"/>
+    </g>
+    <g id="type-podcast" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round">
+      <rect x="109" y="35" width="12" height="20" rx="6" fill="currentColor"/>
+      <path d="M103 51a12 12 0 0 0 24 0"/>
+      <path d="M115 63v7"/>
+    </g>
+    <g id="type-music" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linejoin="round">
+      <path d="M109 62V40l20-4v20"/>
+      <circle cx="104" cy="63" r="6" fill="currentColor"/>
+      <circle cx="124" cy="58" r="6" fill="currentColor"/>
+    </g>
+    <g id="type-document" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M106 35h11l11 11v21a4 4 0 0 1-4 4h-18a4 4 0 0 1-4-4V39a4 4 0 0 1 4-4Z"/>
+      <path d="M110 51h14M110 60h9"/>
+    </g>
+    <g id="type-course" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m100 46 15-6 15 6-15 6Z"/>
+      <path d="M107 53v5c0 3 4 5 8 5s8-2 8-5v-5"/>
+    </g>
+    <g id="type-comic" fill="none" stroke="currentColor" stroke-width="3.8" stroke-linejoin="round">
+      <rect x="98" y="45" width="14" height="12" rx="3" fill="currentColor"/>
+      <rect x="118" y="45" width="14" height="12" rx="3"/>
+      <path d="M105 34h20v8h-9l-5 4v-4h-6Z"/>
+    </g>
+    <g id="type-live" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round">
+      <circle cx="115" cy="54" r="4" fill="currentColor"/>
+      <path d="M103 42a17 17 0 0 0 0 24M127 42a17 17 0 0 1 0 24"/>
+    </g>
+    <g id="type-text" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round">
+      <path d="M104 41h22M115 41v26M108 74h14"/>
+    </g>
+    <g id="type-html" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m105 45-8 9 8 9M125 45l8 9-8 9"/>
+    </g>
+    <g id="type-pdf">
+      <text x="115" y="63" fill="currentColor" font-family="Arial, sans-serif" font-size="16" font-weight="700" text-anchor="middle">PDF</text>
+    </g>
+    <g id="type-conversation" fill="currentColor">
+      <path d="M100 41a4 4 0 0 1 4-4h13a4 4 0 0 1 4 4v9a4 4 0 0 1-4 4h-8l-6 5v-5h-3a4 4 0 0 1-4-4Z"/>
+      <path d="M109 55a4 4 0 0 1 4-4h13a4 4 0 0 1 4 4v9a4 4 0 0 1-4 4h-8l-6 5v-5h-3a4 4 0 0 1-4-4Z" opacity=".68"/>
+    </g>
+    <g id="type-other" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m115 38 14 16-14 16-14-16Z"/>
+      <path d="M115 46v16M107 54h16"/>
+    </g>
+  </defs>
+
+  <symbol id="default" viewBox="0 0 132 96" data-n="content-type-default-icon"><use href="#dm-type-lockup"/><use href="#type-default" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="video" viewBox="0 0 132 96" data-n="content-type-video-icon"><use href="#dm-type-lockup"/><use href="#type-video" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="long_video" viewBox="0 0 132 96" data-n="content-type-long-video-icon"><use href="#dm-type-lockup"/><use href="#type-long-video" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="episode" viewBox="0 0 132 96" data-n="content-type-episode-icon"><use href="#dm-type-lockup"/><use href="#type-episode" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="series" viewBox="0 0 132 96" data-n="content-type-series-icon"><use href="#dm-type-lockup"/><use href="#type-series" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="collection" viewBox="0 0 132 96" data-n="content-type-collection-icon"><use href="#dm-type-lockup"/><use href="#type-collection" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="short_video" viewBox="0 0 132 96" data-n="content-type-short-video-icon"><use href="#dm-type-lockup"/><use href="#type-short-video" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="image" viewBox="0 0 132 96" data-n="content-type-image-icon"><use href="#dm-type-lockup"/><use href="#type-image" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="image_set" viewBox="0 0 132 96" data-n="content-type-image-set-icon"><use href="#dm-type-lockup"/><use href="#type-image-set" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="album" viewBox="0 0 132 96" data-n="content-type-album-icon"><use href="#dm-type-lockup"/><use href="#type-album" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="article" viewBox="0 0 132 96" data-n="content-type-article-icon"><use href="#dm-type-lockup"/><use href="#type-article" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="answer" viewBox="0 0 132 96" data-n="content-type-answer-icon"><use href="#dm-type-lockup"/><use href="#type-answer" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="question" viewBox="0 0 132 96" data-n="content-type-question-icon"><use href="#dm-type-lockup"/><use href="#type-question" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="post" viewBox="0 0 132 96" data-n="content-type-post-icon"><use href="#dm-type-lockup"/><use href="#type-post" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="blog" viewBox="0 0 132 96" data-n="content-type-blog-icon"><use href="#dm-type-lockup"/><use href="#type-blog" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="webpage" viewBox="0 0 132 96" data-n="content-type-webpage-icon"><use href="#dm-type-lockup"/><use href="#type-webpage" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="novel" viewBox="0 0 132 96" data-n="content-type-novel-icon"><use href="#dm-type-lockup"/><use href="#type-novel" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="audio" viewBox="0 0 132 96" data-n="content-type-audio-icon"><use href="#dm-type-lockup"/><use href="#type-audio" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="podcast" viewBox="0 0 132 96" data-n="content-type-podcast-icon"><use href="#dm-type-lockup"/><use href="#type-podcast" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="music" viewBox="0 0 132 96" data-n="content-type-music-icon"><use href="#dm-type-lockup"/><use href="#type-music" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="document" viewBox="0 0 132 96" data-n="content-type-document-icon"><use href="#dm-type-lockup"/><use href="#type-document" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="course" viewBox="0 0 132 96" data-n="content-type-course-icon"><use href="#dm-type-lockup"/><use href="#type-course" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="comic" viewBox="0 0 132 96" data-n="content-type-comic-icon"><use href="#dm-type-lockup"/><use href="#type-comic" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="live" viewBox="0 0 132 96" data-n="content-type-live-icon"><use href="#dm-type-lockup"/><use href="#type-live" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="text" viewBox="0 0 132 96" data-n="content-type-text-icon"><use href="#dm-type-lockup"/><use href="#type-text" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="html" viewBox="0 0 132 96" data-n="content-type-html-icon"><use href="#dm-type-lockup"/><use href="#type-html" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="pdf" viewBox="0 0 132 96" data-n="content-type-pdf-icon"><use href="#dm-type-lockup"/><use href="#type-pdf" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="conversation" viewBox="0 0 132 96" data-n="content-type-conversation-icon"><use href="#dm-type-lockup"/><use href="#type-conversation" transform="translate(-97 -24) scale(1.3)"/></symbol>
+  <symbol id="other" viewBox="0 0 132 96" data-n="content-type-other-icon"><use href="#dm-type-lockup"/><use href="#type-other" transform="translate(-97 -24) scale(1.3)"/></symbol>
+</svg>

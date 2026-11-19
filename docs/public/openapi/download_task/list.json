@@ -68,6 +68,15 @@
           "minimum": 1
         },
         "description": "只返回指定根任务所属的任务树"
+      },
+      {
+        "name": "content_id",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "按归档内容主键字符串精确筛选；与父任务/根任务筛选共同作用，也应用于 stats。"
       }
     ],
     "responses": {
@@ -89,7 +98,7 @@
                   "type": "string"
                 },
                 "data": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "object",
                       "description": "传 task_id 时为单个下载任务记录"
@@ -124,7 +133,7 @@
                           "additionalProperties": {
                             "type": "integer"
                           },
-                          "description": "按数字状态分组的数量；沿用 parent_task_id/root_task_id，但不受 status 参数限制"
+                          "description": "按数字状态分组的数量；沿用 parent_task_id、root_task_id、content_id，但不受 status 参数限制"
                         }
                       }
                     }

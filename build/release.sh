@@ -4,6 +4,10 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+if [ "${1:-}" = "nas" ]; then
+  exec bash ./deploy.sh
+fi
+
 # Load environment variables from .env file
 if [ -f .env ]; then
   set -a

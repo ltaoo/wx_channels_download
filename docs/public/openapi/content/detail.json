@@ -1,0 +1,236 @@
+{
+  "get": {
+    "tags": [
+      "内容"
+    ],
+    "summary": "查询内容详情与本地资源",
+    "description": "id 是字符串内容主键。返回平台详情、关联账号、下载任务、标签、关联关系及附带 local_path/file_type/exists 的资源。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "platform_id": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "external_id": {
+                      "type": "string"
+                    },
+                    "external_id2": {
+                      "type": "string"
+                    },
+                    "external_id3": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "source_url": {
+                      "type": "string"
+                    },
+                    "cover_url": {
+                      "type": "string"
+                    },
+                    "cover_width": {
+                      "type": "string"
+                    },
+                    "cover_height": {
+                      "type": "string"
+                    },
+                    "publish_time": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "accounts": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "../components.json#/schemas/services_ContentAccountRecord"
+                      }
+                    },
+                    "download_tasks": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "../components.json#/schemas/services_ContentDownloadTaskRecord"
+                      }
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "../components.json#/schemas/services_ContentTagRecord"
+                      }
+                    },
+                    "content": {
+                      "$ref": "../components.json#/schemas/model_Content"
+                    },
+                    "resources": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "task_id": {
+                            "type": "integer",
+                            "nullable": true
+                          },
+                          "content_id": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "download_dir": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "unique_id": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "size": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "downloaded": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "speed": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "status": {
+                            "type": "integer"
+                          },
+                          "merge_order": {
+                            "type": "integer"
+                          },
+                          "extra": {
+                            "type": "string"
+                          },
+                          "stream_url": {
+                            "type": "string"
+                          },
+                          "record_start": {
+                            "type": "integer",
+                            "format": "int64",
+                            "nullable": true
+                          },
+                          "record_end": {
+                            "type": "integer",
+                            "format": "int64",
+                            "nullable": true
+                          },
+                          "duration": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "rotate_minutes": {
+                            "type": "integer"
+                          },
+                          "rotate_size": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "start_time": {
+                            "type": "integer",
+                            "format": "int64",
+                            "nullable": true
+                          },
+                          "finish_time": {
+                            "type": "integer",
+                            "format": "int64",
+                            "nullable": true
+                          },
+                          "created_at": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "updated_at": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "local_path": {
+                            "type": "string"
+                          },
+                          "file_type": {
+                            "type": "string"
+                          },
+                          "exists": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "detail_type": {
+                      "type": "string"
+                    },
+                    "detail": {},
+                    "embedded_contents": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "../components.json#/schemas/services_ContentEmbeddedDetailItem"
+                      }
+                    },
+                    "relations": {
+                      "$ref": "../components.json#/schemas/services_ContentRelationListResult"
+                    }
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "get_api_content_detail",
+    "parameters": [
+      {
+        "name": "id",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "对象主键；具体对象类型见接口说明"
+      }
+    ]
+  }
+}

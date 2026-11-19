@@ -1,0 +1,44 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "获取流程实例列表",
+    "description": "直接查询实例表；列表不返回重复的共享图。",
+    "operationId": "post_api_v1_automation_list_flow_instances",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "code=0 表示成功。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
