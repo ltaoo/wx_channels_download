@@ -271,9 +271,33 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 			}
 		},
 	}
+	liteapp_request := new_liteapp_rewriter(plugin_1, logger)
 	plugin_2 := &echo.Plugin{
 		Match: "res.wx.qq.com",
+		OnRequest: func(ctx *echo.Context) {
+			if liteapp_request(ctx) {
+				return
+			}
+			if strings.HasPrefix(ctx.Req.URL.Path, asset_base_url+"/") {
+				ctx.DelRequestHeader("If-None-Match")
+				ctx.DelRequestHeader("If-Modified-Since")
+				plugin_1.OnRequest(ctx)
+				if mock_response := ctx.GetMockResponse(); mock_response != nil {
+					mock_response.Headers["Access-Control-Allow-Origin"] = "https://liteapp.weixin.qq.com"
+					mock_response.Headers["Cache-Control"] = "no-store"
+					delete(mock_response.Headers, "ETag")
+				}
+				return
+			}
+			if liteapp_sdk_reg.MatchString(ctx.Req.URL.Path) {
+				ctx.DelRequestHeader("If-None-Match")
+				ctx.DelRequestHeader("If-Modified-Since")
+			}
+		},
 		OnResponse: func(ctx *echo.Context) {
+			if inject_liteapp_runtime(ctx, logger) {
+				return
+			}
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))
 			hostname := ctx.Req.URL.Hostname()
 			pathname := ctx.Req.URL.Path
