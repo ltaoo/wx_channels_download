@@ -1,0 +1,37 @@
+{
+  "status": "awaiting_manual_wechat_validation",
+  "date": "2026-11-20",
+  "shared_rewriter": "rewrite_channels_api_js",
+  "native_api_module_observed": "92198",
+  "native_module_revision": "1211356866517f4794e85a79a3c6d5a99990c029bc680bc469075907c77239f8",
+  "native_module_bytes": 10142,
+  "sdk_original_sha256": "76e239644ca98c3f765d31e094d08b28b324033fc3fdd086c0b31aa5002de514",
+  "sdk_original_prefix_preserved": true,
+  "sdk_modified_sha256": "03f5c7e7dfa37ef01423427fa9358fd07a526237d6db2c4552197e05e712f202",
+  "sdk_modified_bytes": 169553,
+  "offline_actual_module_execution": {
+    "request_and_response_preserved": true,
+    "instance_state_preserved": true,
+    "events": [
+      "channels:Init",
+      "channels:OnFeedProfileLoaded"
+    ]
+  },
+  "eapi_project_assets_downloadable": 22,
+  "cache_policy": "no-store; content SHA-256 path and v query for rewritten business module",
+  "tests": [
+    "go test ./pkg/scraper/wxchannels",
+    "go test -tags embed_inject ./pkg/scraper/wxchannels",
+    "node scripts/test-wxchannels-liteapp-runtime.cjs",
+    "node scripts/test-wxchannels-liteapp-extra.cjs"
+  ],
+  "eapi_rule_ids": [
+    "mock_1795171362863440000",
+    "mock_1795173899056435000"
+  ],
+  "limitations": [
+    "Native class module adapted; other native flow/live modules are not fully adapted.",
+    "Formal WeChat business events and playback await a fresh manual page open.",
+    "Current old downloader binary has not been rebuilt; local 18998 bridge uses current project interception code."
+  ]
+}
