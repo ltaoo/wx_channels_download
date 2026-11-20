@@ -219,8 +219,99 @@ function Dialog(props, children) {
   ]);
 }
 
+// The bundled WeUI DropdownMenu reads the root state only once. Subscribe here
+// so menus created before feed details arrive can render their updated items.
+function set_dropdown_menu_items(store, items) {
+  // In 0.33.0 DropdownMenuCore.setItems only updates a state snapshot. The
+  // underlying MenuCore also needs the items and their hover/click listeners.
+  store._configure_sub_menus(items);
+  store.menu.setItems(items);
+  store.setItems(items);
+}
+
+function DropdownMenuEntry(store) {
+  const primitive = Timeless.ui.DropdownMenuPrimitive;
+  if (store instanceof Timeless.vm.MenuSeparatorCore) {
+    return primitive.Separator({ class: "weui-dropdown-menu__separator" });
+  }
+  const state_ = refobj(store.state);
+  const menu_state_ = refobj(store.menu ? store.menu.state : {});
+  const listeners = Timeless.ListenerManager([state_, menu_state_]);
+  const lifecycle = {
+    onMounted() {
+      listeners.add(store.onStateChange((state) => state_.as(state)));
+      if (store.menu) {
+        listeners.add(store.menu.onStateChange((state) => menu_state_.as(state)));
+      }
+      return listeners.destroy;
+    },
+  };
+  if (store instanceof Timeless.vm.MenuGroupCore) {
+    return primitive.Group({ store, ...lifecycle }, [
+      Show({
+        when: computed(state_, (state) => !!state.label),
+        ok: () => primitive.Label({ class: "weui-dropdown-menu__group-label" }, [
+          computed(state_, (state) => state.label),
+        ]),
+      }),
+      For({
+        each: computed(state_, (state) => state.items || []),
+        render: DropdownMenuEntry,
+      }),
+    ]);
+  }
+  return View(lifecycle, [
+    primitive.Item({
+      store,
+      class: computed(state_, (state) => [
+        "weui-dropdown-menu__item",
+        state.focused ? "weui-dropdown-menu__item--focused" : "",
+        state.disabled ? "weui-dropdown-menu__item--disabled" : "",
+      ].filter(Boolean).join(" ")),
+    }, [
+      ...(store.icon ? [View({ class: "weui-dropdown-menu__icon" }, [store.icon])] : []),
+      View({ class: "weui-dropdown-menu__label" }, [computed(state_, (state) => state.label)]),
+      Show({
+        when: computed(state_, (state) => state.checked === true || state.checked === "indeterminate"),
+        ok: () => Timeless.Icon({ name: "check", size: 16 }),
+      }),
+      ...(store.menu ? [Timeless.Icon({ name: "chevron-right", size: 14, class: "weui-dropdown-menu__chevron" })] : []),
+    ]),
+    ...(store.menu ? [Show({
+      when: computed(menu_state_, (state) => !!state.open),
+      ok: () => primitive.SubMenuContent({
+        store: store.menu,
+        animation: { in: "weui-animate-menu-in", out: "weui-animate-menu-out" },
+      }, [View({ class: "weui-dropdown-menu weui-dropdown-menu__submenu" }, [
+        For({
+          each: computed(menu_state_, (state) => state.items || []),
+          render: DropdownMenuEntry,
+        }),
+      ])]),
+    })] : []),
+  ]);
+}
+
 function DropdownMenu(props, children) {
-  return Timeless.weui.DropdownMenu(props, children);
+  const state_ = refobj(props.store.state);
+  const listeners = Timeless.ListenerManager([state_]);
+  return Fragment({
+    onMounted() {
+      listeners.add(props.store.onStateChange((state) => state_.as(state)));
+      return listeners.destroy;
+    },
+  }, [
+    ...(children ? [Timeless.ui.DropdownMenuPrimitive.Trigger({ store: props.store }, children)] : []),
+    Timeless.ui.DropdownMenuPrimitive.Content({
+      ...props,
+      animation: { in: "weui-animate-menu-in", out: "weui-animate-menu-out" },
+    }, () => [View({ class: "weui-dropdown-menu" }, [
+      For({
+        each: computed(state_, (state) => state.items || []),
+        render: DropdownMenuEntry,
+      }),
+    ])]),
+  ]);
 }
 
 function Waterfall(props) {

@@ -679,7 +679,7 @@ var WXBase64 = (() => {
       return trigger.__attacheddropdown;
     }
 
-    const submenu$ = new Timeless.vm.MenuCore({
+    let submenu$ = new Timeless.vm.MenuCore({
       items: [],
       trigger: "hover",
     });
@@ -794,7 +794,7 @@ var WXBase64 = (() => {
     mount.style.display = "contents";
     document.body.appendChild(mount);
     Timeless.DOM.render(
-      Timeless.weui.DropdownMenu({ store: dropdown$ }),
+      DropdownMenu({ store: dropdown$ }),
       mount,
     );
 
@@ -811,8 +811,15 @@ var WXBase64 = (() => {
     }
     trigger.addEventListener("mouseenter", () => {
       set_reference();
-      dropdown$.setItems(build_root_menu_items());
-      submenu$.setItems(build_download_menu_items());
+      // Use a fresh submenu with each set of root items so the shared menu
+      // does not accumulate parent-item listeners across repeated hovers.
+      const previous_submenu$ = submenu$;
+      submenu$ = new Timeless.vm.MenuCore({
+        items: build_download_menu_items(),
+        trigger: "hover",
+      });
+      set_dropdown_menu_items(dropdown$, build_root_menu_items());
+      previous_submenu$.unmount();
       dropdown$.handleEnterTrigger();
     });
     trigger.addEventListener("mouseleave", () => {
