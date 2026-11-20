@@ -431,6 +431,7 @@ func Start(cfg *config.Config) error {
 			return fmt.Errorf("failed to start proxy service: %w", err)
 		}
 		color.Green(fmt.Sprintf("Proxy service started successfully, address: %v", http_service_url(interceptor_srv.Addr())))
+		start_wxchannels_liteapp_cache_cleanup(ctx, cfg)
 
 		if !buildtags.UsingSunnyNet {
 			if interceptor_srv.ProxyTun() {

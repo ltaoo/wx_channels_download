@@ -38,6 +38,8 @@ function beforeFilename(filename, params) {
 
 入口匹配 `/t/wx_fed/cdn_libs/res/libpag/<版本>/libpag.min.js`，也支持非压缩文件名。如果该 SDK 已有长期浏览器缓存，首次验证需要让它重新请求；`no-store` 无法使此前已缓存的 SDK 主动发出请求。此方案依赖微信继续加载该远程 SDK，以及当前 Webpack/API 类结构。
 
+macOS 下载器启动代理后，会检查当前用户微信 `radium/web/profiles/*/Cache/Cache_Data` 中的 Chromium Simple Cache v5 请求键，自动移走匹配上述 SDK 地址的缓存（包括带查询参数的地址及同条目的附属文件）。备份保存在对应 profile 的 `wxchannels-liteapp-sdk-backup/<时间>-<随机值>/`，启动终端会显示完整路径。其他缓存和 `engineConfig.json` 保持不变；重复启动时已移走的条目不会重复备份。若微信或其辅助进程仍在运行，应用会提示完全退出微信，随后等待进程退出再自动处理；看到备份完成提示后重新打开微信。读取、进程检查或移动失败会提示原因，不阻止下载器启动。该自动处理目前仅支持 macOS 的上述缓存目录和格式。
+
 诊断地址为 `https://res.wx.qq.com/__assets/wxchannels/liteapp/status`，字段包含阶段、内容版本、替换方法数、实际初始化/详情事件计数及 Vue 实例是否保留；不包含视频详情或认证参数。`installed` 表示方法已替换，实际事件计数才说明业务方法执行；黄色标签只说明用户脚本执行。
 
 可用 `scripts/wxchannels-liteapp-extra.js` 作为独立标记示例，示例回执依赖本机专用转发规则。此前已在 macOS 正式微信验证该远程入口可执行标记且视频正常播放；新增业务重写已通过 Go、Node 与真实已下载模块的离线检查，正式微信内的业务事件与播放结果仍需重新验证。
