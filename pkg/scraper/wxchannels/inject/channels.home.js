@@ -36,6 +36,10 @@ WXU.onFeed(function () {
  * @param {HTMLElement} $parent
  */
 function __wx_insert_download_btn($parent) {
+  $parent = $parent.closest(".feed-interact") || $parent;
+  if ($parent.querySelector(".wx-home-download-btn")) {
+    return;
+  }
   var $btn = Icons.download_btn2();
   __wx_init_home_download_btn($btn);
   $parent.appendChild($btn);
