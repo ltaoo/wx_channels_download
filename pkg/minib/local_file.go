@@ -17,9 +17,25 @@ import (
 	"wx_channel/pkg/clawreq"
 )
 
+type remote_page_context_key struct{}
+
+func restrict_local_file_access(ctx context.Context, raw_url string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	page_url, err := url.Parse(raw_url)
+	if err != nil || page_url.Scheme != "file" {
+		return context.WithValue(ctx, remote_page_context_key{}, true)
+	}
+	return ctx
+}
+
 func request_local_file(ctx context.Context, method string, request_url *url.URL) (*clawreq.Response, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if remote_page, _ := ctx.Value(remote_page_context_key{}).(bool); remote_page {
+		return nil, fmt.Errorf("minib: remote pages cannot access local files")
 	}
 
 	normalized_method := strings.ToUpper(method)

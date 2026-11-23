@@ -538,6 +538,7 @@ func (page *Page) wait_condition_met() bool {
 }
 
 func (b *MiniBrowser) navigate(ctx context.Context, raw_url string, headers http.Header, navigate_options NavigateOptions, navigation_count int) (*Page, error) {
+	ctx = restrict_local_file_access(ctx, raw_url)
 	document_headers := clawreq.DefaultHeaders(clawreq.ProfileChrome)
 	for name, values := range headers {
 		document_headers[name] = append([]string(nil), values...)
@@ -636,6 +637,7 @@ func (b *MiniBrowser) navigate(ctx context.Context, raw_url string, headers http
 }
 
 func (b *MiniBrowser) navigate_post(ctx context.Context, raw_url string, body string, headers http.Header, navigate_options NavigateOptions, navigation_count int) (*Page, error) {
+	ctx = restrict_local_file_access(ctx, raw_url)
 	document_headers := clawreq.DefaultHeaders(clawreq.ProfileChrome)
 	for name, values := range headers {
 		document_headers[name] = append([]string(nil), values...)
@@ -1272,7 +1274,7 @@ func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *ur
 	runtime := &page_runtime{
 		browser:              b,
 		ctx:                  ctx,
-		lifecycle_ctx:        b.lifecycle_ctx,
+		lifecycle_ctx:        restrict_local_file_access(b.lifecycle_ctx, page.URL),
 		network_ctx:          ctx,
 		page:                 page,
 		page_url:             page_url,
@@ -1322,8 +1324,8 @@ func (b *MiniBrowser) execute_page(ctx context.Context, page *Page, page_url *ur
 	}
 	b.page_runtime = runtime
 	defer func() {
-		runtime.ctx = b.lifecycle_ctx
-		runtime.network_ctx = b.lifecycle_ctx
+		runtime.ctx = runtime.lifecycle_ctx
+		runtime.network_ctx = runtime.lifecycle_ctx
 		runtime.wait_active = false
 	}()
 	b.js_runtime.SetPromiseRejectionTracker(func(promise *goja.Promise, operation goja.PromiseRejectionOperation) {

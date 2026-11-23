@@ -341,6 +341,7 @@ func (b *MiniBrowser) execute_js(ctx context.Context, expression string, modifie
 	}
 	var request_started chan struct{}
 	if b.page_runtime != nil {
+		ctx = restrict_local_file_access(ctx, b.page_runtime.page.URL)
 		b.page_runtime.ctx = ctx
 		b.page_runtime.network_ctx = ctx
 		if modifier != nil {
@@ -353,8 +354,8 @@ func (b *MiniBrowser) execute_js(ctx context.Context, expression string, modifie
 			})
 		}
 		defer func() {
-			b.page_runtime.ctx = b.lifecycle_ctx
-			b.page_runtime.network_ctx = b.lifecycle_ctx
+			b.page_runtime.ctx = b.page_runtime.lifecycle_ctx
+			b.page_runtime.network_ctx = b.page_runtime.lifecycle_ctx
 		}()
 	}
 	finished := make(chan struct{})
@@ -440,6 +441,7 @@ func (b *MiniBrowser) Click(ctx context.Context, selector string) error {
 	click_navigation_options := current_page.navigate_options
 	click_navigation_options.WaitForSelector = ""
 	click_navigation_options.WaitForContent = ""
+	ctx = restrict_local_file_access(ctx, current_page.URL)
 	navigated_page, err := b.Navigate(ctx, current_page.navigation_url, navigation_headers, click_navigation_options)
 	if err != nil {
 		return fmt.Errorf("minib: follow click navigation to %q: %w", current_page.navigation_url, err)
