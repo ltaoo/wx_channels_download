@@ -381,18 +381,24 @@ func (e *FlowEngine) run_parallel(parent *ProcessContext, node NodeDefinition, s
 	}
 	run_context, cancel := context.WithCancel(parent.ExecutionContext())
 	defer cancel()
+	initial_data := parent.SnapshotData()
+	initial_states := snapshotNodeStates(parent.NodeStates)
+	initial_outputs := make(map[string]map[string]interface{}, len(parent.NodeOutputs))
+	for id, values := range parent.NodeOutputs {
+		initial_outputs[id] = snapshot_map(values)
+	}
 	children := make([]*ProcessContext, len(starts))
 	failures := make([]error, len(starts))
 	var wg sync.WaitGroup
 	for index, start := range starts {
 		child := &ProcessContext{Context: run_context, Definition: parent.Definition, ValidateSchemas: parent.ValidateSchemas, InstanceID: parent.InstanceID,
 			subflows: parent.subflows,
-			FlowID:   parent.FlowID, EngineRef: e, Data: parent.SnapshotData(),
-			NodeStates: snapshotNodeStates(parent.NodeStates), NodeAttempts: snapshotNodeAttempts(parent.NodeAttempts),
+			FlowID:   parent.FlowID, EngineRef: e, Data: snapshot_map(initial_data),
+			NodeStates: snapshotNodeStates(initial_states), NodeAttempts: snapshotNodeAttempts(parent.NodeAttempts),
 			NodeOutputs: map[string]map[string]interface{}{}, Globals: snapshot_map(parent.Globals),
 			InputKeys: parent.InputKeys, MaxSteps: parent.MaxSteps, Depth: parent.Depth,
 			step_count: parent.step_count, checkpoint_disabled: true, stop_node: join_id}
-		for id, values := range parent.NodeOutputs {
+		for id, values := range initial_outputs {
 			child.NodeOutputs[id] = snapshot_map(values)
 		}
 		children[index] = child
@@ -433,19 +439,21 @@ func (e *FlowEngine) run_parallel(parent *ProcessContext, node NodeDefinition, s
 	}
 	for _, child := range children {
 		for id, values := range child.NodeOutputs {
-			if !reflect.DeepEqual(parent.NodeOutputs[id], values) {
+			if !reflect.DeepEqual(initial_outputs[id], values) {
 				parent.NodeOutputs[id] = snapshot_map(values)
 			}
 		}
 		for id, state := range child.NodeStates {
-			parent.NodeStates[id] = state
+			if initial_states[id] != state {
+				parent.NodeStates[id] = state
+			}
 		}
 		for id, attempts := range child.NodeAttempts {
 			if attempts > parent.NodeAttempts[id] {
 				parent.NodeAttempts[id] = attempts
 			}
 		}
-		for key, value := range changed_context_values(parent.Data, child.Data) {
+		for key, value := range changed_context_values(initial_data, child.Data) {
 			parent.Data[key] = value
 		}
 	}

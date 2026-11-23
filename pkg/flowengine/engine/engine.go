@@ -559,12 +559,6 @@ func (e *FlowEngine) driveFlow(ctx *ProcessContext, node_ids []string) error {
 			if err == nil {
 				success, next_node_ids, err = execute_node_safely(node_impl, ctx)
 			}
-			if remaining := 800*time.Millisecond - time.Since(started_at); remaining > 0 {
-				if delay_err := SleepContext(ctx.ExecutionContext(), remaining); delay_err != nil {
-					err = delay_err
-					success = false
-				}
-			}
 			if context_err := ctx.ExecutionContext().Err(); context_err != nil {
 				err = context_err
 				success = false
