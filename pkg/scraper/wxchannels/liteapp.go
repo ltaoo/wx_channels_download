@@ -51,6 +51,9 @@ func inject_liteapp_runtime(ctx *echo.Context, logger *zerolog.Logger, inline bo
 	script := liteapp_runtime_js
 	if !inline {
 		script = `(function () {
+  if (location.origin !== "https://liteapp.weixin.qq.com") {
+    return;
+  }
   const script = document.createElement("script");
   script.setAttribute("data-n", "wxchannels-liteapp-runtime");
   script.crossOrigin = "anonymous";
