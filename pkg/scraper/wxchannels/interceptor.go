@@ -271,7 +271,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 			}
 		},
 	}
-	liteapp_request := new_liteapp_rewriter(plugin_1, logger)
+	liteapp_request := new_liteapp_runtime(plugin_1, logger, inline_assets)
 	plugin_2 := &echo.Plugin{
 		Match: "res.wx.qq.com",
 		OnRequest: func(ctx *echo.Context) {
@@ -295,7 +295,7 @@ func NewInterceptorPlugins(cfg InterceptorConfig, logger *zerolog.Logger) []*ech
 			}
 		},
 		OnResponse: func(ctx *echo.Context) {
-			if inject_liteapp_runtime(ctx, logger) {
+			if inject_liteapp_runtime(ctx, logger, inline_assets) {
 				return
 			}
 			resp_content_type := strings.ToLower(ctx.GetResponseHeader("Content-Type"))

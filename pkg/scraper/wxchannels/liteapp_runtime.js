@@ -1,127 +1,267 @@
 (function () {
-  if (typeof window === "undefined" || typeof document === "undefined" ||
-      location.origin !== "https://liteapp.weixin.qq.com" ||
-      !location.pathname.startsWith("/a/finder/wxalite28e098851253e34f4777f7ca024236fd/") ||
-      window.__wxchannels_liteapp_rewrite__) return;
+  alert(1);
+  if (
+    typeof window === "undefined" ||
+    typeof document === "undefined" ||
+    location.origin !== "https://liteapp.weixin.qq.com" ||
+    !location.pathname.startsWith(
+      "/a/finder/wxalite28e098851253e34f4777f7ca024236fd/",
+    ) ||
+    window.__wxchannels_liteapp_rewrite__
+  ) {
+    return;
+  }
 
   const base = "https://res.wx.qq.com/__assets/wxchannels/liteapp/";
   const model = {
-    stage: "waiting", revision: "", methods: 0, init_events: 0, detail_events: 0,
-    app: null, require: null, factories: new Map(), error: "",
-    register(id, factory) { this.factories.set(id, factory); },
+    stage: "waiting",
+    revision: "direct-wrap-v1-alert-check",
+    methods: 0,
+    init_events: 0,
+    detail_events: 0,
+    app: null,
+    require: null,
+    wrapped: new WeakSet(),
+    error: "",
     async report(stage) {
       this.stage = stage;
       const root = document.querySelector("#app");
       try {
-        await fetch(base + "status", {method: "POST", headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({stage, revision: this.revision, methods: this.methods,
-            init_events: this.init_events, detail_events: this.detail_events,
-            app_preserved: !!this.app && root?.__vue_app__ === this.app, error: this.error})});
-      } catch (error) { console.warn("[wxchannels LiteApp status]", error); }
+        await fetch(base + "status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            stage,
+            revision: this.revision,
+            methods: this.methods,
+            init_events: this.init_events,
+            detail_events: this.detail_events,
+            app_preserved: !!this.app && root?.__vue_app__ === this.app,
+            error: this.error,
+          }),
+        });
+      } catch (error) {
+        console.warn("[wxchannels LiteApp status]", error);
+      }
     },
     capture() {
       const chunks = window.webpackChunk;
-      if (!chunks || !document.querySelector("#app")?.__vue_app__) return false;
-      chunks.push([["wxchannels_mitm_" + Date.now()], {}, (require) => { this.require = require; }]);
+      if (!chunks || !document.querySelector("#app")?.__vue_app__) {
+        return false;
+      }
+      chunks.push([
+        ["wxchannels_mitm_" + Date.now()],
+        {},
+        (require) => {
+          this.require = require;
+        },
+      ]);
       return !!this.require?.m;
     },
     find_api_module() {
       for (const [id, factory] of Object.entries(this.require.m)) {
         const source = factory.toString();
-        if (!source.includes("async finderGetCommentDetail(") ||
-            !source.includes("async finderInit(") || source.includes("new class")) continue;
+        if (
+          !source.includes("async finderGetCommentDetail(") ||
+          !source.includes("async finderInit(") ||
+          source.includes("new class")
+        ) {
+          continue;
+        }
         const exports = this.require(id);
-        if (Object.values(exports).some(value => typeof value === "function" && value.prototype?.finderGetCommentDetail)) {
-          return {id, source, exports};
+        if (
+          Object.values(exports).some(
+            (value) =>
+              typeof value === "function" &&
+              value.prototype?.finderGetCommentDetail,
+          )
+        ) {
+          return { id, exports };
         }
       }
       throw new Error("no supported LiteApp API class module found");
     },
-    install(original, factory) {
-      const replacement = {exports: {}};
-      factory.call(replacement.exports, replacement, replacement.exports, this.require);
+    install(exports) {
+      // Keep the original functions and their closures. Only observe successful results.
+      const data = (result) => result.data;
+      const object = (result) => result.data.object;
+      const events = {
+        finderInit: ["channels:Init", data],
+        finderGetCommentDetail: ["channels:OnFeedProfileLoaded", object],
+        finderGetCommentList: ["channels:FeedCommentListLoaded", data],
+        finderPcFlow: ["channels:PCFlowLoaded", object],
+        finderGetRecommend: ["channels:RecommendFeedsLoaded", object],
+        getRecommendTabsFromService: [
+          "channels:RecommendFeedsLoaded",
+          (result) => {
+            const response = result.resp || result;
+            return response.data ? response.data.object : [];
+          },
+        ],
+        finderGetInteractionedFeedList: [
+          "channels:InteractionedFeedsLoaded",
+          object,
+        ],
+        finderGetFeedH5Url: ["channels:GetFeedH5Url", object],
+        finderUserPage: ["channels:UserFeedsLoaded", object],
+        finderLiveUserPage: ["channels:LiveUserFeedsLoaded", object],
+        finderGetLiveInfo: ["channels:OnLiveProfileLoaded", data],
+        joinLive: ["channels:JoinLive", data],
+      };
       const changes = [];
-      for (const [key, value] of Object.entries(replacement.exports)) {
-        if (typeof value !== "function" || !value.prototype?.finderGetCommentDetail) continue;
-        const target = original[key]?.prototype;
-        if (!target?.finderGetCommentDetail) throw new Error("API class export changed");
-        for (const name of Object.getOwnPropertyNames(value.prototype)) {
-          if (name === "constructor") continue;
-          const descriptor = Object.getOwnPropertyDescriptor(value.prototype, name);
-          if (typeof descriptor.value !== "function" || !descriptor.value.toString().includes("WXU.emit(")) continue;
+      const targets = new Set();
+      const installed = new Set();
+      for (const value of Object.values(exports)) {
+        if (
+          typeof value !== "function" ||
+          !value.prototype?.finderGetCommentDetail
+        ) {
+          continue;
+        }
+        const target = value.prototype;
+        if (targets.has(target)) {
+          continue;
+        }
+        targets.add(target);
+        for (const [name, [event, extract]] of Object.entries(events)) {
           const previous = Object.getOwnPropertyDescriptor(target, name);
-          if (!previous?.configurable || typeof previous.value !== "function") throw new Error("API method cannot be replaced: " + name);
-          changes.push({target, name, descriptor, previous});
+          if (!previous) {
+            continue;
+          }
+          if (!previous.configurable || typeof previous.value !== "function") {
+            throw new Error("API method cannot be replaced: " + name);
+          }
+          installed.add(name);
+          if (this.wrapped.has(previous.value)) {
+            continue;
+          }
+          const original = previous.value;
+          const descriptor = {
+            ...previous,
+            async value(...args) {
+              const result = await Reflect.apply(original, this, args);
+              WXU.emit(event, extract(result));
+              return result;
+            },
+          };
+          changes.push({ target, name, descriptor, previous });
         }
       }
-      if (!changes.some(change => change.name === "finderGetCommentDetail") ||
-          !changes.some(change => change.name === "finderInit")) throw new Error("required API rewrites missing");
+      if (
+        !installed.has("finderGetCommentDetail") ||
+        !installed.has("finderInit")
+      ) {
+        throw new Error("required API wrappers missing");
+      }
+      const applied = [];
       try {
-        for (const change of changes) Object.defineProperty(change.target, change.name, change.descriptor);
+        for (const change of changes) {
+          Object.defineProperty(change.target, change.name, change.descriptor);
+          applied.push(change);
+        }
       } catch (error) {
-        for (const change of changes) Object.defineProperty(change.target, change.name, change.previous);
+        for (const change of applied.reverse()) {
+          Object.defineProperty(change.target, change.name, change.previous);
+        }
         throw error;
       }
-      this.methods = changes.length;
+      for (const change of changes) {
+        this.wrapped.add(change.descriptor.value);
+      }
+      this.methods += changes.length;
     },
     services() {
       const match = Object.entries(this.require.m).find(([, factory]) => {
         const source = factory.toString();
-        return source.includes("async finderPcFlow(") && source.includes("getRecommendTabsFromService(");
+        return (
+          source.includes("async finderPcFlow(") &&
+          source.includes("getRecommendTabsFromService(")
+        );
       });
-      if (!match) throw new Error("LiteApp API service exports unavailable");
+      if (!match) {
+        throw new Error("LiteApp API service exports unavailable");
+      }
       return this.require(match[0]);
     },
     async replay(services) {
-      const api = Object.values(services).find(value => typeof value?.finderGetCommentDetail === "function");
-      if (!api) throw new Error("LiteApp detail service unavailable");
+      const api = Object.values(services).find(
+        (value) => typeof value?.finderGetCommentDetail === "function",
+      );
+      if (!api) {
+        throw new Error("LiteApp detail service unavailable");
+      }
       // The SDK is asynchronous: the original page may have finished its first request already.
       await api.finderInit();
       const properties = this.app.config.globalProperties;
-      const route = properties.$route || properties.$router?.currentRoute?.value;
-      const query = route?.query || Object.fromEntries(new URLSearchParams(location.search));
+      const route =
+        properties.$route || properties.$router?.currentRoute?.value;
+      const query =
+        route?.query ||
+        Object.fromEntries(new URLSearchParams(location.search));
       if (query.eid) {
-        const [error] = await window.fetchFeedProfileWith({eid: query.eid});
-        if (error) throw error;
+        const [error] = await window.fetchFeedProfileWith({ eid: query.eid });
+        if (error) {
+          throw error;
+        }
       } else if (query.oid && query.nid) {
         const url = new URL("https://channels.weixin.qq.com/web/pages/feed");
         url.searchParams.set("oid", query.oid);
         url.searchParams.set("nid", query.nid);
-        const [error] = await window.fetchFeedProfileWith({url: url.href});
-        if (error) throw error;
+        const [error] = await window.fetchFeedProfileWith({ url: url.href });
+        if (error) {
+          throw error;
+        }
       } else {
         const feed = properties.$pinia?._s?.get("feed")?.feed;
         if (feed?.id && feed.objectNonceId) {
-          await api.finderGetCommentDetail({needObject: 1, lastBuffer: "", scene: 146,
-            direction: 2, identityScene: 2, pullScene: 6,
-            objectid: feed.id, objectNonceId: feed.objectNonceId});
+          await api.finderGetCommentDetail({
+            needObject: 1,
+            lastBuffer: "",
+            scene: 146,
+            direction: 2,
+            identityScene: 2,
+            pullScene: 6,
+            objectid: feed.id,
+            objectNonceId: feed.objectNonceId,
+          });
         }
       }
     },
     async start() {
       try {
         for (let attempt = 0; !this.capture(); attempt++) {
-          if (attempt >= 300) throw new Error("LiteApp Webpack or Vue runtime unavailable");
-          await new Promise(resolve => setTimeout(resolve, 100));
+          if (attempt >= 300) {
+            throw new Error("LiteApp Webpack or Vue runtime unavailable");
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
         this.app = document.querySelector("#app").__vue_app__;
-        await this.report("compiling");
+        await this.report("loading");
         const api_module = this.find_api_module();
-        const response = await fetch(base + "compile", {method: "POST", headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({module_id: api_module.id, source: api_module.source})});
+        const response = await fetch(base + "bootstrap");
         const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "API rewrite failed");
-        this.revision = result.revision;
-        await view.load_script(result.url, "wxchannels-liteapp-business-module");
-        const factory = this.factories.get(api_module.id);
-        if (!factory) throw new Error("rewritten business module did not register");
-        if (typeof window.__wx_username === "undefined") window.__wx_username = "";
+        if (!response.ok) {
+          throw new Error(result.error || "LiteApp bootstrap failed");
+        }
+        if (typeof window.__wx_username === "undefined") {
+          window.__wx_username = "";
+        }
         await view.load_bootstrap(result.bootstrap);
-        if (typeof WXU === "undefined") throw new Error("project injection assets did not initialize");
-        if (document.readyState !== "loading") WXE.emit(WXE.Events.DOMContentLoaded, {href: location.href});
-        WXU.on("channels:Init", () => { this.init_events++; void this.report("business_event"); });
-        WXU.on("channels:OnFeedProfileLoaded", () => { this.detail_events++; void this.report("business_event"); });
-        this.install(api_module.exports, factory);
+        if (typeof WXU === "undefined") {
+          throw new Error("project injection assets did not initialize");
+        }
+        if (document.readyState !== "loading") {
+          WXE.emit(WXE.Events.DOMContentLoaded, { href: location.href });
+        }
+        WXU.on("channels:Init", () => {
+          this.init_events++;
+          void this.report("business_event");
+        });
+        WXU.on("channels:OnFeedProfileLoaded", () => {
+          this.detail_events++;
+          void this.report("business_event");
+        });
+        this.install(api_module.exports);
         const services = this.services();
         WXU.emit("channels:APILoaded", services);
         await this.report("installed");
@@ -132,12 +272,15 @@
         console.warn("[wxchannels LiteApp rewrite]", error);
         await this.report("failed");
       }
-    }
+    },
   };
   const view = {
     load_script(url, name) {
       const parsed = new URL(url, "https://res.wx.qq.com");
-      if (parsed.origin !== "https://res.wx.qq.com" || !parsed.pathname.startsWith("/__assets/")) {
+      if (
+        parsed.origin !== "https://res.wx.qq.com" ||
+        !parsed.pathname.startsWith("/__assets/")
+      ) {
         return Promise.reject(new Error("unexpected injection asset URL"));
       }
       return new Promise((resolve, reject) => {
@@ -145,7 +288,10 @@
         script.setAttribute("data-n", name);
         script.src = parsed.href;
         script.onload = resolve;
-        script.onerror = () => reject(new Error("failed to load injection asset: " + parsed.pathname));
+        script.onerror = () =>
+          reject(
+            new Error("failed to load injection asset: " + parsed.pathname),
+          );
         document.head.appendChild(script);
       });
     },
@@ -154,10 +300,16 @@
       for (const node of parsed.head.children) {
         if (node.tagName === "SCRIPT") {
           if (node.hasAttribute("src")) {
-            await this.load_script(node.getAttribute("src"), "wxchannels-liteapp-project-script");
+            await this.load_script(
+              node.getAttribute("src"),
+              "wxchannels-liteapp-project-script",
+            );
           } else {
             const script = document.createElement("script");
-            script.setAttribute("data-n", "wxchannels-liteapp-project-inline-script");
+            script.setAttribute(
+              "data-n",
+              "wxchannels-liteapp-project-inline-script",
+            );
             script.textContent = node.textContent;
             document.head.appendChild(script);
           }
@@ -165,16 +317,22 @@
           const link = document.createElement("link");
           link.setAttribute("data-n", "wxchannels-liteapp-project-stylesheet");
           link.rel = "stylesheet";
-          link.href = new URL(node.getAttribute("href"), "https://res.wx.qq.com").href;
+          link.href = new URL(
+            node.getAttribute("href"),
+            "https://res.wx.qq.com",
+          ).href;
           document.head.appendChild(link);
         } else if (node.tagName === "STYLE") {
           const style = document.createElement("style");
-          style.setAttribute("data-n", "wxchannels-liteapp-project-inline-style");
+          style.setAttribute(
+            "data-n",
+            "wxchannels-liteapp-project-inline-style",
+          );
           style.textContent = node.textContent;
           document.head.appendChild(style);
         }
       }
-    }
+    },
   };
   window.__wxchannels_liteapp_rewrite__ = model;
   void model.start();
