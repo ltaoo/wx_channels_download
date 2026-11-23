@@ -158,6 +158,9 @@ func (d *HermesEngine) CreateTask(raw_url string, options ...TaskOption) *Task {
 		return failed_task(raw_url, fmt.Errorf("invalid download filename: %w", err))
 	}
 	job.Resources[0].UniqueID = filename
+	if strings.TrimSpace(job.Resources[0].Name) == "" {
+		job.Resources[0].Name = filename
+	}
 	if strings.TrimSpace(job.Name) == "" {
 		job.Name = filename
 	}

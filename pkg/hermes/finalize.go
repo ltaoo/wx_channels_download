@@ -31,7 +31,11 @@ func (d *HermesEngine) finish_task(job *TaskJob) error {
 	for i := range job.Resources {
 		r := &job.Resources[i]
 		if r.FilePath == "" {
-			r.FilePath = d.abs_file_path(resource_download_dir(job, r), r.UniqueID)
+			var path_err error
+			r.FilePath, path_err = d.file_path_for_job_resource(job, r, "")
+			if path_err != nil {
+				return path_err
+			}
 		}
 		original_resource_ids = append(original_resource_ids, r.ID)
 		d.logger.Info().
@@ -43,8 +47,14 @@ func (d *HermesEngine) finish_task(job *TaskJob) error {
 			Msg("run - finishTask")
 	}
 
-	// 4. Call postprocessor if set
-	if d.postprocessor != nil {
+	postprocessing_complete := len(job.Resources) > 0
+	for _, resource := range job.Resources {
+		if resource.Extra["_hermes_finalized"] != "1" && resource.Extra["_hermes_postprocessed"] == "" {
+			postprocessing_complete = false
+		}
+	}
+	// A retry must not decrypt or merge already processed files a second time.
+	if d.postprocessor != nil && !postprocessing_complete {
 		d.logger.Info().Int("task_id", task_id).Msg("run - starting postprocessing")
 		if err := d.postprocessor.Process(context.Background(), job); err != nil {
 			d.logger.Error().Int("task_id", task_id).Err(err).Msg("postprocessing failed")
@@ -72,19 +82,37 @@ func (d *HermesEngine) finish_task(job *TaskJob) error {
 				}
 			}
 		}
+		for i := range job.Resources {
+			resource := &job.Resources[i]
+			if resource.DownloadDir == "" {
+				resource.DownloadDir = job.DownloadDir
+			}
+			root, err := filepath.Abs(d.abs_file_path(resource.DownloadDir, ""))
+			if err != nil {
+				return err
+			}
+			output_path, err := filepath.Abs(resource.FilePath)
+			if err != nil {
+				return err
+			}
+			relative_path, err := filepath.Rel(root, output_path)
+			if err != nil || relative_path == "." || relative_path == ".." || strings.HasPrefix(relative_path, ".."+string(filepath.Separator)) {
+				return fmt.Errorf("postprocessed output is outside resource directory: %s", output_path)
+			}
+			if resource.Extra == nil {
+				resource.Extra = make(map[string]string)
+			}
+			resource.Extra["_hermes_postprocessed"] = relative_path
+		}
+		if err := d.persist_resource_outputs(task_id, job.Resources); err != nil {
+			return fmt.Errorf("failed to checkpoint postprocessed outputs: %w", err)
+		}
 	}
 
 	// 5. Rename files from unique_id-based names to display names,
 	// then apply filename template and hook for the final output name.
 	if err := d.finalize_resource_filenames(job); err != nil {
 		return err
-	}
-
-	// 6. Persist the final Resource values. Postprocessing and filename
-	// finalization may have changed Name, MIME Kind and Size. Extension is
-	// derived from Kind and is intentionally not stored.
-	if err := d.persist_resource_outputs(task_id, job.Resources); err != nil {
-		return fmt.Errorf("failed to persist final resource outputs: %w", err)
 	}
 
 	// Rebuild filePaths after possible postprocessing changes
@@ -268,10 +296,24 @@ func BuildFinalResourceName(input FinalResourceNameInput) FinalResourceNameResul
 // postprocessing so that templates/hooks work on clean display names instead of
 // internal unique IDs.
 func (d *HermesEngine) finalize_resource_filenames(job *TaskJob) error {
+	// Reserve final names through the move so concurrent completions cannot choose the same path.
+	d.output_mu.Lock()
+	defer d.output_mu.Unlock()
 	for i := range job.Resources {
 		r := &job.Resources[i]
 		if strings.TrimSpace(r.DownloadDir) == "" {
 			r.DownloadDir = strings.TrimSpace(job.DownloadDir)
+		}
+		if r.Extra["_hermes_finalized"] == "1" && r.FilePath == d.abs_file_path(r.DownloadDir, r.Name) {
+			continue
+		}
+		if strings.EqualFold(r.Type, ResourceTypeStream) {
+			if r.Extra == nil {
+				r.Extra = make(map[string]string)
+			}
+			if r.Extra["_hermes_download_name"] == "" {
+				r.Extra["_hermes_download_name"] = ResourceDownloadName(job.ID, r.ID, r.UniqueID, get_config_bool(job.Config, "duplicate"))
+			}
 		}
 		resolved := BuildFinalResourceName(FinalResourceNameInput{
 			TaskID:           job.ID,
@@ -327,12 +369,16 @@ func (d *HermesEngine) finalize_resource_filenames(job *TaskJob) error {
 		old_path := strings.TrimSpace(r.FilePath)
 		resource_path := resource_download_dir(job, r)
 		if old_path == "" {
-			old_path = d.abs_file_path(resource_path, r.UniqueID)
+			var path_err error
+			old_path, path_err = d.file_path_for_job_resource(job, r, "")
+			if path_err != nil {
+				return path_err
+			}
 		}
 		final_name := preferred_name
 		if filepath.Clean(old_path) != filepath.Clean(d.abs_file_path(resource_path, preferred_name)) {
 			var resolve_err error
-			final_name, resolve_err = d.resolve_duplicate_filename(resource_path, resolved.Directories, resolved.BaseName, resolved.Extension)
+			final_name, resolve_err = d.resolve_duplicate_filename(resource_path, resolved.Directories, resolved.BaseName, resolved.Extension, [2]int{job.ID, r.ID})
 			if resolve_err != nil {
 				d.logger.Warn().
 					Int("resource_id", r.ID).
@@ -345,6 +391,9 @@ func (d *HermesEngine) finalize_resource_filenames(job *TaskJob) error {
 		if old_path == new_path {
 			r.Name = final_name
 			r.FilePath = new_path
+			if err := d.persist_final_resource(job.ID, r); err != nil {
+				return err
+			}
 			continue
 		}
 
@@ -372,8 +421,37 @@ func (d *HermesEngine) finalize_resource_filenames(job *TaskJob) error {
 			Str("old_name", r.Name).
 			Str("new_name", final_name).
 			Msg("run - final filename applied")
-		r.Name = final_name
-		r.FilePath = new_path
+		original_name, original_path := r.Name, r.FilePath
+		r.Name, r.FilePath = final_name, new_path
+		if err := d.persist_final_resource(job.ID, r); err != nil {
+			if rollback_err := os.Rename(new_path, old_path); rollback_err != nil {
+				return fmt.Errorf("%w; output remains at %q: rollback failed: %v", err, new_path, rollback_err)
+			}
+			r.Name, r.FilePath = original_name, original_path
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *HermesEngine) persist_final_resource(task_id int, resource *ResourceJob) error {
+	if resource.Extra == nil {
+		resource.Extra = make(map[string]string)
+	}
+	previous_state, existed := resource.Extra["_hermes_finalized"]
+	postprocessed_path := resource.Extra["_hermes_postprocessed"]
+	resource.Extra["_hermes_finalized"] = "1"
+	delete(resource.Extra, "_hermes_postprocessed")
+	if err := d.persist_resource_outputs(task_id, []ResourceJob{*resource}); err != nil {
+		if existed {
+			resource.Extra["_hermes_finalized"] = previous_state
+		} else {
+			delete(resource.Extra, "_hermes_finalized")
+		}
+		if postprocessed_path != "" {
+			resource.Extra["_hermes_postprocessed"] = postprocessed_path
+		}
+		return err
 	}
 	return nil
 }
@@ -465,6 +543,7 @@ func (d *HermesEngine) persist_resource_outputs(task_id int, resources []Resourc
 		update := ResourceOutputUpdate{
 			TaskID: task_id, ResourceID: r.ID, DownloadDir: r.DownloadDir, ResourceName: r.Name,
 			ResourceKind: r.Kind, ResourceSize: r.Size, ResourceDownloaded: r.Downloaded,
+			ResourceExtra: r.Extra,
 		}
 		d.logger.Info().
 			Int("task_id", task_id).

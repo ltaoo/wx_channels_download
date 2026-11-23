@@ -160,6 +160,9 @@ func Start(cfg *config.Config) error {
 
 	// --- Database store ---
 	task_store := database.NewDBTaskStore(b.DB, logger)
+	if err := task_store.RecoverInterruptedTasks(); err != nil {
+		return fmt.Errorf("恢复中断的下载任务失败: %w", err)
+	}
 	service_account := services.NewAccountService(b.DB)
 	service_content := services.NewContentService(b.DB)
 	service_tag := services.NewTagService(b.DB)

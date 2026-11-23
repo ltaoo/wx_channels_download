@@ -1033,6 +1033,9 @@ func (s *DownloadTaskService) PauseTask(task_id int) (*model.DownloadTask, bool,
 	if s.db == nil {
 		return nil, false, fmt.Errorf("应用未初始化，数据库不可用")
 	}
+	if s.downloader == nil {
+		return nil, false, fmt.Errorf("下载器未初始化")
+	}
 
 	var task model.DownloadTask
 	if err := s.db.Where("id = ?", task_id).First(&task).Error; err != nil {
@@ -1063,7 +1066,14 @@ func (s *DownloadTaskService) PauseTask(task_id int) (*model.DownloadTask, bool,
 	}
 
 	s.downloader.PauseTask(task.Id)
-	task.Status = model.TaskStatusPaused
+	if err := s.db.Model(&model.DownloadTask{}).
+		Where("id = ? AND status IN ?", task.Id, []int{model.TaskStatusPreparing, model.TaskStatusDownloading}).
+		Updates(map[string]any{"status": model.TaskStatusPaused, "updated_at": time.Now().UnixMilli()}).Error; err != nil {
+		return nil, false, fmt.Errorf("保存暂停状态失败: %w", err)
+	}
+	if err := s.db.First(&task, task.Id).Error; err != nil {
+		return nil, false, fmt.Errorf("读取暂停后的状态失败: %w", err)
+	}
 	return &task, false, nil
 }
 

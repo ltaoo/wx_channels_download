@@ -17,7 +17,6 @@ import (
 	"wx_channel/internal/config"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/services"
-	"wx_channel/pkg/hermes"
 )
 
 const download_task_lookup_batch_size = 500
@@ -997,11 +996,7 @@ func (c *APIClient) delete_single_download_task(task_id int, delete_files bool) 
 	return gin.H{"task_id": task_id, "success": true, "status_text": "cancelled"}
 }
 
-type download_task_local_file_candidate struct {
-	Path          string
-	PathSource    string
-	CandidateType string
-}
+type download_task_local_file_candidate = services.DownloadTaskLocalFileCandidate
 
 func (c *APIClient) download_task_local_file_roots(task model.DownloadTask, resource *model.DownloadResource) map[string]string {
 	return c.service_download_task.DownloadTaskLocalFileRoots(task, resource)
@@ -1012,58 +1007,7 @@ func path_within_download_root(root, target string) bool {
 }
 
 func (c *APIClient) download_task_local_file_candidates(task model.DownloadTask, resource model.DownloadResource) []download_task_local_file_candidate {
-	names := []struct {
-		value  string
-		source string
-	}{
-		{value: strings.TrimSpace(resource.Name), source: "resource_name"},
-		{value: strings.TrimSpace(resource.UniqueID), source: "resource_unique_id"},
-	}
-	if names[0].value == "" && names[1].value == "" {
-		return nil
-	}
-	roots := c.download_task_local_file_roots(task, &resource)
-	seen := make(map[string]struct{})
-	candidates := make([]download_task_local_file_candidate, 0, len(roots)*6)
-	for root, source := range roots {
-		for _, name := range names {
-			if name.value == "" {
-				continue
-			}
-			path := name.value
-			if !filepath.IsAbs(path) {
-				path = filepath.Join(root, path)
-			}
-			path = filepath.Clean(path)
-			if !path_within_download_root(root, path) {
-				c.logger.Error().Int("task_id", task.Id).Int("resource_id", resource.Id).Str("resource_name", resource.Name).Str("download_root", root).Str("path", path).Msg("Rejected local file candidate outside download root")
-				continue
-			}
-			path_source := source + ":" + name.source
-			resource_candidates := []download_task_local_file_candidate{
-				{Path: path, PathSource: path_source, CandidateType: "final"},
-				{Path: path + ".part", PathSource: path_source, CandidateType: "partial"},
-			}
-			if strings.EqualFold(resource.Type, model.ResourceTypeStream) {
-				resource_candidates = append(resource_candidates,
-					download_task_local_file_candidate{
-						Path: hermes.StreamRecordingDir(path), PathSource: path_source, CandidateType: "recording",
-					},
-					download_task_local_file_candidate{
-						Path: hermes.StreamPlaybackDir(path), PathSource: path_source, CandidateType: "playback",
-					},
-				)
-			}
-			for _, candidate := range resource_candidates {
-				if _, exists := seen[candidate.Path]; exists {
-					continue
-				}
-				seen[candidate.Path] = struct{}{}
-				candidates = append(candidates, candidate)
-			}
-		}
-	}
-	return candidates
+	return c.service_download_task.DownloadTaskLocalFileCandidates(task, resource)
 }
 
 // handle_check_download_task_files checks a page of task files without delaying the

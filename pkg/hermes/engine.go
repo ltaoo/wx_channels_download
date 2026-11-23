@@ -324,6 +324,7 @@ type ResourceOutputUpdate struct {
 	ResourceKind       string
 	ResourceSize       int64
 	ResourceDownloaded int64
+	ResourceExtra      map[string]string
 }
 
 // ResourceOutputStore persists the final post-processed resource metadata.
@@ -355,6 +356,8 @@ type Preprocessor interface {
 // FILE and COLLECTION are scheduled by the same task, STREAM is handled by the recording scheduler.
 type HermesEngine struct {
 	mu                   sync.Mutex
+	output_mu            sync.Mutex
+	output_owners        map[string][2]int
 	event_mu             sync.RWMutex
 	sem                  chan struct{}
 	resource_sem         chan struct{}
@@ -790,6 +793,15 @@ func (d *HermesEngine) handle_cancellation(task_id int, task_job *TaskJob) {
 
 func (d *HermesEngine) run(info *TaskJob) error {
 	task_id := info.ID
+	defer func() {
+		d.output_mu.Lock()
+		defer d.output_mu.Unlock()
+		for path, owner := range d.output_owners {
+			if owner[0] == task_id {
+				delete(d.output_owners, path)
+			}
+		}
+	}()
 	ctx := info.ctx
 	loaded, err := d.store.LoadTask(task_id)
 	if err != nil {

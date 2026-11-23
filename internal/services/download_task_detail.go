@@ -138,7 +138,16 @@ func (s *DownloadTaskService) DownloadTaskLocalFileRoots(task model.DownloadTask
 }
 
 func (s *DownloadTaskService) StreamPlaybackLocation(task model.DownloadTask, resource model.DownloadResource) (string, []string, error) {
-	output_path := hermes.ResolveOutputPath(s.download_dir, resource.DownloadDir, resource.UniqueID)
+	var task_config map[string]any
+	_ = json.Unmarshal([]byte(task.ConfigJSON), &task_config)
+	duplicate, _ := task_config["duplicate"].(bool)
+	download_name := hermes.ResourceDownloadName(task.Id, resource.Id, resource.UniqueID, duplicate)
+	var extra map[string]string
+	_ = json.Unmarshal([]byte(resource.Extra), &extra)
+	if extra["_hermes_download_name"] != "" {
+		download_name = extra["_hermes_download_name"]
+	}
+	output_path := hermes.ResolveOutputPath(s.download_dir, resource.DownloadDir, download_name)
 	output_path, err := filepath.Abs(output_path)
 	if err != nil {
 		return "", nil, err

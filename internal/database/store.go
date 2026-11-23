@@ -36,13 +36,27 @@ func (s *DBTaskStore) DB() *gorm.DB {
 // Shutdown gracefully marks all in-progress download tasks as paused and
 // deactivates active connections. Call this before shutting down the downloader.
 func (s *DBTaskStore) Shutdown() {
+	if err := s.RecoverInterruptedTasks(); err != nil && s.logger != nil {
+		s.logger.Error().Err(err).Msg("failed to persist interrupted download state")
+	}
+}
+
+// RecoverInterruptedTasks runs before the engine starts, when no persisted task has a live worker.
+func (s *DBTaskStore) RecoverInterruptedTasks() error {
 	now := time.Now().UnixMilli()
-	s.db.Model(&model.DownloadTask{}).
-		Where("status = ? AND deleted_at IS NULL", model.TaskStatusDownloading).
-		Updates(map[string]any{"status": model.TaskStatusPaused, "updated_at": now})
-	s.db.Model(&model.DownloadConnection{}).
-		Where("status = 1 AND deleted_at IS NULL").
-		Updates(map[string]any{"status": 0, "speed": 0, "last_active": now, "updated_at": now})
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.DownloadTask{}).
+			Where("status IN ? AND deleted_at IS NULL", []int{model.TaskStatusPreparing, model.TaskStatusDownloading, model.TaskStatusMerging}).
+			Updates(map[string]any{"status": model.TaskStatusPaused, "updated_at": now}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.DownloadResource{}).Where("speed <> 0").Update("speed", 0).Error; err != nil {
+			return err
+		}
+		return tx.Model(&model.DownloadConnection{}).
+			Where("status = 1 AND deleted_at IS NULL").
+			Updates(map[string]any{"status": 0, "speed": 0, "last_active": now, "updated_at": now}).Error
+	})
 }
 
 func (s *DBTaskStore) debug(format string, args ...interface{}) {
@@ -304,6 +318,10 @@ func (s *DBTaskStore) UpdateResourceOutput(update hermes.ResourceOutputUpdate) e
 	if update.ResourceID <= 0 || strings.TrimSpace(update.ResourceName) == "" {
 		return errors.New("最终资源更新参数无效")
 	}
+	extra_json, err := json.Marshal(update.ResourceExtra)
+	if err != nil {
+		return err
+	}
 	now := time.Now().UnixMilli()
 	query := s.db.Model(&model.DownloadResource{}).Where("id = ?", update.ResourceID)
 	if update.TaskID > 0 {
@@ -315,6 +333,7 @@ func (s *DBTaskStore) UpdateResourceOutput(update hermes.ResourceOutputUpdate) e
 		"kind":         update.ResourceKind,
 		"size":         update.ResourceSize,
 		"downloaded":   update.ResourceDownloaded,
+		"extra":        string(extra_json),
 		"updated_at":   now,
 	})
 	if result.Error != nil {
