@@ -18,7 +18,7 @@ import (
 	"wx_channel/internal/logtime"
 )
 
-var AppVer = "261120"
+var AppVer = "261123"
 var Mode = "debug"
 
 const default_log_max_bytes = 50 * 1024 * 1024 // 50MB
