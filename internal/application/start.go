@@ -41,6 +41,13 @@ func Start(cfg *config.Config) error {
 	fmt.Printf("\nv%v\n", cfg.Version)
 	fmt.Printf("Feedback/Issues https://github.com/ltaoo/wx_channels_download/issues\n\n")
 
+	proxy_enabled := cfg.GetBool("proxy.enabled")
+	if proxy_enabled {
+		if err := services.EnsureLocalCertificate(cfg); err != nil {
+			return err
+		}
+	}
+
 	logger := cfg.Logger()
 	cache_registry, err := cache.NewProviderRegistry(cfg.WorkDir)
 	if err != nil {
@@ -62,7 +69,6 @@ func Start(cfg *config.Config) error {
 	}
 
 	api_cfg := api.NewAPIConfig(cfg)
-	proxy_enabled := cfg.GetBool("proxy.enabled")
 	static_assets := webassets.NewRegistry()
 	if cfg.GlobalScriptPath != "" {
 		global_script_asset_path := frontend.UserGlobalScriptAssetPath(cfg.GlobalScriptPath)
