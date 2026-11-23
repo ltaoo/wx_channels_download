@@ -1,7 +1,6 @@
 package services
 
 import (
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"os"
@@ -15,7 +14,7 @@ import (
 
 var ErrCertificateInitialization = errors.New("证书初始化失败")
 
-// EnsureLocalCertificate requires trusted configured roots and installs new local roots.
+// EnsureLocalCertificate selects a root and installs it unless installation is disabled.
 func EnsureLocalCertificate(cfg *config.Config) error {
 	if err := ensure_local_certificate(cfg, check_certificate_trusted, certificate.InstallCertificate); err != nil {
 		return fmt.Errorf("%w: %w", ErrCertificateInitialization, err)
@@ -24,59 +23,68 @@ func EnsureLocalCertificate(cfg *config.Config) error {
 }
 
 func ensure_local_certificate(cfg *config.Config, check_certificate func([]byte, string) (bool, error), install_certificate func([]byte) error) error {
+	var cert *certificate.CertFileAndKeyFile
+	var cert_path, key_path string
 	if cfg.GetString("cert.file") != "" || cfg.GetString("cert.key") != "" {
-		cert, ok := load_configured_cert_files()
+		var ok bool
+		cert, ok = load_configured_cert_files()
 		if !ok {
 			return fmt.Errorf("无法读取配置的证书和私钥，请检查 cert.file 和 cert.key")
 		}
-		if _, err := tls.X509KeyPair(cert.Cert, cert.PrivateKey); err != nil {
+		if err := validate_root_certificate(cert); err != nil {
 			return fmt.Errorf("配置的证书与私钥无效: %w", err)
 		}
+	} else {
+		cert_info, err := load_trusted_default_cert_files(check_certificate)
+		if err != nil {
+			return err
+		}
+		cert = cert_info.Cert
+		if cert != nil {
+			fmt.Printf("复用已受信任的代理根证书: %s\n", cert.Name)
+			return nil
+		}
+	}
+
+	if cert == nil {
+		cert_pem, key_pem, err := certificate.GenerateRootCA(certificate.LocalCAName, 10*365*24*time.Hour)
+		if err != nil {
+			return fmt.Errorf("生成本机根证书失败: %w", err)
+		}
+		cert_path, key_path, err = WriteGeneratedCertificate(cfg, certificate.LocalCAName, cert_pem, key_pem)
+		if err != nil {
+			return fmt.Errorf("保存本机根证书失败: %w", err)
+		}
+		cert = &certificate.CertFileAndKeyFile{Name: certificate.LocalCAName, Cert: cert_pem, PrivateKey: key_pem}
+	}
+	if !cfg.GetBool("proxy.skipInstallRootCert") {
 		trusted, err := check_certificate(cert.Cert, cert.Name)
 		if err != nil {
-			return fmt.Errorf("检查配置证书 %s 的安装和信任状态失败: %w", cert.Name, err)
+			return fmt.Errorf("检查根证书 %s 信任状态失败: %w", cert.Name, err)
 		}
 		if !trusted {
-			return fmt.Errorf("配置证书 %s 未安装或未受信任，请手动安装并信任后重新启动", cert.Name)
+			if err := install_certificate(cert.Cert); err != nil {
+				return fmt.Errorf("安装根证书 %s 失败: %w", cert.Name, err)
+			}
+			trusted, err = check_certificate(cert.Cert, cert.Name)
+			if err != nil {
+				return fmt.Errorf("验证根证书 %s 信任状态失败: %w", cert.Name, err)
+			}
+			if !trusted {
+				return fmt.Errorf("根证书 %s 安装后仍未受信任，请检查系统证书库", cert.Name)
+			}
 		}
-		return nil
 	}
-
-	cert_info, err := load_trusted_default_cert_files(check_certificate)
-	if err != nil {
-		return err
+	if cert_path != "" {
+		if err := cfg.UpdateAndSave(map[string]interface{}{
+			"cert.file": cert_path,
+			"cert.key":  key_path,
+			"cert.name": cert.Name,
+		}); err != nil {
+			return fmt.Errorf("保存本机证书配置失败: %w", err)
+		}
 	}
-	if cert_info.Cert != nil {
-		return nil
-	}
-
-	name := certificate.LocalCAName
-	cert_pem, key_pem, err := certificate.GenerateRootCA(name, 10*365*24*time.Hour)
-	if err != nil {
-		return fmt.Errorf("生成本机根证书失败: %w", err)
-	}
-	cert_path, key_path, err := WriteGeneratedCertificate(cfg, name, cert_pem, key_pem)
-	if err != nil {
-		return fmt.Errorf("保存本机根证书失败: %w", err)
-	}
-	if err := install_certificate(cert_pem); err != nil {
-		return fmt.Errorf("安装本机根证书失败: %w", err)
-	}
-	trusted, err := check_certificate(cert_pem, name)
-	if err != nil {
-		return fmt.Errorf("验证本机根证书安装和信任状态失败: %w", err)
-	}
-	if !trusted {
-		return fmt.Errorf("本机根证书 %s 安装后仍未受信任，请检查系统证书库", name)
-	}
-	if err := cfg.UpdateAndSave(map[string]interface{}{
-		"cert.file": cert_path,
-		"cert.key":  key_path,
-		"cert.name": name,
-	}); err != nil {
-		return fmt.Errorf("保存本机证书配置失败: %w", err)
-	}
-	fmt.Printf("已生成并安装信任本机专属根证书: %s\n", name)
+	fmt.Printf("代理根证书: %s（自动安装: %t）\n", cert.Name, !cfg.GetBool("proxy.skipInstallRootCert"))
 	return nil
 }
 

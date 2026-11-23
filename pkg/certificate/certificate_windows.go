@@ -96,8 +96,8 @@ func check_certificate_trusted(cert_name string) (bool, error) {
 	return installed, nil
 }
 
-func check_certificate_data_trusted(_ []byte, cert_name string) (bool, error) {
-	return check_certificate_trusted(cert_name)
+func check_certificate_data_trusted(cert_data []byte, _ string) (bool, error) {
+	return CheckHasCertificateData(cert_data)
 }
 
 func uninstall_certificate(name string) error {

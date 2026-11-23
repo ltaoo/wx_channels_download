@@ -162,7 +162,7 @@ function CertificateSettingsDetails(props) {
               return Tooltip(
                 {
                   store: props.restart_tooltip,
-                  content: "删除证书后重启下载器，在未指定证书且没有其他受信任证书可复用时，会为本机生成专属证书并自动安装、信任。",
+                  content: "删除证书后重启下载器，在未指定证书且没有其他受信任证书可复用时，会为本机生成专属证书，并按配置自动安装、信任。",
                   attributes: {
                     n: "settings-certificate-restart-hint",
                     "aria-label": "证书修复说明",

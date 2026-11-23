@@ -398,8 +398,8 @@ func (c *Config) LoadConfig() error {
 		Key:         "proxy.skipInstallRootCert",
 		Type:        ConfigTypeBool,
 		Default:     false,
-		Description: "跳过代理服务自动安装；应用启动仍校验证书，首次生成时仍自动安装并验证信任",
-		Title:       "跳过代理服务证书安装",
+		Description: "跳过根证书自动安装与系统信任校验，仍校验证书和私钥；新生成证书需手动安装并信任",
+		Title:       "跳过根证书自动安装",
 		Group:       "Proxy",
 		HotReload:   true,
 	})

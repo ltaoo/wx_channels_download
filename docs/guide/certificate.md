@@ -16,7 +16,7 @@ title: 手动安装根证书
 curl -o ~/Downloads/root-ca.pem http://127.0.0.1:2022/api/proxy/certificate/pem
 ```
 
-如果配置了自定义证书，必须在启用代理启动前手动安装并信任；否则程序会报错退出。`proxy.skipInstallRootCert: true` 不会绕过启动时的安装和信任校验。首次启动且未配置证书、没有可复用的受信任证书时，程序会自动生成、安装并验证本机证书。请使用本机生成的证书，勿下载或安装旧版共享 SunnyNet 根证书。
+程序优先使用配置的证书，否则依次复用已受信任的 mitmproxy、SunnyNet 根证书；都不可用时才生成本机根证书。默认自动安装未受信任的配置证书或新建证书，验证信任成功后启动。设置 `proxy.skipInstallRootCert: true` 可跳过自动安装与系统信任校验，此时请手动安装并信任。请使用本机导出的证书。
 
 
 ## Windows

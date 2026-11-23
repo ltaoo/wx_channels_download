@@ -46,7 +46,7 @@ func TestEnsureLocalCertificateConfigured(t *testing.T) {
 		{name: "missing key", cert_data: cert_pem, expected_err: "无法读取"},
 		{name: "invalid certificate", cert_data: []byte("invalid"), key_data: key_pem, expected_err: "证书与私钥无效"},
 		{name: "mismatched key", cert_data: cert_pem, key_data: certificate.DefaultCertFiles.PrivateKey, expected_err: "证书与私钥无效"},
-		{name: "not installed or trusted", cert_data: cert_pem, key_data: key_pem, expect_check: true, expected_err: "未安装或未受信任"},
+		{name: "install configured root", cert_data: cert_pem, key_data: key_pem, expect_check: true},
 		{name: "trust check failed", cert_data: cert_pem, key_data: key_pem, expect_check: true, check_err: errors.New("keychain unavailable"), expected_err: "keychain unavailable"},
 		{name: "trusted", cert_data: cert_pem, key_data: key_pem, expect_check: true, trusted: true},
 	} {
@@ -57,7 +57,7 @@ func TestEnsureLocalCertificateConfigured(t *testing.T) {
 			viper.Set("cert.file", cert_path)
 			viper.Set("cert.key", key_path)
 			viper.Set("cert.name", "configured")
-			viper.Set("proxy.skipInstallRootCert", true)
+			viper.Set("proxy.skipInstallRootCert", false)
 			for path, data := range map[string][]byte{cert_path: test_case.cert_data, key_path: test_case.key_data} {
 				if data != nil {
 					if err := os.WriteFile(path, data, 0600); err != nil {
@@ -66,14 +66,18 @@ func TestEnsureLocalCertificateConfigured(t *testing.T) {
 				}
 			}
 			checked := false
+			installed := false
 			err := ensure_local_certificate(cfg, func(data []byte, name string) (bool, error) {
 				checked = true
 				if name != "configured" || !bytes.Equal(data, cert_pem) {
 					t.Fatal("configured certificate was replaced")
 				}
-				return test_case.trusted, test_case.check_err
-			}, func([]byte) error {
-				t.Fatal("configured certificates must never be installed automatically")
+				return test_case.trusted || installed, test_case.check_err
+			}, func(data []byte) error {
+				if !bytes.Equal(data, cert_pem) {
+					t.Fatal("must install the configured certificate")
+				}
+				installed = true
 				return nil
 			})
 			if test_case.expected_err == "" && err != nil || test_case.expected_err != "" && (err == nil || !strings.Contains(err.Error(), test_case.expected_err)) {
@@ -95,8 +99,8 @@ func TestEnsureLocalCertificateReusesTrustedRoots(t *testing.T) {
 		trusted_name    string
 		expected_checks []string
 	}{
-		{name: "SunnyNet first", trusted_name: "SunnyNet", expected_checks: []string{"SunnyNet"}},
-		{name: "mitmproxy fallback", trusted_name: "mitmproxy", expected_checks: []string{"SunnyNet", "mitmproxy"}},
+		{name: "mitmproxy first", trusted_name: "mitmproxy", expected_checks: []string{"mitmproxy"}},
+		{name: "SunnyNet fallback", trusted_name: "SunnyNet", expected_checks: []string{"mitmproxy", "SunnyNet"}},
 	} {
 		t.Run(test_case.name, func(t *testing.T) {
 			cfg := new_certificate_test_config(t)
@@ -141,21 +145,24 @@ func TestEnsureLocalCertificateInstallsBeforeSaving(t *testing.T) {
 		trusted      bool
 		expected_err string
 	}{
-		{name: "installation failed", install_err: errors.New("installation denied"), expected_err: "安装本机根证书失败"},
-		{name: "verification failed", check_err: errors.New("verification unavailable"), expected_err: "验证本机根证书安装和信任状态失败"},
+		{name: "installation failed", install_err: errors.New("installation denied"), expected_err: "安装根证书"},
+		{name: "verification failed", check_err: errors.New("verification unavailable"), expected_err: "验证根证书"},
 		{name: "still untrusted", expected_err: "安装后仍未受信任"},
 		{name: "trusted and saved", trusted: true},
 	} {
 		t.Run(test_case.name, func(t *testing.T) {
 			cfg := new_certificate_test_config(t)
-			viper.Set("proxy.skipInstallRootCert", true)
+			viper.Set("proxy.skipInstallRootCert", false)
 			var installed_cert []byte
 			err := ensure_local_certificate(cfg, func(data []byte, name string) (bool, error) {
 				if name != certificate.LocalCAName {
 					return false, nil
 				}
+				if installed_cert == nil {
+					return false, nil
+				}
 				if !bytes.Equal(data, installed_cert) {
-					t.Fatal("new root must be installed before verifying trust")
+					t.Fatal("verified certificate differs from installed certificate")
 				}
 				return test_case.trusted, test_case.check_err
 			}, func(data []byte) error {
@@ -201,5 +208,94 @@ func TestEnsureLocalCertificateInstallsBeforeSaving(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestEnsureLocalCertificateSkipsInstallation(t *testing.T) {
+	cfg := new_certificate_test_config(t)
+	viper.Set("proxy.skipInstallRootCert", true)
+	check_untrusted := func([]byte, string) (bool, error) { return false, nil }
+	forbidden_install := func([]byte) error {
+		t.Fatal("skipInstallRootCert must prevent automatic installation")
+		return nil
+	}
+	if err := ensure_local_certificate(cfg, check_untrusted, forbidden_install); err != nil {
+		t.Fatal(err)
+	}
+	cert_path := viper.GetString("cert.file")
+	key_path := viper.GetString("cert.key")
+	cert_data, err := os.ReadFile(cert_path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tls.LoadX509KeyPair(cert_path, key_path); err != nil {
+		t.Fatal(err)
+	}
+	key_info, err := os.Stat(key_path)
+	if err != nil || key_info.Mode().Perm() != 0600 {
+		t.Fatalf("private key must have mode 0600: %v", err)
+	}
+	if err := ensure_local_certificate(cfg, func([]byte, string) (bool, error) {
+		t.Fatal("configured certificate trust must not be checked when installation is disabled")
+		return false, nil
+	}, forbidden_install); err != nil {
+		t.Fatal(err)
+	}
+	reused_data, err := os.ReadFile(cert_path)
+	if err != nil || !bytes.Equal(cert_data, reused_data) {
+		t.Fatalf("subsequent startup must reuse the generated root: %v", err)
+	}
+}
+
+func TestTrustedDefaultCertificateSelection(t *testing.T) {
+	for _, test_case := range []struct {
+		name            string
+		mitm_valid      bool
+		trust_err       error
+		expected_source CertSource
+	}{
+		{name: "both trusted prefer mitmproxy", mitm_valid: true, expected_source: CertSourceMitmproxy},
+		{name: "invalid mitmproxy falls back to SunnyNet", expected_source: CertSourceSunnyNet},
+		{name: "trust check error stops selection", mitm_valid: true, trust_err: errors.New("trust store unavailable")},
+	} {
+		t.Run(test_case.name, func(t *testing.T) {
+			cfg := new_certificate_test_config(t)
+			dir := filepath.Join(cfg.WorkDir, ".mitmproxy")
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			cert_data := certificate.DefaultCertFiles.Cert
+			if !test_case.mitm_valid {
+				cert_data = []byte("invalid")
+			}
+			for name, data := range map[string][]byte{"mitmproxy-ca-cert.pem": cert_data, "mitmproxy-ca.pem": certificate.DefaultCertFiles.PrivateKey} {
+				if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			info, err := load_trusted_default_cert_files(func([]byte, string) (bool, error) { return true, test_case.trust_err })
+			if test_case.trust_err != nil {
+				if !errors.Is(err, test_case.trust_err) {
+					t.Fatalf("got %v, want trust error", err)
+				}
+				return
+			}
+			if err != nil || info.Source != test_case.expected_source {
+				t.Fatalf("got source %s, error %v", info.Source, err)
+			}
+		})
+	}
+}
+
+func TestValidateRootCertificate(t *testing.T) {
+	if err := validate_root_certificate(certificate.DefaultCertFiles); err != nil {
+		t.Fatal(err)
+	}
+	cert_pem, key_pem, err := certificate.GenerateRootCA("expired", time.Nanosecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validate_root_certificate(&certificate.CertFileAndKeyFile{Cert: cert_pem, PrivateKey: key_pem}); err == nil {
+		t.Fatal("expired roots must not be used")
 	}
 }

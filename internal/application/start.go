@@ -42,7 +42,7 @@ func Start(cfg *config.Config) error {
 	fmt.Printf("Feedback/Issues https://github.com/ltaoo/wx_channels_download/issues\n\n")
 
 	proxy_enabled := cfg.GetBool("proxy.enabled")
-	if proxy_enabled || cfg.GetString("cert.file") != "" || cfg.GetString("cert.key") != "" {
+	if proxy_enabled {
 		if err := services.EnsureLocalCertificate(cfg); err != nil {
 			return err
 		}

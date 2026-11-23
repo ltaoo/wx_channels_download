@@ -24,11 +24,7 @@ func PrepareStartPrivileges(cfg *config.Config, is_start_command bool) (should_e
 	}
 	need_admin_for_proxy := viper.GetBool("proxy.tun") || buildtags.UsingSunnyNet
 	need_admin_for_certificate := false
-	if cfg.GetString("cert.file") != "" || cfg.GetString("cert.key") != "" {
-		if err := services.EnsureLocalCertificate(cfg); err != nil {
-			return false, err
-		}
-	} else {
+	if !cfg.GetBool("proxy.skipInstallRootCert") {
 		cert_files := services.LoadCertFiles()
 		installed, check_err := certificate.CheckHasCertificateData(cert_files.Cert)
 		if check_err != nil {

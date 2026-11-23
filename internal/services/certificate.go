@@ -193,11 +193,11 @@ func check_certificate_trusted(cert_data []byte, cert_name string) (bool, error)
 }
 
 func load_trusted_default_cert_files(check_certificate func([]byte, string) (bool, error)) (CertFilesInfo, error) {
-	for _, cert := range []*certificate.CertFileAndKeyFile{certificate.DefaultCertFiles, try_load_mitmproxy_cert()} {
+	for _, cert := range []*certificate.CertFileAndKeyFile{try_load_mitmproxy_cert(), certificate.DefaultCertFiles} {
 		if cert == nil {
 			continue
 		}
-		if _, err := tls.X509KeyPair(cert.Cert, cert.PrivateKey); err != nil {
+		if err := validate_root_certificate(cert); err != nil {
 			continue
 		}
 		trusted, err := check_certificate(cert.Cert, cert.Name)
@@ -219,6 +219,24 @@ func load_trusted_default_cert_files(check_certificate func([]byte, string) (boo
 		}, nil
 	}
 	return CertFilesInfo{}, nil
+}
+
+func validate_root_certificate(cert *certificate.CertFileAndKeyFile) error {
+	pair, err := tls.X509KeyPair(cert.Cert, cert.PrivateKey)
+	if err != nil {
+		return err
+	}
+	root, err := x509.ParseCertificate(pair.Certificate[0])
+	if err != nil {
+		return err
+	}
+	if !root.IsCA || !root.BasicConstraintsValid || root.KeyUsage&x509.KeyUsageCertSign == 0 {
+		return fmt.Errorf("证书不能用于签发代理证书")
+	}
+	if now := time.Now(); now.Before(root.NotBefore) || now.After(root.NotAfter) {
+		return fmt.Errorf("根证书不在有效期内")
+	}
+	return nil
 }
 
 // AvailableCert represents a certificate available to the proxy.
