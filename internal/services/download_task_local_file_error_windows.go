@@ -1,6 +1,6 @@
 //go:build windows
 
-package api
+package services
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func isUnaddressableDownloadTaskLocalFileError(err error) bool {
+func is_unaddressable_download_task_local_file_error(err error) bool {
 	// Legacy task records can contain control characters or otherwise invalid
 	// Windows names. Such a path cannot identify an existing filesystem entry,
 	// but CreateFile reports ERROR_INVALID_NAME/ERROR_BAD_PATHNAME rather than

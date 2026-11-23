@@ -45,6 +45,14 @@ const (
 	clear_task_batch_size                = 500
 )
 
+// is_missing_download_task_local_file_error reports errors which prove that a local
+// file candidate cannot exist at the persisted path. Cleanup uses this instead
+// of os.IsNotExist directly because some platforms return a distinct error for
+// paths which cannot name a filesystem entry.
+func is_missing_download_task_local_file_error(err error) bool {
+	return os.IsNotExist(err) || is_unaddressable_download_task_local_file_error(err)
+}
+
 func NewDownloadTaskService(
 	db *gorm.DB,
 	logger *zerolog.Logger,
@@ -1018,6 +1026,7 @@ func (s *DownloadTaskService) CreateTaskByURL(body CreateDownloadTaskByURLBody) 
 			TaskId:      &task_id,
 			DownloadDir: download_dir,
 			Name:        filename,
+			UniqueID:    filename,
 			Kind:        "file",
 			Status:      0,
 			MergeOrder:  0,
