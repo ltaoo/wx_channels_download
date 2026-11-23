@@ -190,6 +190,34 @@ docker run -d \
   wx_video_download:v260607
 ```
 
+## Apple Silicon M4 / M5 视频号播放崩溃
+
+如果视频播放不到一秒就白屏或提示“渲染崩溃”，可能是容器暴露了 SME/SME2、却没有
+SVE，导致微信选择不兼容的 SIMD 指令路径，详见 [issue #570](https://github.com/ltaoo/wx_channels_download/issues/570)。
+
+包含此修复的镜像会在每次启动时检测 CPU 能力，仅在 arm64 的“有 SME、无 SVE”环境下，
+通过 `/etc/ld.so.preload` 加载兼容库，屏蔽 SVE/SME 能力，让微信使用 NEON 路径。
+其他 CPU 环境不会启用。微信会清理渲染子进程的 `LD_PRELOAD` 环境变量，因此仅设置
+该变量无法解决问题。此设置对容器内动态链接的程序生效。
+
+旧镜像需要更新到包含此修复的镜像并重建容器，或按上面的步骤本地构建。保留原来的
+`CONFIG_DIR` 和 hostname，即可沿用账号数据。
+
+受影响的机器上，启动日志应出现 `[wx-hwcap] SME without SVE detected`。播放视频后，
+可用桌面用户检查渲染进程是否加载了兼容库：
+
+```bash
+docker exec -u abc wx_download bash -c '
+  for pid in $(pgrep -x WeChatAppEx); do
+    echo "PID=$pid"
+    grep wx-hide-sve-sme /proc/$pid/maps
+  done
+'
+```
+
+每个渲染进程应有匹配记录。Chromium 的进程保护可能使 root 无法读取 `maps`，
+应使用 `-u abc`。`LD_SHOW_AUXV` 显示内核原始能力，不能用它判断屏蔽是否生效。
+
 ## 持久化文件
 
 - `/config/wx_video_download/config.yaml`

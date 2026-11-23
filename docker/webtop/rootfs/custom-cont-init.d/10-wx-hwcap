@@ -1,0 +1,17 @@
+#!/usr/bin/with-contenv bash
+set -euo pipefail
+
+if [ "$(uname -m)" != "aarch64" ]; then
+    exit 0
+fi
+
+# Remove our previous entry before probing, so restarts read the real capabilities.
+if [ -f /etc/ld.so.preload ]; then
+    sed -i '\|^/usr/local/lib/wx-hide-sve-sme\.so$|d' /etc/ld.so.preload
+fi
+
+if /usr/local/libexec/wx-needs-sme-workaround; then
+    # WeChat strips LD_PRELOAD from renderer environments; use the loader's file.
+    printf '\n%s\n' /usr/local/lib/wx-hide-sve-sme.so >> /etc/ld.so.preload
+    echo "[wx-hwcap] SME without SVE detected; enabled WeChat SIMD compatibility workaround"
+fi

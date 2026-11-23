@@ -1,4 +1,15 @@
-FROM lscr.io/linuxserver/webtop:ubuntu-xfce
+FROM lscr.io/linuxserver/webtop:ubuntu-xfce AS base
+
+FROM base AS hwcap-builder
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev
+COPY hwcap/ /tmp/hwcap/
+RUN mkdir -p /out && \
+    gcc -O2 -Wall -Wextra -Werror -fPIC -shared -o /out/wx-hide-sve-sme.so /tmp/hwcap/hide-sve-sme.c -ldl && \
+    gcc -O2 -Wall -Wextra -Werror -DWX_HWCAP_PROBE -o /out/wx-needs-sme-workaround /tmp/hwcap/hide-sve-sme.c
+
+FROM base
+COPY --from=hwcap-builder /out/wx-hide-sve-sme.so /usr/local/lib/wx-hide-sve-sme.so
+COPY --from=hwcap-builder /out/wx-needs-sme-workaround /usr/local/libexec/wx-needs-sme-workaround
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=zh_CN.UTF-8 \

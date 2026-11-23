@@ -51,6 +51,7 @@ echo "Building wx_video_download for ${PLATFORM}..."
 )
 
 cp "$ROOT_DIR/docker/webtop/Dockerfile" "$BUILD_DIR/Dockerfile"
+cp -R "$ROOT_DIR/docker/webtop/hwcap" "$BUILD_DIR/hwcap"
 cp "$CONFIG_FILE" "$BUILD_DIR/config.yaml"
 cp "$ROOT_DIR/docs/public/SunnyNet.cer" "$BUILD_DIR/SunnyNet.cer"
 if [ -n "$GLOBAL_SCRIPT" ]; then
