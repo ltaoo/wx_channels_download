@@ -2,9 +2,9 @@ import { create_list_model } from "@/list.model.js";
 import {
   fetchContentList,
   fetchAccountList,
-  setContentTags,
 } from "@/biz/request.js";
 import { proxy_image_url } from "@/image-proxy.model.js";
+import { persist_content_tags } from "@/tag.model.js";
 
 import { task_status } from "./content_detail.model.js";
 import { format_time } from "@/utils.js";
@@ -578,10 +578,6 @@ function ContentViewModel(props) {
     tip: props.tip,
     normalize(data, params) { return normalize_content_list_response(data, params.page, params.page_size); },
   });
-  const set_tags_request = new Timeless.kit.RequestCore(
-    setContentTags,
-    { client: props.client },
-  );
 
   const page_count_ = combine(
     { total: total_, pageSize: page_size_ },
@@ -859,13 +855,9 @@ function ContentViewModel(props) {
   function remove_tag(content, tag) {
     const tags_ref = content_tags(content);
     const next = (tags_ref.value || []).filter((item) => item.id !== tag.id);
-    tags_ref.as(next);
-    return set_tags_request
-      .run({
-        content_id: content.id,
-        tag_ids: next.map((item) => item.id),
-      })
-      .catch(() => {});
+    return persist_content_tags({
+      client: props.client, content_id: content.id, tags_ref, next, tip: props.tip,
+    });
   }
 
   const methods = {

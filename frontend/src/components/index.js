@@ -1,5 +1,6 @@
 import { create_list_model, create_list_request } from "@/list.model.js";
 import { request } from "@/biz/request.js";
+import { persist_content_tags } from "@/tag.model.js";
 import { ErrorMessage, LazyImg, ListState, list_scroll_props } from "@/dmui.js";
 
 const Runtime = window.Timeless;
@@ -1179,15 +1180,9 @@ function TagSelectModel(props = {}) {
     },
     { client: props.client },
   );
-  const tag_set_request = new Runtime.kit.RequestCore(
-    (params) => {
-      return request.post("/api/tag/content/set", params);
-    },
-    { client: props.client },
-  );
   const tag_create_request = new Runtime.kit.RequestCore(
     (params) => {
-      request.post("/api/tag/create", params);
+      return request.post("/api/tag/create", params);
     },
     { client: props.client },
   );
@@ -1217,15 +1212,11 @@ function TagSelectModel(props = {}) {
     return search_tags();
   }
 
-  async function persist(next) {
-    selected_.as(next || []);
-    const result = await tag_set_request.run({
-      content_id,
-      tag_ids: (next || []).map((t) => t.id),
+  function persist(next) {
+    return persist_content_tags({
+      client: props.client, content_id, tags_ref: selected_, next,
+      tip: props.tip, on_change: props.onChange,
     });
-    if (!result.error && typeof props.onChange === "function") {
-      props.onChange(next || []);
-    }
   }
 
   function toggle(tag) {
@@ -1283,7 +1274,6 @@ function TagSelectModel(props = {}) {
     popover_hide_unlisten?.();
     list$.destroy();
     tag_list_request.destroy();
-    tag_set_request.destroy();
     tag_create_request.destroy();
     retry$.destroy();
     search_input.destroy();
