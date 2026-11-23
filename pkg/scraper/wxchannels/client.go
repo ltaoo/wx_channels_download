@@ -90,6 +90,9 @@ func is_channels_feed_url(raw_url string) bool {
 }
 
 func (c *Client) fetch_profile_with_share_url(raw_url string) (any, error) {
+	if c.Available() {
+		return c.FetchChannelsFeedProfile("", "", raw_url, "")
+	}
 	cookie, err := c.resolve_sph_cookie()
 	if err != nil {
 		return c.FetchChannelsFeedProfile("", "", raw_url, "")

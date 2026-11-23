@@ -16,17 +16,17 @@ import (
 )
 
 // FinderAutoDownloadCallback is the auto-download callback for Channels (Finder).
-type FinderAutoDownloadCallback func(objectID, objectNonceID string) error
+type FinderAutoDownloadCallback func(object_id, object_nonce_id string) error
 
 // SphAutoDownloadCallback is the auto-download callback for SPH videos.
-type SphAutoDownloadCallback func(sphUrl string) error
+type SphAutoDownloadCallback func(sph_url string) error
 
 // FileHelperHandler is the file transfer helper processor.
 type FileHelperHandler struct {
-	client               *filehelper.Client
-	mu                   sync.RWMutex
-	onFinderAutoDownload FinderAutoDownloadCallback
-	onSphAutoDownload    SphAutoDownloadCallback
+	client                  *filehelper.Client
+	mu                      sync.RWMutex
+	on_finder_auto_download FinderAutoDownloadCallback
+	on_sph_auto_download    SphAutoDownloadCallback
 }
 
 // NewFileHelperHandler creates a new FileHelperHandler.
@@ -38,14 +38,14 @@ func NewFileHelperHandler() *FileHelperHandler {
 func (h *FileHelperHandler) SetFinderAutoDownloadCallback(cb FinderAutoDownloadCallback) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.onFinderAutoDownload = cb
+	h.on_finder_auto_download = cb
 }
 
 // SetSphAutoDownloadCallback sets the auto-download callback for SPH.
 func (h *FileHelperHandler) SetSphAutoDownloadCallback(cb SphAutoDownloadCallback) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.onSphAutoDownload = cb
+	h.on_sph_auto_download = cb
 }
 
 // GetClient returns or creates a filehelper client.
@@ -67,14 +67,14 @@ func (h *FileHelperHandler) GetClient() *filehelper.Client {
 	cfg := &filehelper.Config{
 		CallbackURL: viper.GetString("filehelper.callbackUrl"),
 	}
-	logger := h.getLogger()
+	logger := h.get_logger()
 	h.client = filehelper.NewClient(cfg, logger)
 	return h.client
 }
 
-func (h *FileHelperHandler) getLogger() *zerolog.Logger {
-	nopLogger := zerolog.Nop()
-	return &nopLogger
+func (h *FileHelperHandler) get_logger() *zerolog.Logger {
+	nop_logger := zerolog.Nop()
+	return &nop_logger
 }
 
 // HandleGetQRCode returns a login QR code.
@@ -82,7 +82,7 @@ func (h *FileHelperHandler) getLogger() *zerolog.Logger {
 func (h *FileHelperHandler) HandleGetQRCode(c *gin.Context) {
 	client := h.GetClient()
 
-	qrcodeURL, err := client.GetQRCode()
+	qrcode_url, err := client.GetQRCode()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code": 500,
@@ -95,7 +95,7 @@ func (h *FileHelperHandler) HandleGetQRCode(c *gin.Context) {
 		"code": 0,
 		"msg":  "success",
 		"data": gin.H{
-			"qrcode_url": qrcodeURL,
+			"qrcode_url": qrcode_url,
 			"uuid":       client.GetUUID(),
 		},
 	})
@@ -223,27 +223,27 @@ func (h *FileHelperHandler) HandleSyncMessages(c *gin.Context) {
 
 	// Check if auto-download is enabled
 	if viper.GetBool("filehelper.enabled") && resp != nil && len(resp.AddMsgList) > 0 {
-		h.processFinderMessages(resp.AddMsgList)
+		h.process_finder_messages(resp.AddMsgList)
 	}
 
 	c.JSON(http.StatusOK, resp)
 }
 
-// processFinderMessages processes Channels messages and auto-creates download tasks.
-func (h *FileHelperHandler) processFinderMessages(messages []map[string]interface{}) {
+// process_finder_messages processes Channels messages and auto-creates download tasks.
+func (h *FileHelperHandler) process_finder_messages(messages []map[string]interface{}) {
 	h.mu.RLock()
-	finderCallback := h.onFinderAutoDownload
-	sphCallback := h.onSphAutoDownload
+	finder_callback := h.on_finder_auto_download
+	sph_callback := h.on_sph_auto_download
 	h.mu.RUnlock()
 
 	for _, msg := range messages {
-		msgType, ok := msg["MsgType"].(float64)
+		msg_type, ok := msg["MsgType"].(float64)
 		if !ok {
 			continue
 		}
 
 		// Process app message (Channels / Finder)
-		if int(msgType) == 49 {
+		if int(msg_type) == 49 {
 			// Check if MsgType is 49 (app message)
 			content, ok := msg["Content"].(string)
 			if !ok || content == "" {
@@ -251,33 +251,33 @@ func (h *FileHelperHandler) processFinderMessages(messages []map[string]interfac
 			}
 
 			// Parse Channels message
-			finderData, err := parseFinderFeed(content)
-			if err != nil || finderData == nil {
+			finder_data, err := parse_finder_feed(content)
+			if err != nil || finder_data == nil {
 				continue
 			}
 
 			// Check required fields
-			if finderData.ObjectID == "" || finderData.ObjectNonceID == "" {
+			if finder_data.ObjectID == "" || finder_data.ObjectNonceID == "" {
 				continue
 			}
 
 			// Call callback to create download task
-			if finderCallback != nil {
-				go finderCallback(finderData.ObjectID, finderData.ObjectNonceID)
+			if finder_callback != nil {
+				go finder_callback(finder_data.ObjectID, finder_data.ObjectNonceID)
 			}
 		}
 
 		// Process text message
-		if int(msgType) == 1 {
+		if int(msg_type) == 1 {
 			content, ok := msg["Content"].(string)
 			if !ok || content == "" {
 				continue
 			}
 
 			// Extract SPH URL
-			sphUrl := extractSphUrl(content)
-			if sphUrl != "" && sphCallback != nil {
-				go sphCallback(sphUrl)
+			sph_url := extract_sph_url(content)
+			if sph_url != "" && sph_callback != nil {
+				go sph_callback(sph_url)
 			}
 		}
 	}
@@ -382,8 +382,8 @@ type FinderFeedData struct {
 	ObjectNonceID string `json:"object_nonce_id"`
 }
 
-// finderFeedXML holds the Channels (Finder) XML structure.
-type finderFeedXML struct {
+// finder_feed_xml holds the Channels (Finder) XML structure.
+type finder_feed_xml struct {
 	XMLName       xml.Name `xml:"finderFeed"`
 	Username      string   `xml:"username"`
 	Nickname      string   `xml:"nickname"`
@@ -420,7 +420,7 @@ func (h *FileHelperHandler) HandleParseFinderFeed(c *gin.Context) {
 		return
 	}
 
-	data, err := parseFinderFeed(body.Content)
+	data, err := parse_finder_feed(body.Content)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"code": 1,
@@ -437,23 +437,23 @@ func (h *FileHelperHandler) HandleParseFinderFeed(c *gin.Context) {
 	})
 }
 
-// parseFinderFeed parses Channels XML content.
-func parseFinderFeed(content string) (*FinderFeedData, error) {
+// parse_finder_feed parses Channels XML content.
+func parse_finder_feed(content string) (*FinderFeedData, error) {
 	// Decode HTML entities
 	decoded := html.UnescapeString(content)
 	// Remove <br/> tags
 	decoded = regexp.MustCompile(`<br\s*/?>`).ReplaceAllString(decoded, "")
 
 	// Extract finderFeed node
-	startIdx := strings.Index(decoded, "<finderFeed>")
-	endIdx := strings.Index(decoded, "</finderFeed>")
-	if startIdx == -1 || endIdx == -1 {
+	start_idx := strings.Index(decoded, "<finderFeed>")
+	end_idx := strings.Index(decoded, "</finderFeed>")
+	if start_idx == -1 || end_idx == -1 {
 		return nil, nil
 	}
-	xmlContent := decoded[startIdx : endIdx+len("</finderFeed>")]
+	xml_content := decoded[start_idx : end_idx+len("</finderFeed>")]
 
-	var feed finderFeedXML
-	if err := xml.Unmarshal([]byte(xmlContent), &feed); err != nil {
+	var feed finder_feed_xml
+	if err := xml.Unmarshal([]byte(xml_content), &feed); err != nil {
 		return nil, err
 	}
 
@@ -468,8 +468,8 @@ func parseFinderFeed(content string) (*FinderFeedData, error) {
 	}, nil
 }
 
-// extractSphUrl extracts an SPH URL from text.
-func extractSphUrl(content string) string {
+// extract_sph_url extracts an SPH URL from text.
+func extract_sph_url(content string) string {
 	// Match URLs in the format https://weixin.qq.com/sph/... with possible surrounding whitespace
 	pattern := `https://weixin\.qq\.com/sph/\w+`
 	re := regexp.MustCompile(pattern)

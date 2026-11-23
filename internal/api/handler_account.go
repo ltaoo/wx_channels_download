@@ -60,7 +60,7 @@ func (c *APIClient) handle_influencer_get(ctx *gin.Context) {
 	result.Ok(ctx, influencer)
 }
 
-type influencerCreateBody struct {
+type influencer_create_body struct {
 	Name               string  `json:"name"`
 	Alias              string  `json:"alias"`
 	AvatarURL          string  `json:"avatar_url"`
@@ -79,7 +79,7 @@ type influencerCreateBody struct {
 }
 
 func (c *APIClient) handle_influencer_create(ctx *gin.Context) {
-	var body influencerCreateBody
+	var body influencer_create_body
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return
@@ -114,7 +114,7 @@ func (c *APIClient) handle_influencer_create(ctx *gin.Context) {
 	result.Ok(ctx, influencer)
 }
 
-type influencerUpdateBody struct {
+type influencer_update_body struct {
 	Name               string  `json:"name"`
 	Alias              string  `json:"alias"`
 	AvatarURL          string  `json:"avatar_url"`
@@ -139,7 +139,7 @@ func (c *APIClient) handle_influencer_update(ctx *gin.Context) {
 		result.Err(ctx, 400, "invalid id")
 		return
 	}
-	var body influencerUpdateBody
+	var body influencer_update_body
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, err.Error())
 		return

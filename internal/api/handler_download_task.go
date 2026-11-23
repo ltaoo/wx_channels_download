@@ -9,14 +9,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"wx_channel/internal/adapter"
 	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/config"
-	"wx_channel/internal/database"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/services"
 	"wx_channel/pkg/hermes"
@@ -40,13 +38,13 @@ type DownloadTaskCreateItem struct {
 	Data any    `json:"data"`
 }
 
-// taskV1IDsBody is a request body with task_ids for batch operations (start/pause/resume).
-type taskV1IDsBody struct {
+// task_v1_ids_body is a request body with task_ids for batch operations (start/pause/resume).
+type task_v1_ids_body struct {
 	TaskIDs []int `json:"task_ids"`
 }
 
-// deleteDownloadTasksBody includes task_ids and the caller's local-file cleanup intent.
-type deleteDownloadTasksBody struct {
+// delete_download_tasks_body includes task_ids and the caller's local-file cleanup intent.
+type delete_download_tasks_body struct {
 	TaskIDs     []int `json:"task_ids"`
 	DeleteFiles bool  `json:"delete_files"`
 }
@@ -60,21 +58,21 @@ type clear_all_download_tasks_body struct {
 	DeleteFiles bool `json:"delete_files"`
 }
 
-// checkDownloadTaskFileItem identifies one file returned by the task list API.
+// check_download_task_file_item identifies one file returned by the task list API.
 // Name and OutputPath are accepted as part of that record, but the server uses
 // the persisted task/resource relationship to resolve a safe local path.
-type checkDownloadTaskFileItem struct {
+type check_download_task_file_item struct {
 	TaskID     int    `json:"task_id"`
 	ID         int    `json:"id"`
 	Name       string `json:"name"`
 	OutputPath string `json:"output_path"`
 }
 
-type checkDownloadTaskFilesBody struct {
-	Files []checkDownloadTaskFileItem `json:"files"`
+type check_download_task_files_body struct {
+	Files []check_download_task_file_item `json:"files"`
 }
 
-type checkDownloadTaskFileResult struct {
+type check_download_task_file_result struct {
 	TaskID  int    `json:"task_id"`
 	ID      int    `json:"id"`
 	Checked bool   `json:"checked"`
@@ -88,15 +86,7 @@ type CreateDownloadTaskByURLRequest struct {
 }
 
 // CreateDownloadTaskByURLBody is a single item in the create-by-URL request.
-type CreateDownloadTaskByURLBody struct {
-	URL          string         `json:"url"`          // resource download URL, required
-	DownloadDir  string         `json:"download_dir"` // download directory
-	Filename     string         `json:"filename"`     // filename (optional, extracted from URL by default)
-	Config       map[string]any `json:"config"`       // custom download config
-	AutoStart    *bool          `json:"auto_start"`
-	ParentTaskID *int           `json:"parent_task_id"`
-	RelationType string         `json:"relation_type"`
-}
+type CreateDownloadTaskByURLBody = services.CreateDownloadTaskByURLBody
 
 const (
 	download_existing_action_skip      = "skip"
@@ -295,24 +285,24 @@ func find_video_variant_resource(resources []*adapter.ResourceInfo, variant mode
 	return matched, nil
 }
 
-// prepareDownloadTaskByURLSingle previews a download task created by resource URL (no DB write, no download start).
-func (c *APIClient) prepareDownloadTaskByURLSingle(body CreateDownloadTaskByURLBody) (gin.H, error) {
+// prepare_download_task_by_url_single previews a download task created by resource URL (no DB write, no download start).
+func (c *APIClient) prepare_download_task_by_url_single(body CreateDownloadTaskByURLBody) (gin.H, error) {
 	if body.URL == "" {
 		return nil, fmt.Errorf("url 不能为空")
 	}
 
-	parsedURL, err := url.Parse(body.URL)
-	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
+	parsed_url, err := url.Parse(body.URL)
+	if err != nil || parsed_url.Scheme == "" || parsed_url.Host == "" {
 		return nil, fmt.Errorf("无效的下载地址")
 	}
 
-	protocol := strings.ToUpper(parsedURL.Scheme)
+	protocol := strings.ToUpper(parsed_url.Scheme)
 
 	requested_download_dir := body.DownloadDir
 	if requested_download_dir == "" {
 		requested_download_dir, _ = body.Config["download_dir"].(string)
 	}
-	saveDir, err := c.resolve_download_dir(requested_download_dir)
+	save_dir, err := c.resolve_download_dir(requested_download_dir)
 	if err != nil {
 		return nil, fmt.Errorf("准备下载目录失败: %w", err)
 	}
@@ -321,7 +311,7 @@ func (c *APIClient) prepareDownloadTaskByURLSingle(body CreateDownloadTaskByURLB
 		filename, _ = body.Config["filename"].(string)
 	}
 	if filename == "" {
-		base := filepath.Base(parsedURL.Path)
+		base := filepath.Base(parsed_url.Path)
 		if base != "" && base != "." && base != "/" {
 			if decoded, err := url.QueryUnescape(base); err == nil {
 				filename = decoded
@@ -338,7 +328,7 @@ func (c *APIClient) prepareDownloadTaskByURLSingle(body CreateDownloadTaskByURLB
 		return nil, fmt.Errorf("无法确定下载文件名")
 	}
 
-	download_dir := download_task_download_dir(saveDir)
+	download_dir := download_task_download_dir(save_dir)
 
 	return gin.H{
 		"url":          body.URL,
@@ -375,7 +365,7 @@ func (c *APIClient) handle_prepare_download_task_by_url(ctx *gin.Context) {
 
 	previews := make([]gin.H, 0, len(req.Objects))
 	for _, body := range req.Objects {
-		data, err := c.prepareDownloadTaskByURLSingle(body)
+		data, err := c.prepare_download_task_by_url_single(body)
 		if err != nil {
 			previews = append(previews, gin.H{"success": false, "error": err.Error()})
 		} else {
@@ -626,141 +616,19 @@ func (c *APIClient) handle_create_download_task(ctx *gin.Context) {
 	result.Ok(ctx, gin.H{"tasks": tasks, "ids": ids})
 }
 
-// createDownloadTaskByURLSingle creates a single download task by resource URL.
-func (c *APIClient) createDownloadTaskByURLSingle(body CreateDownloadTaskByURLBody) (gin.H, error) {
-	if body.URL == "" {
-		return nil, fmt.Errorf("url 不能为空")
+// create_download_task_by_url_single uses the shared URL task persistence and lifecycle.
+func (c *APIClient) create_download_task_by_url_single(body CreateDownloadTaskByURLBody) (gin.H, error) {
+	if c.download_task_service == nil {
+		return nil, fmt.Errorf("下载任务服务未初始化")
 	}
-
-	parsedURL, err := url.Parse(body.URL)
-	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
-		return nil, fmt.Errorf("无效的下载地址")
-	}
-
-	protocol := strings.ToUpper(parsedURL.Scheme)
-	requested_download_dir := body.DownloadDir
-	if strings.TrimSpace(requested_download_dir) == "" {
-		requested_download_dir, _ = body.Config["download_dir"].(string)
-	}
-	save_dir, err := c.resolve_download_dir(requested_download_dir)
+	created, err := c.download_task_service.CreateTaskByURL(body)
 	if err != nil {
-		return nil, fmt.Errorf("准备下载目录失败: %w", err)
-	}
-
-	filename := body.Filename
-	if filename == "" {
-		filename, _ = body.Config["filename"].(string)
-	}
-	if filename == "" {
-		// Extract filename from URL path
-		base := filepath.Base(parsedURL.Path)
-		if base != "" && base != "." && base != "/" {
-			if decoded, err := url.QueryUnescape(base); err == nil {
-				filename = decoded
-			} else {
-				filename = base
-			}
-		}
-	}
-	// If filename still cannot be extracted, use the URL as the name
-	if filename == "" {
-		filename = body.URL
-	}
-	filename = filepath.Base(filename)
-	if filename == "" || filename == "." || filename == ".." || filename == string(filepath.Separator) {
-		return nil, fmt.Errorf("无法确定下载文件名")
-	}
-
-	taskName := filename
-
-	// Store the task-specific output container together with the source URL.
-	task_config := make(map[string]any, len(body.Config)+3)
-	for key, value := range body.Config {
-		task_config[key] = value
-	}
-	task_config["url"] = body.URL
-	task_config["download_dir"] = save_dir
-	if filename != "" {
-		task_config["filename"] = filename
-	}
-	config_json, err := json.Marshal(task_config)
-	if err != nil {
-		return nil, fmt.Errorf("构建下载配置失败: %w", err)
-	}
-
-	// Database not initialized
-	if c.db == nil {
-		return nil, fmt.Errorf("应用未初始化，数据库不可用")
-	}
-
-	now := time.Now().UnixMilli()
-
-	// Create task
-	task := model.DownloadTask{
-		Name:       taskName,
-		Status:     model.TaskStatusWaiting,
-		ConfigJSON: string(config_json),
-	}
-	task.CreatedAt = now
-	task.UpdatedAt = now
-
-	if err := database.ApplyTaskLineage(c.db, &task, body.ParentTaskID, body.RelationType); err != nil {
 		return nil, err
 	}
-	if err := c.db.Create(&task).Error; err != nil {
-		c.logger.Error().Str("url", body.URL).Err(err).Msg("URL download task failed to write to database")
-		return nil, fmt.Errorf("创建下载任务失败: %w", err)
-	}
-	if err := database.FinalizeTaskRoot(c.db, &task); err != nil {
-		return nil, err
-	}
-
-	c.logger.Info().Int("task_id", task.Id).Str("url", body.URL).Str("download_dir", save_dir).Msg("URL download task written to database")
-	// Create resource
-	task_id := task.Id
-	resource := model.DownloadResource{
-		TaskId:      &task_id,
-		DownloadDir: save_dir,
-		Name:        filename,
-		Kind:        "file",
-		Status:      0,
-		MergeOrder:  0,
-	}
-	resource.CreatedAt = now
-	resource.UpdatedAt = now
-
-	if err := c.db.Create(&resource).Error; err != nil {
-		return nil, fmt.Errorf("创建资源失败: %w", err)
-	}
-
-	// Create endpoint
-	endpoint := model.DownloadEndpoint{
-		ResourceId: resource.Id,
-		Protocol:   protocol,
-		URL:        body.URL,
-		Priority:   0,
-		Enabled:    1,
-		Status:     0,
-	}
-	endpoint.CreatedAt = now
-	endpoint.UpdatedAt = now
-
-	if err := c.db.Create(&endpoint).Error; err != nil {
-		return nil, fmt.Errorf("创建端点失败: %w", err)
-	}
-
-	// Hand off to scheduler when requested. Otherwise the persisted task remains waiting.
-	if body.AutoStart == nil || *body.AutoStart {
-		if err := c.download_task_service.StartCreatedTask(task.Id); err != nil {
-			return nil, fmt.Errorf("启动下载任务失败: %w", err)
-		}
-		task.Status = model.TaskStatusPreparing // Hermes has written to DB; here we only update the in-memory variable for the response
-	}
-
 	return gin.H{
-		"task":     task,
-		"resource": resource,
-		"endpoint": endpoint,
+		"task":     created.Task,
+		"resource": created.Resource,
+		"endpoint": created.Endpoint,
 	}, nil
 }
 
@@ -784,7 +652,7 @@ func (c *APIClient) handle_create_download_task_by_url(ctx *gin.Context) {
 	success_count := 0
 	fail_count := 0
 	for _, body := range req.Objects {
-		data, err := c.createDownloadTaskByURLSingle(body)
+		data, err := c.create_download_task_by_url_single(body)
 		if err != nil {
 			c.logger.Warn().Str("url", body.URL).Err(err).Msg("Failed to create URL download task")
 			tasks = append(tasks, gin.H{"success": false, "error": err.Error()})
@@ -808,7 +676,7 @@ func (c *APIClient) handle_create_download_task_by_url(ctx *gin.Context) {
 // handle_start_download_task batch-starts download tasks.
 // POST /api/v1/download_task/start
 func (c *APIClient) handle_start_download_task(ctx *gin.Context) {
-	var body taskV1IDsBody
+	var body task_v1_ids_body
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		c.logger.Warn().Str("api", "POST /api/v1/download_task/start").Err(err).Msg("Failed to parse request body")
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
@@ -909,7 +777,7 @@ func (c *APIClient) load_download_tasks_by_id(task_ids []int) (map[int]model.Dow
 // handle_pause_download_task batch-pauses download tasks.
 // POST /api/v1/download_task/pause
 func (c *APIClient) handle_pause_download_task(ctx *gin.Context) {
-	var body taskV1IDsBody
+	var body task_v1_ids_body
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
 		return
@@ -970,7 +838,7 @@ func (c *APIClient) handle_pause_download_task(ctx *gin.Context) {
 // handle_resume_download_task batch-resumes download tasks.
 // POST /api/v1/download_task/resume
 func (c *APIClient) handle_resume_download_task(ctx *gin.Context) {
-	var body taskV1IDsBody
+	var body task_v1_ids_body
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
 		return
@@ -1024,7 +892,7 @@ func (c *APIClient) handle_resume_download_task(ctx *gin.Context) {
 // handle_retry_download_task batch-retries failed/cancelled download tasks.
 // POST /api/v1/download_task/retry
 func (c *APIClient) handle_retry_download_task(ctx *gin.Context) {
-	var body taskV1IDsBody
+	var body task_v1_ids_body
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		c.logger.Warn().Str("api", "POST /api/v1/download_task/retry").Err(err).Msg("Failed to parse request body")
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
@@ -1087,7 +955,7 @@ func (c *APIClient) handle_retry_download_task(ctx *gin.Context) {
 // handle_delete_download_task batch-deletes download tasks.
 // POST /api/v1/download_task/delete
 func (c *APIClient) handle_delete_download_task(ctx *gin.Context) {
-	var body deleteDownloadTasksBody
+	var body delete_download_tasks_body
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		c.logger.Warn().Str("api", "POST /api/v1/download_task/delete").Err(err).Msg("Failed to parse request body")
 		result.Err(ctx, 400, "不合法的请求参数: "+err.Error())
@@ -1106,27 +974,27 @@ func (c *APIClient) handle_delete_download_task(ctx *gin.Context) {
 	c.logger.Info().Str("api", "POST /api/v1/download_task/delete").Int("task_count", len(body.TaskIDs)).Bool("delete_files", body.DeleteFiles).Msg("Received batch delete download task request")
 
 	results := make([]gin.H, 0, len(body.TaskIDs))
-	for _, taskID := range body.TaskIDs {
-		r := c.deleteSingleDownloadTask(taskID, body.DeleteFiles)
+	for _, task_id := range body.TaskIDs {
+		r := c.delete_single_download_task(task_id, body.DeleteFiles)
 		results = append(results, r)
 	}
 
 	result.Ok(ctx, gin.H{"results": results})
 }
 
-// deleteSingleDownloadTask performs full deletion for a single download task
+// delete_single_download_task performs full deletion for a single download task
 // and returns a result entry for the batch response.
-func (c *APIClient) deleteSingleDownloadTask(taskID int, deleteFiles bool) gin.H {
-	if taskID <= 0 {
-		c.logger.Warn().Str("api", "POST /api/v1/download_task/delete").Int("task_id", taskID).Bool("delete_files", deleteFiles).Msg("Rejected invalid task ID")
-		return gin.H{"task_id": taskID, "success": false, "error": "task_id 无效"}
+func (c *APIClient) delete_single_download_task(task_id int, delete_files bool) gin.H {
+	if task_id <= 0 {
+		c.logger.Warn().Str("api", "POST /api/v1/download_task/delete").Int("task_id", task_id).Bool("delete_files", delete_files).Msg("Rejected invalid task ID")
+		return gin.H{"task_id": task_id, "success": false, "error": "task_id 无效"}
 	}
-	if err := c.download_task_service.DeleteTaskWithFiles(taskID, deleteFiles); err != nil {
-		c.logger.Error().Int("task_id", taskID).Bool("delete_files", deleteFiles).Err(err).Msg("Download task deletion failed")
-		return gin.H{"task_id": taskID, "success": false, "error": err.Error()}
+	if err := c.download_task_service.DeleteTaskWithFiles(task_id, delete_files); err != nil {
+		c.logger.Error().Int("task_id", task_id).Bool("delete_files", delete_files).Err(err).Msg("Download task deletion failed")
+		return gin.H{"task_id": task_id, "success": false, "error": err.Error()}
 	}
 
-	return gin.H{"task_id": taskID, "success": true, "status_text": "cancelled"}
+	return gin.H{"task_id": task_id, "success": true, "status_text": "cancelled"}
 }
 
 type download_task_local_file_candidate struct {
@@ -1248,13 +1116,13 @@ func (c *APIClient) handle_check_download_task_files(ctx *gin.Context) {
 		return
 	}
 
-	var body checkDownloadTaskFilesBody
+	var body check_download_task_files_body
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "请求参数错误: "+err.Error())
 		return
 	}
 	if len(body.Files) == 0 {
-		result.Ok(ctx, gin.H{"files": []checkDownloadTaskFileResult{}})
+		result.Ok(ctx, gin.H{"files": []check_download_task_file_result{}})
 		return
 	}
 	if len(body.Files) > 5000 {
@@ -1262,64 +1130,64 @@ func (c *APIClient) handle_check_download_task_files(ctx *gin.Context) {
 		return
 	}
 
-	taskIDs := make([]int, 0, len(body.Files))
-	resourceIDs := make([]int, 0, len(body.Files))
-	seenTaskIDs := make(map[int]struct{})
-	seenResourceIDs := make(map[int]struct{})
+	task_ids := make([]int, 0, len(body.Files))
+	resource_ids := make([]int, 0, len(body.Files))
+	seen_task_ids := make(map[int]struct{})
+	seen_resource_ids := make(map[int]struct{})
 	for _, file := range body.Files {
 		if file.TaskID > 0 {
-			if _, exists := seenTaskIDs[file.TaskID]; !exists {
-				seenTaskIDs[file.TaskID] = struct{}{}
-				taskIDs = append(taskIDs, file.TaskID)
+			if _, exists := seen_task_ids[file.TaskID]; !exists {
+				seen_task_ids[file.TaskID] = struct{}{}
+				task_ids = append(task_ids, file.TaskID)
 			}
 		}
 		if file.ID > 0 {
-			if _, exists := seenResourceIDs[file.ID]; !exists {
-				seenResourceIDs[file.ID] = struct{}{}
-				resourceIDs = append(resourceIDs, file.ID)
+			if _, exists := seen_resource_ids[file.ID]; !exists {
+				seen_resource_ids[file.ID] = struct{}{}
+				resource_ids = append(resource_ids, file.ID)
 			}
 		}
 	}
 
 	var tasks []model.DownloadTask
-	if len(taskIDs) > 0 {
-		if err := c.db.Where("id IN ? AND deleted_at IS NULL", taskIDs).Find(&tasks).Error; err != nil {
+	if len(task_ids) > 0 {
+		if err := c.db.Where("id IN ? AND deleted_at IS NULL", task_ids).Find(&tasks).Error; err != nil {
 			result.Err(ctx, 500, "查询下载任务失败: "+err.Error())
 			return
 		}
 	}
 	var resources []model.DownloadResource
-	if len(resourceIDs) > 0 {
-		if err := c.db.Where("id IN ? AND deleted_at IS NULL", resourceIDs).Find(&resources).Error; err != nil {
+	if len(resource_ids) > 0 {
+		if err := c.db.Where("id IN ? AND deleted_at IS NULL", resource_ids).Find(&resources).Error; err != nil {
 			result.Err(ctx, 500, "查询下载文件失败: "+err.Error())
 			return
 		}
 	}
 
-	taskByID := make(map[int]model.DownloadTask, len(tasks))
+	task_by_id := make(map[int]model.DownloadTask, len(tasks))
 	for _, task := range tasks {
-		taskByID[task.Id] = task
+		task_by_id[task.Id] = task
 	}
-	resourceByID := make(map[int]model.DownloadResource, len(resources))
+	resource_by_id := make(map[int]model.DownloadResource, len(resources))
 	for _, resource := range resources {
-		resourceByID[resource.Id] = resource
+		resource_by_id[resource.Id] = resource
 	}
 
-	checkedFiles := make([]checkDownloadTaskFileResult, 0, len(body.Files))
+	checked_files := make([]check_download_task_file_result, 0, len(body.Files))
 	for _, file := range body.Files {
-		checked := checkDownloadTaskFileResult{TaskID: file.TaskID, ID: file.ID}
-		task, taskExists := taskByID[file.TaskID]
-		resource, resourceExists := resourceByID[file.ID]
-		if !taskExists || !resourceExists || resource.TaskId == nil || *resource.TaskId != task.Id {
+		checked := check_download_task_file_result{TaskID: file.TaskID, ID: file.ID}
+		task, task_exists := task_by_id[file.TaskID]
+		resource, resource_exists := resource_by_id[file.ID]
+		if !task_exists || !resource_exists || resource.TaskId == nil || *resource.TaskId != task.Id {
 			checked.Error = "下载文件记录不存在"
-			checkedFiles = append(checkedFiles, checked)
+			checked_files = append(checked_files, checked)
 			continue
 		}
 
 		candidates := c.download_task_local_file_candidates(task, resource)
 		if len(candidates) == 0 {
 			checked.Error = "无法解析本地文件路径"
-			checkedFiles = append(checkedFiles, checked)
+			checked_files = append(checked_files, checked)
 			continue
 		}
 
@@ -1344,10 +1212,10 @@ func (c *APIClient) handle_check_download_task_files(ctx *gin.Context) {
 				break
 			}
 		}
-		checkedFiles = append(checkedFiles, checked)
+		checked_files = append(checked_files, checked)
 	}
 
-	result.Ok(ctx, gin.H{"files": checkedFiles})
+	result.Ok(ctx, gin.H{"files": checked_files})
 }
 
 // handle_list_download_task lists download tasks.
@@ -1357,8 +1225,8 @@ func (c *APIClient) handle_list_download_task(ctx *gin.Context) {
 		result.Err(ctx, 500, "应用未初始化，数据库不可用")
 		return
 	}
-	if taskID, err := strconv.Atoi(ctx.Query("task_id")); err == nil && taskID > 0 {
-		record, err := c.download_task_service.BuildTaskRecord(taskID)
+	if task_id, err := strconv.Atoi(ctx.Query("task_id")); err == nil && task_id > 0 {
+		record, err := c.download_task_service.BuildTaskRecord(task_id)
 		if err != nil {
 			result.Err(ctx, 500, "查询下载任务失败: "+err.Error())
 			return
@@ -1372,28 +1240,28 @@ func (c *APIClient) handle_list_download_task(ctx *gin.Context) {
 	}
 
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("page_size", "20"))
-	statusFilter := ctx.Query("status")
+	page_size, _ := strconv.Atoi(ctx.DefaultQuery("page_size", "20"))
+	status_filter := ctx.Query("status")
 
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
+	if page_size < 1 || page_size > 100 {
+		page_size = 20
 	}
 
 	var tasks []model.DownloadTask
 
 	query := c.db.Model(&model.DownloadTask{}).Where("deleted_at IS NULL")
-	if parentTaskID, err := strconv.Atoi(ctx.Query("parent_task_id")); err == nil && parentTaskID > 0 {
-		query = query.Where("parent_task_id = ?", parentTaskID)
+	if parent_task_id, err := strconv.Atoi(ctx.Query("parent_task_id")); err == nil && parent_task_id > 0 {
+		query = query.Where("parent_task_id = ?", parent_task_id)
 	}
-	if rootTaskID, err := strconv.Atoi(ctx.Query("root_task_id")); err == nil && rootTaskID > 0 {
-		query = query.Where("root_task_id = ?", rootTaskID)
+	if root_task_id, err := strconv.Atoi(ctx.Query("root_task_id")); err == nil && root_task_id > 0 {
+		query = query.Where("root_task_id = ?", root_task_id)
 	}
 	statuses := make([]int, 0)
-	if statusFilter != "" {
-		parts := strings.Split(statusFilter, ",")
+	if status_filter != "" {
+		parts := strings.Split(status_filter, ",")
 		for _, p := range parts {
 			if v, err := strconv.Atoi(strings.TrimSpace(p)); err == nil {
 				statuses = append(statuses, v)
@@ -1407,7 +1275,7 @@ func (c *APIClient) handle_list_download_task(ctx *gin.Context) {
 	}
 
 	// stats: count of tasks grouped by status (same base filters minus status filter)
-	stats, err := c.queryTaskStats(ctx)
+	stats, err := c.query_task_stats(ctx)
 	if err != nil {
 		result.Err(ctx, 500, "查询下载任务统计失败: "+err.Error())
 		return
@@ -1419,8 +1287,8 @@ func (c *APIClient) handle_list_download_task(ctx *gin.Context) {
 			platform_id, status, source_url, cover_url, cover_width, cover_height,
 			config_json, metadata_json, error_message, created_at, updated_at`).
 		Order("id DESC").
-		Offset((page - 1) * pageSize).
-		Limit(pageSize).
+		Offset((page - 1) * page_size).
+		Limit(page_size).
 		Find(&tasks).Error; err != nil {
 		result.Err(ctx, 500, "查询下载任务失败: "+err.Error())
 		return
@@ -1436,7 +1304,7 @@ func (c *APIClient) handle_list_download_task(ctx *gin.Context) {
 		"list":      list,
 		"total":     total,
 		"page":      page,
-		"page_size": pageSize,
+		"page_size": page_size,
 		"stats":     stats,
 	})
 }
@@ -1458,22 +1326,22 @@ func download_task_stats_total(stats map[int]int64, statuses []int) int64 {
 	return total
 }
 
-// queryTaskStats returns a map of status -> count for download tasks, respecting
+// query_task_stats returns a map of status -> count for download tasks, respecting
 // parent_task_id and root_task_id filters (but not status filter).
-func (c *APIClient) queryTaskStats(ctx *gin.Context) (map[int]int64, error) {
+func (c *APIClient) query_task_stats(ctx *gin.Context) (map[int]int64, error) {
 	query := c.db.Model(&model.DownloadTask{}).Where("deleted_at IS NULL")
-	if parentTaskID, err := strconv.Atoi(ctx.Query("parent_task_id")); err == nil && parentTaskID > 0 {
-		query = query.Where("parent_task_id = ?", parentTaskID)
+	if parent_task_id, err := strconv.Atoi(ctx.Query("parent_task_id")); err == nil && parent_task_id > 0 {
+		query = query.Where("parent_task_id = ?", parent_task_id)
 	}
-	if rootTaskID, err := strconv.Atoi(ctx.Query("root_task_id")); err == nil && rootTaskID > 0 {
-		query = query.Where("root_task_id = ?", rootTaskID)
+	if root_task_id, err := strconv.Atoi(ctx.Query("root_task_id")); err == nil && root_task_id > 0 {
+		query = query.Where("root_task_id = ?", root_task_id)
 	}
 
-	type statusCount struct {
+	type status_count struct {
 		Status int   `gorm:"column:status"`
 		Count  int64 `gorm:"column:count"`
 	}
-	var rows []statusCount
+	var rows []status_count
 	if err := query.Select("status, COUNT(*) as count").Group("status").Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -1494,9 +1362,9 @@ type ResourceTreeNode struct {
 	Children  []*ResourceTreeNode `json:"children,omitempty"`
 }
 
-// buildResourceTree splits a flat resource list into a directory tree by path.
+// build_resource_tree splits a flat resource list into a directory tree by path.
 // A resource name such as "chapters/0001.html" is placed under the "chapters" directory.
-func buildResourceTree(resources []gin.H) *ResourceTreeNode {
+func build_resource_tree(resources []gin.H) *ResourceTreeNode {
 	root := &ResourceTreeNode{Name: "", Type: "directory", Children: []*ResourceTreeNode{}}
 	for _, r := range resources {
 		name, _ := r["name"].(string)
@@ -1592,7 +1460,7 @@ func (c *APIClient) handle_pause_all_download_task(ctx *gin.Context) {
 	for _, task := range tasks {
 		// Live recordings cannot be paused and resumed like regular downloads.
 		// Leave them running when handling the batch "pause all" action.
-		if c.hasStreamResources(task.Id) {
+		if c.has_stream_resources(task.Id) {
 			continue
 		}
 		total++
@@ -1667,7 +1535,7 @@ func (c *APIClient) clear_download_task_records(task_ids []int, delete_files boo
 	results := make([]gin.H, 0, len(task_ids))
 	cleared := 0
 	for _, task_id := range task_ids {
-		clear_result := c.deleteSingleDownloadTask(task_id, delete_files)
+		clear_result := c.delete_single_download_task(task_id, delete_files)
 		results = append(results, clear_result)
 		if success, _ := clear_result["success"].(bool); success {
 			cleared++
@@ -1676,14 +1544,14 @@ func (c *APIClient) clear_download_task_records(task_ids []int, delete_files boo
 	return cleared, results
 }
 
-// hasStreamResources checks whether the task contains STREAM type resources (live streams).
-func (c *APIClient) hasStreamResources(taskID int) bool {
+// has_stream_resources checks whether the task contains STREAM type resources (live streams).
+func (c *APIClient) has_stream_resources(task_id int) bool {
 	if c.db == nil {
 		return false
 	}
 	var count int64
 	c.db.Model(&model.DownloadResource{}).
-		Where("task_id = ? AND UPPER(type) = ?", taskID, model.ResourceTypeStream).
+		Where("task_id = ? AND UPPER(type) = ?", task_id, model.ResourceTypeStream).
 		Count(&count)
 	return count > 0
 }
@@ -1696,13 +1564,13 @@ func (c *APIClient) handle_download_task_detail(ctx *gin.Context) {
 		return
 	}
 
-	taskID, err := strconv.Atoi(ctx.Query("id"))
-	if err != nil || taskID <= 0 {
+	task_id, err := strconv.Atoi(ctx.Query("id"))
+	if err != nil || task_id <= 0 {
 		result.Err(ctx, 400, "id is required and must be a positive integer")
 		return
 	}
 
-	record, err := c.download_task_service.BuildTaskRecord(taskID)
+	record, err := c.download_task_service.BuildTaskRecord(task_id)
 	if err != nil {
 		result.Err(ctx, 500, "查询下载任务失败: "+err.Error())
 		return
@@ -1713,15 +1581,15 @@ func (c *APIClient) handle_download_task_detail(ctx *gin.Context) {
 	}
 
 	// Look up associated content if present.
-	var contentData gin.H
+	var content_data gin.H
 	if record.ContentID != nil && *record.ContentID != "" {
 		var content model.Content
 		if err := c.db.Where("id = ?", *record.ContentID).First(&content).Error; err == nil {
-			publishTime := int64(0)
+			publish_time := int64(0)
 			if content.PublishTime != nil {
-				publishTime = *content.PublishTime
+				publish_time = *content.PublishTime
 			}
-			contentData = gin.H{
+			content_data = gin.H{
 				"id":           content.Id,
 				"platform_id":  content.PlatformId,
 				"type":         content.Type,
@@ -1730,18 +1598,18 @@ func (c *APIClient) handle_download_task_detail(ctx *gin.Context) {
 				"cover_url":    content.CoverURL,
 				"url":          content.URL,
 				"source_url":   content.SourceURL,
-				"publish_time": publishTime,
+				"publish_time": publish_time,
 			}
 
 			// Load accounts linked to this content.
 			var accounts []gin.H
-			type accountRow struct {
+			type account_row struct {
 				AccountID  string `gorm:"column:account_id"`
 				Nickname   string `gorm:"column:nickname"`
 				AvatarURL  string `gorm:"column:avatar_url"`
 				ExternalID string `gorm:"column:external_id"`
 			}
-			var rows []accountRow
+			var rows []account_row
 			if err := c.db.Table("content_account").
 				Select("content_account.account_id, account.nickname, account.avatar_url, account.external_id").
 				Joins("JOIN account ON account.id = content_account.account_id").
@@ -1756,12 +1624,12 @@ func (c *APIClient) handle_download_task_detail(ctx *gin.Context) {
 					})
 				}
 			}
-			contentData["accounts"] = accounts
+			content_data["accounts"] = accounts
 		}
 	}
 
 	// Enrich files with local file info.
-	type fileWithPath struct {
+	type file_with_path struct {
 		services.DownloadTaskFileRecord
 		LocalPath         string `json:"local_path"`
 		FileType          string `json:"file_type"`
@@ -1771,8 +1639,8 @@ func (c *APIClient) handle_download_task_detail(ctx *gin.Context) {
 		Exists            bool   `json:"exists"`
 	}
 
-	playback_availability := c.stream_playback_availability(taskID)
-	files := make([]fileWithPath, 0, len(record.Files))
+	playback_availability := c.stream_playback_availability(task_id)
+	files := make([]file_with_path, 0, len(record.Files))
 	for _, f := range record.Files {
 		local_path := filepath.Join(f.DownloadDir, f.Name)
 		exists := false
@@ -1782,14 +1650,14 @@ func (c *APIClient) handle_download_task_detail(ctx *gin.Context) {
 		file_type := file_type_by_ext(f.Name)
 		playback_url := ""
 		if strings.EqualFold(f.Type, model.ResourceTypeStream) {
-			playback_url = download_task_stream_playback_url(taskID, f.ID)
+			playback_url = download_task_stream_playback_url(task_id, f.ID)
 			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(f.Kind)), "audio/") {
 				file_type = "audio"
 			} else {
 				file_type = "video"
 			}
 		}
-		files = append(files, fileWithPath{
+		files = append(files, file_with_path{
 			DownloadTaskFileRecord: f,
 			LocalPath:              local_path,
 			FileType:               file_type,
@@ -1803,7 +1671,7 @@ func (c *APIClient) handle_download_task_detail(ctx *gin.Context) {
 	record.Files = nil // replaced by enriched files below
 	result.Ok(ctx, gin.H{
 		"id":             record.ID,
-		"content":        contentData,
+		"content":        content_data,
 		"content_id":     record.ContentID,
 		"content_type":   record.ContentType,
 		"parent_task_id": record.ParentTaskID,

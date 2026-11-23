@@ -7,7 +7,12 @@
    * @param {HTMLElement} $parent
    */
   function insert_download_btn($parent) {
+    $parent = $parent.closest(".feed-interact") || $parent;
+    if ($parent.querySelector(".wx-feed-download-btn")) {
+      return;
+    }
     var $btn = Icons.download_btn2();
+    $btn.classList.add("wx-feed-download-btn");
     WXU.attach_download_dropdown_menu($btn);
     $btn.onclick = WXU.downloadBtnHandler;
     $parent.appendChild($btn);

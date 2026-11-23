@@ -214,13 +214,6 @@ func BuildFinalResourceName(input FinalResourceNameInput) FinalResourceNameResul
 	}
 	ext := CanonicalExtensionForMIMEType(input.ResourceKind)
 
-	// Older STREAM rows stored the display name with an .mkv suffix even though
-	// Kind is the extension source of truth. Avoid title.mkv.mkv while remaining
-	// compatible with those persisted tasks.
-	if strings.EqualFold(input.ResourceType, ResourceTypeStream) && ext != "" && strings.EqualFold(filepath.Ext(base_name), ext) {
-		base_name = strings.TrimSuffix(base_name, filepath.Ext(base_name))
-	}
-
 	result := FinalResourceNameResult{
 		BaseName:  base_name,
 		Extension: ext,

@@ -108,7 +108,7 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
     mount.style.display = "contents";
     document.body.appendChild(mount);
     Timeless.DOM.render(
-      Timeless.weui.DropdownMenu({ store: dropdown$ }),
+      DropdownMenu({ store: dropdown$ }),
       mount,
     );
 
@@ -126,7 +126,7 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
 
     trigger.addEventListener("mouseenter", () => {
       set_reference();
-      dropdown$.setItems(build_menu_items());
+      set_dropdown_menu_items(dropdown$, build_menu_items());
       dropdown$.handleEnterTrigger();
     });
     trigger.addEventListener("mouseleave", () => {
@@ -136,7 +136,7 @@ var ChannelsAPIOrigin = WXEnv.get("apiOrigin");
       event.stopPropagation();
     });
     if (trigger.dataset) {
-      trigger.dataset.dropdownMenuImpl = "Timeless.weui.DropdownMenu";
+      trigger.dataset.dropdownMenuImpl = "DropdownMenu";
     }
     trigger.__attacheddropdown = dropdown$;
     return dropdown$;

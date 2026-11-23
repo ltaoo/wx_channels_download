@@ -20,12 +20,12 @@ import (
 	"wx_channel/pkg/system"
 )
 
-type proxyConfigUpdateBody struct {
+type proxy_config_update_body struct {
 	Values  map[string]interface{} `json:"values"`
 	Restart bool                   `json:"restart"`
 }
 
-type proxyCertificateGenerateBody struct {
+type proxy_certificate_generate_body struct {
 	Name       string `json:"name"`
 	Install    bool   `json:"install"`
 	Restart    bool   `json:"restart"`
@@ -33,7 +33,7 @@ type proxyCertificateGenerateBody struct {
 }
 
 func (c *APIClient) handle_proxy_status(ctx *gin.Context) {
-	result.Ok(ctx, c.proxyStatusData())
+	result.Ok(ctx, c.proxy_status_data())
 }
 
 func (c *APIClient) handle_proxy_config_update(ctx *gin.Context) {
@@ -41,7 +41,7 @@ func (c *APIClient) handle_proxy_config_update(ctx *gin.Context) {
 		result.Err(ctx, 500, "配置未初始化")
 		return
 	}
-	var body proxyConfigUpdateBody
+	var body proxy_config_update_body
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		result.Err(ctx, 400, "不合法的参数")
 		return
@@ -60,56 +60,56 @@ func (c *APIClient) handle_proxy_config_update(ctx *gin.Context) {
 		}
 		updated[key] = converted
 	}
-	if err := c.saveConfigValues(updated); err != nil {
+	if err := c.save_config_values(updated); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
 	if body.Restart {
-		if err := c.restartProxyService(); err != nil {
+		if err := c.restart_proxy_service(); err != nil {
 			result.Err(ctx, 500, err.Error())
 			return
 		}
-	} else if !c.proxyServiceRunning() {
-		if err := c.applyProxySettingsFromConfig(); err != nil {
+	} else if !c.proxy_service_running() {
+		if err := c.apply_proxy_settings_from_config(); err != nil {
 			result.Err(ctx, 500, err.Error())
 			return
 		}
 	}
-	result.Ok(ctx, c.proxyStatusData())
+	result.Ok(ctx, c.proxy_status_data())
 }
 
 func (c *APIClient) handle_proxy_restart(ctx *gin.Context) {
-	if err := c.restartProxyService(); err != nil {
+	if err := c.restart_proxy_service(); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
-	result.Ok(ctx, c.proxyStatusData())
+	result.Ok(ctx, c.proxy_status_data())
 }
 
 func (c *APIClient) handle_proxy_system_enable(ctx *gin.Context) {
-	settings := c.systemProxySettings()
+	settings := c.system_proxy_settings()
 	if err := system.EnableProxy(settings); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
-	if err := c.saveConfigValues(map[string]interface{}{"proxy.system": true}); err != nil {
+	if err := c.save_config_values(map[string]interface{}{"proxy.system": true}); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
-	result.Ok(ctx, c.proxyStatusData())
+	result.Ok(ctx, c.proxy_status_data())
 }
 
 func (c *APIClient) handle_proxy_system_disable(ctx *gin.Context) {
-	settings := c.systemProxySettings()
+	settings := c.system_proxy_settings()
 	if err := system.DisableProxy(settings); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
-	if err := c.saveConfigValues(map[string]interface{}{"proxy.system": false}); err != nil {
+	if err := c.save_config_values(map[string]interface{}{"proxy.system": false}); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
-	result.Ok(ctx, c.proxyStatusData())
+	result.Ok(ctx, c.proxy_status_data())
 }
 
 func (c *APIClient) handle_proxy_certificate_status(ctx *gin.Context) {
@@ -121,7 +121,7 @@ func (c *APIClient) handle_proxy_certificate_generate(ctx *gin.Context) {
 		result.Err(ctx, 500, "配置未初始化")
 		return
 	}
-	var body proxyCertificateGenerateBody
+	var body proxy_certificate_generate_body
 	_ = ctx.ShouldBindJSON(&body)
 	name := strings.TrimSpace(body.Name)
 	if name == "" {
@@ -138,42 +138,42 @@ func (c *APIClient) handle_proxy_certificate_generate(ctx *gin.Context) {
 		years = 30
 	}
 
-	certPEM, keyPEM, err := certificate.GenerateRootCA(name, time.Duration(years)*365*24*time.Hour)
+	cert_pem, key_pem, err := certificate.GenerateRootCA(name, time.Duration(years)*365*24*time.Hour)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
-	certPath, keyPath, err := c.writeGeneratedCertificate(name, certPEM, keyPEM)
+	cert_path, key_path, err := c.write_generated_certificate(name, cert_pem, key_pem)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
-	if err := c.saveConfigValues(map[string]interface{}{
-		"cert.file": certPath,
-		"cert.key":  keyPath,
+	if err := c.save_config_values(map[string]interface{}{
+		"cert.file": cert_path,
+		"cert.key":  key_path,
 		"cert.name": name,
 	}); err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
 	if body.Install {
-		if err := certificate.InstallCertificate(certPEM); err != nil {
+		if err := certificate.InstallCertificate(cert_pem); err != nil {
 			result.Err(ctx, 500, err.Error())
 			return
 		}
 	}
 	if body.Restart {
-		if err := c.restartProxyService(); err != nil {
+		if err := c.restart_proxy_service(); err != nil {
 			result.Err(ctx, 500, err.Error())
 			return
 		}
-	} else if !c.proxyServiceRunning() {
-		if err := c.applyProxySettingsFromConfig(); err != nil {
+	} else if !c.proxy_service_running() {
+		if err := c.apply_proxy_settings_from_config(); err != nil {
 			result.Err(ctx, 500, err.Error())
 			return
 		}
 	}
-	result.Ok(ctx, c.proxyStatusData())
+	result.Ok(ctx, c.proxy_status_data())
 }
 
 func (c *APIClient) handle_proxy_certificate_install(ctx *gin.Context) {
@@ -182,7 +182,7 @@ func (c *APIClient) handle_proxy_certificate_install(ctx *gin.Context) {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
-	result.Ok(ctx, c.proxyStatusData())
+	result.Ok(ctx, c.proxy_status_data())
 }
 
 func (c *APIClient) handle_proxy_certificate_uninstall(ctx *gin.Context) {
@@ -191,15 +191,15 @@ func (c *APIClient) handle_proxy_certificate_uninstall(ctx *gin.Context) {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
-	result.Ok(ctx, c.proxyStatusData())
+	result.Ok(ctx, c.proxy_status_data())
 }
 
-type uninstallCertByNameBody struct {
+type uninstall_cert_by_name_body struct {
 	Name string `json:"name"`
 }
 
 func (c *APIClient) handle_proxy_certificate_uninstall_by_name(ctx *gin.Context) {
-	var body uninstallCertByNameBody
+	var body uninstall_cert_by_name_body
 	if err := ctx.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Name) == "" {
 		result.Err(ctx, 400, "缺少证书名称")
 		return
@@ -209,7 +209,7 @@ func (c *APIClient) handle_proxy_certificate_uninstall_by_name(ctx *gin.Context)
 		result.Err(ctx, 500, "卸载证书失败: "+err.Error())
 		return
 	}
-	result.Ok(ctx, c.proxyStatusData())
+	result.Ok(ctx, c.proxy_status_data())
 }
 
 func (c *APIClient) handle_proxy_certificate_replace(ctx *gin.Context) {
@@ -219,13 +219,13 @@ func (c *APIClient) handle_proxy_certificate_replace(ctx *gin.Context) {
 	}
 
 	// 1. Get old cert info
-	certInfo := services.LoadCertFilesWithInfo()
-	oldName := certInfo.Cert.Name
+	cert_info := services.LoadCertFilesWithInfo()
+	old_name := cert_info.Cert.Name
 
 	// 2. If installed, uninstall old cert
-	installed, _ := certificate.CheckHasCertificate(oldName)
+	installed, _ := certificate.CheckHasCertificate(old_name)
 	if installed {
-		if err := certificate.UninstallCertificate(oldName); err != nil {
+		if err := certificate.UninstallCertificate(old_name); err != nil {
 			result.Err(ctx, 500, "卸载旧证书失败: "+err.Error())
 			return
 		}
@@ -233,23 +233,23 @@ func (c *APIClient) handle_proxy_certificate_replace(ctx *gin.Context) {
 
 	// 3. Generate new RootCA
 	name := "wx_channels_download"
-	certPEM, keyPEM, err := certificate.GenerateRootCA(name, 10*365*24*time.Hour)
+	cert_pem, key_pem, err := certificate.GenerateRootCA(name, 10*365*24*time.Hour)
 	if err != nil {
 		result.Err(ctx, 500, "生成新证书失败: "+err.Error())
 		return
 	}
 
 	// 4. Write to certs/ directory
-	certPath, keyPath, err := c.writeGeneratedCertificate(name, certPEM, keyPEM)
+	cert_path, key_path, err := c.write_generated_certificate(name, cert_pem, key_pem)
 	if err != nil {
 		result.Err(ctx, 500, "写入证书文件失败: "+err.Error())
 		return
 	}
 
 	// 5. Update config
-	if err := c.saveConfigValues(map[string]interface{}{
-		"cert.file": certPath,
-		"cert.key":  keyPath,
+	if err := c.save_config_values(map[string]interface{}{
+		"cert.file": cert_path,
+		"cert.key":  key_path,
 		"cert.name": name,
 	}); err != nil {
 		result.Err(ctx, 500, "保存配置失败: "+err.Error())
@@ -257,18 +257,18 @@ func (c *APIClient) handle_proxy_certificate_replace(ctx *gin.Context) {
 	}
 
 	// 6. Install new cert
-	if err := certificate.InstallCertificate(certPEM); err != nil {
+	if err := certificate.InstallCertificate(cert_pem); err != nil {
 		result.Err(ctx, 500, "安装新证书失败: "+err.Error())
 		return
 	}
 
 	// 7. Restart proxy
-	if err := c.restartProxyService(); err != nil {
+	if err := c.restart_proxy_service(); err != nil {
 		result.Err(ctx, 500, "重启代理服务失败: "+err.Error())
 		return
 	}
 
-	result.Ok(ctx, c.proxyStatusData())
+	result.Ok(ctx, c.proxy_status_data())
 }
 
 func (c *APIClient) handle_proxy_certificate_pem(ctx *gin.Context) {
@@ -278,18 +278,18 @@ func (c *APIClient) handle_proxy_certificate_pem(ctx *gin.Context) {
 	ctx.String(200, string(cert.Cert))
 }
 
-func (c *APIClient) proxyStatusData() gin.H {
-	configData := c.proxyConfigData()
+func (c *APIClient) proxy_status_data() gin.H {
+	config_data := c.proxy_config_data()
 	return gin.H{
 		"os":           runtime.GOOS,
-		"config":       configData,
-		"service":      c.proxyServiceStatusData(),
-		"system_proxy": c.systemProxyStatusData(),
+		"config":       config_data,
+		"service":      c.proxy_service_status_data(),
+		"system_proxy": c.system_proxy_status_data(),
 		"certificate":  c.certificate_status_data(),
 	}
 }
 
-func (c *APIClient) proxyConfigData() gin.H {
+func (c *APIClient) proxy_config_data() gin.H {
 	var original *config.Config
 	if c.cfg != nil {
 		original = c.cfg.Original
@@ -311,24 +311,24 @@ func (c *APIClient) proxyConfigData() gin.H {
 		"enabled":                original == nil || original.GetBool("proxy.enabled"),
 		"system":                 original != nil && original.GetBool("proxy.system"),
 		"tun":                    original != nil && original.GetBool("proxy.tun"),
-		"default_interface":      getConfigString(original, "proxy.defaultInterface"),
-		"network_service":        getConfigString(original, "proxy.networkService"),
+		"default_interface":      get_config_string(original, "proxy.defaultInterface"),
+		"network_service":        get_config_string(original, "proxy.networkService"),
 		"skip_install_root_cert": original != nil && original.GetBool("proxy.skipInstallRootCert"),
-		"upstream_proxy":         getConfigString(original, "proxy.upstreamProxy"),
+		"upstream_proxy":         get_config_string(original, "proxy.upstreamProxy"),
 		"tcp_relay": gin.H{
 			"enabled":  original != nil && original.GetBool("proxy.tcpRelay.enabled"),
-			"hostname": proxyFirstNonEmpty(getConfigString(original, "proxy.tcpRelay.hostname"), "127.0.0.1"),
-			"port":     proxyFirstPositive(getConfigInt(original, "proxy.tcpRelay.port"), 9900),
+			"hostname": proxy_first_non_empty(get_config_string(original, "proxy.tcpRelay.hostname"), "127.0.0.1"),
+			"port":     proxy_first_positive(get_config_int(original, "proxy.tcpRelay.port"), 9900),
 		},
 		"cert": gin.H{
-			"name": getConfigString(original, "cert.name"),
-			"file": getConfigString(original, "cert.file"),
-			"key":  getConfigString(original, "cert.key"),
+			"name": get_config_string(original, "cert.name"),
+			"file": get_config_string(original, "cert.file"),
+			"key":  get_config_string(original, "cert.key"),
 		},
 	}
 }
 
-func (c *APIClient) proxyServiceStatusData() gin.H {
+func (c *APIClient) proxy_service_status_data() gin.H {
 	proxy_status := c.runtime_status_service.ProxyStatus()
 	addr := proxy_status.Addr
 	status := proxy_status.Status
@@ -336,7 +336,7 @@ func (c *APIClient) proxyServiceStatusData() gin.H {
 		status = "stopped"
 	}
 	if addr == "" {
-		cfg := c.proxyConfigData()
+		cfg := c.proxy_config_data()
 		addr, _ = cfg["addr"].(string)
 	}
 	return gin.H{
@@ -347,8 +347,8 @@ func (c *APIClient) proxyServiceStatusData() gin.H {
 	}
 }
 
-func (c *APIClient) systemProxyStatusData() gin.H {
-	expected := c.systemProxySettings()
+func (c *APIClient) system_proxy_status_data() gin.H {
+	expected := c.system_proxy_settings()
 	cur, err := system.FetchCurProxy(expected)
 	configured := false
 	if c.cfg != nil && c.cfg.Original != nil {
@@ -388,14 +388,14 @@ func (c *APIClient) certificate_status_data() gin.H {
 	return gin.H(c.certificate_service.Status())
 }
 
-func (c *APIClient) systemProxySettings() system.ProxySettings {
-	cfg := c.proxyConfigData()
+func (c *APIClient) system_proxy_settings() system.ProxySettings {
+	cfg := c.proxy_config_data()
 	device, _ := cfg["network_service"].(string)
 	return system.ProxySettings{
 		// Empty means "detect the primary network service", matching what enable_proxy does.
 		Device:   device,
 		Hostname: fmt.Sprint(cfg["hostname"]),
-		Port:     strconv.Itoa(proxyFirstPositive(proxyToIntDefault(cfg["port"], 2023), 2023)),
+		Port:     strconv.Itoa(proxy_first_positive(proxy_to_int_default(cfg["port"], 2023), 2023)),
 	}
 }
 
@@ -414,7 +414,7 @@ func service_config_bool(value interface{}) (bool, error) {
 	}
 }
 
-func (c *APIClient) saveConfigValues(values map[string]interface{}) error {
+func (c *APIClient) save_config_values(values map[string]interface{}) error {
 	if c.cfg == nil || c.cfg.Original == nil {
 		return fmt.Errorf("配置未初始化")
 	}
@@ -433,12 +433,12 @@ func (c *APIClient) saveConfigValues(values map[string]interface{}) error {
 	return nil
 }
 
-func (c *APIClient) proxyServiceRunning() bool {
+func (c *APIClient) proxy_service_running() bool {
 	status := c.runtime_status_service.ProxyStatus().Status
 	return status == "running" || status == "stopping"
 }
 
-func (c *APIClient) restartProxyService() error {
+func (c *APIClient) restart_proxy_service() error {
 	if c.event_publisher == nil {
 		return fmt.Errorf("event bus not initialized")
 	}
@@ -446,7 +446,7 @@ func (c *APIClient) restartProxyService() error {
 	return nil
 }
 
-func (c *APIClient) applyProxySettingsFromConfig() error {
+func (c *APIClient) apply_proxy_settings_from_config() error {
 	if c.event_publisher == nil {
 		return nil
 	}
@@ -454,41 +454,41 @@ func (c *APIClient) applyProxySettingsFromConfig() error {
 	return nil
 }
 
-func (c *APIClient) writeGeneratedCertificate(name string, certPEM []byte, keyPEM []byte) (string, string, error) {
-	baseDir := c.cfg.WorkDir
-	if strings.TrimSpace(baseDir) == "" {
-		baseDir = c.cfg.RootDir
+func (c *APIClient) write_generated_certificate(name string, cert_pem []byte, key_pem []byte) (string, string, error) {
+	base_dir := c.cfg.WorkDir
+	if strings.TrimSpace(base_dir) == "" {
+		base_dir = c.cfg.RootDir
 	}
-	dir := filepath.Join(baseDir, "certs")
+	dir := filepath.Join(base_dir, "certs")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", "", err
 	}
-	slug := certificateFilenameSlug(name)
-	certPath := filepath.Join(dir, slug+".pem")
-	keyPath := filepath.Join(dir, slug+".key")
-	if err := os.WriteFile(certPath, certPEM, 0644); err != nil {
+	slug := certificate_filename_slug(name)
+	cert_path := filepath.Join(dir, slug+".pem")
+	key_path := filepath.Join(dir, slug+".key")
+	if err := os.WriteFile(cert_path, cert_pem, 0644); err != nil {
 		return "", "", err
 	}
-	if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
+	if err := os.WriteFile(key_path, key_pem, 0600); err != nil {
 		return "", "", err
 	}
-	return certPath, keyPath, nil
+	return cert_path, key_path, nil
 }
 
-func certificateFilenameSlug(name string) string {
+func certificate_filename_slug(name string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
 	var b strings.Builder
-	prevUnderscore := false
+	prev_underscore := false
 	for _, r := range name {
 		ok := r >= 'a' && r <= 'z' || r >= '0' && r <= '9'
 		if ok {
 			b.WriteRune(r)
-			prevUnderscore = false
+			prev_underscore = false
 			continue
 		}
-		if !prevUnderscore {
+		if !prev_underscore {
 			b.WriteByte('_')
-			prevUnderscore = true
+			prev_underscore = true
 		}
 	}
 	slug := strings.Trim(b.String(), "_")
@@ -498,21 +498,21 @@ func certificateFilenameSlug(name string) string {
 	return slug
 }
 
-func getConfigString(c *config.Config, key string) string {
+func get_config_string(c *config.Config, key string) string {
 	if c == nil {
 		return ""
 	}
 	return c.GetString(key)
 }
 
-func getConfigInt(c *config.Config, key string) int {
+func get_config_int(c *config.Config, key string) int {
 	if c == nil {
 		return 0
 	}
 	return c.GetInt(key)
 }
 
-func proxyFirstNonEmpty(values ...string) string {
+func proxy_first_non_empty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
 			return value
@@ -521,7 +521,7 @@ func proxyFirstNonEmpty(values ...string) string {
 	return ""
 }
 
-func proxyFirstPositive(values ...int) int {
+func proxy_first_positive(values ...int) int {
 	for _, value := range values {
 		if value > 0 {
 			return value
@@ -530,7 +530,7 @@ func proxyFirstPositive(values ...int) int {
 	return 0
 }
 
-func proxyToIntDefault(value interface{}, fallback int) int {
+func proxy_to_int_default(value interface{}, fallback int) int {
 	switch v := value.(type) {
 	case int:
 		return v
