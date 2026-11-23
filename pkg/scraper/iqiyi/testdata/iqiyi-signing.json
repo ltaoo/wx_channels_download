@@ -1,0 +1,12 @@
+{
+  "source_commit": "a8d0de2f996890e6d5fbf8fcd8ecbeedc84a9384",
+  "dash_url": "https://cache.video.iqiyi.com/dash?tvid=1234567890123456&bid=800&vid=&src=01010031010000000000&vt=0&rs=1&uid=&ori=pcw&ps=1&k_uid=0123456789abcdef0123456789abcdef&pt=0&d=0&s=&lid=0&cf=0&ct=0&authKey=51322eb85f32626b0d4964bf6f1549a3&k_tag=1&dfp=&locale=zh_cn&pck=&k_err_retries=0&up=&qd_v=a1&tm=1793856000123&k_ft1=706436220846084&k_ft4=1162321298202628&k_ft5=150994945&k_ft7=4&fr_300=120_120_120_120_120_120&fr_500=120_120_120_120_120_120&fr_600=120_120_120_120_120_120&fr_800=120_120_120_120_120_120&fr_1020=120_120_120_120_120_120&bop=%257B%2522version%2522%253A%252210.0%2522%252C%2522dfp%2522%253A%2522%2522%252C%2522b_ft1%2522%253A28%257D&sr=1&ost=0&ut=0&vf=1c6a762e56bf4f820364fa3cef6dd6c8",
+  "metadata_params": {
+    "entity_id": "1234567890123456",
+    "device_id": "synthetic",
+    "auth_cookie": "",
+    "timestamp": 1793856000123,
+    "src": "pca_tvg"
+  },
+  "metadata_sign": "F5B9FED602E65C4EAF2CD5BB47055C9B"
+}

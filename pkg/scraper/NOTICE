@@ -1,0 +1,130 @@
+Selected Go protocol and media implementation files adapted from the local
+dramadl project (2026-11-08), licensed GPL-3.0-only.
+Changes: reusable scraper API, structured archive metadata, cancellation,
+Hermes finite-download integration. Browser fallbacks are excluded.
+
+hgdownload — Go Hongguo search and download CLI
+License: GNU General Public License, version 3 only (GPL-3.0-only).
+The complete license is included in LICENSE.
+
+Reference implementation:
+  jackotom/hongguo-drama
+  https://github.com/jackotom/hongguo-drama
+  Commit b3458e1a6931cab3a78fa3ec06c6b60d185d9f86
+  GPL-3.0. Original project and contributors retain their copyright.
+
+Files adapted into Go:
+  src/native/app-source.js       -> app.go, signing.go, medusa_aes.go
+  src/native/playback-device.js  -> device.go
+  src/native/sm3.js              -> sm3.go
+
+The upstream application's original repository and subsequent Mac port:
+  https://github.com/327044572/hongguo-downloader
+  https://github.com/zhenyong97/hongguo-downloader
+
+Signing, Spade URL and content-key algorithms originate from:
+  woshishiq1/drpys, commit 22261adfa31435e3b3ef5a730b8a2a75bcaf1715
+  https://github.com/woshishiq1/drpys
+  spider/js/红果果[短].js, GPL-3.0
+  via N3urda/hongguoTV, commit eea73e6a45569a2cbbb9440f7cd5290c459b0b70
+  https://github.com/N3urda/hongguoTV
+
+Anonymous registration and ttEncrypt originate from:
+  tsukiyo-zero/hongguoTV, commit 388931852ddc614db8b00775a3dc54c5ede6307f
+  https://github.com/tsukiyo-zero/hongguoTV
+  kotlin-tv/core/src/main/kotlin/com/hongguotv/core/DeviceRegister.kt
+  GPL-3.0-only, itself adapted from charlie901208/HGTV feat/phone-login.
+
+Changes for hgdownload (2026-11-05):
+  Go implementation using the standard library; request signing limited to the
+  playback hash branch selected by the reference implementation; bounded official
+  HTTPS transport; ephemeral anonymous registration; exact requested-episode
+  matching; compatible H.264/HEVC selection; Spade parsing; local FFmpeg media
+  decryption/remuxing; FFprobe duration/dimension validation; atomic publication.
+  No account credentials, fixed registered identities, device tokens or third-party
+  signing service are copied. Synthetic fixtures cross-check the JS/Go signatures.
+
+The older webpage search and series-list implementation follows the local
+findrss-scripts/rss/hongguo.js reference. Webpage SEO previews are no longer used
+as download sources. Existing preview files remain untouched.
+
+FFmpeg and FFprobe are external executables installed by the user. Their binaries
+are not included. Synthetic test media contains only generated black frames and
+silent audio. No downloaded drama media is included in the project.
+
+IQiyi protocol reference (2026-11-05):
+  CharlesPikachu/videodl, author Zhenchao Jin / CharlesPikachu
+  Commit a8d0de2f996890e6d5fbf8fcd8ecbeedc84a9384
+  https://github.com/CharlesPikachu/videodl/blob/a8d0de2f996890e6d5fbf8fcd8ecbeedc84a9384/videodl/modules/sources/iqiyi.py
+  Reference for official endpoints, request fields, MD5 signature protocol and
+  response layouts. The original Python source remains under PolyForm
+  Noncommercial License 1.0.0 (Copyright (c) 2021–2026 CharlesPikachu):
+  https://github.com/CharlesPikachu/videodl/blob/a8d0de2f996890e6d5fbf8fcd8ecbeedc84a9384/LICENSE
+  No original Python source is included. iqiyi.go and iqiyi_hls.go independently
+  implement the protocol in Go and a bounded local HLS downloader. URL entity-ID
+  decoding follows the official iqiyi.com playback page's base-36/XOR encoding.
+  Synthetic signature expectations are generated from the referenced protocol;
+  testdata/tiny.ts is generated from the existing synthetic black/silent fixture.
+
+Tencent Video and Youku protocol references (2026-11-05):
+  CharlesPikachu/videodl, author Zhenchao Jin / CharlesPikachu
+  Commit a8d0de2f996890e6d5fbf8fcd8ecbeedc84a9384
+  videodl/modules/sources/tencent.py
+  videodl/modules/sources/youku.py
+  https://github.com/CharlesPikachu/videodl/tree/a8d0de2f996890e6d5fbf8fcd8ecbeedc84a9384
+  Original Python source: PolyForm Noncommercial License 1.0.0,
+  Copyright (c) 2021–2026 CharlesPikachu. No Python source is distributed here.
+  tencent.go and youku.go independently implement official request protocols,
+  cKey 8.1 AES-CBC/space padding, episode sorting and bounded response parsing
+  in Go. video.go and the shared HLS downloader keep account cookies out of
+  CDN requests and validate complete media before atomic publication.
+  testdata/tencent-ckey.json is a synthetic fixed-time protocol fixture checked
+  against the reference AES implementation; no account credentials are included.
+
+Youku website integration (2026-11-05):
+  youku_browser.mjs uses the user's installed Ego Lite browser and the official
+  Youku page's MTOP runtime to request compatible HLS metadata. No player SDK,
+  fixed cKey, account cookie or proprietary DRM implementation is distributed.
+  The Go downloader independently handles separate CMAF audio/video playlists,
+  local timestamp correction without re-encoding, and per-track duration checks.
+  Ego Lite is an external runtime and is not included in this project.
+
+MGTV protocol reference (2026-11-05):
+  CharlesPikachu/videodl, author Zhenchao Jin / CharlesPikachu
+  Commit a8d0de2f996890e6d5fbf8fcd8ecbeedc84a9384
+  https://github.com/CharlesPikachu/videodl/blob/a8d0de2f996890e6d5fbf8fcd8ecbeedc84a9384/videodl/modules/sources/mgtv.py
+  Original Python source: PolyForm Noncommercial License 1.0.0,
+  Copyright (c) 2021–2026 CharlesPikachu. No Python source is distributed here.
+  mgtv.go independently implements the official playback/source request fields,
+  reversed URL-safe base64 tk2 protocol and JSON dispatch in Go, with ephemeral
+  random device IDs. The shared downloader verifies identities, complete duration
+  and declared dimensions; rejects previews; and keeps cookies off CDNs.
+  The token test contains only a synthetic device ID and fixed timestamp.
+
+Netflix public-content integration (2026-11-05):
+  Flow research reference: Kiko023/Netflix-DL (NFripper)
+  Commit 7f498722d5c915ddac39b25276d266c0ea1ead5c
+  https://github.com/Kiko023/Netflix-DL/tree/7f498722d5c915ddac39b25276d266c0ea1ead5c
+  Reviewed its cookie/metadata, manifest, download and remux flow. No source code,
+  CDMs, device identities, account credentials or keys are copied or distributed.
+  Its member MSL/DRM flow is not implemented by this integration.
+
+  netflix_public.go independently downloads original MP4 objects from Netflix's
+  public Open Content bucket, with HTTPS bucket restrictions, complete-object
+  length checks, local FFprobe inspection and atomic publication.
+  Official content source and asset licensing information:
+  https://opencontent.netflix.com/
+  Netflix states that its Open Content assets are available under CC BY 4.0.
+  Cosmos Laundromat is an open movie by the Blender Foundation; this integration
+  tests the publicly supplied Netflix SDR encode. Downloaded media is not included
+  in the software distribution and retains its original content rights.
+
+Bilibili bangumi integration (2026-11-05):
+  Local protocol reference: findrss-scripts/rss/bilibili.js, version 1.1.0.
+  Its official metadata/playurl request patterns and scoped cookie handling were
+  reviewed. bilibili.go independently implements official PGC season/playurl
+  metadata, EP/CID and duration checks, trailer exclusion and DASH track selection.
+  media_tracks.go reuses the existing bounded CDN transport/retries, verifies
+  complete track sizes and optional publisher MD5 values, and copies local
+  audio/video streams into a validated MP4 before atomic publication.
+  No JavaScript source, browser fingerprint, account cookie or media key is copied.
