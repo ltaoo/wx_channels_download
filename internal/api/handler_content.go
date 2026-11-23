@@ -116,27 +116,27 @@ func (c *APIClient) handle_content_detail(ctx *gin.Context) {
 		return
 	}
 
-	contentID := strings.TrimSpace(ctx.Query("id"))
-	if contentID == "" {
+	content_id := strings.TrimSpace(ctx.Query("id"))
+	if content_id == "" {
 		result.Err(ctx, 400, "id is required")
 		return
 	}
 
-	item, err := c.content_service.GetContentDetail(contentID)
+	item, err := c.content_service.GetContentDetail(content_id)
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
 		return
 	}
 
 	// Enrich resources with local file info.
-	type resourceWithFile struct {
+	type resource_with_file struct {
 		services.ContentResourceRecord
 		LocalPath string `json:"local_path"`
 		FileType  string `json:"file_type"`
 		Exists    bool   `json:"exists"`
 	}
 
-	resources := make([]resourceWithFile, 0, len(item.Resources))
+	resources := make([]resource_with_file, 0, len(item.Resources))
 	for _, r := range item.Resources {
 		local_path := filepath.Join(r.DownloadDir, r.Name)
 		exists := false
@@ -144,7 +144,7 @@ func (c *APIClient) handle_content_detail(ctx *gin.Context) {
 			exists = true
 		}
 		file_type := file_type_by_ext(r.Name)
-		resources = append(resources, resourceWithFile{
+		resources = append(resources, resource_with_file{
 			ContentResourceRecord: r,
 			LocalPath:             local_path,
 			FileType:              file_type,

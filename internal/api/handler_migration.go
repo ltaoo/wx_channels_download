@@ -38,33 +38,33 @@ func (c *APIClient) handle_migration_load(ctx *gin.Context) {
 		return
 	}
 
-	dbPath := sanitizeDBPath(req.DBPath)
-	if dbPath == "" {
+	db_path := sanitize_db_path(req.DBPath)
+	if db_path == "" {
 		result.Err(ctx, 400, "数据库路径不能为空")
 		return
 	}
 
-	if _, err := os.Stat(dbPath); err != nil {
+	if _, err := os.Stat(db_path); err != nil {
 		result.Err(ctx, 400, "数据库文件不存在或无法访问: "+err.Error())
 		return
 	}
 
-	db, err := openExternalDB(dbPath)
+	db, err := open_external_db(db_path)
 	if err != nil {
 		result.Err(ctx, 500, "打开数据库失败: "+err.Error())
 		return
 	}
-	defer closeExternalDB(db)
+	defer close_external_db(db)
 
-	tables, err := loadTableList(db)
+	tables, err := load_table_list(db)
 	if err != nil {
 		result.Err(ctx, 500, "读取表列表失败: "+err.Error())
 		return
 	}
 
 	result.Ok(ctx, gin.H{
-		"database": filepath.Base(dbPath),
-		"path":     dbPath,
+		"database": filepath.Base(db_path),
+		"path":     db_path,
 		"tables":   tables,
 	})
 }
@@ -78,8 +78,8 @@ func (c *APIClient) handle_migration_table(ctx *gin.Context) {
 		return
 	}
 
-	dbPath := sanitizeDBPath(req.DBPath)
-	if dbPath == "" {
+	db_path := sanitize_db_path(req.DBPath)
+	if db_path == "" {
 		result.Err(ctx, 400, "数据库路径不能为空")
 	}
 
@@ -95,60 +95,60 @@ func (c *APIClient) handle_migration_table(ctx *gin.Context) {
 		req.PageSize = 200
 	}
 
-	if _, err := os.Stat(dbPath); err != nil {
+	if _, err := os.Stat(db_path); err != nil {
 		result.Err(ctx, 400, "数据库文件不存在或无法访问")
 		return
 	}
 
-	db, err := openExternalDB(dbPath)
+	db, err := open_external_db(db_path)
 	if err != nil {
 		result.Err(ctx, 500, "打开数据库失败: "+err.Error())
 		return
 	}
-	defer closeExternalDB(db)
+	defer close_external_db(db)
 
 	// Verify table exists
-	var tableCount int64
-	if err := db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = ?", table).Scan(&tableCount).Error; err != nil || tableCount == 0 {
+	var table_count int64
+	if err := db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = ?", table).Scan(&table_count).Error; err != nil || table_count == 0 {
 		result.Err(ctx, 404, "表不存在: "+table)
 		return
 	}
 
 	// Column info
-	columns, err := loadTableColumns(db, table)
+	columns, err := load_table_columns(db, table)
 	if err != nil {
 		result.Err(ctx, 500, "读取列信息失败: "+err.Error())
 		return
 	}
 
 	// Total row count
-	var totalRows int64
-	if err := db.Raw(fmt.Sprintf("SELECT COUNT(*) FROM \"%s\"", escapeIdent(table))).Scan(&totalRows).Error; err != nil {
+	var total_rows int64
+	if err := db.Raw(fmt.Sprintf("SELECT COUNT(*) FROM \"%s\"", escape_ident(table))).Scan(&total_rows).Error; err != nil {
 		result.Err(ctx, 500, "查询行数失败: "+err.Error())
 		return
 	}
 
 	// Paginated data
 	offset := (req.Page - 1) * req.PageSize
-	rows, err := queryTableRows(db, table, req.PageSize, offset)
+	rows, err := query_table_rows(db, table, req.PageSize, offset)
 	if err != nil {
 		result.Err(ctx, 500, "查询数据失败: "+err.Error())
 		return
 	}
 
-	totalPages := int64(1)
+	total_pages := int64(1)
 	if req.PageSize > 0 {
-		totalPages = (totalRows + int64(req.PageSize) - 1) / int64(req.PageSize)
+		total_pages = (total_rows + int64(req.PageSize) - 1) / int64(req.PageSize)
 	}
 
 	result.Ok(ctx, gin.H{
 		"table":       table,
 		"columns":     columns,
 		"rows":        rows,
-		"total":       totalRows,
+		"total":       total_rows,
 		"page":        req.Page,
 		"page_size":   req.PageSize,
-		"total_pages": totalPages,
+		"total_pages": total_pages,
 	})
 }
 
@@ -200,8 +200,8 @@ func (c *APIClient) handle_migration_common_dirs(ctx *gin.Context) {
 
 // ---- internal helpers ----
 
-// sanitizeDBPath cleans and validates a db file path.
-func sanitizeDBPath(raw string) string {
+// sanitize_db_path cleans and validates a db file path.
+func sanitize_db_path(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
@@ -213,8 +213,8 @@ func sanitizeDBPath(raw string) string {
 	return clean
 }
 
-// openExternalDB opens a SQLite database at the given path.
-func openExternalDB(path string) (*gorm.DB, error) {
+// open_external_db opens a SQLite database at the given path.
+func open_external_db(path string) (*gorm.DB, error) {
 	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
 	if err != nil {
 		return nil, err
@@ -222,74 +222,74 @@ func openExternalDB(path string) (*gorm.DB, error) {
 	return db, nil
 }
 
-// closeExternalDB closes an external SQLite database connection.
-func closeExternalDB(db *gorm.DB) {
+// close_external_db closes an external SQLite database connection.
+func close_external_db(db *gorm.DB) {
 	if db == nil {
 		return
 	}
-	sqlDB, err := db.DB()
+	sql_db, err := db.DB()
 	if err != nil {
 		return
 	}
-	_ = sqlDB.Close()
+	_ = sql_db.Close()
 }
 
-// tableInfo holds summary metadata for a single table.
-type tableInfo struct {
+// table_info holds summary metadata for a single table.
+type table_info struct {
 	Name string `json:"name"`
 	Rows int64  `json:"rows"`
 }
 
-// columnInfo holds metadata for a single column.
-type columnInfo struct {
+// column_info holds metadata for a single column.
+type column_info struct {
 	Name string `json:"name"`
 	Type string `json:"type"`
 }
 
-// loadTableList returns all user tables with their row counts.
-func loadTableList(db *gorm.DB) ([]tableInfo, error) {
+// load_table_list returns all user tables with their row counts.
+func load_table_list(db *gorm.DB) ([]table_info, error) {
 	var names []string
 	if err := db.Raw("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").Scan(&names).Error; err != nil {
 		return nil, err
 	}
 
-	tables := make([]tableInfo, 0, len(names))
+	tables := make([]table_info, 0, len(names))
 	for _, name := range names {
 		var count int64
-		if err := db.Raw(fmt.Sprintf("SELECT COUNT(*) FROM \"%s\"", escapeIdent(name))).Scan(&count).Error; err != nil {
+		if err := db.Raw(fmt.Sprintf("SELECT COUNT(*) FROM \"%s\"", escape_ident(name))).Scan(&count).Error; err != nil {
 			// Table may be corrupted, skip
 			continue
 		}
-		tables = append(tables, tableInfo{Name: name, Rows: count})
+		tables = append(tables, table_info{Name: name, Rows: count})
 	}
 	return tables, nil
 }
 
-// loadTableColumns returns column metadata from PRAGMA table_info.
-func loadTableColumns(db *gorm.DB, table string) ([]columnInfo, error) {
-	type pragmaRow struct {
+// load_table_columns returns column metadata from PRAGMA table_info.
+func load_table_columns(db *gorm.DB, table string) ([]column_info, error) {
+	type pragma_row struct {
 		Cid  int    `gorm:"column:cid"`
 		Name string `gorm:"column:name"`
 		Type string `gorm:"column:type"`
 	}
 
-	var raw []pragmaRow
-	sql := fmt.Sprintf("PRAGMA table_info(\"%s\")", escapeIdent(table))
+	var raw []pragma_row
+	sql := fmt.Sprintf("PRAGMA table_info(\"%s\")", escape_ident(table))
 	if err := db.Raw(sql).Scan(&raw).Error; err != nil {
 		return nil, err
 	}
 
-	cols := make([]columnInfo, 0, len(raw))
+	cols := make([]column_info, 0, len(raw))
 	for _, r := range raw {
-		cols = append(cols, columnInfo{Name: r.Name, Type: r.Type})
+		cols = append(cols, column_info{Name: r.Name, Type: r.Type})
 	}
 	return cols, nil
 }
 
-// queryTableRows fetches a page of rows from the given table.
+// query_table_rows fetches a page of rows from the given table.
 // Returns a slice of map[string]interface{} for JSON serialization.
-func queryTableRows(db *gorm.DB, table string, limit, offset int) ([]map[string]interface{}, error) {
-	sql := fmt.Sprintf("SELECT * FROM \"%s\" LIMIT %d OFFSET %d", escapeIdent(table), limit, offset)
+func query_table_rows(db *gorm.DB, table string, limit, offset int) ([]map[string]interface{}, error) {
+	sql := fmt.Sprintf("SELECT * FROM \"%s\" LIMIT %d OFFSET %d", escape_ident(table), limit, offset)
 
 	// Use raw query via gorm.Raw + Scan into a slice of maps.
 	rows, err := db.Raw(sql).Rows()
@@ -307,12 +307,12 @@ func queryTableRows(db *gorm.DB, table string, limit, offset int) ([]map[string]
 
 	for rows.Next() {
 		values := make([]interface{}, len(columns))
-		valuePtrs := make([]interface{}, len(columns))
+		value_ptrs := make([]interface{}, len(columns))
 		for i := range values {
-			valuePtrs[i] = &values[i]
+			value_ptrs[i] = &values[i]
 		}
 
-		if err := rows.Scan(valuePtrs...); err != nil {
+		if err := rows.Scan(value_ptrs...); err != nil {
 			return nil, err
 		}
 
@@ -341,7 +341,7 @@ func queryTableRows(db *gorm.DB, table string, limit, offset int) ([]map[string]
 	return results, nil
 }
 
-// escapeIdent escapes a SQLite identifier (table or column name) by doubling any double-quote characters.
-func escapeIdent(s string) string {
+// escape_ident escapes a SQLite identifier (table or column name) by doubling any double-quote characters.
+func escape_ident(s string) string {
 	return strings.ReplaceAll(s, "\"", "\"\"")
 }

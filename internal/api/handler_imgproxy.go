@@ -11,13 +11,13 @@ import (
 )
 
 func (c *APIClient) handle_img_proxy(ctx *gin.Context) {
-	rawURL := ctx.Query("url")
-	if rawURL == "" {
+	raw_url := ctx.Query("url")
+	if raw_url == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"code": -1, "msg": "url is required"})
 		return
 	}
 
-	resp, err := c.getClawreqClient().Get(ctx.Request.Context(), rawURL,
+	resp, err := c.get_clawreq_client().Get(ctx.Request.Context(), raw_url,
 		clawreq.WithHeader("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"),
 	)
 	if err != nil {
@@ -29,20 +29,20 @@ func (c *APIClient) handle_img_proxy(ctx *gin.Context) {
 		return
 	}
 
-	contentType := resp.ContentType()
-	if contentType == "" {
-		contentType = "image/jpeg"
+	content_type := resp.ContentType()
+	if content_type == "" {
+		content_type = "image/jpeg"
 	}
 
-	ctx.Header("Content-Type", contentType)
+	ctx.Header("Content-Type", content_type)
 	ctx.Header("Cache-Control", "public, max-age=31536000, immutable")
-	ctx.Data(resp.StatusCode, contentType, resp.Body)
+	ctx.Data(resp.StatusCode, content_type, resp.Body)
 }
 
-var clawreqInitOnce sync.Once
+var clawreq_init_once sync.Once
 
-func (c *APIClient) getClawreqClient() *clawreq.Client {
-	clawreqInitOnce.Do(func() {
+func (c *APIClient) get_clawreq_client() *clawreq.Client {
+	clawreq_init_once.Do(func() {
 		client, err := clawreq.New(clawreq.Config{
 			Profile:         clawreq.ProfileChrome,
 			FollowRedirects: true,

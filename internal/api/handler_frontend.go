@@ -47,22 +47,22 @@ type FrontendReport struct {
 }
 
 func (c *APIClient) handle_index(ctx *gin.Context) {
-	c.renderFrontendFile(ctx, "index.html")
+	c.render_frontend_file(ctx, "index.html")
 }
 
-func (c *APIClient) renderFrontendFile(ctx *gin.Context, name string) {
+func (c *APIClient) render_frontend_file(ctx *gin.Context, name string) {
 	data, err := frontend.Assets().ReadRoot(name)
 	if err != nil {
 		ctx.String(http.StatusInternalServerError, err.Error())
 		return
 	}
-	html := c.renderFrontendHTML(data)
+	html := c.render_frontend_html(data)
 
-	setFrontendHTMLCacheHeaders(ctx.Writer.Header())
+	set_frontend_html_cache_headers(ctx.Writer.Header())
 	ctx.Data(http.StatusOK, "text/html; charset=utf-8", html)
 }
 
-func (c *APIClient) renderFrontendHTML(data []byte) []byte {
+func (c *APIClient) render_frontend_html(data []byte) []byte {
 	max_running := c.cfg.Original.GetInt("download.maxRunning")
 	if max_running == 0 {
 		max_running = 3
@@ -88,25 +88,25 @@ func (c *APIClient) renderFrontendHTML(data []byte) []byte {
 }
 
 func (c *APIClient) build_http_handler() http.Handler {
-	frontendHandler := renderFrontendHTMLResponses(
-		renderFrontendJSImportResponses(frontend.NewServer(c.cfg.Mode), c.cfg.Version),
-		c.renderFrontendHTML,
+	frontend_handler := render_frontend_html_responses(
+		render_frontend_js_import_responses(frontend.NewServer(c.cfg.Mode), c.cfg.Version),
+		c.render_frontend_html,
 	)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if shouldServeByAPI(r.URL.Path) {
+		if should_serve_by_api(r.URL.Path) {
 			c.engine.ServeHTTP(w, r)
 			return
 		}
-		frontendHandler.ServeHTTP(w, r)
+		frontend_handler.ServeHTTP(w, r)
 	})
 }
 
-// renderFrontendJSImportResponses adds the application version to local module
+// render_frontend_js_import_responses adds the application version to local module
 // imports. Like Vite's import analysis, this makes every module in the graph use
 // a versioned URL instead of only versioning the entry module in index.html.
-func renderFrontendJSImportResponses(next http.Handler, version string) http.Handler {
+func render_frontend_js_import_responses(next http.Handler, version string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writer := &frontendJSImportResponseWriter{
+		writer := &frontend_js_import_response_writer{
 			ResponseWriter: w,
 			enabled:        r.Method == http.MethodGet && version != "",
 		}
@@ -115,55 +115,55 @@ func renderFrontendJSImportResponses(next http.Handler, version string) http.Han
 	})
 }
 
-type frontendJSImportResponseWriter struct {
+type frontend_js_import_response_writer struct {
 	http.ResponseWriter
-	statusCode   int
-	wroteHeader  bool
-	bufferScript bool
-	enabled      bool
-	body         bytes.Buffer
+	status_code   int
+	wrote_header  bool
+	buffer_script bool
+	enabled       bool
+	body          bytes.Buffer
 }
 
-func (w *frontendJSImportResponseWriter) WriteHeader(statusCode int) {
-	if w.wroteHeader {
+func (w *frontend_js_import_response_writer) WriteHeader(status_code int) {
+	if w.wrote_header {
 		return
 	}
-	w.wroteHeader = true
-	w.statusCode = statusCode
-	w.bufferScript = w.enabled &&
-		statusCode == http.StatusOK &&
+	w.wrote_header = true
+	w.status_code = status_code
+	w.buffer_script = w.enabled &&
+		status_code == http.StatusOK &&
 		w.Header().Get("Content-Encoding") == "" &&
-		isJavaScriptContentType(w.Header().Get("Content-Type"))
-	if !w.bufferScript {
-		w.ResponseWriter.WriteHeader(statusCode)
+		is_java_script_content_type(w.Header().Get("Content-Type"))
+	if !w.buffer_script {
+		w.ResponseWriter.WriteHeader(status_code)
 	}
 }
 
-func (w *frontendJSImportResponseWriter) Write(data []byte) (int, error) {
-	if !w.wroteHeader {
+func (w *frontend_js_import_response_writer) Write(data []byte) (int, error) {
+	if !w.wrote_header {
 		w.WriteHeader(http.StatusOK)
 	}
-	if w.bufferScript {
+	if w.buffer_script {
 		return w.body.Write(data)
 	}
 	return w.ResponseWriter.Write(data)
 }
 
-func (w *frontendJSImportResponseWriter) flush(version string) {
-	if !w.bufferScript {
+func (w *frontend_js_import_response_writer) flush(version string) {
+	if !w.buffer_script {
 		return
 	}
-	body := versionJSImportSpecifiers(w.body.Bytes(), version)
+	body := version_js_import_specifiers(w.body.Bytes(), version)
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
-	w.ResponseWriter.WriteHeader(w.statusCode)
+	w.ResponseWriter.WriteHeader(w.status_code)
 	_, _ = w.ResponseWriter.Write(body)
 }
 
-func isJavaScriptContentType(contentType string) bool {
-	if separator := strings.IndexByte(contentType, ';'); separator >= 0 {
-		contentType = contentType[:separator]
+func is_java_script_content_type(content_type string) bool {
+	if separator := strings.IndexByte(content_type, ';'); separator >= 0 {
+		content_type = content_type[:separator]
 	}
-	switch strings.ToLower(strings.TrimSpace(contentType)) {
+	switch strings.ToLower(strings.TrimSpace(content_type)) {
 	case "application/javascript", "text/javascript", "application/ecmascript", "text/ecmascript", "application/x-javascript":
 		return true
 	default:
@@ -171,42 +171,42 @@ func isJavaScriptContentType(contentType string) bool {
 	}
 }
 
-type jsTokenKind uint8
+type js_token_kind uint8
 
 const (
-	jsTokenEOF jsTokenKind = iota
-	jsTokenIdentifier
-	jsTokenString
-	jsTokenPunctuation
-	jsTokenOther
+	js_token_eof js_token_kind = iota
+	js_token_identifier
+	js_token_string
+	js_token_punctuation
+	js_token_other
 )
 
-type jsToken struct {
-	kind       jsTokenKind
-	text       string
-	start      int
-	end        int
-	valueStart int
-	valueEnd   int
+type js_token struct {
+	kind        js_token_kind
+	text        string
+	start       int
+	end         int
+	value_start int
+	value_end   int
 }
 
-type jsScanner struct {
-	source         []byte
-	position       int
-	canStartRegexp bool
+type js_scanner struct {
+	source           []byte
+	position         int
+	can_start_regexp bool
 }
 
-type jsSpecifierRange struct {
+type js_specifier_range struct {
 	start int
 	end   int
 }
 
-func versionJSImportSpecifiers(source []byte, version string) []byte {
+func version_js_import_specifiers(source []byte, version string) []byte {
 	if version == "" {
 		return source
 	}
 
-	ranges := findJSImportSpecifierRanges(source)
+	ranges := find_js_import_specifier_ranges(source)
 	if len(ranges) == 0 {
 		return source
 	}
@@ -217,7 +217,7 @@ func versionJSImportSpecifiers(source []byte, version string) []byte {
 	changed := false
 	for _, item := range ranges {
 		specifier := string(source[item.start:item.end])
-		versioned, ok := versionJSImportSpecifier(specifier, version)
+		versioned, ok := version_js_import_specifier(specifier, version)
 		if !ok {
 			continue
 		}
@@ -233,183 +233,183 @@ func versionJSImportSpecifiers(source []byte, version string) []byte {
 	return output.Bytes()
 }
 
-func findJSImportSpecifierRanges(source []byte) []jsSpecifierRange {
-	scanner := jsScanner{source: source, canStartRegexp: true}
-	var ranges []jsSpecifierRange
+func find_js_import_specifier_ranges(source []byte) []js_specifier_range {
+	scanner := js_scanner{source: source, can_start_regexp: true}
+	var ranges []js_specifier_range
 	for {
 		token := scanner.next()
-		if token.kind == jsTokenEOF {
+		if token.kind == js_token_eof {
 			return ranges
 		}
-		if token.kind != jsTokenIdentifier {
+		if token.kind != js_token_identifier {
 			continue
 		}
 
-		var specifier jsToken
+		var specifier js_token
 		var ok bool
 		lookahead := scanner
 		switch token.text {
 		case "import":
-			specifier, ok = findImportSpecifier(&lookahead)
+			specifier, ok = find_import_specifier(&lookahead)
 		case "export":
-			specifier, ok = findExportSpecifier(&lookahead)
+			specifier, ok = find_export_specifier(&lookahead)
 		}
 		if ok {
-			if len(ranges) > 0 && ranges[len(ranges)-1].start == specifier.valueStart && ranges[len(ranges)-1].end == specifier.valueEnd {
+			if len(ranges) > 0 && ranges[len(ranges)-1].start == specifier.value_start && ranges[len(ranges)-1].end == specifier.value_end {
 				continue
 			}
-			ranges = append(ranges, jsSpecifierRange{
-				start: specifier.valueStart,
-				end:   specifier.valueEnd,
+			ranges = append(ranges, js_specifier_range{
+				start: specifier.value_start,
+				end:   specifier.value_end,
 			})
 		}
 	}
 }
 
-func findImportSpecifier(scanner *jsScanner) (jsToken, bool) {
+func find_import_specifier(scanner *js_scanner) (js_token, bool) {
 	token := scanner.next()
-	if token.kind == jsTokenString { // import "./side-effect.js"
+	if token.kind == js_token_string { // import "./side-effect.js"
 		return token, true
 	}
-	if token.kind == jsTokenPunctuation {
+	if token.kind == js_token_punctuation {
 		switch token.text {
 		case ".": // import.meta
-			return jsToken{}, false
+			return js_token{}, false
 		case "(": // import("./lazy.js")
 			token = scanner.next()
-			return token, token.kind == jsTokenString
+			return token, token.kind == js_token_string
 		}
 	}
 
-	braceDepth := 0
-	for token.kind != jsTokenEOF {
-		if token.kind == jsTokenPunctuation {
+	brace_depth := 0
+	for token.kind != js_token_eof {
+		if token.kind == js_token_punctuation {
 			switch token.text {
 			case "{":
-				braceDepth++
+				brace_depth++
 			case "}":
-				if braceDepth > 0 {
-					braceDepth--
+				if brace_depth > 0 {
+					brace_depth--
 				}
 			case ";":
-				if braceDepth == 0 {
-					return jsToken{}, false
+				if brace_depth == 0 {
+					return js_token{}, false
 				}
 			}
 		}
-		if braceDepth == 0 && token.kind == jsTokenIdentifier && token.text == "from" {
+		if brace_depth == 0 && token.kind == js_token_identifier && token.text == "from" {
 			token = scanner.next()
-			return token, token.kind == jsTokenString
+			return token, token.kind == js_token_string
 		}
-		if braceDepth == 0 && token.kind == jsTokenIdentifier && (token.text == "import" || token.text == "export") {
-			return jsToken{}, false
+		if brace_depth == 0 && token.kind == js_token_identifier && (token.text == "import" || token.text == "export") {
+			return js_token{}, false
 		}
 		token = scanner.next()
 	}
-	return jsToken{}, false
+	return js_token{}, false
 }
 
-func findExportSpecifier(scanner *jsScanner) (jsToken, bool) {
-	braceDepth := 0
-	for token := scanner.next(); token.kind != jsTokenEOF; token = scanner.next() {
-		if token.kind == jsTokenPunctuation {
+func find_export_specifier(scanner *js_scanner) (js_token, bool) {
+	brace_depth := 0
+	for token := scanner.next(); token.kind != js_token_eof; token = scanner.next() {
+		if token.kind == js_token_punctuation {
 			switch token.text {
 			case "{":
-				braceDepth++
+				brace_depth++
 			case "}":
-				if braceDepth > 0 {
-					braceDepth--
+				if brace_depth > 0 {
+					brace_depth--
 				}
 			case ";":
-				if braceDepth == 0 {
-					return jsToken{}, false
+				if brace_depth == 0 {
+					return js_token{}, false
 				}
 			}
 		}
-		if braceDepth == 0 && token.kind == jsTokenIdentifier && token.text == "from" {
+		if brace_depth == 0 && token.kind == js_token_identifier && token.text == "from" {
 			token = scanner.next()
-			return token, token.kind == jsTokenString
+			return token, token.kind == js_token_string
 		}
-		if braceDepth == 0 && token.kind == jsTokenIdentifier && (token.text == "import" || token.text == "export") {
-			return jsToken{}, false
+		if brace_depth == 0 && token.kind == js_token_identifier && (token.text == "import" || token.text == "export") {
+			return js_token{}, false
 		}
 	}
-	return jsToken{}, false
+	return js_token{}, false
 }
 
-func (scanner *jsScanner) next() jsToken {
+func (scanner *js_scanner) next() js_token {
 	for scanner.position < len(scanner.source) {
 		start := scanner.position
 		current := scanner.source[start]
 
-		if isJSSpace(current) {
+		if is_js_space(current) {
 			scanner.position++
 			continue
 		}
 		if current == '/' && start+1 < len(scanner.source) {
 			switch scanner.source[start+1] {
 			case '/':
-				scanner.position = skipJSLineComment(scanner.source, start+2)
+				scanner.position = skip_js_line_comment(scanner.source, start+2)
 				continue
 			case '*':
-				scanner.position = skipJSBlockComment(scanner.source, start+2)
+				scanner.position = skip_js_block_comment(scanner.source, start+2)
 				continue
 			}
-			if scanner.canStartRegexp {
-				scanner.position = skipJSRegexp(scanner.source, start+1)
-				scanner.canStartRegexp = false
-				return jsToken{kind: jsTokenOther, start: start, end: scanner.position}
+			if scanner.can_start_regexp {
+				scanner.position = skip_js_regexp(scanner.source, start+1)
+				scanner.can_start_regexp = false
+				return js_token{kind: js_token_other, start: start, end: scanner.position}
 			}
 		}
 		if current == '\'' || current == '"' {
-			end := skipJSQuotedString(scanner.source, start, current)
+			end := skip_js_quoted_string(scanner.source, start, current)
 			scanner.position = end
-			scanner.canStartRegexp = false
-			valueEnd := end
-			if valueEnd > start+1 && scanner.source[valueEnd-1] == current {
-				valueEnd--
+			scanner.can_start_regexp = false
+			value_end := end
+			if value_end > start+1 && scanner.source[value_end-1] == current {
+				value_end--
 			}
-			return jsToken{
-				kind:       jsTokenString,
-				start:      start,
-				end:        end,
-				valueStart: start + 1,
-				valueEnd:   valueEnd,
+			return js_token{
+				kind:        js_token_string,
+				start:       start,
+				end:         end,
+				value_start: start + 1,
+				value_end:   value_end,
 			}
 		}
 		if current == '`' {
-			scanner.position = skipJSTemplate(scanner.source, start+1)
-			scanner.canStartRegexp = false
-			return jsToken{kind: jsTokenOther, start: start, end: scanner.position}
+			scanner.position = skip_js_template(scanner.source, start+1)
+			scanner.can_start_regexp = false
+			return js_token{kind: js_token_other, start: start, end: scanner.position}
 		}
-		if isJSIdentifierStart(current) {
+		if is_js_identifier_start(current) {
 			scanner.position++
-			for scanner.position < len(scanner.source) && isJSIdentifierContinue(scanner.source[scanner.position]) {
+			for scanner.position < len(scanner.source) && is_js_identifier_continue(scanner.source[scanner.position]) {
 				scanner.position++
 			}
 			text := string(scanner.source[start:scanner.position])
-			scanner.canStartRegexp = jsKeywordAllowsRegexp(text)
-			return jsToken{kind: jsTokenIdentifier, text: text, start: start, end: scanner.position}
+			scanner.can_start_regexp = js_keyword_allows_regexp(text)
+			return js_token{kind: js_token_identifier, text: text, start: start, end: scanner.position}
 		}
 		if current >= '0' && current <= '9' {
 			scanner.position++
-			for scanner.position < len(scanner.source) && isJSNumberContinue(scanner.source[scanner.position]) {
+			for scanner.position < len(scanner.source) && is_js_number_continue(scanner.source[scanner.position]) {
 				scanner.position++
 			}
-			scanner.canStartRegexp = false
-			return jsToken{kind: jsTokenOther, start: start, end: scanner.position}
+			scanner.can_start_regexp = false
+			return js_token{kind: js_token_other, start: start, end: scanner.position}
 		}
 
 		scanner.position++
 		text := string(scanner.source[start:scanner.position])
-		scanner.canStartRegexp = current != ')' && current != ']' && current != '}' && current != '.'
-		return jsToken{kind: jsTokenPunctuation, text: text, start: start, end: scanner.position}
+		scanner.can_start_regexp = current != ')' && current != ']' && current != '}' && current != '.'
+		return js_token{kind: js_token_punctuation, text: text, start: start, end: scanner.position}
 	}
-	return jsToken{kind: jsTokenEOF, start: len(scanner.source), end: len(scanner.source)}
+	return js_token{kind: js_token_eof, start: len(scanner.source), end: len(scanner.source)}
 }
 
-func versionJSImportSpecifier(specifier string, version string) (string, bool) {
-	if strings.ContainsRune(specifier, '\\') || !isLocalJSImportSpecifier(specifier) {
+func version_js_import_specifier(specifier string, version string) (string, bool) {
+	if strings.ContainsRune(specifier, '\\') || !is_local_js_import_specifier(specifier) {
 		return specifier, false
 	}
 	parsed, err := url.Parse(specifier)
@@ -426,14 +426,14 @@ func versionJSImportSpecifier(specifier string, version string) (string, bool) {
 	return parsed.String(), true
 }
 
-func isLocalJSImportSpecifier(specifier string) bool {
+func is_local_js_import_specifier(specifier string) bool {
 	return strings.HasPrefix(specifier, "./") ||
 		strings.HasPrefix(specifier, "../") ||
 		strings.HasPrefix(specifier, "/") && !strings.HasPrefix(specifier, "//") ||
 		strings.HasPrefix(specifier, "@/")
 }
 
-func skipJSQuotedString(source []byte, start int, quote byte) int {
+func skip_js_quoted_string(source []byte, start int, quote byte) int {
 	for position := start + 1; position < len(source); position++ {
 		if source[position] == '\\' {
 			position++
@@ -446,7 +446,7 @@ func skipJSQuotedString(source []byte, start int, quote byte) int {
 	return len(source)
 }
 
-func skipJSTemplate(source []byte, position int) int {
+func skip_js_template(source []byte, position int) int {
 	for position < len(source) {
 		if source[position] == '\\' {
 			position += 2
@@ -460,14 +460,14 @@ func skipJSTemplate(source []byte, position int) int {
 	return len(source)
 }
 
-func skipJSLineComment(source []byte, position int) int {
+func skip_js_line_comment(source []byte, position int) int {
 	for position < len(source) && source[position] != '\n' && source[position] != '\r' {
 		position++
 	}
 	return position
 }
 
-func skipJSBlockComment(source []byte, position int) int {
+func skip_js_block_comment(source []byte, position int) int {
 	for position+1 < len(source) {
 		if source[position] == '*' && source[position+1] == '/' {
 			return position + 2
@@ -477,21 +477,21 @@ func skipJSBlockComment(source []byte, position int) int {
 	return len(source)
 }
 
-func skipJSRegexp(source []byte, position int) int {
-	inCharacterClass := false
+func skip_js_regexp(source []byte, position int) int {
+	in_character_class := false
 	for position < len(source) {
 		switch source[position] {
 		case '\\':
 			position += 2
 			continue
 		case '[':
-			inCharacterClass = true
+			in_character_class = true
 		case ']':
-			inCharacterClass = false
+			in_character_class = false
 		case '/':
-			if !inCharacterClass {
+			if !in_character_class {
 				position++
-				for position < len(source) && isJSIdentifierContinue(source[position]) {
+				for position < len(source) && is_js_identifier_continue(source[position]) {
 					position++
 				}
 				return position
@@ -504,7 +504,7 @@ func skipJSRegexp(source []byte, position int) int {
 	return len(source)
 }
 
-func isJSSpace(value byte) bool {
+func is_js_space(value byte) bool {
 	switch value {
 	case ' ', '\t', '\n', '\r', '\v', '\f':
 		return true
@@ -513,19 +513,19 @@ func isJSSpace(value byte) bool {
 	}
 }
 
-func isJSIdentifierStart(value byte) bool {
+func is_js_identifier_start(value byte) bool {
 	return value == '_' || value == '$' || value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z'
 }
 
-func isJSIdentifierContinue(value byte) bool {
-	return isJSIdentifierStart(value) || value >= '0' && value <= '9'
+func is_js_identifier_continue(value byte) bool {
+	return is_js_identifier_start(value) || value >= '0' && value <= '9'
 }
 
-func isJSNumberContinue(value byte) bool {
-	return isJSIdentifierContinue(value) || value == '.'
+func is_js_number_continue(value byte) bool {
+	return is_js_identifier_continue(value) || value == '.'
 }
 
-func jsKeywordAllowsRegexp(keyword string) bool {
+func js_keyword_allows_regexp(keyword string) bool {
 	switch keyword {
 	case "await", "case", "delete", "do", "else", "in", "instanceof", "new", "return", "throw", "typeof", "void", "yield":
 		return true
@@ -534,75 +534,75 @@ func jsKeywordAllowsRegexp(keyword string) bool {
 	}
 }
 
-// renderFrontendHTMLResponses applies the same runtime-variable rendering used
+// render_frontend_html_responses applies the same runtime-variable rendering used
 // by the root route to index.html responses produced by the SPA fallback.
-func renderFrontendHTMLResponses(next http.Handler, render func([]byte) []byte) http.Handler {
+func render_frontend_html_responses(next http.Handler, render func([]byte) []byte) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writer := &frontendHTMLResponseWriter{ResponseWriter: w}
+		writer := &frontend_html_response_writer{ResponseWriter: w}
 		next.ServeHTTP(writer, r)
 		writer.flush(render)
 	})
 }
 
-type frontendHTMLResponseWriter struct {
+type frontend_html_response_writer struct {
 	http.ResponseWriter
-	statusCode  int
-	wroteHeader bool
-	bufferHTML  bool
-	body        bytes.Buffer
+	status_code  int
+	wrote_header bool
+	buffer_html  bool
+	body         bytes.Buffer
 }
 
-func (w *frontendHTMLResponseWriter) WriteHeader(statusCode int) {
-	if w.wroteHeader {
+func (w *frontend_html_response_writer) WriteHeader(status_code int) {
+	if w.wrote_header {
 		return
 	}
-	w.wroteHeader = true
-	w.statusCode = statusCode
-	w.bufferHTML = statusCode >= http.StatusOK &&
-		statusCode != http.StatusNoContent &&
-		statusCode != http.StatusNotModified &&
+	w.wrote_header = true
+	w.status_code = status_code
+	w.buffer_html = status_code >= http.StatusOK &&
+		status_code != http.StatusNoContent &&
+		status_code != http.StatusNotModified &&
 		strings.HasPrefix(strings.ToLower(w.Header().Get("Content-Type")), "text/html")
-	if !w.bufferHTML {
-		w.ResponseWriter.WriteHeader(statusCode)
+	if !w.buffer_html {
+		w.ResponseWriter.WriteHeader(status_code)
 	}
 }
 
-func (w *frontendHTMLResponseWriter) Write(data []byte) (int, error) {
-	if !w.wroteHeader {
+func (w *frontend_html_response_writer) Write(data []byte) (int, error) {
+	if !w.wrote_header {
 		w.WriteHeader(http.StatusOK)
 	}
-	if w.bufferHTML {
+	if w.buffer_html {
 		return w.body.Write(data)
 	}
 	return w.ResponseWriter.Write(data)
 }
 
-func (w *frontendHTMLResponseWriter) flush(render func([]byte) []byte) {
-	if !w.bufferHTML {
+func (w *frontend_html_response_writer) flush(render func([]byte) []byte) {
+	if !w.buffer_html {
 		return
 	}
 	body := render(w.body.Bytes())
-	setFrontendHTMLCacheHeaders(w.Header())
+	set_frontend_html_cache_headers(w.Header())
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
-	w.ResponseWriter.WriteHeader(w.statusCode)
+	w.ResponseWriter.WriteHeader(w.status_code)
 	_, _ = w.ResponseWriter.Write(body)
 }
 
-func setFrontendHTMLCacheHeaders(header http.Header) {
+func set_frontend_html_cache_headers(header http.Header) {
 	header.Set("Cache-Control", "no-store")
 	header.Set("Pragma", "no-cache")
 	header.Set("Expires", "0")
 }
 
-func (c *APIClient) isLoggingEnabled() bool {
+func (c *APIClient) is_logging_enabled() bool {
 	if c.cfg == nil || c.cfg.Original == nil {
 		return false
 	}
 	return c.cfg.Original.LogPath() != "" || c.cfg.Original.GetBool("log.enabled")
 }
 
-// handleFrontendTip handles frontend log/tip messages posted from injected pages.
-func (c *APIClient) handleFrontendTip(ctx *gin.Context) {
+// handle_frontend_tip handles frontend log/tip messages posted from injected pages.
+func (c *APIClient) handle_frontend_tip(ctx *gin.Context) {
 	body, err := io.ReadAll(ctx.Request.Body)
 	if err != nil {
 		result.Err(ctx, 400, "read body failed")
@@ -613,14 +613,14 @@ func (c *APIClient) handleFrontendTip(ctx *gin.Context) {
 		result.Err(ctx, 400, err.Error())
 		return
 	}
-	if !c.isLoggingEnabled() {
+	if !c.is_logging_enabled() {
 		result.Ok(ctx, nil)
 		return
 	}
-	prefixText := "[FRONTEND]"
+	prefix_text := "[FRONTEND]"
 	prefix := data.Prefix
 	if prefix == nil {
-		prefix = &prefixText
+		prefix = &prefix_text
 	}
 	if data.End == 1 {
 		fmt.Println()
@@ -634,8 +634,8 @@ func (c *APIClient) handleFrontendTip(ctx *gin.Context) {
 	result.Ok(ctx, nil)
 }
 
-// handleFrontendError handles frontend error messages posted from injected pages.
-func (c *APIClient) handleFrontendError(ctx *gin.Context) {
+// handle_frontend_error handles frontend error messages posted from injected pages.
+func (c *APIClient) handle_frontend_error(ctx *gin.Context) {
 	body, err := io.ReadAll(ctx.Request.Body)
 	if err != nil {
 		result.Err(ctx, 400, "read body failed")
@@ -705,14 +705,14 @@ func (c *APIClient) handle_frontend_report(ctx *gin.Context) {
 		if report_message == "" {
 			report_message = "frontend report"
 		}
-		lvl := zerologLevel(data.Level)
+		lvl := zerolog_level(data.Level)
 		evt := c.logger.WithLevel(lvl).
 			Str("component", "frontend")
 		if data.Time != nil {
 			evt.Ctx(logtime.WithTimestamp(ctx.Request.Context(), data.Time.In(time.Local)))
 		}
 		for key, value := range extra_fields {
-			evt = evt.Interface(key, normalizeFrontendReportValue(value))
+			evt = evt.Interface(key, normalize_frontend_report_value(value))
 		}
 		evt.Msg(report_message)
 
@@ -723,7 +723,7 @@ func (c *APIClient) handle_frontend_report(ctx *gin.Context) {
 		}
 
 		// Non-error logs are only displayed if logging is explicitly enabled
-		if !c.isLoggingEnabled() || data.Level == "debug" || data.Level == "trace" {
+		if !c.is_logging_enabled() || data.Level == "debug" || data.Level == "trace" {
 			continue
 		}
 		prefix_text := "[FRONTEND]"
@@ -744,24 +744,24 @@ func (c *APIClient) handle_frontend_report(ctx *gin.Context) {
 	result.Ok(ctx, nil)
 }
 
-func normalizeFrontendReportValue(v interface{}) interface{} {
+func normalize_frontend_report_value(v interface{}) interface{} {
 	switch value := v.(type) {
 	case string:
 		var parsed interface{}
 		if err := json.Unmarshal([]byte(value), &parsed); err == nil {
-			return normalizeFrontendReportValue(parsed)
+			return normalize_frontend_report_value(parsed)
 		}
 		return value
 	case map[string]interface{}:
 		normalized := make(map[string]interface{}, len(value))
 		for k, child := range value {
-			normalized[k] = normalizeFrontendReportValue(child)
+			normalized[k] = normalize_frontend_report_value(child)
 		}
 		return normalized
 	case []interface{}:
 		normalized := make([]interface{}, len(value))
 		for i, child := range value {
-			normalized[i] = normalizeFrontendReportValue(child)
+			normalized[i] = normalize_frontend_report_value(child)
 		}
 		return normalized
 	default:
@@ -769,7 +769,7 @@ func normalizeFrontendReportValue(v interface{}) interface{} {
 	}
 }
 
-func zerologLevel(level string) zerolog.Level {
+func zerolog_level(level string) zerolog.Level {
 	switch level {
 	case "error":
 		return zerolog.ErrorLevel
@@ -782,19 +782,19 @@ func zerologLevel(level string) zerolog.Level {
 	}
 }
 
-func shouldServeByAPI(path string) bool {
+func should_serve_by_api(path string) bool {
 	if path == "/favicon.ico" || path == "/" || path == "/play" || path == "/report" || path == "/mcp" {
 		return true
 	}
 
-	apiPrefixes := []string{
+	api_prefixes := []string{
 		"/api/",
 		"/ws/",
 		"/rss/",
 		"/mp/",
 		"/__assets/",
 	}
-	for _, prefix := range apiPrefixes {
+	for _, prefix := range api_prefixes {
 		if strings.HasPrefix(path, prefix) {
 			return true
 		}

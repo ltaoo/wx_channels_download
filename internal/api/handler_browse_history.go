@@ -41,13 +41,13 @@ func (c *APIClient) RecordBrowseHistory(unique_mark string, info adapter.BrowseH
 	return c.browse_history_service.Record(unique_mark, info)
 }
 
-type browseHistoryCreateRequest struct {
+type browse_history_create_request struct {
 	Objects []services.CreateBrowseHistoryBody `json:"objects"`
 }
 
-// createBrowseHistorySingle creates one browse history item through the
+// create_browse_history_single creates one browse history item through the
 // service layer. Platform payload parsing and persistence stay out of the API.
-func (c *APIClient) createBrowseHistorySingle(body services.CreateBrowseHistoryBody) (gin.H, error) {
+func (c *APIClient) create_browse_history_single(body services.CreateBrowseHistoryBody) (gin.H, error) {
 	if c.browse_history_service == nil {
 		return nil, fmt.Errorf("browse history service not initialized")
 	}
@@ -65,7 +65,7 @@ func (c *APIClient) createBrowseHistorySingle(body services.CreateBrowseHistoryB
 
 // handle_create_browse_history batch-creates browse history records.
 func (c *APIClient) handle_create_browse_history(ctx *gin.Context) {
-	var req browseHistoryCreateRequest
+	var req browse_history_create_request
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		if c.logger != nil {
 			c.logger.Warn().
@@ -94,7 +94,7 @@ func (c *APIClient) handle_create_browse_history(ctx *gin.Context) {
 	failed_count := 0
 	skipped_count := 0
 	for index, body := range req.Objects {
-		data, err := c.createBrowseHistorySingle(body)
+		data, err := c.create_browse_history_single(body)
 		if err != nil {
 			item := gin.H{
 				"index":   index,

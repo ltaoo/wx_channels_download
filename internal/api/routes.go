@@ -20,7 +20,7 @@ func (c *APIClient) SetupRoutes() {
 	c.setup_static_asset_routes()
 	// c.engine.GET("/", c.handle_index)
 	c.engine.GET("/", func(ctx *gin.Context) {
-		c.renderFrontendFile(ctx, "index.html")
+		c.render_frontend_file(ctx, "index.html")
 	})
 	// !!
 	c.engine.POST("/api/scraper/fetch", c.handle_scraper_fetch)

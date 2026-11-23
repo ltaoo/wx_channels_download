@@ -21,25 +21,25 @@ import (
 var AppVer = "261120"
 var Mode = "debug"
 
-const defaultLogMaxBytes = 50 * 1024 * 1024 // 50MB
+const default_log_max_bytes = 50 * 1024 * 1024 // 50MB
 
-type sizeLimitedWriter struct {
-	file         *os.File
-	maxBytes     int64
-	currentBytes int64
-	mu           sync.Mutex
+type size_limited_writer struct {
+	file          *os.File
+	max_bytes     int64
+	current_bytes int64
+	mu            sync.Mutex
 }
 
-func (w *sizeLimitedWriter) Write(p []byte) (n int, err error) {
+func (w *size_limited_writer) Write(p []byte) (n int, err error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.currentBytes+int64(len(p)) > w.maxBytes {
+	if w.current_bytes+int64(len(p)) > w.max_bytes {
 		_ = w.file.Truncate(0)
 		_, _ = w.file.Seek(0, io.SeekStart)
-		w.currentBytes = 0
+		w.current_bytes = 0
 	}
 	n, err = w.file.Write(p)
-	w.currentBytes += int64(n)
+	w.current_bytes += int64(n)
 	return n, err
 }
 
@@ -48,8 +48,8 @@ func is_log_enabled() bool {
 	if val == "true" || val == "1" {
 		return true
 	}
-	wxVal := strings.ToLower(strings.TrimSpace(os.Getenv("WX_ENABLE_LOG")))
-	if wxVal == "true" || wxVal == "1" {
+	wx_val := strings.ToLower(strings.TrimSpace(os.Getenv("WX_ENABLE_LOG")))
+	if wx_val == "true" || wx_val == "1" {
 		return true
 	}
 	for _, arg := range os.Args[1:] {
@@ -111,9 +111,9 @@ func new_app_logger() (*zerolog.Logger, *os.File, string, error) {
 		return nil, nil, "", err
 	}
 
-	writer := &sizeLimitedWriter{
-		file:     log_file,
-		maxBytes: defaultLogMaxBytes,
+	writer := &size_limited_writer{
+		file:      log_file,
+		max_bytes: default_log_max_bytes,
 	}
 	logger := zerolog.New(writer).Hook(logtime.Hook{})
 	return &logger, log_file, log_path, nil

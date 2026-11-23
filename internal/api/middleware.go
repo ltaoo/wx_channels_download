@@ -13,11 +13,11 @@ func with_cors(h http.Handler) http.Handler {
 			w.Header().Set("Vary", "Origin")
 		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS")
-		allowHeaders := r.Header.Get("Access-Control-Request-Headers")
-		if allowHeaders == "" {
-			allowHeaders = "Content-Type, Range, Accept, Origin, X-Requested-With, Authorization"
+		allow_headers := r.Header.Get("Access-Control-Request-Headers")
+		if allow_headers == "" {
+			allow_headers = "Content-Type, Range, Accept, Origin, X-Requested-With, Authorization"
 		}
-		w.Header().Set("Access-Control-Allow-Headers", allowHeaders)
+		w.Header().Set("Access-Control-Allow-Headers", allow_headers)
 		w.Header().Set("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Type, Content-Length, Content-Disposition")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
