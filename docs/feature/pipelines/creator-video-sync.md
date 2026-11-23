@@ -21,4 +21,4 @@ description: 复制 Pipeline JSON，定时检查创作者视频并下载缺失�
 
 更多说明见[导入和配置](./index.md#导入和配置)与[运行结果与边界](./index.md#运行结果与边界)。
 
-<<< ./01_creator_video_sync.json
+<<< ../../examples/pipelines/01_creator_video_sync.json

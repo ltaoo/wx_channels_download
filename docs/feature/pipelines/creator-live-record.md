@@ -11,4 +11,4 @@ description: 复制 Pipeline JSON，定时检查创作者直播并创建录制�
 
 更多说明见[导入和配置](./index.md#导入和配置)与[运行结果与边界](./index.md#运行结果与边界)。
 
-<<< ./02_creator_live_record.json
+<<< ../../examples/pipelines/02_creator_live_record.json

@@ -11,4 +11,4 @@ description: 复制 Pipeline JSON，通过企业微信或通用 Webhook 接收�
 
 第一次运行就会通知扫描范围内没有下载任务的视频；仍未创建下载任务的视频可能在后续运行中再次通知。详细配置见[新视频通知的额外配置](./index.md#新视频通知的额外配置)。
 
-<<< ./03_creator_new_video_notify.json
+<<< ../../examples/pipelines/03_creator_new_video_notify.json
