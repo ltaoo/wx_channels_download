@@ -1,5 +1,4 @@
 (function () {
-  alert(1);
   if (
     typeof window === "undefined" ||
     typeof document === "undefined" ||
@@ -15,13 +14,14 @@
   const base = "https://res.wx.qq.com/__assets/wxchannels/liteapp/";
   const model = {
     stage: "waiting",
-    revision: "direct-wrap-v1-alert-check",
+    revision: "direct-wrap-v2-navigation",
     methods: 0,
     init_events: 0,
     detail_events: 0,
     app: null,
     require: null,
     wrapped: new WeakSet(),
+    navigation_unsubscribe: null,
     error: "",
     async report(stage) {
       this.stage = stage;
@@ -83,14 +83,14 @@
     },
     install(exports) {
       // Keep the original functions and their closures. Only observe successful results.
-      const data = (result) => result.data;
-      const object = (result) => result.data.object;
+      const handle_data = (result) => result.data;
+      const handle_object = (result) => result.data.object;
       const events = {
-        finderInit: ["channels:Init", data],
-        finderGetCommentDetail: ["channels:OnFeedProfileLoaded", object],
-        finderGetCommentList: ["channels:FeedCommentListLoaded", data],
-        finderPcFlow: ["channels:PCFlowLoaded", object],
-        finderGetRecommend: ["channels:RecommendFeedsLoaded", object],
+        finderInit: ["channels:Init", handle_data],
+        finderGetCommentDetail: ["channels:OnFeedProfileLoaded", handle_object],
+        finderGetCommentList: ["channels:FeedCommentListLoaded", handle_data],
+        finderPcFlow: ["channels:PCFlowLoaded", handle_object],
+        finderGetRecommend: ["channels:RecommendFeedsLoaded", handle_object],
         getRecommendTabsFromService: [
           "channels:RecommendFeedsLoaded",
           (result) => {
@@ -100,13 +100,13 @@
         ],
         finderGetInteractionedFeedList: [
           "channels:InteractionedFeedsLoaded",
-          object,
+          handle_object,
         ],
-        finderGetFeedH5Url: ["channels:GetFeedH5Url", object],
-        finderUserPage: ["channels:UserFeedsLoaded", object],
-        finderLiveUserPage: ["channels:LiveUserFeedsLoaded", object],
-        finderGetLiveInfo: ["channels:OnLiveProfileLoaded", data],
-        joinLive: ["channels:JoinLive", data],
+        finderGetFeedH5Url: ["channels:GetFeedH5Url", handle_object],
+        finderUserPage: ["channels:UserFeedsLoaded", handle_object],
+        finderLiveUserPage: ["channels:LiveUserFeedsLoaded", handle_object],
+        finderGetLiveInfo: ["channels:OnLiveProfileLoaded", handle_data],
+        joinLive: ["channels:JoinLive", handle_data],
       };
       const changes = [];
       const targets = new Set();
@@ -169,6 +169,32 @@
         this.wrapped.add(change.descriptor.value);
       }
       this.methods += changes.length;
+    },
+    install_navigation() {
+      const store = this.app.config.globalProperties.$pinia?._s?.get("home");
+      if (!store?.$onAction || this.navigation_unsubscribe) {
+        return;
+      }
+      const events = {
+        goToPrevFlowFeed: "channels:GotoPrevFeed",
+        goToNextFlowFeed: "channels:GotoNextFeed",
+        loadLocalPlaylist: "channels:HomeFeedChanged",
+      };
+      // Pinia subscriptions also observe actions already captured by component setup.
+      this.navigation_unsubscribe = store.$onAction(({ name, after }) => {
+        const event = events[name];
+        if (!event) {
+          return;
+        }
+        const previous_id = store.flowCurrentFeed?.id;
+        after(() => {
+          const feed = store.flowCurrentFeed;
+          if (!feed?.id || feed.id === "0" || feed.id === previous_id) {
+            return;
+          }
+          WXU.emit(event, feed);
+        });
+      }, true);
     },
     services() {
       const match = Object.entries(this.require.m).find(([, factory]) => {
@@ -262,6 +288,7 @@
           void this.report("business_event");
         });
         this.install(api_module.exports);
+        this.install_navigation();
         const services = this.services();
         WXU.emit("channels:APILoaded", services);
         await this.report("installed");
@@ -288,10 +315,11 @@
         script.setAttribute("data-n", name);
         script.src = parsed.href;
         script.onload = resolve;
-        script.onerror = () =>
-          reject(
+        script.onerror = function () {
+          return reject(
             new Error("failed to load injection asset: " + parsed.pathname),
           );
+        };
         document.head.appendChild(script);
       });
     },

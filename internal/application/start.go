@@ -29,6 +29,7 @@ import (
 	"wx_channel/pkg/cookies"
 	"wx_channel/pkg/hermes"
 	"wx_channel/pkg/hermes/protocol"
+	"wx_channel/pkg/scraper/wxchannels"
 	"wx_channel/pkg/system"
 )
 
@@ -431,7 +432,9 @@ func Start(cfg *config.Config) error {
 			return fmt.Errorf("failed to start proxy service: %w", err)
 		}
 		color.Green(fmt.Sprintf("Proxy service started successfully, address: %v", http_service_url(interceptor_srv.Addr())))
-		start_wxchannels_liteapp_cache_cleanup(ctx, cfg)
+		if adapter.Get("wxchannels") != nil {
+			wxchannels.StartLiteAppCacheCleanup(ctx, cfg.Version, logger)
+		}
 
 		if !buildtags.UsingSunnyNet {
 			if interceptor_srv.ProxyTun() {

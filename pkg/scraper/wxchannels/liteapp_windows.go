@@ -1,13 +1,17 @@
-package application
+package wxchannels
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/rs/zerolog"
 )
 
 func wechat_cache_in_use(ctx context.Context) (bool, error) {
@@ -42,4 +46,18 @@ func liteapp_wechat_process_name(name string) bool {
 		return true
 	}
 	return false
+}
+
+func liteapp_cache_profiles_root() (string, error) {
+	// UserConfigDir uses APPDATA on Windows, including redirected profiles.
+	config_dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(config_dir, "Tencent", "xwechat", "radium", "web", "profiles"), nil
+}
+
+// StartLiteAppCacheCleanup runs after the proxy starts so a subsequent SDK request receives the loader.
+func StartLiteAppCacheCleanup(ctx context.Context, version string, logger *zerolog.Logger) {
+	start_liteapp_cache_cleanup(ctx, version, logger, liteapp_cache_profiles_root, wechat_cache_in_use, prepare_liteapp_sdk_cache_when_idle)
 }
