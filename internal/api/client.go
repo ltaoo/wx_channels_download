@@ -30,7 +30,8 @@ type APIClient struct {
 	event_publisher           events.Publisher
 	service_runtime_status    *services.RuntimeStatusService
 
-	claw_client *clawreq.Client
+	claw_client    *clawreq.Client
+	claw_init_once sync.Once
 
 	// Services
 	service_account        *services.AccountService
@@ -181,7 +182,7 @@ func (c *APIClient) RegisterPOST(path string, handler gin.HandlerFunc) {
 }
 
 func (c *APIClient) HTTPHandler() http.Handler {
-	return with_cors(c)
+	return with_cors(c, c.cfg)
 }
 
 // DownloadTaskService returns the download task service.

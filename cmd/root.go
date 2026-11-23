@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -116,7 +117,11 @@ func configured_api_base_url() string {
 	}
 	hostname := config.APIClientHostname(Cfg.GetString("api.hostname"))
 	port := Cfg.GetInt("api.port")
-	return fmt.Sprintf("%s://%s", protocol, net.JoinHostPort(hostname, strconv.Itoa(port)))
+	address := &url.URL{Scheme: protocol, Host: net.JoinHostPort(hostname, strconv.Itoa(port))}
+	if username, password := Cfg.GetString("api.username"), Cfg.GetString("api.password"); username != "" && password != "" {
+		address.User = url.UserPassword(username, password)
+	}
+	return address.String()
 }
 
 func wait_for_start_failure(in io.Reader, out io.Writer) {

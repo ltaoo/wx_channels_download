@@ -77,6 +77,8 @@ func resolve_show_file_path(download_dir string, body ShowFileBody) string {
 }
 
 func (c *APIClient) handle_fetch_file(ctx *gin.Context) {
+	ctx.Header("Content-Security-Policy", "sandbox")
+	ctx.Header("X-Content-Type-Options", "nosniff")
 	path := ctx.Query("path")
 	if path == "" {
 		result.Err(ctx, 400, "missing path")

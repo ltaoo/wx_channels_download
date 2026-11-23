@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"time"
 
@@ -77,11 +78,15 @@ func warn_if_downloader_api_down(ctx context.Context, api_base_url string, warni
 	if err == nil {
 		return
 	}
+	display_url := api_base_url
+	if parsed, parse_err := url.Parse(api_base_url); parse_err == nil {
+		display_url = parsed.Redacted()
+	}
 	fmt.Fprintf(
 		warning_writer,
 		"警告: 无法连接下载器 API Server (%s): %v\n"+
 			"请保证 wx_video_download server 处于运行状态，否则本次会话的全部工具调用都会失败。\n",
-		api_base_url,
+		display_url,
 		err,
 	)
 }

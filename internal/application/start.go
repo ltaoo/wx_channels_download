@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -116,6 +117,14 @@ func Start(cfg *config.Config) error {
 			Msg("enable remote server")
 		plugin := &proxy.Plugin{
 			Match: "weixin110.qq.com",
+			OnRequest: func(ctx proxy.Context) {
+				username := cfg.GetString("download.remoteServer.username")
+				password := cfg.GetString("download.remoteServer.password")
+				if username != "" && password != "" {
+					request := &http.Request{Header: ctx.Req().Header}
+					request.SetBasicAuth(username, password)
+				}
+			},
 			Target: &proxy.TargetConfig{
 				Protocol: target_protocol,
 				Host:     target_hostname,

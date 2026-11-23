@@ -24,13 +24,18 @@ download:
     protocol: "http"
     hostname: "192.168.1.2"
     port: 2022
+    username: ""
+    password: ""
 
 api:
   protocol: "http"
   hostname: "127.0.0.1"
   port: 2022
+  # 可选认证：用户名和密码均非空时才启用；未配置时本机和远程均无需认证。
+  username: ""
+  password: ""
 
-# 数据同步目标；同步接收默认启用，无需令牌
+# 数据同步目标；远程目标可使用 https://用户名:密码@主机:端口
 sync:
   servers: []
   # - name: "备用下载机"

@@ -2,6 +2,7 @@ package application
 
 import (
 	"net"
+	"net/url"
 	"strconv"
 
 	"wx_channel/internal/api"
@@ -57,5 +58,9 @@ func mcp_api_base_url(api_config *api.APIConfig) string {
 	if port <= 0 {
 		port = 2022
 	}
-	return "http://" + net.JoinHostPort(hostname, strconv.Itoa(port))
+	address := &url.URL{Scheme: "http", Host: net.JoinHostPort(hostname, strconv.Itoa(port))}
+	if api_config.Username != "" && api_config.Password != "" {
+		address.User = url.UserPassword(api_config.Username, api_config.Password)
+	}
+	return address.String()
 }

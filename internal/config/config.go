@@ -640,6 +640,14 @@ func (c *Config) LoadConfig() error {
 		Group:       "API",
 	})
 	Register(ConfigField{
+		Key: "api.username", Type: ConfigTypeString, Default: "",
+		Description: "可选的 HTTP Basic Auth 用户名；与密码均非空时启用认证，重启生效", Title: "API 用户名", Group: "API",
+	})
+	Register(ConfigField{
+		Key: "api.password", Type: ConfigTypeString, Default: "", Sensitive: true,
+		Description: "可选的 HTTP Basic Auth 密码；与用户名均非空时启用认证，重启生效", Title: "API 密码", Group: "API",
+	})
+	Register(ConfigField{
 		Key:         "mcp.enabled",
 		Type:        ConfigTypeBool,
 		Default:     false,

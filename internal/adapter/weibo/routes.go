@@ -1,6 +1,7 @@
 package weiboadapter
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 
 	"wx_channel/internal/adapter"
 	"wx_channel/pkg/scraper/weibo"
+	"wx_channel/pkg/util"
 )
 
 const image_proxy_path = "/api/weibo/imgproxy"
@@ -45,8 +47,14 @@ func (r *routes) proxy_img(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadGateway, gin.H{"code": -1, "msg": fmt.Sprintf("upstream returned %d", response.StatusCode)})
 		return
 	}
-	content_type := response.Header.Get("Content-Type")
-	if !strings.HasPrefix(strings.ToLower(content_type), "image/") {
+	reader := bufio.NewReader(response.Body)
+	prefix, read_err := reader.Peek(512)
+	if read_err != nil && read_err != io.EOF {
+		ctx.Status(http.StatusBadGateway)
+		return
+	}
+	content_type := util.SafeImageContentType(prefix)
+	if content_type == "" {
 		ctx.JSON(http.StatusBadGateway, gin.H{"code": -1, "msg": "upstream did not return an image"})
 		return
 	}
@@ -60,6 +68,7 @@ func (r *routes) proxy_img(ctx *gin.Context) {
 	}
 	ctx.Header("Content-Type", content_type)
 	ctx.Header("X-Content-Type-Options", "nosniff")
+	ctx.Header("Content-Security-Policy", "sandbox; default-src 'none'")
 	ctx.Status(response.StatusCode)
-	_, _ = io.Copy(ctx.Writer, response.Body)
+	_, _ = io.Copy(ctx.Writer, reader)
 }
