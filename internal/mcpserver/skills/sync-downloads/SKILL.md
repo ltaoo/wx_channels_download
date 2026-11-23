@@ -7,7 +7,7 @@ description: 将本机已有下载任务及文件同步到另一台下载器或 
 
 使用源下载器的 MCP 工具完成操作。用户明确要求同步即已授权，不需要再次确认同一范围。
 
-1. 确定目标和任务范围。`get_sync_servers` 列出目标；目标不存在时，使用 `configure_sync_server`，仅传名称和完整 HTTP(S) 地址，无需令牌。
+1. 确定目标和任务范围。`get_sync_servers` 列出目标；目标不存在时，使用 `configure_sync_server` 传入名称和完整 HTTP(S) 地址。API 认证为可选配置；仅当目标服务同时配置非空的 `api.username`、`api.password` 时，才需要在目标 URL 中使用标准 Basic Auth 用户信息携带凭据，特殊字符需 URL 编码。`get_sync_servers` 不返回凭据。
 2. 用户说“第一条”时，以 `get_download_tasks` 的列表顺序为准（最新任务在前），用 `page=1,page_size=1` 获取 ID；用 `get_download_task_detail` 核对标题和已有文件。确定 ID 后保持该范围，不因列表变化重新选择。指定 ID 时直接使用该 ID。
 3. `preview_sync` 传入明确的 `task_ids`，核对任务、资源、文件数量和字节数。空的任务选择不能代替用户授权的单条范围；找不到任务时停止，不回退为全量同步。
 4. 调用 `sync_to_server`，传 `server_id` 和相同的 `task_ids`。只有用户明确要求所有下载时才使用 `all=true`；不要同时传 `all` 和 `task_ids`。

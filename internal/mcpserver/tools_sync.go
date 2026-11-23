@@ -127,7 +127,7 @@ var tools_sync = []tool{
 		supports:     supports_api_client, handle: (*ToolSet).preview_sync,
 	},
 	{
-		name: "configure_sync_server", title: "配置数据同步目标", description: "只需名称和地址，添加或按名称更新同步目标，立即生效，不启动同步；无需接收令牌。",
+		name: "configure_sync_server", title: "配置数据同步目标", description: "添加或按名称更新同步目标，立即生效，不启动同步。仅当目标启用认证时，URL 才需包含 HTTP Basic Auth 用户名和密码；服务列表不会返回凭据。",
 		input_schema: json.RawMessage(`{"type":"object","additionalProperties":false,"required":["name","url"],"properties":{"name":{"type":"string","minLength":1},"url":{"type":"string","minLength":1}}}`),
 		annotations:  json.RawMessage(`{"readOnlyHint":false,"destructiveHint":false,"idempotentHint":true,"openWorldHint":false}`),
 		supports:     supports_api_client, handle: (*ToolSet).configure_sync_server,

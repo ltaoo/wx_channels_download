@@ -118,6 +118,7 @@ export default defineConfig(async () => {
             { text: "使用步骤", link: "/guide/step" },
             { text: "使用 Docker 运行", link: "/guide/docker" },
             { text: "手动安装根证书", link: "/guide/certificate" },
+            { text: "开发与检查", link: "/guide/development" },
           ],
         },
         {
