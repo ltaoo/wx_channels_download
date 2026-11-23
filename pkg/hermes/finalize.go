@@ -214,15 +214,6 @@ func BuildFinalResourceName(input FinalResourceNameInput) FinalResourceNameResul
 	}
 	ext := CanonicalExtensionForMIMEType(input.ResourceKind)
 
-	// URL tasks and older STREAM rows may already include the canonical extension.
-	if (strings.EqualFold(input.ResourceType, ResourceTypeStream) || get_config_string(input.TaskConfig, "url") != "") &&
-		ext != "" && strings.EqualFold(filepath.Ext(base_name), ext) {
-		base_name = strings.TrimSuffix(base_name, filepath.Ext(base_name))
-	}
-	if get_config_string(input.TaskConfig, "url") != "" && ext != "" && strings.EqualFold(filepath.Ext(name), ext) {
-		name = strings.TrimSuffix(name, filepath.Ext(name))
-	}
-
 	result := FinalResourceNameResult{
 		BaseName:  base_name,
 		Extension: ext,
