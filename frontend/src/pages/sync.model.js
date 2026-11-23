@@ -180,7 +180,7 @@ export function SyncPageModel(props) {
     server.device_status.as("checking");
     server.device_message.as("");
     try {
-      const response = await fetch(`${server.url}/api/status`, {
+      const response = await fetch(`/api/v1/sync/servers/${encodeURIComponent(server.id)}/status`, {
         cache: "no-store",
         headers: { Accept: "application/json" },
         signal: controller.signal,

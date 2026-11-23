@@ -116,6 +116,7 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.POST("/api/config", c.handle_application_config_update)
 	c.engine.GET("/api/v1/sync/servers", c.handle_sync_servers)
 	c.engine.POST("/api/v1/sync/servers", c.handle_sync_configure)
+	c.engine.GET("/api/v1/sync/servers/:server_id/status", c.handle_sync_server_status)
 	c.engine.GET("/api/v1/sync/info", c.handle_sync_info)
 	c.engine.GET("/api/v1/sync/preview", c.handle_sync_preview)
 	c.engine.POST("/api/v1/sync/servers/:server_id/jobs", c.handle_sync_start)

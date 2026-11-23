@@ -67,6 +67,50 @@ func check_sync_receiver(ctx context.Context, server sync_server_config) error {
 	return nil
 }
 
+func sync_server_public_url(raw_url string) string {
+	parsed, err := url.Parse(raw_url)
+	if err != nil {
+		return ""
+	}
+	parsed.User = nil
+	return parsed.String()
+}
+
+func (c *APIClient) handle_sync_server_status(ctx *gin.Context) {
+	server_id, err := strconv.Atoi(ctx.Param("server_id"))
+	servers, config_err := c.sync_servers()
+	if config_err != nil {
+		result.Err(ctx, 500, config_err.Error())
+		return
+	}
+	if err != nil || server_id < 0 || server_id >= len(servers) {
+		result.Err(ctx, 400, "同步目标不存在")
+		return
+	}
+	request_ctx, cancel := context.WithTimeout(ctx.Request.Context(), 5*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(request_ctx, http.MethodGet, servers[server_id].URL+"/api/status", nil)
+	if err != nil {
+		result.Err(ctx, 502, "同步目标地址无效")
+		return
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		result.Err(ctx, 502, "无法连接同步目标")
+		return
+	}
+	defer response.Body.Close()
+	var envelope struct {
+		Code int             `json:"code"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&envelope); err != nil || response.StatusCode != 200 || envelope.Code != 0 || len(envelope.Data) == 0 {
+		result.Err(ctx, 502, "同步目标返回无效状态或认证失败")
+		return
+	}
+	result.Ok(ctx, envelope.Data)
+}
+
 func (c *APIClient) handle_sync_preview(ctx *gin.Context) {
 	task_ids, err := requested_sync_task_ids(ctx)
 	if err != nil {
@@ -195,7 +239,7 @@ func (c *APIClient) handle_sync_configure(ctx *gin.Context) {
 	server.Name = strings.TrimSpace(server.Name)
 	server.URL = strings.TrimRight(strings.TrimSpace(server.URL), "/")
 	parsed, err := url.Parse(server.URL)
-	if server.Name == "" || err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	if server.Name == "" || err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.RawQuery != "" || parsed.Fragment != "" {
 		result.Err(ctx, 400, "需要名称和有效的 HTTP(S) 地址")
 		return
 	}
@@ -220,5 +264,5 @@ func (c *APIClient) handle_sync_configure(ctx *gin.Context) {
 		result.Err(ctx, 500, "保存同步目标失败")
 		return
 	}
-	result.Ok(ctx, sync_server_record{ID: server_id, Name: server.Name, URL: server.URL})
+	result.Ok(ctx, sync_server_record{ID: server_id, Name: server.Name, URL: sync_server_public_url(server.URL)})
 }

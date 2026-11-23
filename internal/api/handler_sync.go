@@ -100,7 +100,7 @@ func (c *APIClient) sync_servers() ([]sync_server_config, error) {
 			return nil, fmt.Errorf("第 %d 个同步服务缺少 name", server_index+1)
 		}
 		parsed_url, parse_err := url.Parse(server.URL)
-		if parse_err != nil || parsed_url.Host == "" || (parsed_url.Scheme != "http" && parsed_url.Scheme != "https") || parsed_url.User != nil || parsed_url.RawQuery != "" || parsed_url.Fragment != "" {
+		if parse_err != nil || parsed_url.Host == "" || (parsed_url.Scheme != "http" && parsed_url.Scheme != "https") || parsed_url.RawQuery != "" || parsed_url.Fragment != "" {
 			return nil, fmt.Errorf("同步服务 %q 的 url 无效", server.Name)
 		}
 	}
@@ -115,7 +115,7 @@ func (c *APIClient) handle_sync_servers(ctx *gin.Context) {
 	}
 	records := make([]sync_server_record, 0, len(servers))
 	for server_index, server := range servers {
-		records = append(records, sync_server_record{ID: server_index, Name: server.Name, URL: server.URL})
+		records = append(records, sync_server_record{ID: server_index, Name: server.Name, URL: sync_server_public_url(server.URL)})
 	}
 	result.Ok(ctx, gin.H{"servers": records})
 }
@@ -338,6 +338,10 @@ func (c *APIClient) import_sync_archive(reader io.Reader) (*sync_import_result, 
 		return nil, fmt.Errorf("同步记录版本无效")
 	}
 	resources_by_id := make(map[int]model.DownloadResource, len(bundle.Resources))
+	tasks_by_id := make(map[int]model.DownloadTask, len(bundle.Tasks))
+	for _, task := range bundle.Tasks {
+		tasks_by_id[task.Id] = task
+	}
 	for resource_index := range bundle.Resources {
 		resource := bundle.Resources[resource_index]
 		if resource.Id <= 0 {
@@ -345,6 +349,30 @@ func (c *APIClient) import_sync_archive(reader io.Reader) (*sync_import_result, 
 		}
 		if _, exists := resources_by_id[resource.Id]; exists {
 			return nil, fmt.Errorf("同步资源 ID %d 重复", resource.Id)
+		}
+		if strings.EqualFold(resource.Type, model.ResourceTypeStream) {
+			var extra map[string]string
+			if err := json.Unmarshal([]byte(resource.Extra), &extra); err != nil && strings.TrimSpace(resource.Extra) != "" {
+				return nil, fmt.Errorf("直播资源附加数据无效: %w", err)
+			}
+			if extra == nil {
+				extra = make(map[string]string)
+			}
+			if extra["_hermes_download_name"] == "" {
+				var source_task model.DownloadTask
+				if resource.TaskId != nil {
+					source_task = tasks_by_id[*resource.TaskId]
+				}
+				var task_config map[string]any
+				_ = json.Unmarshal([]byte(source_task.ConfigJSON), &task_config)
+				duplicate, _ := task_config["duplicate"].(bool)
+				extra["_hermes_download_name"] = hermes.ResourceDownloadName(source_task.Id, resource.Id, resource.UniqueID, duplicate)
+				encoded_extra, err := json.Marshal(extra)
+				if err != nil {
+					return nil, err
+				}
+				resource.Extra = string(encoded_extra)
+			}
 		}
 		if bundle.Version == 2 {
 			if _, err := sync_resource_path(c.cfg.DownloadDir, resource.Name); err != nil {
@@ -355,8 +383,17 @@ func (c *APIClient) import_sync_archive(reader io.Reader) (*sync_import_result, 
 			identity := fmt.Sprintf("%s\x00%d\x00%d\x00%s", bundle.SourceID, resource.Id, resource.CreatedAt, resource.UniqueID)
 			digest := sha256.Sum256([]byte(identity))
 			resource.Name = filepath.Join("synced", fmt.Sprintf("%x", digest[:16]), filepath.Base(resource.Name))
-			bundle.Resources[resource_index] = resource
 		}
+		var extra map[string]string
+		if json.Unmarshal([]byte(resource.Extra), &extra) == nil && extra["_hermes_postprocessed"] != "" {
+			extra["_hermes_postprocessed"] = filepath.Base(resource.Name)
+			encoded_extra, err := json.Marshal(extra)
+			if err != nil {
+				return nil, err
+			}
+			resource.Extra = string(encoded_extra)
+		}
+		bundle.Resources[resource_index] = resource
 		resources_by_id[resource.Id] = resource
 	}
 	stages := make([]sync_file_stage, 0)
@@ -429,7 +466,7 @@ func (c *APIClient) import_sync_archive(reader io.Reader) (*sync_import_result, 
 		if err := c.import_sync_records(tx, bundle, import_result); err != nil {
 			return err
 		}
-		return install_sync_files(stages)
+		return install_sync_files(c.cfg.DownloadDir, stages)
 	})
 	if transaction_err != nil {
 		rollback_sync_files(stages)
@@ -462,6 +499,17 @@ func (c *APIClient) sync_archive_destination(archive_path string, resources_by_i
 		return "", fmt.Errorf("同步文件相对路径无效")
 	}
 	var candidate_root string
+	if candidate_type == "recording" || candidate_type == "playback" {
+		download_name := resource.UniqueID
+		var extra map[string]string
+		if json.Unmarshal([]byte(resource.Extra), &extra) == nil && extra["_hermes_download_name"] != "" {
+			download_name = extra["_hermes_download_name"]
+		}
+		if download_name == "" || download_name == "." || download_name == ".." || filepath.Base(download_name) != download_name {
+			return "", fmt.Errorf("直播资源编号无效")
+		}
+		base_path = filepath.Join(filepath.Dir(base_path), download_name)
+	}
 	switch candidate_type {
 	case "final":
 		if relative_path != "file" {
@@ -475,7 +523,11 @@ func (c *APIClient) sync_archive_destination(archive_path string, resources_by_i
 	default:
 		return "", fmt.Errorf("同步文件类型无效")
 	}
-	return path_within_root(candidate_root, filepath.Join(candidate_root, filepath.FromSlash(relative_path)))
+	final_path, err := path_within_root(candidate_root, filepath.Join(candidate_root, filepath.FromSlash(relative_path)))
+	if err != nil {
+		return "", err
+	}
+	return path_within_root(c.cfg.DownloadDir, final_path)
 }
 
 func sync_resource_path(download_dir string, resource_name string) (string, error) {
@@ -502,6 +554,19 @@ func path_within_root(root string, target string) (string, error) {
 	relative_path, err := filepath.Rel(absolute_root, absolute_target)
 	if err != nil || relative_path == "." || relative_path == ".." || strings.HasPrefix(relative_path, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("文件路径超出下载目录")
+	}
+	// The configured root may be a symlink; archive-controlled children must not be.
+	for current := absolute_target; current != absolute_root; current = filepath.Dir(current) {
+		info, err := os.Lstat(current)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("同步文件路径包含符号链接: %s", current)
+		}
 	}
 	return absolute_target, nil
 }
@@ -645,10 +710,15 @@ func upsert_sync_resource(tx *gorm.DB, source_resource model.DownloadResource) (
 	return source_resource, nil
 }
 
-func install_sync_files(stages []sync_file_stage) error {
+func install_sync_files(download_dir string, stages []sync_file_stage) error {
 	for stage_index := range stages {
 		stage := &stages[stage_index]
-		if info, err := os.Stat(stage.FinalPath); err == nil {
+		for _, path := range []string{stage.TempPath, stage.FinalPath} {
+			if _, err := path_within_root(download_dir, path); err != nil {
+				return err
+			}
+		}
+		if info, err := os.Lstat(stage.FinalPath); err == nil {
 			if !info.Mode().IsRegular() {
 				return fmt.Errorf("同步目标路径不是普通文件")
 			}
