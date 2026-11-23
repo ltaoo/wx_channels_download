@@ -35,14 +35,15 @@ func main() {
 	if Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	logger, log_writer, log_path := new_app_logger()
+	logger, log_writer, log_path, err := new_app_logger()
+	if err != nil {
+		fmt.Printf("Failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
 	log.SetOutput(logger)
 	gin.DefaultWriter = logger
 	gin.DefaultErrorWriter = logger
-	gorm_logger.Default = gorm_logger.New(log.New(logger, "", 0), gorm_logger.Config{
-		SlowThreshold: 200 * time.Millisecond,
-		LogLevel:      gorm_logger.Warn,
-	})
+	gorm_logger.Default = logfile.NewGORMLogger(logger)
 	cfg := config.New(AppVer, Mode, logger, log_writer, log_path)
 	run_err := cmd.Execute(cfg)
 	_ = log_writer.Close()
@@ -55,7 +56,7 @@ func main() {
 	}
 }
 
-func new_app_logger() (*zerolog.Logger, *logfile.Writer, string) {
+func new_app_logger() (*zerolog.Logger, *logfile.Writer, string, error) {
 	// Configuration and command-line flags are loaded later. Keep all logging
 	// disabled until debug.enabled has explicitly been resolved.
 	zerolog.SetGlobalLevel(zerolog.Disabled)
@@ -68,9 +69,12 @@ func new_app_logger() (*zerolog.Logger, *logfile.Writer, string) {
 	if configured_dir := strings.TrimSpace(os.Getenv("WX_LOG_DIR")); configured_dir != "" {
 		log_dir = configured_dir
 	}
-	log_path := filepath.Join(log_dir, "app.log")
+	log_path, err := filepath.Abs(filepath.Join(log_dir, "app.log"))
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("resolve log path: %w", err)
+	}
 	log_writer := logfile.Open(log_path)
 
 	logger := zerolog.New(log_writer).Hook(logtime.Hook{})
-	return &logger, log_writer, log_path
+	return &logger, log_writer, log_path, nil
 }
