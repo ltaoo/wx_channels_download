@@ -1,6 +1,5 @@
-import { ErrorMessage } from "@/dmui.js";
+import { ErrorMessage, Tooltip } from "@/dmui.js";
 import { format_time } from "@/utils.js";
-import { Tag, Tooltip } from "../dmui.js";
 
 function certificate_source_label(source) {
   var labels = {
