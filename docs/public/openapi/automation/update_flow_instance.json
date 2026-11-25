@@ -4,7 +4,7 @@
       "自动化"
     ],
     "summary": "更新流程实例",
-    "description": "node_configs 仅保存显式覆盖值；{} 清空全部覆盖。触发规则属于实例。",
+    "description": "未提交的实例字段保持原值。node_configs 是完整显式覆盖集合，{} 清空全部覆盖。triggers 是完整自定义规则列表，[] 清空规则并取消继承。inherit_triggers=true 恢复默认触发器并清空触发器覆盖，不能同时提交 triggers；false 仅取消继承，不停用已有规则。trigger_overrides 是按默认触发器 ID 组织的完整覆盖集合，{} 恢复默认；不能与 triggers 或 inherit_triggers 同时提交。",
     "operationId": "post_api_v1_automation_update_flow_instance",
     "requestBody": {
       "required": true,
@@ -33,6 +33,16 @@
                 "type": "array",
                 "items": {
                   "$ref": "../components.json#/schemas/services_UserFlowTriggerInput"
+                }
+              },
+              "inherit_triggers": {
+                "type": "boolean"
+              },
+              "trigger_overrides": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": true
                 }
               }
             },

@@ -20,6 +20,56 @@ MCP 中的“命令”以工具（tool）的形式提供。调用时由 AI 客�
 
 重启期间 HTTP、WebSocket 和 MCP 连接可能短暂断开，客户端应重新连接。若修改了 `api.hostname` 或 `api.port`，应改用新地址连接；stdio 客户端只在启动时读取一次配置，需要重新启动才能生效。提交的值与当前值完全相同时不会写盘或重启。
 
+## 管理自动化流程实例
+
+| 工具 | 主要参数 | 用途 |
+| --- | --- | --- |
+| `list_automation_instances` | 无 | 返回 `list`，用于定位实例 ID、标题和所属流程。 |
+| `get_automation_instance` | `id` | 获取实例最新配置、默认配置和共享流程定义。 |
+| `create_automation_instance` | `flow_id`；可选 `name` | 为已有流程定义创建配置实例。 |
+| `update_automation_instance` | `id` 及需要修改的实例字段 | 修改实例标题、说明、节点配置和触发规则。 |
+| `delete_automation_instance` | `id` | 删除指定实例及其触发规则。 |
+
+`create_automation_instance` 接收已有流程定义的 `flow_id`，以及可选的实例名称 `name`。`flow_id` 是流程定义 ID，不是实例 ID；可从流程编辑页 URL 的 `id` 参数取得。
+
+以已存在的流程定义 `flow-example` 为例，MCP `tools/call` 参数为：
+
+```json
+{
+  "name": "create_automation_instance",
+  "arguments": {
+    "flow_id": "flow-example",
+    "name": "创作者视频同步实例"
+  }
+}
+```
+
+成功时返回创建后的实例记录，`id` 是新实例 ID，`flow_id` 是所属流程定义 ID。省略 `name` 或传入空字符串时，默认使用流程名称加“（实例）”；仅含空白字符的名称会被拒绝。
+
+新实例共享流程图并继承默认配置和触发器，已启用的默认定时或事件规则会生效；创建操作不会立即手动运行流程。每次成功调用都会新增实例，若调用超时或连接中断，先在页面核对实例列表，再决定是否重试。
+
+编辑前先调用 `get_automation_instance`；其中 `node_configs`、`default_node_configs`、`default_triggers` 和 `trigger_overrides` 可能是 JSON 字符串，需先解析。自定义触发器的当前规则可通过 `list_automation_schedules` 返回的 `instance_id` 定位。以下示例假定已查询到实例 `instance-example`：
+
+```json
+{
+  "name": "update_automation_instance",
+  "arguments": {
+    "id": "instance-example",
+    "name": "创作者视频每日同步",
+    "description": "视频同步配置实例"
+  }
+}
+```
+
+未提交的字段保持原值。`description: ""` 清空说明，`name` 不能为空。MCP 编辑工具不接受共享流程图和流程默认配置字段。
+
+- `node_configs` 按节点 ID 到配置对象组织，提交的是**完整的实例覆盖集合**。修改单项前合并已有覆盖，避免丢失其他配置；`{}` 清空全部覆盖并使用流程默认配置。
+- `triggers` 是完整自定义触发器列表，每项沿用现有格式：`id`（已有规则保留、新规则省略）、`type`（`Cron`、`Event`、`Webhook`、`Manual`）、`name`、`cron_expr`、`event_key`、`enabled`、`active`、`initial_data`、`timeout_sec`。`[]` 清空规则并取消继承；修改后立即生效。
+- `inherit_triggers: true` 恢复默认触发器并清空触发器覆盖；不能同时提交自定义 `triggers`。`false` 仅取消继承，不停用现有规则。
+- `trigger_overrides` 按默认触发器 ID 组织，是完整覆盖集合；提交后启用默认触发器继承，`{}` 恢复默认。不能与 `triggers` 或 `inherit_triggers` 同时提交。
+
+删除时，先查询并核对用户指定的实例 ID 和标题，再调用 `delete_automation_instance`。删除会移除该实例及其触发规则，保留共享流程、默认配置和历史执行记录；不会中止已经启动的执行。
+
 ## Pipeline 实时编辑
 
 | 工具 | 主要参数 | 用途 |

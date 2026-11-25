@@ -34,6 +34,10 @@ title: MCP Server
 - `get_browse_history`：分页获取浏览记录。
 - `get_logs`：分页读取并筛选应用日志。
 - `get_certificate_status`：获取代理根证书的安装及信任状态。
+- `create_automation_instance`：通过已有流程定义的 `flow_id` 创建配置实例，可选指定 `name`；实例继承默认配置和触发器。
+- `list_automation_instances`、`get_automation_instance`：列出配置实例及读取单个实例的最新配置。
+- `update_automation_instance`：修改实例标题、说明、节点配置覆盖、触发器继承和触发规则。
+- `delete_automation_instance`：删除指定配置实例及其触发规则，保留共享流程和执行历史。
 
 ## Streamable HTTP（推荐）
 
