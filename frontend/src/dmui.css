@@ -1749,6 +1749,20 @@ img.dm-lazy-img-image[data-lazy-img-state] {
   display: none;
 }
 
+.dm-select.can-clear:hover .dm-select-clear,
+.dm-select.can-clear:focus-within .dm-select-clear,
+.dm-select.can-clear:active .dm-select-clear,
+.dm-select.can-clear.is-open .dm-select-clear {
+  display: inline-grid;
+}
+
+.dm-select.can-clear:hover .dm-select-chevron,
+.dm-select.can-clear:focus-within .dm-select-chevron,
+.dm-select.can-clear:active .dm-select-chevron,
+.dm-select.can-clear.is-open .dm-select-chevron {
+  display: none;
+}
+
 .dm-select-action .is-open {
   transform: rotate(180deg);
 }

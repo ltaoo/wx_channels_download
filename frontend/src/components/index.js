@@ -46,6 +46,12 @@ function is_select_source(value) {
   );
 }
 
+function select_has_clearable_value(state) {
+  if (!state || state.disabled) return false;
+  const value = state.value;
+  return value !== "" && value !== null && value !== undefined;
+}
+
 function filter_select_options(options, keyword) {
   const normalized_keyword = String(keyword || "")
     .trim()
@@ -358,6 +364,7 @@ function EntitySelect(props, render_label, render_value) {
             select_static_classes([
               state.open ? "is-open" : "",
               state.disabled ? "is-disabled" : "",
+              select_has_clearable_value(state) ? "can-clear" : "",
             ]),
           ),
           props.class,
@@ -406,6 +413,35 @@ function EntitySelect(props, render_label, render_value) {
                     "请选择",
                 ),
               ],
+        ),
+        View(
+          {
+            as: "button",
+            class: "dm-input-clear-icon dm-select-clear dm-focus-ring",
+            attributes: {
+              n: `${semantic_name}-clear-button`,
+              type: "button",
+              "aria-label": "清除选择",
+            },
+            onPointerDown(event) {
+              event.preventDefault();
+              event.stopPropagation();
+              event.stopImmediatePropagation?.();
+            },
+            onClick(event) {
+              event.preventDefault();
+              event.stopPropagation();
+              event.stopImmediatePropagation?.();
+              store.setValue("");
+            },
+          },
+          [
+            Runtime.Icon({
+              name: "circle-x",
+              size: 14,
+              attributes: { n: `${semantic_name}-clear-icon` },
+            }),
+          ],
         ),
         primitives.SelectIcon(
           {
@@ -806,6 +842,9 @@ function PlatformPopoverSelect(props) {
             Runtime.computed(state_, (state) =>
               state.disabled ? "is-disabled" : "",
             ),
+            Runtime.computed(state_, (state) =>
+              select_has_clearable_value(state) ? "can-clear" : "",
+            ),
           ]),
           attributes: {
             n: `${semantic_name}-trigger`,
@@ -834,6 +873,48 @@ function PlatformPopoverSelect(props) {
               attributes: { n: `${semantic_name}-value` },
             },
             [platform_selected_value(state_, semantic_name)],
+          ),
+          View(
+            {
+              as: "span",
+              class: "dm-input-clear-icon dm-select-clear dm-focus-ring",
+              attributes: {
+                n: `${semantic_name}-clear-button`,
+                role: "button",
+                tabindex: "0",
+                "aria-label": "清除选择",
+              },
+              onPointerDown(event) {
+                event.preventDefault();
+                event.stopPropagation();
+                event.stopImmediatePropagation?.();
+              },
+              onClick(event) {
+                event.preventDefault();
+                event.stopPropagation();
+                event.stopImmediatePropagation?.();
+                store.setValue("");
+                store.clearSearch?.();
+                store.enableSearch?.();
+                popover_store.hide?.();
+              },
+              onKeyDown(event) {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                event.stopPropagation();
+                store.setValue("");
+                store.clearSearch?.();
+                store.enableSearch?.();
+                popover_store.hide?.();
+              },
+            },
+            [
+              Runtime.Icon({
+                name: "circle-x",
+                size: 14,
+                attributes: { n: `${semantic_name}-clear-icon` },
+              }),
+            ],
           ),
           View(
             {
