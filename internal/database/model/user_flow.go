@@ -30,6 +30,8 @@ type UserFlowInstance struct {
 	DefaultNodeConfigs string `gorm:"->;-:migration" json:"default_node_configs"`
 	DefaultTriggers    string `gorm:"->;-:migration" json:"default_triggers"`
 	ActiveRunID        string `gorm:"->;-:migration" json:"active_run_id"`
+	LastRunAt          int64  `gorm:"->;-:migration" json:"last_run_at"`
+	LastRunStatus      string `gorm:"->;-:migration" json:"last_run_status"`
 	Timestamps
 }
 

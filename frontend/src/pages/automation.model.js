@@ -919,8 +919,8 @@ function AutomationPageViewModel(props, options) {
     input_definition_keyword$: new Timeless.vm.InputCore({ placeholder: "搜索自动化流程", allowClear: true, onChange(value) { definition_keyword_.as(String(value || "")); void definition_list$.search({ keyword: definition_keyword_.value.trim() }); } }),
     btn_definition_instance$: new Timeless.vm.ButtonInListCore({ variant: "link", size: "sm", onClick(pipeline) { return copy_pipeline(pipeline, true); } }),
     btn_definition_delete$: new Timeless.vm.ButtonInListCore({ variant: "link", size: "sm", onClick(pipeline) { return ask_delete_pipeline(pipeline); } }),
-    btn_definition_config$: new Timeless.vm.ButtonInListCore({ variant: "outline", size: "sm", onClick(pipeline) { ui.definitions_drawer$.hide(); return open_pipeline_config(pipeline, true, true); } }),
-    btn_definition_config_menu$: new Timeless.vm.ButtonInListCore({ variant: "outline", size: "sm" }),
+    btn_definition_config$: new Timeless.vm.ButtonInListCore({ variant: "outline", onClick(pipeline) { ui.definitions_drawer$.hide(); return open_pipeline_config(pipeline, true, true); } }),
+    btn_definition_config_menu$: new Timeless.vm.ButtonInListCore({ variant: "outline" }),
     btn_node_logs_more$: new Timeless.vm.ButtonInListCore({ variant: "outline", size: "sm", onClick(node) { return load_node_execution_logs(node.id, true); } }),
     config_dialog$: new Timeless.vm.DialogCore({ footer: false }),
     config_json_dialog$: new Timeless.vm.DialogCore({ footer: false }),
@@ -978,7 +978,9 @@ function AutomationPageViewModel(props, options) {
     }),
     import_dialog$: new Timeless.vm.DialogCore({
       closeable: true,
-      footer: false,
+      onOk() {
+        return submit_import();
+      },
     }),
     delete_dialog$: new Timeless.vm.DialogCore({
       onOk() {
@@ -1181,19 +1183,6 @@ function AutomationPageViewModel(props, options) {
         ui.run_dialog$.hide();
       },
     }),
-    btn_import_submit$: new Timeless.vm.ButtonCore({
-      variant: "primary",
-      disabled: import_submitting_.value,
-      onClick() {
-        return submit_import();
-      },
-    }),
-    btn_import_cancel$: new Timeless.vm.ButtonCore({
-      variant: "ghost",
-      onClick() {
-        ui.import_dialog$.hide();
-      },
-    }),
     btn_add_cron_trigger$: new Timeless.vm.ButtonCore({
       variant: "outline", size: "sm",
       onClick() { add_trigger("Cron"); },
@@ -1262,30 +1251,50 @@ function AutomationPageViewModel(props, options) {
       else ui.btn_config_json_cancel$.enable();
     },
   });
+  config_saving_.subscribe({
+    onChange(saving) {
+      ui.btn_config_save$.setLoading(Boolean(saving));
+    },
+  });
   pipelines_.subscribe({ onChange: filter_pipelines });
   definitions_.subscribe({ onChange() { void definition_list$.search({ keyword: definition_keyword_.value.trim() }); } });
   [pipelines_, selected_pipeline_, selected_flow_id_, run_submitting_].forEach((state) => state.subscribe({ onChange: update_trigger_buttons }));
 
+  // 与后端 list_flow_instances 的 active_run_id 判定保持一致：这三种状态都算“进行中”。
+  const active_run_statuses = ["QUEUED", "RUNNING", "WAITING"];
+
   function pipeline_is_active(pipeline) {
-    return Boolean((find_pipeline(pipeline && pipeline.id) || pipeline)?.active_run_id);
+    const target = find_pipeline(pipeline && pipeline.id) || pipeline;
+    if (!target) return false;
+    if (target.active_run_id) return true;
+    return active_run_statuses.includes(String(target.last_run_status || "").toUpperCase());
   }
 
   function update_trigger_buttons() {
-    const disabled = run_submitting_.value || selected_pipeline_.value?.is_flow_definition || pipeline_is_active(selected_pipeline_.value);
-    [ui.btn_run_flow$, ui.btn_run_submit$].forEach((button) => disabled ? button.disable() : button.enable());
+    const submitting = run_submitting_.value;
+    const disabled = submitting || selected_pipeline_.value?.is_flow_definition || pipeline_is_active(selected_pipeline_.value);
+    [ui.btn_run_flow$, ui.btn_run_submit$].forEach((button) => {
+      button.setLoading(submitting);
+      if (disabled) button.disable();
+      else button.enable();
+    });
     pipelines_.value.forEach((pipeline) => {
       const button = ui.btn_pipeline_trigger$.bind(pipeline);
-      if (run_submitting_.value || pipeline_is_active(pipeline)) button.disable();
+      if (submitting || pipeline_is_active(pipeline)) button.disable();
       else button.enable();
     });
   }
 
-  function update_active_run(flow_id, run_id, finished = false) {
+  function update_active_run(flow_id, run_id, finished = false, status = "") {
     if (!run_id) return;
     const update = (pipeline) => {
       if (!pipeline || pipeline.id !== flow_id || (finished && pipeline.active_run_id !== run_id)) return pipeline;
       const active_run_id = finished ? "" : run_id;
-      return pipeline.active_run_id === active_run_id ? pipeline : { ...pipeline, active_run_id };
+      // 同步最近执行状态，列表行的“执行”按钮才能实时禁用/恢复。
+      const last_run_status = finished ? status || "" : status || "RUNNING";
+      return pipeline.active_run_id === active_run_id && pipeline.last_run_status === last_run_status
+        ? pipeline
+        : { ...pipeline, active_run_id, last_run_status };
     };
     if (pipelines_.value.some((pipeline) => update(pipeline) !== pipeline)) {
       pipelines_.as(pipelines_.value.map(update), { reset: true });
@@ -1326,6 +1335,7 @@ function AutomationPageViewModel(props, options) {
   }
   create_submitting_.subscribe({
     onChange(submitting) {
+      ui.btn_create_submit$.setLoading(Boolean(submitting));
       if (submitting) ui.btn_create_submit$.disable();
       else ui.btn_create_submit$.enable();
     },
@@ -2019,8 +2029,8 @@ function AutomationPageViewModel(props, options) {
       automation_run_completed: "COMPLETED", automation_run_failed: "FAILED",
     }[message.type];
     const run_status = message.run_status || lifecycle_status;
-    if (["automation_run_started", "automation_run_waiting"].includes(message.type)) update_active_run(flow_id, message.run_id);
-    if (["automation_run_completed", "automation_run_failed"].includes(message.type)) update_active_run(flow_id, message.run_id, true);
+    if (["automation_run_started", "automation_run_waiting"].includes(message.type)) update_active_run(flow_id, message.run_id, false, run_status);
+    if (["automation_run_completed", "automation_run_failed"].includes(message.type)) update_active_run(flow_id, message.run_id, true, run_status);
     if (!flow_id) return;
     if (flow_id !== selected_flow_id_.value) {
       if (view_mode_.value === "detail") handle_subflow_channel_message(message);
@@ -3255,11 +3265,19 @@ function AutomationPageViewModel(props, options) {
     return button;
   }
 
+  // ButtonInListCore.bind() 会新建 ButtonCore，构造参数里的 size 不会传下去，
+  // 所以小尺寸必须在绑定出来的按钮实例上设置。
+  function list_button(store, item, size = "sm") {
+    const button = store.bind(item);
+    button.setSize(size);
+    return button;
+  }
+
   async function copy_pipeline(pipeline, share_definition = false) {
     const button = ui.btn_pipeline_copy$.bind(pipeline);
     if (button.state.loading || disposed) return;
     button.setLoading(true);
-    if (share_definition) ui.btn_definition_instance$.bind(pipeline).setLoading(true);
+    if (share_definition) ui.btn_definition_instance$.bind(pipeline).setDisabled(true);
     error_.as("");
     try {
       const response = await reqs.pipeline[share_definition ? "instance" : "copy"].run(share_definition ? { flow_id: pipeline.flow_id || pipeline.id } : { id: pipeline.id });
@@ -3271,7 +3289,7 @@ function AutomationPageViewModel(props, options) {
     } catch (error) { if (!disposed) set_error(error); }
     finally {
       button.setLoading(false);
-      if (share_definition) ui.btn_definition_instance$.bind(pipeline).setLoading(false);
+      if (share_definition) ui.btn_definition_instance$.bind(pipeline).setDisabled(false);
     }
   }
 
@@ -3279,6 +3297,7 @@ function AutomationPageViewModel(props, options) {
     const flow_id = pending_delete_flow_id_.value || selected_flow_id_.value;
     if (!flow_id) return null;
     error_.as("");
+    ui.delete_dialog$.okBtn.setLoading(true);
     try {
       const pipeline = delete_pipeline_.value || find_pipeline(flow_id);
       const r = await reqs[pipeline?.is_flow_definition ? "definition" : "pipeline"].delete.run({ id: flow_id });
@@ -3294,6 +3313,8 @@ function AutomationPageViewModel(props, options) {
       await load_data();
     } catch (err) {
       set_error(err);
+    } finally {
+      ui.delete_dialog$.okBtn.setLoading(false);
     }
     return null;
   }
@@ -3478,6 +3499,7 @@ function AutomationPageViewModel(props, options) {
   async function submit_import() {
     if (import_submitting_.value) return null;
     import_submitting_.as(true);
+    ui.import_dialog$.okBtn.setLoading(true);
     import_error_.as("");
     try {
       const raw = String(ui.input_import_json$.state.value || "").trim();
@@ -3503,6 +3525,7 @@ function AutomationPageViewModel(props, options) {
       import_error_.as(err && err.message ? err.message : String(err || ""));
     } finally {
       import_submitting_.as(false);
+      ui.import_dialog$.okBtn.setLoading(false);
     }
     return null;
   }
@@ -3673,6 +3696,7 @@ function AutomationPageViewModel(props, options) {
     pipelineNameEditor: pipeline_name_editor,
     pipelineActionsMenu: pipeline_actions_menu,
     pipelineActionButton: pipeline_action_button,
+    listButton: list_button,
     copyPipeline: copy_pipeline,
     openPastePipelineConfig: open_paste_pipeline_config,
     savePastedPipelineConfig: save_pasted_pipeline_config,

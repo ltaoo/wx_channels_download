@@ -588,8 +588,13 @@ func (s *AutomationService) DeleteFlowDefinition(id string) error {
 	}
 	return nil
 }
+
+// user_flow_instance_run_columns derives the live run columns (active run and
+// most recent run) from flow_run_record without copying them into the instance.
+const user_flow_instance_run_columns = "COALESCE((SELECT id FROM flow_run_record WHERE instance_id=user_flow_instance.id AND deleted_at IS NULL AND status IN ('QUEUED','RUNNING','WAITING') ORDER BY created_at DESC LIMIT 1),'') AS active_run_id,COALESCE((SELECT created_at FROM flow_run_record WHERE instance_id=user_flow_instance.id AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1),0) AS last_run_at,COALESCE((SELECT status FROM flow_run_record WHERE instance_id=user_flow_instance.id AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1),'') AS last_run_status"
+
 func (s *AutomationService) user_flow_query() *gorm.DB {
-	return s.db.Model(&model.UserFlowInstance{}).Joins("JOIN user_flow ON user_flow.id=user_flow_instance.flow_id AND user_flow.deleted_at IS NULL").Select("user_flow_instance.*,user_flow.definition,user_flow.name AS definition_name,user_flow.default_node_configs,user_flow.default_triggers,COALESCE((SELECT id FROM flow_run_record WHERE instance_id=user_flow_instance.id AND deleted_at IS NULL AND status IN ('QUEUED','RUNNING','WAITING') ORDER BY created_at DESC LIMIT 1),'') AS active_run_id")
+	return s.db.Model(&model.UserFlowInstance{}).Joins("JOIN user_flow ON user_flow.id=user_flow_instance.flow_id AND user_flow.deleted_at IS NULL").Select("user_flow_instance.*,user_flow.definition,user_flow.name AS definition_name,user_flow.default_node_configs,user_flow.default_triggers," + user_flow_instance_run_columns)
 }
 func (s *AutomationService) GetUserFlowInstance(id string) (*model.UserFlowInstance, error) {
 	if s == nil || s.db == nil {
@@ -604,7 +609,7 @@ func (s *AutomationService) GetUserFlowInstance(id string) (*model.UserFlowInsta
 func (s *AutomationService) ListUserFlowInstances() ([]model.UserFlowInstance, error) {
 	instances := make([]model.UserFlowInstance, 0)
 	// Lists do not repeat the shared graph for every configuration instance.
-	if err := s.user_flow_query().Select("user_flow_instance.*,user_flow.name AS definition_name,user_flow.default_node_configs,user_flow.default_triggers,COALESCE((SELECT id FROM flow_run_record WHERE instance_id=user_flow_instance.id AND deleted_at IS NULL AND status IN ('QUEUED','RUNNING','WAITING') ORDER BY created_at DESC LIMIT 1),'') AS active_run_id").Where("user_flow_instance.deleted_at IS NULL").Order("user_flow_instance.created_at DESC").Find(&instances).Error; err != nil {
+	if err := s.user_flow_query().Select("user_flow_instance.*,user_flow.name AS definition_name,user_flow.default_node_configs,user_flow.default_triggers," + user_flow_instance_run_columns).Where("user_flow_instance.deleted_at IS NULL").Order("user_flow_instance.created_at DESC").Find(&instances).Error; err != nil {
 		return nil, err
 	}
 	return instances, nil

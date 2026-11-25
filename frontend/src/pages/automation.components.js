@@ -218,12 +218,115 @@ export function AutomationPipelineLink(props) {
   );
 }
 
+function automation_skeleton_block(props = {}) {
+  return View({
+    class: [
+      "relative block overflow-hidden bg-skeleton-bg [&::after]:content-[\"\"] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite]",
+      props.class,
+    ].filter(Boolean).join(" "),
+    style: props.style || {},
+    attributes: props.attributes || {},
+  });
+}
+
+/** /automation 配置实例列表加载中的骨架行，样式对齐下载列表页。 */
+export function AutomationPipelineSkeletonRow() {
+  return View(
+    {
+      class: "dm-grid dm-items-center dm-table-row pointer-events-none user-select-none",
+      attributes: { n: "automation-pipeline-skeleton-row", role: "row" },
+    },
+    [
+      View(
+        { class: "dm-table-cell min-w-0", attributes: { n: "automation-pipeline-skeleton-name", role: "cell" } },
+        [
+          View({ class: "grid gap-1-5 w-full" }, [
+            automation_skeleton_block({ class: "rounded-content", style: { width: "30%", height: "10px" } }),
+            automation_skeleton_block({ class: "rounded-content", style: { width: "62%", height: "15px" } }),
+            automation_skeleton_block({ class: "rounded-content", style: { width: "44%", height: "12px" } }),
+          ]),
+        ],
+      ),
+      View(
+        { class: "dm-table-cell flex items-center gap-1 flex-wrap", attributes: { n: "automation-pipeline-skeleton-trigger", role: "cell" } },
+        [
+          automation_skeleton_block({ style: { width: "58px", height: "20px", borderRadius: "999px" } }),
+          automation_skeleton_block({ style: { width: "46px", height: "20px", borderRadius: "999px" } }),
+        ],
+      ),
+      View(
+        { class: "dm-table-cell min-w-0 flex flex-col items-start gap-2", attributes: { n: "automation-pipeline-skeleton-config", role: "cell" } },
+        [
+          automation_skeleton_block({ class: "rounded-content", style: { width: "42%", height: "10px" } }),
+          automation_skeleton_block({ class: "rounded-content", style: { width: "56%", height: "12px" } }),
+        ],
+      ),
+      View(
+        { class: "dm-table-cell", attributes: { n: "automation-pipeline-skeleton-updated", role: "cell" } },
+        [automation_skeleton_block({ class: "rounded-content", style: { width: "92px", height: "12px" } })],
+      ),
+      View(
+        { class: "dm-table-cell flex flex-col justify-center items-start gap-2", attributes: { n: "automation-pipeline-skeleton-last-run", role: "cell" } },
+        [
+          automation_skeleton_block({ class: "rounded-content", style: { width: "96px", height: "12px" } }),
+          automation_skeleton_block({ style: { width: "58px", height: "16px", borderRadius: "999px" } }),
+        ],
+      ),
+      View(
+        { class: "dm-table-cell flex flex-nowrap items-center justify-end gap-1-5 max-900:justify-start", attributes: { n: "automation-pipeline-skeleton-actions", role: "cell" } },
+        [
+          automation_skeleton_block({ class: "rounded-control", style: { width: "34px", height: "24px" } }),
+          automation_skeleton_block({ class: "rounded-control", style: { width: "34px", height: "24px" } }),
+          automation_skeleton_block({ class: "rounded-control", style: { width: "34px", height: "24px" } }),
+        ],
+      ),
+    ],
+  );
+}
+
+/** 自动化流程抽屉表格加载中的骨架行。 */
+export function AutomationDefinitionSkeletonRow() {
+  return View(
+    {
+      class: "dm-grid dm-items-center dm-table-row pointer-events-none user-select-none",
+      attributes: { n: "automation-definition-skeleton-row", role: "row" },
+    },
+    [
+      View(
+        { class: "dm-table-cell min-w-0", attributes: { n: "automation-definition-skeleton-name", role: "cell" } },
+        [automation_skeleton_block({ class: "rounded-content", style: { width: "55%", height: "15px" } })],
+      ),
+      View(
+        { class: "dm-table-cell", attributes: { n: "automation-definition-skeleton-instances", role: "cell" } },
+        [automation_skeleton_block({ class: "rounded-content", style: { width: "28px", height: "12px" } })],
+      ),
+      View(
+        { class: "dm-table-cell min-w-0 flex flex-col items-start gap-2", attributes: { n: "automation-definition-skeleton-config", role: "cell" } },
+        [
+          automation_skeleton_block({ class: "rounded-content", style: { width: "40%", height: "10px" } }),
+          automation_skeleton_block({ class: "rounded-content", style: { width: "56%", height: "12px" } }),
+          automation_skeleton_block({ class: "rounded-control", style: { width: "72px", height: "22px" } }),
+        ],
+      ),
+      View(
+        { class: "dm-table-cell flex flex-nowrap items-center justify-end gap-2", attributes: { n: "automation-definition-skeleton-actions", role: "cell" } },
+        [
+          automation_skeleton_block({ class: "rounded-control", style: { width: "84px", height: "22px" } }),
+          automation_skeleton_block({ class: "rounded-control", style: { width: "60px", height: "22px" } }),
+          automation_skeleton_block({ class: "rounded-control", style: { width: "40px", height: "22px" } }),
+        ],
+      ),
+    ],
+  );
+}
+
 export function AutomationImportPipelineDialog(props) {
   const vm$ = props.store;
   const is_edit = vm$.state.view_mode.value === "edit";
   return Dialog({
     store: vm$.ui.import_dialog$,
     class: "automation-form-dialog",
+    okText: is_edit ? "导入到草稿" : "导入",
     attributes: { n: "automation-import-dialog" },
   }, [
     DialogHeader({ attributes: { n: "automation-import-header" } }, [
@@ -249,10 +352,6 @@ export function AutomationImportPipelineDialog(props) {
           ok: () => View({ class: "text-color-danger text-sm", attributes: { n: "automation-import-error", role: "alert" } }, [vm$.state.import_error]),
         }),
       ]),
-    ]),
-    DialogFooter({ attributes: { n: "automation-import-footer" } }, [
-      Button({ store: vm$.ui.btn_import_cancel$, attributes: { n: "automation-import-cancel", type: "button" } }, ["取消"]),
-      Button({ store: vm$.ui.btn_import_submit$, attributes: { n: "automation-import-submit", type: "button" } }, [is_edit ? "导入到草稿" : "导入"]),
     ]),
   ]);
 }

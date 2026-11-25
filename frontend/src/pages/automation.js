@@ -1,11 +1,14 @@
 import { AutomationPageViewModel } from "./automation.model.js";
 import { DrawerHeader, DrawerTitle, DrawerDescription, DrawerBody } from "@/dmui.js";
 import {
+  AutomationDefinitionSkeletonRow,
   AutomationPipelineLink,
+  AutomationPipelineSkeletonRow,
   AutomationPipelineTriggerBadges,
   AutomationRunPipelineDialog,
   AutomationImportPipelineDialog,
   AutomationStartTriggers,
+  automation_status_badge,
 } from "./automation.components.js";
 
 function AutomationPageView(props) {
@@ -203,7 +206,9 @@ function AutomationPipelineList(props) {
     containerClass: "group-content-main flex-[1_1_auto] min-w-0 p-4  automation-index",
     containerAttributes: { n: "automation-pipeline-table-container" },
     panelAttributes: { n: "automation-pipeline-table-panel" },
-    rowKey: (pipeline) => `${pipeline.id}:${pipeline.name || ""}:${pipeline.updated_at || pipeline.created_at || 0}:${pipeline.active_run_id || ""}:${vm$.methods.pipelineDefinitionLabel(pipeline)}`,
+    rowKey: (pipeline) => `${pipeline.id}:${pipeline.name || ""}:${pipeline.updated_at || pipeline.created_at || 0}:${pipeline.active_run_id || ""}:${pipeline.last_run_at || 0}:${pipeline.last_run_status || ""}:${vm$.methods.pipelineDefinitionLabel(pipeline)}`,
+    skeletonCount: 8,
+    renderSkeletonRow: AutomationPipelineSkeletonRow,
     columns: [
       {
         name: "name",
@@ -257,9 +262,9 @@ function AutomationPipelineList(props) {
           return [
             AutomationConfigValues({ store: vm$, pipeline }),
             View({ class: "dm-button-group", attributes: { n: `automation-pipeline-config-actions-${pipeline.id}`, role: "group", "aria-label": `配置 ${pipeline.name || pipeline.id}` } }, [
-              Button({ store: vm$.ui.btn_pipeline_config$.bind(pipeline), class: "flex-none", attributes: { n: `automation-pipeline-config-${pipeline.id}`, type: "button", "aria-label": `配置 ${pipeline.name || pipeline.id}` } }, ["配置"]),
+              Button({ store: vm$.methods.listButton(vm$.ui.btn_pipeline_config$, pipeline), class: "flex-none", attributes: { n: `automation-pipeline-config-${pipeline.id}`, type: "button", "aria-label": `配置 ${pipeline.name || pipeline.id}` } }, ["配置"]),
               DropdownMenu({ store: vm$.methods.pipelineConfigMenu(pipeline), attributes: { n: `automation-pipeline-config-menu-${pipeline.id}` } }, [
-                Button({ store: vm$.ui.btn_pipeline_config_menu$.bind(pipeline), class: "dm-button--icon", attributes: { n: `automation-pipeline-config-menu-trigger-${pipeline.id}`, type: "button", "aria-label": `${pipeline.name || pipeline.id} 复制或粘贴配置 JSON` } }, [
+                Button({ store: vm$.methods.listButton(vm$.ui.btn_pipeline_config_menu$, pipeline, "icon-sm"), attributes: { n: `automation-pipeline-config-menu-trigger-${pipeline.id}`, type: "button", "aria-label": `${pipeline.name || pipeline.id} 复制或粘贴配置 JSON` } }, [
                   Timeless.Icon({ name: "chevron-down", size: 14, attributes: { n: `automation-pipeline-config-menu-icon-${pipeline.id}`, "aria-hidden": "true" } }),
                 ]),
               ]),
@@ -275,6 +280,29 @@ function AutomationPipelineList(props) {
         render(pipeline) {
           return [
             vm$.methods.formatTime(pipeline.updated_at || pipeline.created_at),
+          ];
+        },
+      },
+      {
+        name: "last_run",
+        title: "最近执行",
+        width: 170,
+        cellClass: "overflow-hidden",
+        render(pipeline) {
+          const at = Number(pipeline.last_run_at) || 0;
+          const status = String(pipeline.last_run_status || "").toUpperCase();
+          return [
+            View({ class: "grid gap-0-5 min-w-0", attributes: { n: `automation-pipeline-last-run-${pipeline.id}` } }, [
+              at > 0
+                ? View({
+                    class: "overflow-hidden text-color-text-primary font-mono text-sm font-variant-numeric-tabular-nums text-ellipsis whitespace-nowrap",
+                    attributes: { n: `automation-pipeline-last-run-time-${pipeline.id}`, title: vm$.methods.formatTime(at) },
+                  }, [vm$.methods.formatTime(at)])
+                : View({ class: "text-color-text-secondary text-sm", attributes: { n: `automation-pipeline-last-run-time-${pipeline.id}` } }, ["尚未执行"]),
+              status
+                ? automation_status_badge(status, vm$.methods.nodeExecutionStatusLabel(status))
+                : null,
+            ].filter(Boolean)),
           ];
         },
       },
@@ -364,6 +392,8 @@ function AutomationDefinitionsDrawer(props) {
         containerAttributes: { n: "automation-definition-table-container" },
         panelAttributes: { n: "automation-definition-table-panel" },
         rowKey: (definition) => `${definition.id}:${definition.updated_at}:${definition.instance_count}:${definition.id}`,
+        skeletonCount: 6,
+        renderSkeletonRow: AutomationDefinitionSkeletonRow,
         list: vm$.state.definition_list,
         rows: vm$.state.filtered_definitions,
         loading: vm$.state.loading,
@@ -383,9 +413,9 @@ function AutomationDefinitionsDrawer(props) {
             return [
               AutomationConfigValues({ store: vm$, pipeline: definition }),
               View({ class: "dm-button-group", attributes: { n: `automation-definition-config-actions-${definition.id}`, role: "group", "aria-label": `默认配置 ${definition.name || definition.id}` } }, [
-                Button({ store: vm$.ui.btn_definition_config$.bind(definition), class: "flex-none", attributes: { n: `automation-definition-defaults-${definition.id}`, type: "button" } }, ["默认配置"]),
+                Button({ store: vm$.methods.listButton(vm$.ui.btn_definition_config$, definition), class: "flex-none", attributes: { n: `automation-definition-defaults-${definition.id}`, type: "button" } }, ["默认配置"]),
                 DropdownMenu({ store: vm$.methods.pipelineConfigMenu(definition), attributes: { n: `automation-definition-config-menu-${definition.id}` } }, [
-                  Button({ store: vm$.ui.btn_definition_config_menu$.bind(definition), class: "dm-button--icon-sm", attributes: { n: `automation-definition-config-menu-trigger-${definition.id}`, type: "button", "aria-label": `${definition.name || definition.id} 复制或导入默认配置 JSON` } }, [
+                  Button({ store: vm$.methods.listButton(vm$.ui.btn_definition_config_menu$, definition, "icon-sm"), attributes: { n: `automation-definition-config-menu-trigger-${definition.id}`, type: "button", "aria-label": `${definition.name || definition.id} 复制或导入默认配置 JSON` } }, [
                     Timeless.Icon({ name: "chevron-down", size: 14, attributes: { n: `automation-definition-config-menu-icon-${definition.id}`, "aria-hidden": "true" } }),
                   ]),
                 ]),

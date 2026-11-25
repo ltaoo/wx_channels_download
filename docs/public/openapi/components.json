@@ -4193,6 +4193,14 @@
         "active_run_id": {
           "type": "string"
         },
+        "last_run_at": {
+          "type": "integer",
+          "description": "最近一次执行记录的创建时间（毫秒），0 表示尚未执行。"
+        },
+        "last_run_status": {
+          "type": "string",
+          "description": "最近一次执行记录的状态，例如 QUEUED、RUNNING、COMPLETED、FAILED、CANCELLED。"
+        },
         "created_at": {
           "type": "integer"
         },
