@@ -227,8 +227,14 @@ func (c *APIClient) handle_account_list(ctx *gin.Context) {
 	})
 }
 
+const account_content_page_size = 50
+
+// handle_account_details_content_list lists content records associated with an
+// account. It reads the persisted content_account associations instead of
+// calling the platform adapter (and therefore the platform client), so the
+// drawer keeps working without a live platform session.
 func (c *APIClient) handle_account_details_content_list(ctx *gin.Context) {
-	if c.db == nil {
+	if c.db == nil || c.service_content == nil {
 		result.Err(ctx, 500, "数据库未初始化")
 		return
 	}
@@ -248,26 +254,40 @@ func (c *APIClient) handle_account_details_content_list(ctx *gin.Context) {
 		return
 	}
 
-	handler := adapter.Get(account.PlatformId)
-	if handler == nil {
-		result.Err(ctx, 400, "不支持的平台: "+account.PlatformId)
-		return
+	scope := strings.TrimSpace(ctx.Param("scope"))
+	if scope == "" {
+		scope = "feed"
 	}
-	details_fetcher, ok := handler.(adapter.HomeDetailsFetcher)
-	if !ok {
-		result.Err(ctx, 400, "平台 "+account.PlatformId+" 不支持主页详情")
-		return
+	page := 1
+	if value, err := strconv.Atoi(strings.TrimSpace(ctx.Query("page"))); err == nil && value > 0 {
+		page = value
 	}
-	details, err := details_fetcher.FetchHomeDetails(&account, ctx.Param("scope"), ctx.Query("page"))
+	offset := (page - 1) * account_content_page_size
+
+	page_result, err := c.service_content.ListContents(services.ContentListOptions{
+		AccountID:          account.Id,
+		Scope:              services.ContentListScopeAll,
+		Page:               page,
+		PageSize:           account_content_page_size,
+		Offset:             &offset,
+		OrderByPublishTime: true,
+	})
 	if err != nil {
-		result.Err(ctx, 400, err.Error())
+		result.Err(ctx, 500, err.Error())
 		return
 	}
-	if details == nil {
-		result.Err(ctx, 500, "平台 "+account.PlatformId+" 返回了空的主页详情结果")
-		return
+
+	next_marker := ""
+	if int64(page*account_content_page_size) < page_result.Total {
+		next_marker = strconv.Itoa(page + 1)
 	}
-	result.Ok(ctx, details)
+
+	result.Ok(ctx, adapter.HomeDetails{
+		Scopes:     []adapter.HomeDetailsScope{{Label: scope, Value: scope}},
+		Scope:      scope,
+		Contents:   page_result.List,
+		NextMarker: next_marker,
+	})
 }
 
 func (c *APIClient) handle_account_synchronize(ctx *gin.Context) {

@@ -17,25 +17,26 @@ const content_row_stat_classes = {
 
 const Runtime = window.Timeless;
 
-function ContentDetailDrawer(props) {
-  const vm$ = props.store;
+export function ContentDetailDrawer(props) {
+  const store = props.store;
   return Drawer(
     {
-      store: vm$.ui.contentDetailDrawer$,
+      store,
       class: "dm-drawer--wide",
+      zIndex: props.zIndex,
       attributes: { n: "content-detail-drawer" },
     },
     () => [
       ContentDetailPageView({
-        tip: vm$.methods.tip,
+        tip: props.tip,
         app: props.app,
         client: props.client,
         hlsPlayer: props.hlsPlayer,
         history: props.history,
         embedded: true,
-        contentId: vm$.state.detail_id,
+        contentId: props.detailId,
         onBack() {
-          vm$.ui.contentDetailDrawer$.hide();
+          store.hide();
         },
       }),
     ],
@@ -88,7 +89,9 @@ function ContentPageView(props) {
         ],
       }),
       ContentDetailDrawer({
-        store: vm$,
+        store: vm$.ui.contentDetailDrawer$,
+        detailId: vm$.state.detail_id,
+        tip: vm$.methods.tip,
         app: props.app,
         client: props.client,
         hlsPlayer: props.hlsPlayer,

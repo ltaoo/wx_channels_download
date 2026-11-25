@@ -245,12 +245,27 @@ function normalize_home_detail_content(raw, account) {
   if (preview_images.length === 0 && fallback_cover_url) {
     preview_images.push(fallback_cover_url);
   }
+  // Live feed items expose media dimensions; DB-backed associated records only
+  // carry cover dimensions. Fall back to the cover so the waterfall keeps its
+  // varied card heights instead of collapsing to a uniform grid.
   const media_width = number_or_default(
-    first_non_empty(media.width, media.Width),
+    first_non_empty(
+      media.width,
+      media.Width,
+      source.cover_width,
+      source.coverWidth,
+      source.CoverWidth,
+    ),
     0,
   );
   const media_height = number_or_default(
-    first_non_empty(media.height, media.Height),
+    first_non_empty(
+      media.height,
+      media.Height,
+      source.cover_height,
+      source.coverHeight,
+      source.CoverHeight,
+    ),
     0,
   );
 
@@ -330,13 +345,16 @@ function AccountViewModel(props) {
   const drawer_tabs_ = refarr([]);
   const drawer_scope_ = ref("");
   const drawer_loading_more_ = ref(false);
+  const drawer_resetting_ = ref(false);
   const drawer_next_marker_ = ref("");
   const drawer_more_error_ = track_error(ref(""), props.tip);
   const drawer_player_content_ = ref(null);
   const drawer_player_download_loading_ = ref(false);
   const drawer_player_download_error_ = track_error(ref(""), props.tip);
   const drawer_player_download_success_ = ref("");
+  const content_detail_id_ = ref("");
   let copy_feedback_timer = null;
+  let drawer_load_token = 0;
 
   const reqs = {
     account: {
@@ -389,13 +407,16 @@ function AccountViewModel(props) {
   const range_text_ = computed(total_, (total) => `共 ${total || 0} 个账号`);
   const drawer_status_ = combine(
     {
+      // A fresh account/scope resets the shared list; keep the skeleton up
+      // until the latest request settles so stale rows never flash.
+      resetting: drawer_resetting_,
       initial: drawer_initial_,
       loading: drawer_loading_,
       error: drawer_error_,
       count: computed(drawer_contents_, (contents) => contents.length),
     },
     (state) => {
-      if (state.initial) return "initial";
+      if (state.resetting || state.initial) return "initial";
       if (state.loading && state.count === 0) return "loading";
       if (state.error && state.count === 0) return "error";
       return state.count === 0 ? "empty" : "normal";
@@ -458,7 +479,7 @@ function AccountViewModel(props) {
       },
     }),
     account_contents_drawer$: new Timeless.vm.DialogCore({
-      title: "账号内容",
+      title: "关联内容",
       closeable: true,
       footer: false,
     }),
@@ -486,7 +507,15 @@ function AccountViewModel(props) {
         drawer_player_content_.as(null);
       },
     }),
+    content_detail_drawer$: new Timeless.vm.DialogCore({
+      title: "内容详情",
+      closeable: true,
+      footer: false,
+    }),
   };
+  ui.content_detail_drawer$.onHidden(() => {
+    content_detail_id_.as("");
+  });
 
   keyword_.subscribe({
     onChange(value) {
@@ -570,14 +599,31 @@ function AccountViewModel(props) {
     if (!account?.id || !scope) return null;
     const append = Boolean(options.append);
     if (append && drawer_loading_more_.value) return null;
+    // Reset the shared drawer list before a fresh load so the waterfall shows
+    // the skeleton instead of the previous account's rows. The token lets a
+    // superseded load settle without clobbering the newer request's state.
+    const token = append ? drawer_load_token : ++drawer_load_token;
+    if (!append) {
+      drawer_list$.clear();
+      drawer_resetting_.as(true);
+    }
     drawer_scope_.as(String(scope));
     drawer_loading_more_.as(append);
     drawer_more_error_.as("");
     const result = await (append ? drawer_list$.loadMore() : drawer_list$.search({ account, scope: String(scope) }));
     drawer_loading_more_.as(false);
+    if (token !== drawer_load_token) return result;
+    drawer_resetting_.as(false);
     if (!result) return result;
     if (result.error) {
-      if (append) drawer_more_error_.as(result.error.message || String(result.error));
+      if (append) {
+        drawer_more_error_.as(result.error.message || String(result.error));
+      } else {
+        // Keep the error state authoritative even if a superseded request
+        // repopulated the shared list in the meantime. Only drop the rows —
+        // clearing the whole list would flip it back to "initial".
+        drawer_list$.setDataSource([]);
+      }
       return result;
     }
     const details = drawer_list$.request.response;
@@ -655,6 +701,10 @@ function AccountViewModel(props) {
       selected_account_.as(account);
       drawer_tabs_.as([], { reset: true });
       drawer_player_content_.as(null);
+      if (content_detail_id_.value) {
+        ui.content_detail_drawer$.hide();
+        content_detail_id_.as("");
+      }
       drawer_scope_.as(scope);
       ui.account_contents_drawer$.show();
       return load_account_contents(account, scope);
@@ -674,17 +724,12 @@ function AccountViewModel(props) {
       return load_account_contents(account, scope, { append: true, page });
     },
     openContent(content) {
-      const is_playable_video =
-        String((content && content.content_type) || "").toLowerCase() ===
-          "video" && Boolean(content && content.url && content.decode_key);
-      if (is_playable_video) {
-        drawer_player_content_.as(content);
-        drawer_player_download_error_.as("");
-        drawer_player_download_success_.as("");
-        ui.player_drawer$.show();
-        return null;
-      }
-      if (content && content.url) props.app.openWindow(content.url);
+      const content_id = String(
+        (content && (content.id || content.ID)) || "",
+      ).trim();
+      if (!content_id) return null;
+      content_detail_id_.as(content_id);
+      ui.content_detail_drawer$.show();
       return null;
     },
     closeContentPlayer() {
@@ -725,6 +770,7 @@ function AccountViewModel(props) {
     drawer_player_download_error: drawer_player_download_error_,
     drawer_player_download_loading: drawer_player_download_loading_,
     drawer_player_download_success: drawer_player_download_success_,
+    content_detail_id: content_detail_id_,
     drawer_status: drawer_status_,
     drawer_empty_description: drawer_empty_description_,
   };

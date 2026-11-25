@@ -2,6 +2,7 @@ import { ErrorMessage, list_scroll_props } from "@/dmui.js";
 import { WxChannelsPlayerView } from "@/components/wxchannels.player.js";
 
 import { AccountViewModel } from "./account.model.js";
+import { ContentDetailDrawer } from "./content.js";
 
 const account_content_card_media_classes = {
   __proto__: null,
@@ -11,15 +12,63 @@ const account_content_card_media_classes = {
 
 const account_content_card_gallery_classes = {
   __proto__: null,
-  1: "block aspect-ratio-auto max-h-420px",
+  1: "block aspect-ratio-auto",
   2: "grid grid-cols-[repeat(2,_minmax(0,_1fr))] aspect-ratio-[3_/_2]",
   3: "grid grid-cols-[repeat(2,_minmax(0,_1fr))] aspect-ratio-[4_/_3] [&_.group-account-content-card-gallery-item:first-child]:grid-row-[span_2]",
   4: "grid grid-cols-[repeat(2,_minmax(0,_1fr))] aspect-ratio-[4_/_3]",
 };
 
-
-
 const ACCOUNT_TEXT_CONTENT_TYPES = new Set(["answer", "webpage", "text"]);
+
+// Aspect ratios (width / height) for the initial skeleton cards. They mirror the
+// staggered poster range of the loaded waterfall so the placeholder and the real
+// grid share the same 4-column masonry silhouette.
+const ACCOUNT_CONTENT_SKELETON_RATIOS = [
+  0.72, 0.62, 0.8, 0.68, 0.6, 0.74, 0.66, 0.78, 0.7, 0.64, 0.76, 0.62,
+];
+
+// Shimmer placeholder matching the table skeleton (AccountSkeletonRow): a
+// static block with a sweeping highlight, rather than the pulsing `.dm-skeleton`.
+const ACCOUNT_CONTENT_SKELETON_CARD_CLASS =
+  'relative overflow-hidden rounded-content bg-skeleton-bg [&::after]:content-[""] [&::after]:absolute [&::after]:inset-0 [&::after]:transform-[translateX(-100%)] [&::after]:bg-[linear-gradient(_90deg,_transparent,_var(--dm-skeleton-highlight),_transparent_)] [&::after]:animation-[dm-skeleton-shimmer_1.2s_ease-in-out_infinite]';
+
+// DB-backed associated records are almost all 9:16 portrait videos, so a raw
+// cover ratio makes every card the same height and the masonry collapses into a
+// plain grid. These factors scale each item's height-per-width by a stable,
+// content-derived amount so a uniform dataset still forms a staggered
+// waterfall. The same ratio drives the height estimate and the rendered poster,
+// so measured heights match and columns stay stable across re-renders.
+const ACCOUNT_CONTENT_STAGGER_FACTORS = [1, 0.86, 0.93, 0.78];
+
+function account_content_stagger_factor(content) {
+  const key = String((content && (content.id || content.external_id)) || "");
+  let hash = 0;
+  for (let index = 0; index < key.length; index += 1) {
+    hash = (hash * 31 + key.charCodeAt(index)) >>> 0;
+  }
+  return ACCOUNT_CONTENT_STAGGER_FACTORS[
+    hash % ACCOUNT_CONTENT_STAGGER_FACTORS.length
+  ];
+}
+
+function account_content_display_ratio(content, fallback_ratio) {
+  const natural = Math.max(
+    0.56,
+    Math.min(
+      1.9,
+      Number(content && content.preview_aspect_ratio) || fallback_ratio,
+    ),
+  );
+  const base_height_per_width = Math.min(1 / natural, 1.45);
+  const height_per_width = Math.max(
+    0.45,
+    Math.min(
+      1.45,
+      base_height_per_width * account_content_stagger_factor(content),
+    ),
+  );
+  return 1 / height_per_width;
+}
 
 function AccountPageView(props) {
   const vm$ = AccountViewModel(props);
@@ -45,6 +94,16 @@ function AccountPageView(props) {
       AccountPageBody({ store: vm$ }),
       AccountContentsDrawer({ store: vm$ }),
       AccountPlayerDrawer({ store: vm$ }),
+      ContentDetailDrawer({
+        store: vm$.ui.content_detail_drawer$,
+        detailId: vm$.state.content_detail_id,
+        tip: vm$.methods.tip,
+        app: props.app,
+        client: props.client,
+        hlsPlayer: props.hlsPlayer,
+        history: props.history,
+        zIndex: 400,
+      }),
     ],
   );
 }
@@ -90,11 +149,8 @@ function account_content_card_height(content, _index, column_width) {
       height = Math.min(420, width / ratio);
     } else {
       const fallback_ratio = kind === "album" ? 4 / 3 : 16 / 9;
-      const ratio = Math.max(
-        0.56,
-        Math.min(1.9, Number(content.preview_aspect_ratio) || fallback_ratio),
-      );
-      height = Math.max(170, Math.min(420, width / ratio));
+      const ratio = account_content_display_ratio(content, fallback_ratio);
+      height = width / ratio;
     }
   }
   return height;
@@ -173,10 +229,7 @@ function AccountContentMedia(props) {
 
   if (kind === "album" || images.length > 1) {
     const visible_images = images.slice(0, 4);
-    const single_image_ratio = Math.max(
-      0.56,
-      Math.min(1.9, Number(content.preview_aspect_ratio) || 4 / 3),
-    );
+    const single_image_ratio = account_content_display_ratio(content, 4 / 3);
     return View(
       {
         class: `relative w-full overflow-hidden bg-content-panel-soft gap-2px ${account_content_card_gallery_classes[Math.min(visible_images.length, 4)] || ""}`,
@@ -222,12 +275,9 @@ function AccountContentMedia(props) {
 
   return View(
     {
-      class: "relative w-full overflow-hidden bg-content-panel-soft max-h-420px",
+      class: "relative w-full overflow-hidden bg-content-panel-soft",
       style: {
-        "aspect-ratio":
-          Number(content.preview_aspect_ratio) > 0
-            ? String(content.preview_aspect_ratio)
-            : "16 / 9",
+        "aspect-ratio": String(account_content_display_ratio(content, 16 / 9)),
       },
       attributes: { n: "account-content-card-poster" },
     },
@@ -270,7 +320,8 @@ function AccountContentMedia(props) {
 function AccountContentCard(props) {
   const vm$ = props.store;
   const content = props.content;
-  const source_url = String(content.url || "").trim();
+  const content_id = String(content.id || "").trim();
+  const openable = Boolean(content_id);
   const title = content.title || content.external_id || "未命名内容";
   const description = String(content.description || "").trim();
   const kind = String(content.content_type || "unknown").toLowerCase();
@@ -287,25 +338,21 @@ function AccountContentCard(props) {
       });
   return Card(
     {
-      as: source_url ? "button" : "article",
+      as: openable ? "button" : "article",
       class: [
         "w-full min-w-0 overflow-hidden p-0 text-inherit text-left border-[var(--dm-border-width)_solid_var(--dm-content-border)] bg-content-panel",
         text_only ? "flex flex-col gap-2 p-4" : "",
-        source_url ? "cursor-pointer hover:border-color-color-primary-border hover:shadow-sm hover:outline-0 hover:transform-[translateY(-1px)] focus-visible:border-color-color-primary-border focus-visible:shadow-sm focus-visible:outline-0 focus-visible:transform-[translateY(-1px)]" : "",
+        openable ? "cursor-pointer hover:border-color-color-primary-border hover:shadow-sm hover:outline-0 hover:transform-[translateY(-1px)] focus-visible:border-color-color-primary-border focus-visible:shadow-sm focus-visible:outline-0 focus-visible:transform-[translateY(-1px)]" : "",
       ]
         .filter(Boolean)
         .join(" "),
       attributes: {
         n: "account-content-card",
-        type: source_url ? "button" : undefined,
-        title: source_url
-          ? kind === "video" && content.decode_key
-            ? "播放视频"
-            : "打开原内容"
-          : undefined,
+        type: openable ? "button" : undefined,
+        title: openable ? "查看内容详情" : undefined,
       },
       onClick() {
-        if (source_url) vm$.methods.openContent(content);
+        if (openable) vm$.methods.openContent(content);
       },
     },
     text_only
@@ -439,7 +486,7 @@ function AccountContentState(props) {
       props.loading
         ? BrandLoading({
             size: 112,
-            label: props.title || "正在加载账号内容",
+            label: props.title || "正在加载关联内容",
             decorative: true,
             name: "account-content-loading-symbol",
           })
@@ -457,6 +504,50 @@ function AccountContentState(props) {
   );
 }
 
+function AccountContentSkeleton() {
+  // Distribute the placeholder cards round-robin into the same 4 columns the
+  // waterfall uses, so each column stacks to a different height and the
+  // silhouette matches the loaded masonry.
+  const columns = [[], [], [], []];
+  ACCOUNT_CONTENT_SKELETON_RATIOS.forEach((ratio, index) => {
+    columns[index % columns.length].push(ratio);
+  });
+  return View(
+    {
+      class: "w-full min-h-0 flex-[1_1_0] p-[0_var(--dm-space-1)_var(--dm-space-2)_0] overflow-hidden",
+      attributes: { n: "account-content-skeleton", "aria-busy": "true" },
+    },
+    [
+      View(
+        {
+          class: "grid grid-cols-[repeat(4,_minmax(0,_1fr))] items-start",
+          style: { gap: "14px" },
+          attributes: { n: "account-content-skeleton-columns" },
+        },
+        columns.map((ratios, column_index) =>
+          View(
+            {
+              class: "grid min-w-0",
+              style: { gap: "14px" },
+              attributes: {
+                n: "account-content-skeleton-column",
+                "data-column": String(column_index),
+              },
+            },
+            ratios.map((ratio) =>
+              View({
+                class: `w-full ${ACCOUNT_CONTENT_SKELETON_CARD_CLASS}`,
+                attributes: { n: "account-content-skeleton-card" },
+                style: { "aspect-ratio": String(ratio) },
+              }),
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
 function AccountContentsCollection(props) {
   const vm$ = props.store;
   return View(
@@ -471,13 +562,12 @@ function AccountContentsCollection(props) {
           (status) => status === "initial",
         ),
         ok() {
-          return View({ class: "grid gap-3", attributes: { n: "account-content-skeleton", "aria-busy": "true" } },
-            Array.from({ length: 6 }, () => Skeleton({ attributes: { n: "account-content-skeleton-card" }, style: { height: "120px" } })));
+          return AccountContentSkeleton();
         },
       }),
       Show({
         when: computed(vm$.state.drawer_status, (status) => status === "loading"),
-        ok() { return AccountContentState({ loading: true, title: "正在加载账号内容" }); },
+        ok() { return AccountContentState({ loading: true, title: "正在加载关联内容" }); },
       }),
       Show({
         when: computed(vm$.state.drawer_status, (status) => status === "error"),
@@ -515,7 +605,7 @@ function AccountContentsCollection(props) {
             class: "w-full min-h-0 flex-[1_1_0] p-[0_var(--dm-space-1)_var(--dm-space-2)_0] overflow-x-hidden overflow-y-auto overscroll-behavior-contain",
             attributes: {
               n: "account-content-waterfall",
-              "aria-label": "账号内容列表",
+              "aria-label": "关联内容列表",
             },
             each: vm$.state.drawer_contents,
             key: "id",

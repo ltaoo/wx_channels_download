@@ -166,6 +166,9 @@ type ContentListOptions struct {
 	Page       int
 	PageSize   int
 	Offset     *int
+	// OrderByPublishTime sorts by publish_time DESC (nulls last) instead of the
+	// default created_at DESC. Used where the caller wants chronological order.
+	OrderByPublishTime bool
 }
 
 // ContentTagRecord is the id+name pair attached to a content or account item.
@@ -1568,6 +1571,11 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 		return nil, err
 	}
 
+	order_clause := "content.created_at DESC, content.id DESC"
+	if options.OrderByPublishTime {
+		order_clause = "content.publish_time DESC, content.id DESC"
+	}
+
 	var contents []model.Content
 	if err := build_query().
 		Select(`content.id, content.platform_id, content.type, content.subtype,
@@ -1575,7 +1583,7 @@ func (s *ContentService) ListContents(options ContentListOptions) (*ContentListR
 			content.title, content.description, content.url, content.source_url,
 			content.cover_url, content.cover_width, content.cover_height,
 			content.publish_time, content.created_at`).
-		Order("content.created_at DESC, content.id DESC").
+		Order(order_clause).
 		Limit(page_size).
 		Offset(offset).
 		Find(&contents).Error; err != nil {
