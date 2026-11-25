@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | `01_creator_video_sync.json` | 通过 HTTP 接口逐页检查视频，仅下载缺失视频，遇到整页已存在时停止 | 每天 12:00、18:00（已内置） |
 | `01_creator_video_sync_service.json` | 使用内置工具获取列表，其余增量检查与下载流程和 HTTP 版相同 | 每天 12:00、18:00（已内置） |
+| `01_douyin_creator_video_sync.json` | 抖音：通过内置列表接口逐页检查作品，仅下载缺失视频，遇到整页已存在时停止 | 每天 12:00、18:00（已内置） |
 | `02_creator_live_record.json` | 查询创作者当前直播，开播时创建录制任务 | Cron `*/1 * * * *` |
 | `03_creator_new_video_notify.json` | 按本地下载任务判断新视频，支持企业微信和通用 Webhook | Cron `*/5 * * * *` |
 | `download_finished_qiniu_webhook.json` | 通过 JS 自定义节点上传七牛云，再发送任务详情到 Webhook | 事件 `downloadtask.finished`（已内置） |
