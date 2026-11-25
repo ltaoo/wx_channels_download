@@ -182,7 +182,7 @@ func (c *APIClient) RegisterPOST(path string, handler gin.HandlerFunc) {
 }
 
 func (c *APIClient) HTTPHandler() http.Handler {
-	return with_cors(c, c.cfg)
+	return with_cors(c, c.cfg, c.logger)
 }
 
 // DownloadTaskService returns the download task service.

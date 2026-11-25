@@ -19,17 +19,23 @@ import (
 
 func TestAPIRequestTrustAndRemoteAuthentication(t *testing.T) {
 	for _, test_case := range []struct {
-		name, origin, host, remote, username, password, fetch_site string
-		config_username, config_password                           string
-		configured                                                 bool
-		status                                                     int
+		name, origin, host, remote, username, password, fetch_site, fetch_mode string
+		config_username, config_password                                       string
+		configured                                                             bool
+		status                                                                 int
 	}{
 		{name: "local client", status: 200},
 		{name: "same origin", origin: "http://127.0.0.1:2022", status: 200},
 		{name: "injected channels client", origin: "https://channels.weixin.qq.com", status: 200},
-		{name: "hostile origin", origin: "https://audit.invalid", status: 403},
-		{name: "null origin", origin: "null", status: 403},
-		{name: "cross-site without origin", fetch_site: "cross-site", status: 403},
+		{name: "injected channels liteapp client", origin: "https://liteapp.weixin.qq.com", status: 200},
+		{name: "injected zhihu client", origin: "https://www.zhihu.com", status: 200},
+		{name: "injected zhihu article client", origin: "https://zhuanlan.zhihu.com", status: 200},
+		{name: "any origin allowed (hostile)", origin: "https://audit.invalid", status: 200},
+		{name: "any origin allowed (null)", origin: "null", status: 200},
+		{name: "cross-site without origin", fetch_site: "cross-site", status: 200},
+		{name: "injected xweb cors without origin", fetch_site: "cross-site", fetch_mode: "cors", status: 200},
+		{name: "cross-site script load without origin", fetch_site: "cross-site", fetch_mode: "no-cors", status: 200},
+		{name: "cross-site navigation without origin", fetch_site: "cross-site", fetch_mode: "navigate", status: 200},
 		{name: "DNS rebinding", host: "audit.invalid:2022", origin: "http://audit.invalid:2022", configured: true, status: 401},
 		{name: "remote without configured credentials", remote: "192.0.2.10:40000", status: 200},
 		{name: "remote same origin without configured credentials", remote: "192.0.2.10:40000", host: "downloads.example.com", origin: "http://downloads.example.com", status: 200},
@@ -58,6 +64,7 @@ func TestAPIRequestTrustAndRemoteAuthentication(t *testing.T) {
 			}
 			request.Header.Set("Origin", test_case.origin)
 			request.Header.Set("Sec-Fetch-Site", test_case.fetch_site)
+			request.Header.Set("Sec-Fetch-Mode", test_case.fetch_mode)
 			if test_case.username != "" {
 				request.SetBasicAuth(test_case.username, test_case.password)
 			}
@@ -73,7 +80,7 @@ func TestAPIRequestTrustAndRemoteAuthentication(t *testing.T) {
 	}
 }
 
-func TestCrossSiteCannotReadLocalFiles(t *testing.T) {
+func TestFileBrowserServesSandboxedDocument(t *testing.T) {
 	secret_path := filepath.Join(t.TempDir(), "private.txt")
 	if err := os.WriteFile(secret_path, []byte("private bytes"), 0600); err != nil {
 		t.Fatal(err)
@@ -82,23 +89,18 @@ func TestCrossSiteCannotReadLocalFiles(t *testing.T) {
 	router := gin.New()
 	router.GET("/api/file", client.handle_fetch_file)
 	handler := with_cors(router, client.cfg)
-	for _, origin := range []string{"https://audit.invalid", "http://127.0.0.1:2022"} {
-		request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:2022/api/file?path="+url.QueryEscape(secret_path), nil)
-		request.RemoteAddr = "127.0.0.1:40000"
-		request.Header.Set("Origin", origin)
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, request)
-		if origin == "https://audit.invalid" {
-			if response.Code != 403 || bytes.Contains(response.Body.Bytes(), []byte("private bytes")) {
-				t.Fatal("untrusted origin can read a local file")
-			}
-		} else if response.Code != 200 || response.Header().Get("Content-Security-Policy") != "sandbox" {
-			t.Fatalf("trusted file browser cannot read a sandboxed file: %d", response.Code)
-		}
+	// Origin restrictions are disabled by design. The response is still served
+	// as a sandboxed document so an HTML file cannot script the API.
+	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:2022/api/file?path="+url.QueryEscape(secret_path), nil)
+	request.RemoteAddr = "127.0.0.1:40000"
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != 200 || response.Header().Get("Content-Security-Policy") != "sandbox" {
+		t.Fatalf("file browser cannot read a sandboxed file: %d", response.Code)
 	}
 }
 
-func TestHTTPSProxyPreservesOriginChecksAndAuthentication(t *testing.T) {
+func TestHTTPSProxyAuthentication(t *testing.T) {
 	cfg := &APIConfig{Hostname: "127.0.0.1", Username: "owner", Password: "secret"}
 	handler := with_cors(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }), cfg)
 	for _, test_case := range []struct {
@@ -108,7 +110,7 @@ func TestHTTPSProxyPreservesOriginChecksAndAuthentication(t *testing.T) {
 	}{
 		{"https://downloads.example.com", true, 200},
 		{"https://downloads.example.com", false, 401},
-		{"https://audit.invalid", true, 403},
+		{"https://audit.invalid", true, 200},
 	} {
 		request := httptest.NewRequest(http.MethodPost, "http://downloads.example.com/api/config", nil)
 		request.RemoteAddr = "127.0.0.1:40000"
