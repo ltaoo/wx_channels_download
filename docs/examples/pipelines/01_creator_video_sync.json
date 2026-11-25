@@ -11,7 +11,15 @@
       "initial_data": {}
     }
   ],
-  "context_schema": [],
+  "context_schema": [
+    {
+      "key": "focus",
+      "label": "焦点模式（继续翻页）",
+      "description": "开启后，即使某一页的视频全部已经下载过，也继续检查下一页，而不是在该页停止。手动执行时会弹出窗口要求选择。",
+      "type": "boolean",
+      "required": false
+    }
+  ],
   "nodes": {
     "start": {
       "id": "start",
@@ -98,7 +106,7 @@
         }
       ],
       "config": {
-        "code": "(function () {\nif (typeof config.username !== 'string') throw new Error('必须配置字符串 username');\nvar username = config.username.trim().replace(/^wxchannels:/, '').trim();\nif (!username || username.indexOf('REPLACE_') >= 0) throw new Error('请在自动化配置中填写创作者 username');\nif (!/@finder$/.test(username)) username += '@finder';\nvar url = (config.url || '').trim() || 'http://127.0.0.1:2022/api/channels/contact/feed/list';\nvar method = (config.method || 'GET').trim().toUpperCase() || 'GET';\nif (['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].indexOf(method) < 0) throw new Error('列表接口 method 不支持');\nvar token = (config.token || '').trim();\nreturn {username: username, url: url, method: method, authentication: {type: token ? 'bearer' : 'none', token: token}};\n})()",
+        "code": "(function () {\nif (typeof config.username !== 'string') throw new Error('必须配置字符串 username');\nvar username = config.username.trim().replace(/^wxchannels:/, '').trim();\nif (!username || username.indexOf('REPLACE_') >= 0) throw new Error('请在自动化配置中填写创作者 username');\nif (!/@finder$/.test(username)) username += '@finder';\nvar url = (config.url || '').trim() || 'http://127.0.0.1:2022/api/channels/contact/feed/list';\nvar method = (config.method || 'GET').trim().toUpperCase() || 'GET';\nif (['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].indexOf(method) < 0) throw new Error('列表接口 method 不支持');\nvar token = (config.token || '').trim();\nvar focus = input.focus === true;\nreturn {username: username, url: url, method: method, focus: focus, authentication: {type: token ? 'bearer' : 'none', token: token}};\n})()",
         "output_key": "creator"
       },
       "next_node_ids": [
@@ -116,6 +124,7 @@
       "config": {
         "variables": {
           "download_dir": "",
+          "focus": "{{output.validate.creator.focus}}",
           "max_pages": 1000,
           "max_videos": 100000,
           "page_response": null,
@@ -212,7 +221,7 @@
               ],
               "position": {
                 "x": 0,
-                "y": 240
+                "y": 280
               }
             },
             "download_missing": {
@@ -351,7 +360,7 @@
               ],
               "position": {
                 "x": 340,
-                "y": 480
+                "y": 520
               }
             },
             "fetch_list": {
@@ -461,7 +470,7 @@
               ],
               "position": {
                 "x": 680,
-                "y": 240
+                "y": 280
               }
             },
             "no_next": {
@@ -476,8 +485,8 @@
                 "merge_page"
               ],
               "position": {
-                "x": 680,
-                "y": 600
+                "x": 1420,
+                "y": 520
               }
             },
             "merge_page": {
@@ -492,8 +501,8 @@
                 "end"
               ],
               "position": {
-                "x": 1020,
-                "y": 0
+                "x": 1760,
+                "y": 280
               }
             },
             "end": {
@@ -503,8 +512,8 @@
               "config": {},
               "next_node_ids": [],
               "position": {
-                "x": 1360,
-                "y": 0
+                "x": 2100,
+                "y": 280
               }
             }
           }
@@ -541,7 +550,7 @@
         "store_response"
       ],
       "position": {
-        "x": 1360,
+        "x": 3740,
         "y": 240
       }
     },
@@ -559,7 +568,7 @@
         "response_gate"
       ],
       "position": {
-        "x": 1700,
+        "x": 4080,
         "y": 240
       }
     },
@@ -586,7 +595,7 @@
         "finish_summary"
       ],
       "position": {
-        "x": 2040,
+        "x": 4420,
         "y": 240
       }
     },
@@ -602,7 +611,7 @@
         "store_page"
       ],
       "position": {
-        "x": 2380,
+        "x": 4760,
         "y": 0
       }
     },
@@ -619,7 +628,7 @@
         "prepare_checks"
       ],
       "position": {
-        "x": 2720,
+        "x": 5100,
         "y": 0
       }
     },
@@ -635,7 +644,7 @@
         "check_videos"
       ],
       "position": {
-        "x": 3060,
+        "x": 5440,
         "y": 0
       }
     },
@@ -655,7 +664,7 @@
         "aggregate_checks"
       ],
       "position": {
-        "x": 3400,
+        "x": 5780,
         "y": 0
       }
     },
@@ -671,7 +680,7 @@
         "store_checks"
       ],
       "position": {
-        "x": 3740,
+        "x": 6120,
         "y": 0
       }
     },
@@ -688,7 +697,7 @@
         "all_existing"
       ],
       "position": {
-        "x": 4080,
+        "x": 6460,
         "y": 0
       }
     },
@@ -701,7 +710,7 @@
         "condition_language": "js",
         "rules": [
           {
-            "condition": "global.scan_state.all_existing",
+            "condition": "global.scan_state.all_existing && !global.focus",
             "target_id": "summary"
           },
           {
@@ -715,7 +724,7 @@
         "advance_page"
       ],
       "position": {
-        "x": 4420,
+        "x": 6800,
         "y": 0
       }
     },
@@ -731,7 +740,7 @@
         "store_cursor"
       ],
       "position": {
-        "x": 4760,
+        "x": 7140,
         "y": 480
       }
     },
@@ -748,8 +757,8 @@
         "fetch_page"
       ],
       "position": {
-        "x": 2380,
-        "y": 840
+        "x": 680,
+        "y": 1200
       }
     },
     "summary": {
@@ -757,14 +766,14 @@
       "type": "JSCodeNode",
       "name": "增量同步与下载提交结果",
       "config": {
-        "code": "(function () {\nvar state = global.scan_state;\nreturn {username: output.validate.creator.username, pages: state.page, videos: Object.keys(state.seen_ids).length, checked: state.checked, submitted: state.submitted, skipped: state.skipped, stop_reason: state.all_existing ? 'all_existing' : 'no_more_pages', note: '已存在指已有下载任务；submitted 表示任务已启动，不表示文件已下载完成；遇到整页已存在即停止翻页'};\n})()",
+        "code": "(function () {\nvar state = global.scan_state;\nreturn {username: output.validate.creator.username, pages: state.page, videos: Object.keys(state.seen_ids).length, checked: state.checked, submitted: state.submitted, skipped: state.skipped, stop_reason: state.all_existing && !global.focus ? 'all_existing' : 'no_more_pages', note: '已存在指已有下载任务；submitted 表示任务已启动，不表示文件已下载完成；非焦点模式遇到整页已存在即停止翻页'};\n})()",
         "output_key": "sync_summary"
       },
       "next_node_ids": [
         "end"
       ],
       "position": {
-        "x": 4760,
+        "x": 7140,
         "y": 0
       }
     },
@@ -775,7 +784,7 @@
       "config": {},
       "next_node_ids": [],
       "position": {
-        "x": 5100,
+        "x": 7480,
         "y": 0
       }
     },
@@ -784,14 +793,14 @@
       "type": "JSCodeNode",
       "name": "全部页面检查完成，汇总结果",
       "config": {
-        "code": "(function () {\nvar state = global.scan_state;\nreturn {username: output.validate.creator.username, pages: state.page, videos: Object.keys(state.seen_ids).length, checked: state.checked, submitted: state.submitted, skipped: state.skipped, stop_reason: state.all_existing ? 'all_existing' : 'no_more_pages', note: '已存在指已有下载任务；submitted 表示任务已启动，不表示文件已下载完成；遇到整页已存在即停止翻页'};\n})()",
+        "code": "(function () {\nvar state = global.scan_state;\nreturn {username: output.validate.creator.username, pages: state.page, videos: Object.keys(state.seen_ids).length, checked: state.checked, submitted: state.submitted, skipped: state.skipped, stop_reason: state.all_existing && !global.focus ? 'all_existing' : 'no_more_pages', note: '已存在指已有下载任务；submitted 表示任务已启动，不表示文件已下载完成；非焦点模式遇到整页已存在即停止翻页'};\n})()",
         "output_key": "sync_summary"
       },
       "next_node_ids": [
         "finish_end"
       ],
       "position": {
-        "x": 2380,
+        "x": 4760,
         "y": 480
       }
     },
@@ -802,7 +811,7 @@
       "config": {},
       "next_node_ids": [],
       "position": {
-        "x": 2720,
+        "x": 5100,
         "y": 480
       }
     }
