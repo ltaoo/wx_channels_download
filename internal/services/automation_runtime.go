@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"gorm.io/gorm"
+
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/events"
 	"wx_channel/pkg/flowengine"
@@ -161,10 +163,15 @@ func (s *AutomationService) save_run_checkpoint(checkpoint *flowengine.RunCheckp
 	if s.db == nil || !strings.HasPrefix(checkpoint.RunID, "run-") {
 		return nil
 	}
-	// Callback-based built-in definitions are intentionally process-local.
-	raw, err := json.Marshal(checkpoint)
+	// The frozen graph is already stored once in flow_run_record.definition.
+	// Persisting only the live context keeps every node boundary from
+	// re-serializing the whole graph; resume reattaches the definition.
+	persisted := *checkpoint
+	persisted.Definition = nil
+	raw, err := json.Marshal(&persisted)
 	if err != nil {
-		if !strings.HasPrefix(checkpoint.Definition.ID, user_flow_id_prefix) {
+		// Callback-based built-in definitions are intentionally process-local.
+		if checkpoint.Definition == nil || !strings.HasPrefix(checkpoint.Definition.ID, user_flow_id_prefix) {
 			return nil
 		}
 		return err
@@ -173,11 +180,17 @@ func (s *AutomationService) save_run_checkpoint(checkpoint *flowengine.RunCheckp
 	if checkpoint.Waiting {
 		status = model.FlowRunStatusWaiting
 	}
-	result := s.db.Model(&model.FlowRunRecord{}).Where("id = ? AND status IN ?", checkpoint.RunID, []string{"QUEUED", "RUNNING", "WAITING"}).Updates(map[string]interface{}{
+	updates := map[string]interface{}{
 		"checkpoint": string(raw), "status": status, "current_node": checkpoint.CurrentNode,
-		"node_attempts": marshal_json(checkpoint.NodeAttempts), "node_outputs": marshal_json(checkpoint.Data),
-		"updated_at": time.Now().UnixMilli(),
-	})
+		"node_attempts": marshal_json(checkpoint.NodeAttempts),
+		"updated_at":    time.Now().UnixMilli(),
+	}
+	// Node states accumulate in memory and ride along with the boundary write
+	// instead of costing a SELECT + UPDATE per status event.
+	if states, ok := s.node_states_snapshot(checkpoint.RunID); ok {
+		updates["node_states"] = states
+	}
+	result := s.db.Model(&model.FlowRunRecord{}).Where("id = ? AND status IN ?", checkpoint.RunID, []string{"QUEUED", "RUNNING", "WAITING"}).Updates(updates)
 	if result.Error != nil {
 		return result.Error
 	}
@@ -191,9 +204,69 @@ func (s *AutomationService) persist_node_log(entry flowengine.NodeExecutionLog) 
 	if s.db == nil || !strings.HasPrefix(entry.RunID, "run-") || entry.NodeID == "" {
 		return
 	}
-	row := model.FlowRunNodeLog{RunID: entry.RunID, FlowID: entry.FlowID, NodeID: entry.NodeID, Entry: marshal_json(entry)}
-	if err := s.db.Create(&row).Error; err != nil {
+	s.enqueue_node_log(model.FlowRunNodeLog{RunID: entry.RunID, FlowID: entry.FlowID, NodeID: entry.NodeID, Entry: marshal_json(entry)})
+}
+
+// enqueue_node_log hands a row to the batched writer. The writer only exists on
+// the real service (scoped helper values have no channels), so those fall back
+// to a direct insert. Overflow flushes early so a burst cannot grow the buffer
+// without bound.
+func (s *AutomationService) enqueue_node_log(row model.FlowRunNodeLog) {
+	if s.node_log_done == nil {
+		s.write_node_log_batch([]model.FlowRunNodeLog{row})
+		return
+	}
+	s.node_log_mu.Lock()
+	s.node_log_pending = append(s.node_log_pending, row)
+	overflow := len(s.node_log_pending) >= automation_node_log_buffer_limit
+	s.node_log_mu.Unlock()
+	if overflow {
+		s.flush_node_logs()
+	}
+}
+
+func (s *AutomationService) node_log_writer_loop() {
+	defer close(s.node_log_done)
+	ticker := time.NewTicker(automation_node_log_flush_interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.node_log_shutdown:
+			s.flush_node_logs()
+			return
+		case <-ticker.C:
+			s.flush_node_logs()
+		}
+	}
+}
+
+// flush_node_logs writes every queued row in one transaction.
+func (s *AutomationService) flush_node_logs() {
+	s.node_log_mu.Lock()
+	rows := s.node_log_pending
+	s.node_log_pending = nil
+	s.node_log_mu.Unlock()
+	s.write_node_log_batch(rows)
+}
+
+func (s *AutomationService) write_node_log_batch(rows []model.FlowRunNodeLog) {
+	if s == nil || s.db == nil || len(rows) == 0 {
+		return
+	}
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		return tx.CreateInBatches(rows, 100).Error
+	}); err != nil {
 		s.log_error(err, "persist automation node attempt")
+	}
+}
+
+func (s *AutomationService) stop_node_log_writer() {
+	if s.node_log_shutdown == nil {
+		return
+	}
+	s.node_log_stop_once.Do(func() { close(s.node_log_shutdown) })
+	if s.node_log_done != nil {
+		<-s.node_log_done
 	}
 }
 
@@ -213,6 +286,16 @@ func (s *AutomationService) ResumeRun(id, node_id string, input map[string]inter
 	checkpoint := &flowengine.RunCheckpoint{}
 	if err := json.Unmarshal([]byte(run.Checkpoint), checkpoint); err != nil {
 		return nil, fmt.Errorf("运行缺少可恢复的上下文")
+	}
+	// Persisted checkpoints omit the definition; reattach the frozen graph the
+	// run started with (falling back to the registered definition).
+	if checkpoint.Definition == nil {
+		var definition flowengine.FlowDefinition
+		if err := json.Unmarshal([]byte(run.Definition), &definition); err == nil && len(definition.Nodes) > 0 {
+			checkpoint.Definition = &definition
+		} else if registered, ok := s.flow_engine.GetFlowDefinition(run.FlowID); ok {
+			checkpoint.Definition = &registered
+		}
 	}
 	if node_id == "" {
 		node_id = checkpoint.CurrentNode
@@ -241,6 +324,7 @@ func (s *AutomationService) ResumeRun(id, node_id string, input map[string]inter
 		if err != nil || current.Status == model.FlowRunStatusCancelled {
 			return
 		}
+		s.prime_run_node_states(run.ID, run.NodeStates, run.Definition)
 		s.publish_run_started(run)
 		resume_err := s.flow_engine.ResumeCheckpoint(execution_context, checkpoint, node_id, input)
 		s.finish_run(model.FlowSchedule{ID: run.ScheduleID, FlowID: run.FlowID, InstanceID: run.InstanceID, CronExpr: "@daily"}, run, resume_err)
@@ -299,6 +383,7 @@ func (s *AutomationService) expire_waiting_runs() {
 		result := s.db.Model(&model.FlowRunRecord{}).Where("id = ? AND status = ?", run.ID, model.FlowRunStatusWaiting).Updates(map[string]interface{}{"status": model.FlowRunStatusFailed, "error": "context deadline exceeded while waiting for human input", "completed_at": now, "updated_at": now})
 		if result.Error == nil && result.RowsAffected == 1 {
 			s.flow_engine.CancelRun(run.ID)
+			s.forget_run_node_states(run.ID)
 			run.Status = model.FlowRunStatusFailed
 			run.Error = "context deadline exceeded while waiting for human input"
 			s.publish_run_result(&run)

@@ -16,6 +16,19 @@ import (
 
 const default_api_output_key = "api_response"
 
+// api_http_client is shared across node executions so keep-alive connections
+// (and their TLS handshakes) survive between calls; per-request deadlines come
+// from the node's own context timeout.
+var api_http_client = &http.Client{
+	Transport: func() *http.Transport {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.MaxIdleConns = 256
+		transport.MaxIdleConnsPerHost = 32
+		transport.IdleConnTimeout = 90 * time.Second
+		return transport
+	}(),
+}
+
 type APICallNode struct {
 	Id     string
 	Config map[string]interface{}
@@ -182,7 +195,7 @@ func (n *APICallNode) Execute(ctx *engine.ProcessContext) (bool, []string, error
 			return false, nil, fmt.Errorf("unsupported authentication type")
 		}
 	}
-	response, err := (&http.Client{}).Do(request)
+	response, err := api_http_client.Do(request)
 	if err != nil {
 		return false, nil, err
 	}

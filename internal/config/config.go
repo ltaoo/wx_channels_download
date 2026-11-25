@@ -861,6 +861,41 @@ func (c *Config) LoadConfig() error {
 		HotReload:   true,
 	})
 
+	// Workflow automation scheduler and run concurrency. These are read once at
+	// startup, so a change takes effect after a restart.
+	Register(ConfigField{
+		Key:         "automation.maxConcurrentRuns",
+		Type:        ConfigTypeInt,
+		Default:     16,
+		Description: "同时执行的自动化运行上限（1-128）；超出上限的运行会排队等待，重启生效",
+		Title:       "自动化并发上限",
+		Group:       "Automation",
+	})
+	Register(ConfigField{
+		Key:         "automation.tickIntervalSeconds",
+		Type:        ConfigTypeInt,
+		Default:     30,
+		Description: "调度器扫描到期定时任务的间隔秒数（1-600），重启生效",
+		Title:       "调度扫描间隔",
+		Group:       "Automation",
+	})
+	Register(ConfigField{
+		Key:         "automation.tickBatchLimit",
+		Type:        ConfigTypeInt,
+		Default:     64,
+		Description: "单次调度扫描最多启动的任务数量（1-1024），其余由后续扫描接手，重启生效",
+		Title:       "调度批量上限",
+		Group:       "Automation",
+	})
+	Register(ConfigField{
+		Key:         "automation.runRetentionDays",
+		Type:        ConfigTypeInt,
+		Default:     30,
+		Description: "已结束的自动化运行及其节点日志保留天数；设为 0 表示永久保留，重启生效",
+		Title:       "运行历史保留天数",
+		Group:       "Automation",
+	})
+
 	if c.Existing {
 		// config.FilePath = config_filepath
 		if err := read_config_file(c.FullPath); err != nil {

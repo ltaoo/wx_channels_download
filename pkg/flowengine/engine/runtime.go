@@ -14,8 +14,11 @@ import (
 // An in-flight checkpoint is diagnostic only: replaying side effects requires
 // an explicit retry. Waiting checkpoints can be resumed without replay.
 type RunCheckpoint struct {
-	RunID        string                            `json:"run_id"`
-	Definition   FlowDefinition                    `json:"definition"`
+	RunID string `json:"run_id"`
+	// Definition is the frozen graph the run started with. Persisted
+	// checkpoints omit it because the run record already stores the same
+	// frozen definition once; callers reattach it when loading.
+	Definition   *FlowDefinition                   `json:"definition,omitempty"`
 	Data         map[string]interface{}            `json:"data"`
 	NodeOutputs  map[string]map[string]interface{} `json:"node_outputs"`
 	Globals      map[string]interface{}            `json:"globals"`
@@ -122,7 +125,8 @@ func (ctx *ProcessContext) Checkpoint() *RunCheckpoint {
 	if ctx.step_count != nil {
 		steps = ctx.step_count.Load()
 	}
-	return &RunCheckpoint{RunID: ctx.InstanceID, Definition: clone_definition(definition),
+	cloned_definition := clone_definition(definition)
+	return &RunCheckpoint{RunID: ctx.InstanceID, Definition: &cloned_definition,
 		Data: snapshot_map(ctx.Data), NodeOutputs: outputs, Globals: snapshot_map(ctx.Globals),
 		NodeStates: snapshotNodeStates(ctx.NodeStates), NodeAttempts: snapshotNodeAttempts(ctx.NodeAttempts),
 		CurrentNode: ctx.CurrentNode, PendingNodes: append([]string(nil), ctx.PendingNodes...),
@@ -132,6 +136,11 @@ func (ctx *ProcessContext) Checkpoint() *RunCheckpoint {
 
 func (e *FlowEngine) save_checkpoint(ctx *ProcessContext) error {
 	if ctx.checkpoint_disabled {
+		return nil
+	}
+	// In-flight checkpoints are diagnostic; coalesce them and always persist a
+	// human wait, which is the only checkpoint a restart can resume from.
+	if !ctx.checkpoint_due() {
 		return nil
 	}
 	e.RLock()
@@ -180,7 +189,10 @@ func (e *FlowEngine) ResumeCheckpoint(parent context.Context, checkpoint *RunChe
 	if err := e.ValidateManualInput(checkpoint, node_id, input); err != nil {
 		return err
 	}
-	definition := clone_definition(checkpoint.Definition)
+	if checkpoint.Definition == nil {
+		return errors.New("run checkpoint is missing its frozen definition")
+	}
+	definition := clone_definition(*checkpoint.Definition)
 	node, ok := definition.Nodes[node_id]
 	if !ok || node.Type != "ManualNode" {
 		return errors.New("waiting node is not a manual task")
@@ -197,7 +209,7 @@ func (e *FlowEngine) ResumeCheckpoint(parent context.Context, checkpoint *RunChe
 		NodeStates: snapshotNodeStates(checkpoint.NodeStates), NodeAttempts: snapshotNodeAttempts(checkpoint.NodeAttempts),
 		CurrentNode: node_id, EngineRef: e, InputKeys: ContextSchemaKeys(definition.ContextSchema),
 		TriggerType: checkpoint.TriggerType, TriggerKey: checkpoint.TriggerKey,
-		MaxSteps: checkpoint.MaxSteps, step_count: &atomic.Int64{}}
+		MaxSteps: checkpoint.MaxSteps, step_count: &atomic.Int64{}, reset_flows: &reset_flow_set{}}
 	ctx.step_count.Store(checkpoint.Steps)
 	if ctx.NodeOutputs == nil {
 		ctx.NodeOutputs = map[string]map[string]interface{}{}
@@ -282,8 +294,9 @@ func (e *FlowEngine) ExecuteSubflow(parent *ProcessContext, definition FlowDefin
 		Data: snapshot_map(input), NodeAttempts: map[string]int{},
 		NodeOutputs: map[string]map[string]interface{}{}, Globals: map[string]interface{}{},
 		InputKeys: ContextSchemaKeys(definition.ContextSchema), MaxSteps: parent.MaxSteps,
-		Depth: parent.Depth + 1, step_count: parent.step_count, checkpoint_disabled: true}
-	e.reset_subflow_states(child)
+		Depth: parent.Depth + 1, step_count: parent.step_count, checkpoint_disabled: true,
+		reset_flows: parent.reset_flows}
+	e.reset_subflow_states(parent, child)
 	if err := e.driveFlow(child, []string{definition.StartNodeID}); err != nil {
 		return nil, err
 	}
@@ -294,9 +307,15 @@ func (e *FlowEngine) ExecuteSubflow(parent *ProcessContext, definition FlowDefin
 	return result, nil
 }
 
-func (e *FlowEngine) reset_subflow_states(ctx *ProcessContext) {
+func (e *FlowEngine) reset_subflow_states(parent, ctx *ProcessContext) {
 	// Keep execution states sparse so sibling branches do not merge unvisited nodes.
 	ctx.NodeStates = map[string]NodeState{}
+	// A loop enters the same body graph once per item; the whole-scope reset
+	// only carries information the first time, and every item's live node
+	// events re-establish the current states anyway.
+	if !parent.reset_flows.claim(ctx.FlowID) {
+		return
+	}
 	states := make(map[string]NodeState, len(ctx.Definition.Nodes))
 	for node_id := range ctx.Definition.Nodes {
 		states[node_id] = StatePending
@@ -482,6 +501,9 @@ func (e *FlowEngine) ValidateManualInput(checkpoint *RunCheckpoint, node_id stri
 	if checkpoint == nil || !checkpoint.Waiting || checkpoint.CurrentNode != node_id || checkpoint.NodeStates[node_id] != StateWaitingForUser {
 		return errors.New("run is not waiting at this node")
 	}
+	if checkpoint.Definition == nil {
+		return errors.New("run checkpoint is missing its frozen definition")
+	}
 	node, ok := checkpoint.Definition.Nodes[node_id]
 	if !ok || node.Type != "ManualNode" {
 		return errors.New("waiting node is not a manual task")
@@ -508,8 +530,9 @@ func (e *FlowEngine) ExecuteSharedSubflow(parent *ProcessContext, definition Flo
 		InstanceID: parent.InstanceID, FlowID: definition.ID, EngineRef: e, Data: parent.Data,
 		NodeAttempts: map[string]int{}, NodeOutputs: parent.NodeOutputs,
 		Globals: parent.Globals, InputKeys: ContextSchemaKeys(definition.ContextSchema),
-		MaxSteps: parent.MaxSteps, Depth: parent.Depth + 1, step_count: parent.step_count, checkpoint_disabled: true}
-	e.reset_subflow_states(child)
+		MaxSteps: parent.MaxSteps, Depth: parent.Depth + 1, step_count: parent.step_count, checkpoint_disabled: true,
+		reset_flows: parent.reset_flows}
+	e.reset_subflow_states(parent, child)
 	if err := e.driveFlow(child, []string{definition.StartNodeID}); err != nil {
 		return err
 	}

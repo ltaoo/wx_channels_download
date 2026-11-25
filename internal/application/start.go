@@ -141,6 +141,13 @@ func Start(cfg *config.Config) error {
 	if cfg.FullPath != "" {
 		table_data = append(table_data, []string{"Config File", cfg.FullPath})
 	}
+	if cfg.GetString("cert.file") != "" || cfg.GetString("cert.key") != "" {
+		cert_path := cfg.GetString("cert.file")
+		if cert_path == "" {
+			cert_path = cfg.GetString("cert.key")
+		}
+		table_data = append(table_data, []string{"Proxy Root Cert", cert_path})
+	}
 	table_data = append(table_data, []string{"Download Dir", api_cfg.DownloadDir})
 	// --- Hook manager ---
 	hook_manager := hermes.NewHookManager(logger)
@@ -281,7 +288,7 @@ func Start(cfg *config.Config) error {
 		wxchannels_flow_definitions[flow.ID] = flow
 	}
 	flow_engine.SetFlowDefinitions(wxchannels_flow_definitions)
-	service_automation := services.NewAutomationService(b.DB, logger, flow_engine, bus, custom_nodes)
+	service_automation := services.NewAutomationService(b.DB, logger, flow_engine, bus, cfg, custom_nodes)
 
 	service_mcp, err := new_mcp_service(api_cfg, service_data, service_download_task, service_scraper_job, service_automation, cfg.GetBool("mcp.enabled"))
 	if err != nil {

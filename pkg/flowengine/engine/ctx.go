@@ -37,8 +37,19 @@ type ProcessContext struct {
 	step_count          *atomic.Int64
 	cancel              context.CancelFunc
 	checkpoint_disabled bool
-	stop_node           string
-	deadline            time.Time
+	// In-flight checkpoints exist for diagnostics only: a restart turns every
+	// QUEUED/RUNNING row into FAILED and only a WAITING checkpoint is resumed.
+	// Writing one at every node boundary therefore costs a full graph+context
+	// serialization per node for no recovery benefit. Boundaries are coalesced
+	// by count or elapsed time; WAITING always forces a write.
+	checkpoint_boundaries_pending int
+	checkpoint_written_at         time.Time
+	// reset_flows dedupes subflow scope resets per run: a loop whose body graph
+	// ID is entered by every item emits one full PENDING map instead of one per
+	// item. The run's root context allocates it and descendants share it.
+	reset_flows *reset_flow_set
+	stop_node   string
+	deadline    time.Time
 
 	InstanceID string
 	FlowID     string
@@ -128,6 +139,57 @@ func (ctx *ProcessContext) SnapshotData() map[string]interface{} {
 	ctx.Mu.Lock()
 	defer ctx.Mu.Unlock()
 	return snapshot_map(ctx.Data)
+}
+
+// reset_flow_set records which subflow graphs have already emitted their
+// initial PENDING map during one run.
+type reset_flow_set struct {
+	Mu    sync.Mutex
+	flows map[string]bool
+}
+
+// claim reports true only for the first entry into flow_id. A nil set cannot
+// dedupe, so it always emits.
+func (set *reset_flow_set) claim(flow_id string) bool {
+	if set == nil {
+		return true
+	}
+	set.Mu.Lock()
+	defer set.Mu.Unlock()
+	if set.flows == nil {
+		set.flows = map[string]bool{}
+	}
+	if set.flows[flow_id] {
+		return false
+	}
+	set.flows[flow_id] = true
+	return true
+}
+
+const (
+	// Two boundaries are saved per successful node (pre-execution and
+	// post-completion), so ten boundaries coalesce roughly five nodes.
+	checkpoint_boundary_interval = 10
+	// A slow node already dominates its own boundary cost; this bound keeps a
+	// fast node chain from going uncheckpointed for long.
+	checkpoint_time_interval = 2 * time.Second
+)
+
+// checkpoint_due reports whether the current boundary should hit the storage
+// layer. A waiting node must always persist because that checkpoint is the one
+// a restart resumes from; other boundaries are coalesced. The first boundary of
+// a run is always due (zero checkpoint_written_at).
+func (ctx *ProcessContext) checkpoint_due() bool {
+	ctx.Mu.Lock()
+	defer ctx.Mu.Unlock()
+	waiting := ctx.NodeStates[ctx.CurrentNode] == StateWaitingForUser
+	ctx.checkpoint_boundaries_pending++
+	if waiting || ctx.checkpoint_boundaries_pending >= checkpoint_boundary_interval || time.Since(ctx.checkpoint_written_at) >= checkpoint_time_interval {
+		ctx.checkpoint_boundaries_pending = 0
+		ctx.checkpoint_written_at = time.Now()
+		return true
+	}
+	return false
 }
 
 // ChangedContextValues returns the entries of after that are new or different

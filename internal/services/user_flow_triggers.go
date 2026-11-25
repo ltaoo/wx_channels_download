@@ -293,7 +293,7 @@ func (s *AutomationService) merge_trigger_overrides(defaults []UserFlowTriggerIn
 }
 
 func (s *AutomationService) persist_schedule_change(instance_id, default_id string, fields map[string]interface{}, save func(*gorm.DB) error) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := save(tx); err != nil {
 			return err
 		}
@@ -336,4 +336,9 @@ func (s *AutomationService) persist_schedule_change(instance_id, default_id stri
 		}
 		return tx.Model(&instance).Update("trigger_overrides", marshal_json(cleaned)).Error
 	})
+	if err == nil && !s.syncing_triggers {
+		// A new or edited event trigger must be visible to the next event.
+		s.invalidate_event_schedules()
+	}
+	return err
 }

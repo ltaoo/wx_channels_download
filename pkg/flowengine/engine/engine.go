@@ -239,7 +239,7 @@ func (e *FlowEngine) StartFlowWithOptions(flow_id string, initial_data map[strin
 	ctx := &ProcessContext{
 		subflows: definition.Subflows,
 		Context:  run_context, cancel: cancel, Definition: &definition, ValidateSchemas: options.ValidateSchemas,
-		MaxSteps: max_steps, step_count: &atomic.Int64{},
+		MaxSteps: max_steps, step_count: &atomic.Int64{}, reset_flows: &reset_flow_set{},
 		InstanceID:   instanceID,
 		FlowID:       flow_id,
 		Data:         map[string]interface{}{},
@@ -271,7 +271,6 @@ func (e *FlowEngine) StartFlowWithOptions(flow_id string, initial_data map[strin
 	}
 	e.Unlock()
 	e.persistContext(ctx)
-	e.update_run_record(ctx, RunStatusRunning, nil)
 
 	runWithSemaphore := func() bool {
 		e.Lock()
@@ -334,12 +333,18 @@ func (e *FlowEngine) StartFlowWithOptions(flow_id string, initial_data map[strin
 					releaseSemaphore()
 				}
 			}()
+			// Only a run that owns a slot is actually executing; a run waiting
+			// for one stays QUEUED so the queue count reflects real work.
+			e.update_run_record(ctx, RunStatusRunning, nil)
 			_ = exec()
 		}()
 		return instanceID, nil
 	}
 
 	acquired := runWithSemaphore()
+	// Only a run that owns a slot is actually executing; a run waiting for one
+	// stays QUEUED so the queue count reflects real work.
+	e.update_run_record(ctx, RunStatusRunning, nil)
 	err := exec()
 	if acquired {
 		releaseSemaphore()
@@ -893,6 +898,13 @@ func (e *FlowEngine) getNextNodeIDsFromDefinition(ctx *ProcessContext, nodeID st
 	nodeDef, ok := flowDef.Nodes[nodeID]
 	if !ok {
 		return nil
+	}
+	// Imported definitions are normalized to populate both representations, but
+	// definitions built programmatically (or nested workflows decoded on the
+	// fly) may only carry NextNodeIDs. Fall back so a raw definition still
+	// advances instead of stopping at the first node.
+	if len(nodeDef.NextNodes) == 0 {
+		return append([]string(nil), nodeDef.NextNodeIDs...)
 	}
 	nextIDs := make([]string, 0, len(nodeDef.NextNodes))
 	for _, target := range nodeDef.NextNodes {

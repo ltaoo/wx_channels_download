@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	"wx_channel/internal/config"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/events"
 	"wx_channel/pkg/flowengine"
@@ -29,14 +30,28 @@ const (
 	// schedule to select a custom start node and event key.
 	automation_metadata_key = "__automation"
 
-	// automation_tick_interval is how often due schedules are looked up. The
-	// tick drives scheduling; the cron parser only computes the next fire time,
-	// so the effective resolution never exceeds this interval.
-	automation_tick_interval = 30 * time.Second
+	// Defaults for the two scheduler knobs, overridable through application
+	// config. The tick drives scheduling; the cron parser only computes the
+	// next fire time, so the effective resolution never exceeds the interval.
+	default_automation_tick_interval    = 30 * time.Second
+	default_automation_tick_batch_limit = 64
 
-	// automation_tick_batch_limit caps how many schedules a single tick may
-	// start. Anything left over is picked up by the following tick.
-	automation_tick_batch_limit = 64
+	// automation_event_schedule_cache_ttl bounds how stale the in-memory
+	// event-trigger index may be. A burst of download completion events then
+	// costs at most one flow_schedule scan per TTL instead of one per event.
+	automation_event_schedule_cache_ttl = 2 * time.Second
+
+	// automation_node_log_buffer_limit bounds the in-memory audit rows queued
+	// for the batched writer; overflow falls back to a synchronous insert.
+	automation_node_log_buffer_limit = 2048
+	// automation_node_log_flush_interval bounds how long a queued audit row
+	// waits before it is written.
+	automation_node_log_flush_interval = 200 * time.Millisecond
+	// automation_cleanup_interval is how often old run history is pruned.
+	automation_cleanup_interval = time.Hour
+	// automation_cleanup_batch_limit caps how many runs one prune removes so a
+	// large first cleanup cannot hold the single SQLite writer for long.
+	automation_cleanup_batch_limit = 500
 )
 
 var err_automation_busy = errors.New("该自动化已有进行中的执行，请等待结束后再触发")
@@ -57,16 +72,45 @@ type AutomationService struct {
 
 	claim_mu          sync.Mutex
 	download_event_mu sync.Mutex
-	log_mu            sync.Mutex
-	active_runs       sync.Map
-	start_once        sync.Once
-	stop_once         sync.Once
-	stop              chan struct{}
-	wg                sync.WaitGroup
+	// node_states caches each live run's node state map so status events never
+	// cost a database round trip; the map rides along with the next checkpoint
+	// write and the terminal update.
+	node_states_mu sync.Mutex
+	node_states    map[string]*automation_run_node_states
+	active_runs    sync.Map
+	start_once     sync.Once
+	stop_once      sync.Once
+	stop           chan struct{}
+	wg             sync.WaitGroup
 	// running holds the schedules with an in-flight execution. It is the
 	// concurrency guard that keeps one slow run from being started again by the
 	// next tick before it finishes.
 	running sync.Map
+
+	// tick_interval and tick_batch_limit come from application config once at
+	// startup and tune how often and how many due schedules a scan may start.
+	tick_interval    time.Duration
+	tick_batch_limit int
+
+	// event_schedules caches event-trigger matching so a burst of download
+	// completion events does not re-scan flow_schedule for every event.
+	event_schedules_mu sync.Mutex
+	event_schedules    map[string][]model.FlowSchedule
+	event_schedules_at time.Time
+
+	// run_retention prunes terminal run history (and its node logs) after this
+	// window; zero keeps everything.
+	run_retention   time.Duration
+	cleanup_mu      sync.Mutex
+	last_cleanup_at time.Time
+
+	// Node audit rows are buffered and written in batches so each attempt does
+	// not cost its own SQLite transaction. The writer flushes on a short timer.
+	node_log_mu        sync.Mutex
+	node_log_pending   []model.FlowRunNodeLog
+	node_log_shutdown  chan struct{}
+	node_log_done      chan struct{}
+	node_log_stop_once sync.Once
 }
 
 // NewAutomationService builds the automation service. A nil flow engine still
@@ -76,20 +120,46 @@ func NewAutomationService(
 	logger *zerolog.Logger,
 	flow_engine *flowengine.FlowEngine,
 	event_bus events.Publisher,
+	application_config *config.Config,
 	custom_nodes ...*flowengine.CustomNodeRegistry,
 ) *AutomationService {
 	lifecycle_context, lifecycle_cancel := context.WithCancel(context.Background())
+	max_concurrent_runs := 16
+	tick_interval := default_automation_tick_interval
+	tick_batch_limit := default_automation_tick_batch_limit
+	run_retention := 30 * 24 * time.Hour
+	if application_config != nil {
+		max_concurrent_runs = application_config.GetInt("automation.maxConcurrentRuns")
+		tick_interval = time.Duration(application_config.GetInt("automation.tickIntervalSeconds")) * time.Second
+		tick_batch_limit = application_config.GetInt("automation.tickBatchLimit")
+		run_retention = time.Duration(application_config.GetInt("automation.runRetentionDays")) * 24 * time.Hour
+	}
+	max_concurrent_runs = clamp_int(max_concurrent_runs, 1, 128)
+	tick_interval = clamp_duration_seconds(tick_interval, 1, 600, default_automation_tick_interval)
+	tick_batch_limit = clamp_int(tick_batch_limit, 1, 1024)
+	if run_retention < 0 {
+		run_retention = 0
+	}
 	service := &AutomationService{
 		lifecycle_context: lifecycle_context, lifecycle_cancel: lifecycle_cancel,
-		db:          db,
-		logger:      logger,
-		flow_engine: flow_engine,
-		event_bus:   event_bus,
+		db:               db,
+		logger:           logger,
+		flow_engine:      flow_engine,
+		event_bus:        event_bus,
+		tick_interval:    tick_interval,
+		tick_batch_limit: tick_batch_limit,
+		run_retention:    run_retention,
 		// Descriptor is enabled alongside the standard five fields so
 		// convenience expressions such as "@every 1m" and "@daily" are accepted.
-		cron_parser: cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor),
-		stop:        make(chan struct{}),
+		cron_parser:       cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor),
+		stop:              make(chan struct{}),
+		node_states:       map[string]*automation_run_node_states{},
+		node_log_shutdown: make(chan struct{}),
+		node_log_done:     make(chan struct{}),
 	}
+	// The batched audit writer starts immediately so it can be shut down
+	// deterministically even if the service is never started.
+	go service.node_log_writer_loop()
 	if len(custom_nodes) > 0 {
 		service.custom_nodes = custom_nodes[0]
 	}
@@ -101,10 +171,28 @@ func NewAutomationService(
 		flow_engine.SetCheckpointHandler(service.save_run_checkpoint)
 	}
 	if flow_engine != nil {
-		flow_engine.SetConcurrencyLimit(8)
+		flow_engine.SetConcurrencyLimit(max_concurrent_runs)
 	}
 	service.load_user_flows()
 	return service
+}
+
+func clamp_int(value, min_value, max_value int) int {
+	if value < min_value {
+		return min_value
+	}
+	if value > max_value {
+		return max_value
+	}
+	return value
+}
+
+func clamp_duration_seconds(value time.Duration, min_seconds, max_seconds int, fallback time.Duration) time.Duration {
+	seconds := int(value / time.Second)
+	if seconds < min_seconds || seconds > max_seconds {
+		return fallback
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 // FlowEngine exposes the shared engine so callers can register flow
@@ -145,11 +233,17 @@ func (s *AutomationService) Stop() {
 		}
 	})
 	s.wg.Wait()
+	// All runs have enqueued their audit rows; drain and stop the writer.
+	s.stop_node_log_writer()
 }
 
 func (s *AutomationService) scheduler_loop() {
 	defer s.wg.Done()
-	ticker := time.NewTicker(automation_tick_interval)
+	tick_interval := s.tick_interval
+	if tick_interval <= 0 {
+		tick_interval = default_automation_tick_interval
+	}
+	ticker := time.NewTicker(tick_interval)
 	defer ticker.Stop()
 	s.tick()
 	for {
@@ -167,12 +261,17 @@ func (s *AutomationService) tick() {
 		return
 	}
 	s.expire_waiting_runs()
+	s.maybe_cleanup_old_runs()
 	now := time.Now().UnixMilli()
+	batch_limit := s.tick_batch_limit
+	if batch_limit <= 0 {
+		batch_limit = default_automation_tick_batch_limit
+	}
 	var due []model.FlowSchedule
 	err := s.db.
 		Where("enabled = ? AND next_run_at IS NOT NULL AND next_run_at <= ? AND deleted_at IS NULL", true, now).
 		Order("next_run_at ASC").
-		Limit(automation_tick_batch_limit).
+		Limit(batch_limit).
 		Find(&due).Error
 	if err != nil {
 		s.log_error(err, "failed to query due flow schedules")
@@ -180,6 +279,11 @@ func (s *AutomationService) tick() {
 	}
 	for index := range due {
 		schedule := due[index]
+		// Move the plan forward before launching, whether or not this tick can
+		// start it. Otherwise a crash, a failed run or a slow run leaves the
+		// schedule overdue and it is re-selected on every tick (and consumes a
+		// batch slot) until it finishes.
+		s.advance_claimed_schedule(schedule)
 		if _, claimed := s.running.LoadOrStore(schedule.ID, struct{}{}); claimed {
 			// The previous run of this schedule is still executing; skip this
 			// tick and let the next one pick it up.
@@ -726,13 +830,17 @@ func (s *AutomationService) GetRunNodeStates(id string, flow_ids ...string) (map
 	if err := s.db.Select("id", "flow_id", "node_states", "status", "current_node").Where("id=? AND deleted_at IS NULL", strings.TrimSpace(id)).First(&run).Error; err != nil {
 		return nil, fmt.Errorf("运行记录不存在: %s", id)
 	}
-	var scopes map[string]map[string]string
-	_ = json.Unmarshal([]byte(run.NodeStates), &scopes)
 	scope_id := run.FlowID
 	if len(flow_ids) > 0 && strings.TrimSpace(flow_ids[0]) != "" {
 		scope_id = strings.TrimSpace(flow_ids[0])
 	}
-	states := scopes[scope_id]
+	// Live runs keep fresh states in memory between checkpoint writes.
+	states, cached := s.node_states_for_scope(run.ID, scope_id)
+	if !cached {
+		var scopes map[string]map[string]string
+		_ = json.Unmarshal([]byte(run.NodeStates), &scopes)
+		states = scopes[scope_id]
+	}
 	if states == nil {
 		states = map[string]string{}
 	}
@@ -833,6 +941,7 @@ func (s *AutomationService) CancelRun(id string) error {
 	if s.flow_engine != nil {
 		s.flow_engine.CancelRun(id)
 	}
+	s.forget_run_node_states(id)
 	run.Status = model.FlowRunStatusCancelled
 	run.Error = "cancelled by user"
 	s.publish_run_result(run)
@@ -852,7 +961,9 @@ func (s *AutomationService) execute_schedule(schedule model.FlowSchedule, trigge
 }
 
 func (s *AutomationService) execute_prepared_run(schedule model.FlowSchedule, run *model.FlowRunRecord) *model.FlowRunRecord {
-	s.db.Model(&model.FlowRunRecord{}).Where("id = ? AND status = ?", run.ID, model.FlowRunStatusQueued).Update("status", model.FlowRunStatusRunning)
+	// The run stays QUEUED until the engine acquires a concurrency slot: the
+	// first checkpoint then flips it to RUNNING (see save_run_checkpoint), so
+	// "RUNNING" reflects execution rather than queueing.
 	s.publish(events.AutomationRunStarted{ScheduleID: run.ScheduleID, RunID: run.ID, FlowID: run.FlowID, InstanceID: run.InstanceID, Trigger: run.TriggerType})
 	execution_context, cancel := context.WithDeadline(s.lifecycle_context, time.UnixMilli(run.DeadlineAt))
 	s.active_runs.Store(run.ID, context.CancelFunc(cancel))
@@ -876,6 +987,9 @@ func (s *AutomationService) execute_prepared_run(schedule model.FlowSchedule, ru
 	if definition != nil {
 		start_node_id = definition.StartNodeID
 	}
+	// Seed the in-memory node state cache with the graph snapshot so live status
+	// events only touch memory until the next checkpoint write.
+	s.prime_run_node_states(run.ID, run.NodeStates, run.Definition)
 	_, run_err := s.flow_engine.StartFlowWithOptions(run.FlowID, decode_initial_data(run.InitialData), flowengine.StartFlowOptions{
 		Context: execution_context, Definition: definition, RunID: run.ID, ValidateSchemas: strings.HasPrefix(run.FlowID, user_flow_id_prefix),
 		StartNodeID: start_node_id,
@@ -903,6 +1017,11 @@ func (s *AutomationService) finish_run(schedule model.FlowSchedule, run *model.F
 			status = model.FlowRunStatusWaiting
 		}
 	}
+	// Flush the states accumulated in memory since the last checkpoint; the
+	// cache entry is dropped afterwards so late events cannot leak into it.
+	if states, ok := s.node_states_snapshot(run.ID); ok {
+		updates["node_states"] = states
+	}
 	now := time.Now().UnixMilli()
 	updates["status"] = status
 	updates["error"] = error_text
@@ -913,6 +1032,10 @@ func (s *AutomationService) finish_run(schedule model.FlowSchedule, run *model.F
 	if err := s.db.Model(&model.FlowRunRecord{}).Where("id = ? AND status != ?", run.ID, model.FlowRunStatusCancelled).Updates(updates).Error; err != nil {
 		s.log_error(err, "failed to finish automation run")
 	}
+	// Make this run's audit rows queryable as soon as it is terminal instead of
+	// waiting for the next flush tick.
+	s.flush_node_logs()
+	s.forget_run_node_states(run.ID)
 	persisted, err := s.GetRunMetadata(run.ID)
 	if err != nil {
 		run.Status = model.FlowRunStatusFailed
@@ -957,6 +1080,63 @@ func (s *AutomationService) advance_schedule(schedule model.FlowSchedule, run *m
 		Where("id = ? AND deleted_at IS NULL", schedule.ID).
 		Updates(updates).Error; err != nil {
 		s.log_error(err, "failed to advance flow schedule")
+	}
+}
+
+// maybe_cleanup_old_runs prunes terminal run history at most once per interval
+// so flow_run_record and flow_run_node_log do not grow without bound. Only
+// terminal runs older than the configured retention window are removed.
+func (s *AutomationService) maybe_cleanup_old_runs() {
+	if s == nil || s.db == nil || s.run_retention <= 0 {
+		return
+	}
+	s.cleanup_mu.Lock()
+	defer s.cleanup_mu.Unlock()
+	now := time.Now()
+	if !s.last_cleanup_at.IsZero() && now.Sub(s.last_cleanup_at) < automation_cleanup_interval {
+		return
+	}
+	s.last_cleanup_at = now
+	cutoff := now.Add(-s.run_retention).UnixMilli()
+	var ids []string
+	if err := s.db.Model(&model.FlowRunRecord{}).
+		Where("status IN ? AND completed_at IS NOT NULL AND completed_at > 0 AND completed_at < ?",
+			[]string{model.FlowRunStatusCompleted, model.FlowRunStatusFailed, model.FlowRunStatusCancelled}, cutoff).
+		Order("completed_at ASC").
+		Limit(automation_cleanup_batch_limit).
+		Pluck("id", &ids).Error; err != nil {
+		s.log_error(err, "query expired automation runs")
+		return
+	}
+	if len(ids) == 0 {
+		return
+	}
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("run_id IN ?", ids).Delete(&model.FlowRunNodeLog{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("id IN ?", ids).Delete(&model.FlowRunRecord{}).Error
+	}); err != nil {
+		s.log_error(err, "prune expired automation runs")
+	}
+}
+
+// advance_claimed_schedule moves a due schedule's next fire time forward as
+// soon as a tick picks it, so a crash, a failed run or a long-running execution
+// cannot re-trigger the same overdue slot on every scan. advance_schedule still
+// recomputes the plan from the real finish time once the run ends.
+func (s *AutomationService) advance_claimed_schedule(schedule model.FlowSchedule) {
+	if s == nil || s.db == nil {
+		return
+	}
+	next_run, err := s.next_run_at(schedule.CronExpr, time.Now())
+	if err != nil {
+		return
+	}
+	if err := s.db.Model(&model.FlowSchedule{}).
+		Where("id = ? AND deleted_at IS NULL AND next_run_at IS NOT NULL AND next_run_at <= ?", schedule.ID, time.Now().UnixMilli()).
+		Update("next_run_at", *next_run).Error; err != nil {
+		s.log_error(err, "failed to advance claimed flow schedule")
 	}
 }
 
@@ -1029,7 +1209,7 @@ func (s *AutomationService) log_node_execution(entry flowengine.NodeExecutionLog
 }
 
 func (s *AutomationService) publish_node_execution_status(status flowengine.NodeExecutionStatus) {
-	s.persist_node_status(status)
+	s.cache_node_status(status)
 	if status.NodeStates != nil {
 		s.persist_node_log(flowengine.NodeExecutionLog{
 			Timestamp: status.Timestamp, FlowID: status.FlowID, RunID: status.RunID, NodeID: status.NodeID,

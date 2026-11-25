@@ -77,6 +77,43 @@ func (s *AutomationService) DispatchEvent(event_key string, payload map[string]i
 	return s.dispatch_event(event_key, payload, false)
 }
 
+// event_triggered_schedules returns the active event-trigger schedules for one
+// event key. The index is rebuilt on demand and cached briefly, so a burst of
+// download completion events costs one flow_schedule scan per TTL instead of
+// one per event.
+func (s *AutomationService) event_triggered_schedules(event_key string) ([]model.FlowSchedule, error) {
+	s.event_schedules_mu.Lock()
+	defer s.event_schedules_mu.Unlock()
+	if s.event_schedules == nil || time.Since(s.event_schedules_at) > automation_event_schedule_cache_ttl {
+		var schedules []model.FlowSchedule
+		if err := s.db.Where("deleted_at IS NULL").Find(&schedules).Error; err != nil {
+			return nil, err
+		}
+		index := map[string][]model.FlowSchedule{}
+		for _, schedule := range schedules {
+			metadata := automation_schedule_metadata(schedule)
+			if metadata.Type == model.FlowRunTriggerEvent && metadata.EventKey != "" && metadata.Active {
+				index[metadata.EventKey] = append(index[metadata.EventKey], schedule)
+			}
+		}
+		s.event_schedules = index
+		s.event_schedules_at = time.Now()
+	}
+	return s.event_schedules[event_key], nil
+}
+
+// invalidate_event_schedules drops the cached event-trigger index so a newly
+// created, edited or removed trigger is visible to the next event immediately.
+func (s *AutomationService) invalidate_event_schedules() {
+	if s == nil {
+		return
+	}
+	s.event_schedules_mu.Lock()
+	s.event_schedules = nil
+	s.event_schedules_at = time.Time{}
+	s.event_schedules_mu.Unlock()
+}
+
 func (s *AutomationService) dispatch_event(event_key string, payload map[string]interface{}, serial bool) ([]model.FlowRunRecord, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("自动化服务未初始化")
@@ -88,16 +125,12 @@ func (s *AutomationService) dispatch_event(event_key string, payload map[string]
 	if strings.HasPrefix(event_key, "automation.") {
 		return nil, fmt.Errorf("不能订阅 automation 内部状态事件")
 	}
-	var schedules []model.FlowSchedule
-	if err := s.db.Where("deleted_at IS NULL").Find(&schedules).Error; err != nil {
+	schedules, err := s.event_triggered_schedules(event_key)
+	if err != nil {
 		return nil, err
 	}
 	runs := []model.FlowRunRecord{}
 	for _, schedule := range schedules {
-		metadata := automation_schedule_metadata(schedule)
-		if metadata.Type != model.FlowRunTriggerEvent || metadata.EventKey != event_key || !metadata.Active {
-			continue
-		}
 		initial_data := decode_initial_data(schedule.InitialData)
 		initial_data["event"] = map[string]interface{}{"type": event_key, "data": payload}
 		schedule.InitialData = marshal_json(initial_data)
