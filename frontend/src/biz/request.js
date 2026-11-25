@@ -215,6 +215,10 @@ export function fetchDownloadTaskDetail(params) {
   return request.get("/api/v1/download_task/detail", params);
 }
 
+export function updateDownloadTask(body) {
+  return request.post("/api/v1/download_task/update", body);
+}
+
 /** 读取文件内容或压缩包目录。 */
 export function fetchFile(params) {
   return request.get("/api/file", params);

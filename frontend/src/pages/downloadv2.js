@@ -15,6 +15,7 @@ import {
   SingleOverwriteConfirmDialog,
   TaskDeleteConfirmDialog,
   TaskErrorDialog,
+  TaskDetailDialog,
 } from "./downloadv2.components.js";
 import { DownloadV2Model } from "./downloadv2.model.js";
 import PreviewPageView from "./preview.js";
@@ -140,8 +141,8 @@ function DownloadV2Page(props) {
     {
       name: "actions",
       title: "操作",
-      width: 132,
-      cellClass: "flex items-center justify-end gap-1-5 max-760:gap-1",
+      width: 180,
+      cellClass: "flex flex-wrap items-center justify-end gap-1-5 max-760:gap-1",
       render(task$) {
         return DownloadV2TaskActions({
           store: vm$,
@@ -178,6 +179,7 @@ function DownloadV2Page(props) {
       CreatePlatformTaskPreviewDialog({ store: vm$ }),
       TaskDeleteConfirmDialog({ store: vm$ }),
       TaskErrorDialog({ store: vm$ }),
+      TaskDetailDialog({ store: vm$ }),
       ClearTasksConfirmDialog({ store: vm$ }),
       OverwriteConfirmDialog({ store: vm$ }),
       SingleOverwriteConfirmDialog({ store: vm$ }),

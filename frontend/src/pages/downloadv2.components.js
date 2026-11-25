@@ -10,6 +10,7 @@ import {
   tree_compare,
   mounted_element,
 } from "@/components/tree.js";
+import { format_time } from "@/utils.js";
 
 import {
   format_download_percent,
@@ -371,6 +372,21 @@ export function DownloadV2TaskActions(props) {
   const is_open_external = is_download_open_external();
 
   return [
+    DownloadV2TaskActionButton({
+      name: "detail",
+      title: "详情",
+      onClick() {
+        vm$.methods.requestTaskDetail(task$);
+      },
+    }),
+    Show({
+      when: computed(state_, (state) => state.is_failed),
+      ok: () => DownloadV2TaskActionButton({
+        name: "edit",
+        title: "编辑",
+        onClick() { vm$.methods.requestTaskDetail(task$, true); },
+      }),
+    }),
     Match({
       when: computed(state_, (state) => {
         if (state.is_completed) return 1;
@@ -598,6 +614,103 @@ export function DownloadV2TaskMain(props) {
       ],
     ),
   ];
+}
+
+export function TaskDetailDialog(props) {
+  const { store: vm$ } = props;
+  return Dialog(
+    {
+      store: vm$.ui.taskDetailDialog$,
+      class: "dm-dialog--wide",
+      attributes: { n: "download-task-detail-dialog" },
+    },
+    () => [DialogBody(
+      { class: "grid gap-4", attributes: { n: "download-task-detail-body" } },
+      [
+        Show({
+          when: vm$.state.task_detail_loading,
+          ok: () => View({ attributes: { n: "download-task-detail-loading", role: "status" } }, ["正在加载任务详情…"]),
+        }),
+        Show({
+          when: vm$.state.task_detail_error,
+          ok: () => View({ class: "text-color-danger word-break-break-all", attributes: { n: "download-task-detail-error", role: "alert" } }, [vm$.state.task_detail_error]),
+        }),
+        Show({
+          when: vm$.state.task_detail,
+          ok() {
+            return [
+              ...[
+                ["name", "任务名称", computed(vm$.state.task_detail, (task) => task?.name || "未命名任务")],
+                ["id", "任务 ID", computed(vm$.state.task_detail, (task) => task?.id)],
+                ["platform", "平台", computed(vm$.state.task_detail, (task) => task?.platform_id || "—")],
+                ["status", "状态", vm$.state.task_detail_status],
+                ["error", "错误信息", computed(vm$.state.task_detail, (task) => task?.error || "—")],
+                ["size", "总大小", computed(vm$.state.task_detail, (task) => format_download_size(task?.size))],
+                ["created-at", "下载时间", computed(vm$.state.task_detail, (task) => format_time(task?.created_at))],
+              ].map(([name, label, value]) => View(
+                { class: "min-w-0 word-break-break-all", attributes: { n: `download-task-detail-${name}` } },
+                [View({ as: "span", class: "text-color-text-secondary", attributes: { n: `download-task-detail-${name}-label` } }, [`${label}：`]), value],
+              )),
+              Show({
+                when: vm$.state.task_detail_editing,
+                ok() {
+                  return [
+                    View({ class: "text-color-text-secondary text-sm", attributes: { n: "download-task-edit-hint" } }, ["修改任务名称和下载链接，保存后点击重试重新下载。"]),
+                    View({ as: "label", attributes: { n: "download-task-edit-name-label", for: "download-task-edit-name" } }, ["任务名称"]),
+                    Input({ store: vm$.ui.input_task_detail_name$, attributes: { n: "download-task-edit-name", id: "download-task-edit-name", "aria-label": "任务名称" } }),
+                    View({ class: "font-semibold", attributes: { n: "download-task-edit-links-heading" } }, ["下载链接"]),
+                    For({
+                      each: vm$.state.task_detail_edit_files,
+                      key: "id",
+                      render(file) {
+                        return View({ class: "min-w-0 grid gap-2", attributes: { n: "download-task-edit-file" } }, [
+                          View({ class: "word-break-break-all", attributes: { n: "download-task-edit-file-label" } }, [file.name]),
+                          Input({ store: file.input$, attributes: { n: "download-task-edit-file-url", type: "url", "aria-label": `${file.name} 的下载链接` } }),
+                        ]);
+                      },
+                    }),
+                    Button({ store: vm$.ui.btn_save_task_detail$, attributes: { n: "download-task-edit-save", type: "button" } }, ["保存修改"]),
+                  ];
+                },
+              }),
+              Show({
+                when: computed(vm$.state.task_detail_editing, (editing) => !editing),
+                ok: () => [
+                  View({ class: "font-semibold", attributes: { n: "download-task-detail-links-heading" } }, ["下载链接"]),
+                  Show({
+                    when: computed(vm$.state.task_detail_links, (links) => !links.length),
+                    ok: () => View({ class: "text-color-text-secondary", attributes: { n: "download-task-detail-links-empty" } }, ["暂无下载链接"]),
+                  }),
+                  For({
+                    each: vm$.state.task_detail_links,
+                    key: "id",
+                    render(link) {
+                      return View(
+                        { class: "min-w-0 grid gap-2", attributes: { n: "download-task-detail-link" } },
+                        [
+                          View({ class: "flex items-center justify-between gap-2", attributes: { n: "download-task-detail-link-header" } }, [
+                            View({ class: "min-w-0 word-break-break-all", attributes: { n: "download-task-detail-link-name" } }, [link.name]),
+                            TextButton({
+                              attributes: { n: "download-task-detail-link-copy", type: "button", "aria-label": `复制 ${link.name} 的下载链接` },
+                              onClick() { vm$.methods.copyTaskDownloadURL(link.url); },
+                            }, ["复制链接"]),
+                          ]),
+                          View({
+                            class: "p-3 rounded-content bg-color-bg-subtle text-sm whitespace-pre-wrap word-break-break-all",
+                            attributes: { n: "download-task-detail-link-url" },
+                          }, [link.url]),
+                        ],
+                      );
+                    },
+                  }),
+                ],
+              }),
+            ];
+          },
+        }),
+      ],
+    )],
+  );
 }
 
 export function TaskErrorDialog(props) {
@@ -1343,20 +1456,7 @@ export function TaskDeleteConfirmDialog(props) {
           return `确定删除 ${total} 个下载任务记录？此操作不可恢复。`;
         }),
       }),
-      DialogBody({}, [
-        DeleteFilesControl({ store: vm$ }),
-        Show({
-          when: vm$.state.deleting_task,
-          ok() {
-            return View(
-              {
-                class: "dm-text-xs dm-text-muted",
-              },
-              ["正在删除任务..."],
-            );
-          },
-        }),
-      ]),
+      DialogBody({}, [DeleteFilesControl({ store: vm$ })]),
     ],
   );
 }

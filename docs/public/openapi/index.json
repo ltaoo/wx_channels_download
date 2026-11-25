@@ -249,6 +249,9 @@
     "/api/v1/download_task/update_resource": {
       "$ref": "./download_task/update_resource.json"
     },
+    "/api/v1/download_task/update": {
+      "$ref": "./download_task/update.json"
+    },
     "/api/v1/third_party_downloader/probe": {
       "$ref": "./third_party_downloader/probe.json"
     },
