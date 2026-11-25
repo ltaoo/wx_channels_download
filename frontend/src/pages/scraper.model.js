@@ -1951,6 +1951,7 @@ function ScraperPageViewModel(props) {
       },
     };
     download_overwrite_processing_.as(true);
+    ui.task_overwrite_confirm_dialog$.okBtn.setLoading(true);
     download_loading_.as(true);
     download_error_.as("");
     download_success_.as("");
@@ -1960,6 +1961,7 @@ function ScraperPageViewModel(props) {
         overwrite_retry: true,
       });
     } finally {
+      ui.task_overwrite_confirm_dialog$.okBtn.setLoading(false);
       download_overwrite_processing_.as(false);
     }
   }

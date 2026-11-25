@@ -894,6 +894,7 @@ function LogsPageViewModel(props) {
     set_auto_refresh(false);
     const sequence = ++request_sequence;
     clearing_.as(true);
+    ui.clear_logs_confirm_dialog$.okBtn.setLoading(true);
     loading_.as(true);
     error_.as("");
     try {
@@ -940,6 +941,7 @@ function LogsPageViewModel(props) {
       }
       return false;
     } finally {
+      ui.clear_logs_confirm_dialog$.okBtn.setLoading(false);
       if (sequence === request_sequence) {
         clearing_.as(false);
         loading_.as(false);
