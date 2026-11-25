@@ -2926,10 +2926,9 @@ img.dm-lazy-img-image[data-lazy-img-state] {
   width: 68%;
   aspect-ratio: 76 / 58;
   background: currentColor;
-  -webkit-mask: url("../public/logo-watermark-loading.svg?v=1") center / contain
+  -webkit-mask: url("../public/logo-watermark.svg?v=3") center / contain
     no-repeat;
-  mask: url("../public/logo-watermark-loading.svg?v=1") center / contain
-    no-repeat;
+  mask: url("../public/logo-watermark.svg?v=3") center / contain no-repeat;
   animation: dm-brand-loading-symbol 2.8s ease-in-out infinite;
   will-change: opacity, transform;
 }
