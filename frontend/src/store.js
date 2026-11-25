@@ -63,27 +63,25 @@ function versioned_url(resource_url) {
 
 /**
  * @param {string} module_url
- * @returns {Promise<Function>}
+ * @returns {{component: Function|null, error: Error|null, status: string, status$: any, url: string}}
  */
-function load(module_url) {
+function load_record(module_url) {
   const module_href = versioned_url(module_url);
   const current_record = load_records[module_href];
-  if (current_record && current_record.status === "loaded") {
-    return Promise.resolve(current_record.component);
-  }
-  if (current_record && current_record.status === "loading") {
-    return current_record.promise;
+  if (current_record && current_record.status !== "failed") {
+    return current_record;
   }
 
   const record = {
     component: null,
-    promise: null,
+    error: null,
     status: "loading",
+    status$: Timeless.ref("loading"),
     url: module_href,
   };
 
   load_records[module_href] = record;
-  record.promise = import(module_href)
+  import(module_href)
     .then(function (page_module) {
       const component = page_module && page_module.default;
       if (typeof component !== "function") {
@@ -93,19 +91,56 @@ function load(module_url) {
       }
       record.component = component;
       record.status = "loaded";
-      return component;
+      record.status$.as("loaded");
     })
     .catch(function (error) {
+      record.error = error instanceof Error ? error : new Error(String(error));
       record.status = "failed";
-      throw error;
+      record.status$.as("failed");
     });
 
-  return record.promise;
+  return record;
+}
+
+function route_placeholder_children(props) {
+  const placeholder = props && props.placeholder;
+  if (typeof placeholder === "function") return placeholder();
+  return placeholder == null ? [] : placeholder;
+}
+
+function route_error_view(props, error) {
+  const normalized = error instanceof Error ? error : new Error(String(error));
+  const view_name = (props && props.view && props.view.name) || "unknown";
+  const ErrorFallback = props && props.ErrorFallback;
+  if (typeof ErrorFallback === "function") {
+    return ErrorFallback(normalized, view_name);
+  }
+  return Timeless.View({ class: "route-error page" }, [normalized.message]);
 }
 
 function lazy(module_url) {
-  return function () {
-    return load(module_url);
+  return function (props) {
+    const record = load_record(module_url);
+    if (record.status === "loaded") return record.component(props);
+    if (record.status === "failed") return route_error_view(props, record.error);
+    // Timeless 0.33 dropped the lazy route `placeholder` option that 0.32 used
+    // while a page module was still downloading, so the content area went
+    // blank. Render the placeholder ourselves and swap in the page once the
+    // module promise settles.
+    return Timeless.Match({
+      when: record.status$,
+      cases: {
+        loading() {
+          return route_placeholder_children(props);
+        },
+        loaded() {
+          return record.component(props);
+        },
+        failed() {
+          return route_error_view(props, record.error);
+        },
+      },
+    });
   };
 }
 
