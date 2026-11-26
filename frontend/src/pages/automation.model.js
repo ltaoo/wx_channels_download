@@ -28,6 +28,8 @@ import { PipelineEditorBridge } from "./pipeline_editor.model.js";
 const AutomationChannelCore = Timeless.kit.ChannelCore;
 const automation_socket_client = window.__store.socket_client$;
 const automation_execution_log_limit = 200;
+// 实例配置弹窗里「触发器配置」标签页的固定标识；节点配置标签页用节点 id 作标识。
+export const CONFIG_TRIGGERS_TAB = "__triggers__";
 
 function parse_initial_data(value) {
   const trimmed = String(value || "").trim();
@@ -786,6 +788,7 @@ function AutomationPageViewModel(props, options) {
   const config_loading_ = ref(false);
   const config_pipeline_ = refobj(null);
   const config_defaults_ = ref(false);
+  const config_active_tab_ = ref("");
   const config_triggers_ = refarr([]);
   const config_trigger_overrides_ = ref(false);
   const config_default_triggers_ = computed(config_pipeline_, pipeline_default_triggers);
@@ -932,12 +935,6 @@ function AutomationPageViewModel(props, options) {
     config_json_dialog$: new Timeless.vm.DialogCore({ footer: false }),
     input_config_json$: new Timeless.vm.InputCore({ defaultValue: "" }),
     input_config_name$: new Timeless.vm.InputCore({ defaultValue: "" }),
-    btn_config_restore_triggers$: new Timeless.vm.ButtonCore({ variant: "outline", size: "sm", onClick() {
-      const defaults = pipeline_default_triggers(config_pipeline_.value);
-      config_triggers_.as(defaults.map((trigger) => new_trigger_override_row(trigger, {}, config_trigger_bindings.find((binding) => binding.default_id === trigger.id), () => { config_triggers_dirty = true; })), { reset: true });
-      config_trigger_overrides_.as(true);
-      config_triggers_dirty = true;
-    } }),
     btn_config_json_save$: new Timeless.vm.ButtonCore({ variant: "primary", onClick() { return save_pasted_pipeline_config(); } }),
     btn_config_json_cancel$: new Timeless.vm.ButtonCore({ variant: "outline", onClick() { if (!config_loading_.value && !config_saving_.value) ui.config_json_dialog$.hide(); } }),
     btn_pipeline_config$: new Timeless.vm.ButtonInListCore({ variant: "outline", onClick(pipeline) { return open_pipeline_config(pipeline); } }),
@@ -2710,6 +2707,7 @@ function AutomationPageViewModel(props, options) {
     const sequence = ++config_sequence;
     const is_flow = Boolean(edit_defaults || pipeline.is_flow_definition);
     config_defaults_.as(is_flow);
+    config_active_tab_.as("");
     config_pipeline_.as(pipeline);
     config_error_.as("");
     config_groups_.as([], { reset: true });
@@ -2765,6 +2763,7 @@ function AutomationPageViewModel(props, options) {
           return field;
         }),
       })), { reset: true });
+      config_active_tab_.as(config_groups_.value.length ? config_groups_.value[0].id : CONFIG_TRIGGERS_TAB);
       ui.btn_config_save$.enable();
       return true;
     } catch (error) {
@@ -3698,6 +3697,7 @@ function AutomationPageViewModel(props, options) {
     availableContextKeys: available_context_keys,
     openPipelineConfig: open_pipeline_config,
     savePipelineConfig: save_pipeline_config,
+    selectPipelineConfigTab(tab) { config_active_tab_.as(String(tab || "")); },
     pipelineConfigMenu: pipeline_config_menu,
     pipelineNameEditor: pipeline_name_editor,
     pipelineActionsMenu: pipeline_actions_menu,
@@ -3838,6 +3838,7 @@ function AutomationPageViewModel(props, options) {
     edit_node_config_schema: edit_node_config_schema_,
     config_groups: config_groups_, config_error: config_error_, config_saving: config_saving_, config_loading: config_loading_, config_pipeline: config_pipeline_,
     config_defaults: config_defaults_,
+    config_active_tab: config_active_tab_,
     config_trigger_overrides: config_trigger_overrides_,
     config_default_triggers: config_default_triggers_,
     loading: loading_,

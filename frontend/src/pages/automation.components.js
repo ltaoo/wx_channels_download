@@ -66,9 +66,10 @@ export function automation_status_badge(value, label) {
 
 export function AutomationStartTriggers(props) {
   const vm$ = props.store;
-  return View({ class: "grid gap-3 min-w-0 py-4 border-top-[1px_solid_var(--dm-color-border)]", attributes: { n: "automation-start-triggers" } }, [
-    View({ class: "text-color-text-primary font-display text-base font-semibold", attributes: { n: "automation-start-triggers-title" } }, [props.title || "开始节点触发器"]),
-    View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base", attributes: { n: "automation-start-triggers-description" } }, [
+  const plain = Boolean(props.plain);
+  return View({ class: plain ? "grid gap-3 min-w-0" : "grid gap-3 min-w-0 py-4 border-top-[1px_solid_var(--dm-color-border)]", attributes: { n: "automation-start-triggers" } }, [
+    plain ? null : View({ class: "text-color-text-primary font-display text-base font-semibold", attributes: { n: "automation-start-triggers-title" } }, [props.title || "开始节点触发器"]),
+    plain ? null : View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base", attributes: { n: "automation-start-triggers-description" } }, [
       props.description || "手动执行始终可用。可同时添加定时、事件和 Webhook 触发器，保存后生效。",
     ]),
     props.overrides ? null : View({ class: "flex flex-wrap items-center gap-2 min-w-0", attributes: { n: "automation-trigger-actions" } }, [
@@ -93,17 +94,18 @@ export function AutomationStartTriggers(props) {
           } });
           return View({ class: "min-w-0 flex flex-col gap-1", attributes: { n: `${prefix}-${name}-field` } }, [
             View({ as: "label", class: "text-color-text-secondary text-xs font-semibold", attributes: { n: `${prefix}-${name}-label`, for: `${prefix}-${name}` } }, [label]),
-            inheritance ? View({ class: "flex items-center gap-2", attributes: { n: `${prefix}-${name}-inheritance` } }, [
-              Checkbox({ store: inheritance.inherit$, attributes: { id: `${prefix}-${name}-inherit`, n: `${prefix}-${name}-inherit`, "aria-label": `${label} 继承流程配置` } }),
-              View({ as: "label", attributes: { for: `${prefix}-${name}-inherit`, n: `${prefix}-${name}-inherit-label` } }, ["继承流程配置"]),
-            ]) : null,
-            View({ class: "relative min-w-0", attributes: { n: `${prefix}-${name}-value` } }, [
-              View({ style: inheritance ? computed(inheritance.inherited, (value) => ({ visibility: value ? "hidden" : "visible" })) : {}, attributes: { n: `${prefix}-${name}-editor` } }, [control]),
-              inheritance ? Show({ when: inheritance.inherited, ok: () => View({ class: "absolute inset-0 overflow-auto whitespace-pre-wrap text-color-text-secondary", attributes: { n: `${prefix}-${name}-inherited-value` } }, [inheritance.text]) }) : null,
-            ]),
+            View({ class: "flex items-center gap-3 min-w-0", attributes: { n: `${prefix}-${name}-controls` } }, [
+              inheritance ? Checkbox({ store: inheritance.inherit$, class: "flex-none", attributes: { id: `${prefix}-${name}-inherit`, n: `${prefix}-${name}-inherit`, "aria-label": `${label} 继承流程配置` } }) : null,
+              View({ class: "relative flex-1 min-w-0", attributes: { n: `${prefix}-${name}-value` } }, [
+                View({ style: inheritance ? computed(inheritance.inherited, (value) => ({ visibility: value ? "hidden" : "visible" })) : {}, attributes: { n: `${prefix}-${name}-editor` } }, [control]),
+                inheritance ? Show({ when: inheritance.inherited, ok: () => View({ class: `absolute inset-0 flex items-center overflow-hidden text-color-text-secondary leading-base ${kind === "textarea" ? "font-mono text-xs" : "text-base"}`, attributes: { n: `${prefix}-${name}-inherited-value` } }, [
+                  View({ class: "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap", attributes: { n: `${prefix}-${name}-inherited-text`, title: inheritance.text } }, [inheritance.text]),
+                ]) }) : null,
+              ]),
+            ].filter(Boolean)),
           ].filter(Boolean));
         };
-        return View({ class: "grid gap-3 min-w-0 border-top-[1px_solid_var(--dm-color-border)] pt-3", attributes: { n: prefix } }, [
+        return View({ class: plain ? "grid gap-3 min-w-0" : "grid gap-3 min-w-0 border-top-[1px_solid_var(--dm-color-border)] pt-3", attributes: { n: prefix } }, [
           View({ class: "flex flex-wrap items-center gap-2 min-w-0 justify-between", attributes: { n: `${prefix}-header` } }, [
             automation_trigger_badge({ type: trigger.type, label: vm$.methods.triggerLabel(trigger.type) }),
             props.overrides ? null : Button({ store: vm$.ui.btn_remove_trigger$.bind(trigger), attributes: {
@@ -122,7 +124,7 @@ export function AutomationStartTriggers(props) {
         ].filter(Boolean));
       },
     }),
-  ]);
+  ].filter(Boolean));
 }
 
 export function AutomationTriggerSummary(props) {

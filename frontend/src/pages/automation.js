@@ -1,4 +1,4 @@
-import { AutomationPageViewModel } from "./automation.model.js";
+import { AutomationPageViewModel, CONFIG_TRIGGERS_TAB } from "./automation.model.js";
 import { DrawerHeader, DrawerTitle, DrawerDescription, DrawerBody } from "@/dmui.js";
 import {
   AutomationDefinitionSkeletonRow,
@@ -442,13 +442,27 @@ function AutomationConfigDialog(props) {
       DialogTitle({ attributes: { n: "automation-config-title" } }, [computed(vm$.state.config_defaults, (defaults) => defaults ? "流程配置" : "实例配置")]),
       DialogDescription({}, [computed(vm$.state.config_defaults, (defaults) => defaults ? "修改后，所有未覆盖相应配置项的实例在下次执行时使用新值。" : "勾选继承的配置项在执行时读取流程的最新配置；取消勾选后可为当前实例填写覆盖值。")]),
     ]),
-    DialogBody({}, [
-      Label({ attributes: { n: "automation-config-name-label", for: "automation-config-name" } }, [computed(vm$.state.config_defaults, (defaults) => defaults ? "流程名称" : "配置实例名称")]),
-      Input({ store: vm$.ui.input_config_name$, attributes: { n: "automation-config-name", id: "automation-config-name", "aria-label": computed(vm$.state.config_defaults, (defaults) => defaults ? "流程名称" : "配置实例名称") } }),
+    DialogBody({ class: "flex flex-col gap-4" }, [
       Show({ when: vm$.state.config_loading, ok: () => View({ class: "text-color-text-secondary" }, ["正在加载配置…"]) }),
       Show({ when: computed(vm$.state.config_error, Boolean), ok: () => View({ class: "text-color-danger text-sm", attributes: { role: "alert" } }, [vm$.state.config_error]) }),
-      Show({ when: combine({ groups: vm$.state.config_groups, loading: vm$.state.config_loading, error: vm$.state.config_error }, ({ groups, loading, error }) => !loading && !error && !groups.length), ok: () => View({ class: "text-color-text-secondary text-sm" }, ["此流程尚未声明配置项；可先修改实例名称，配置项在共享流程中声明。"]) }),
-      View({ class: "flex flex-col gap-4" }, [For({ each: vm$.state.config_groups, key: "id", render(group_) {
+      Show({ when: computed(vm$.state.config_loading, (loading) => !loading), ok: () => View({ class: "flex flex-col gap-4", attributes: { n: "automation-config-content" } }, [
+      Tabs({ class: "flex-[0_0_auto] overflow-x-auto", attributes: { n: "automation-config-tabs" } }, [
+        For({ each: vm$.state.config_groups, key: "id", render(group_) {
+          const group = group_ && group_.value !== undefined ? group_.value : group_;
+          return Tab({
+            selected: computed(vm$.state.config_active_tab, (active) => active === group.id),
+            attributes: { n: `automation-config-tab-${group.id}`, title: group.id },
+            onClick() { vm$.methods.selectPipelineConfigTab(group.id); },
+          }, [group.name || group.id]);
+        } }),
+        Tab({
+          selected: computed(vm$.state.config_active_tab, (active) => active === CONFIG_TRIGGERS_TAB),
+          attributes: { n: "automation-config-tab-triggers" },
+          onClick() { vm$.methods.selectPipelineConfigTab(CONFIG_TRIGGERS_TAB); },
+        }, ["触发器配置"]),
+      ]),
+      View({ class: "flex flex-col gap-4", attributes: { n: "automation-config-nodes" } }, [
+        For({ each: combine({ groups: vm$.state.config_groups, active: vm$.state.config_active_tab }, ({ groups, active }) => groups.filter((group) => group.id === active)), key: "id", render(group_) {
         const group = group_ && group_.value !== undefined ? group_.value : group_;
         return View({ class: "flex flex-col gap-3" }, [
           View({ class: "text-color-text-primary font-semibold word-break-break-all" }, [`${group.name} (${group.id})`]),
@@ -480,19 +494,17 @@ function AutomationConfigDialog(props) {
           }),
         ]);
       } })]),
-      Show({ when: computed(vm$.state.config_loading, (loading) => !loading), ok: () => View({
-        class: "grid gap-3", attributes: { n: "automation-config-triggers" },
-      }, [
-        Show({ when: combine({ defaults: vm$.state.config_defaults, triggers: vm$.state.config_default_triggers }, ({ defaults, triggers }) => !defaults && triggers.length > 0), ok: () => Button({
-          store: vm$.ui.btn_config_restore_triggers$, attributes: { n: "automation-config-restore-triggers", type: "button" },
-        }, ["恢复全部默认值"]) }),
-        AutomationStartTriggers({
-          store: vm$.config_trigger_editor,
-          defaults: vm$.state.config_defaults.value,
-          overrides: !vm$.state.config_defaults.value,
-          title: "触发器配置",
-          description: "与节点配置相同：实例仅覆盖取消继承的字段，其余字段随流程默认配置更新。",
-        }),
+      Show({
+        when: computed(vm$.state.config_active_tab, (active) => active === CONFIG_TRIGGERS_TAB),
+        ok: () => View({ class: "grid gap-3", attributes: { n: "automation-config-triggers" } }, [
+          AutomationStartTriggers({
+            store: vm$.config_trigger_editor,
+            defaults: vm$.state.config_defaults.value,
+            overrides: !vm$.state.config_defaults.value,
+            plain: true,
+          }),
+        ]),
+      }),
       ]) }),
     ]),
     DialogFooter({}, [
