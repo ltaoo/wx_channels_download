@@ -1,11 +1,11 @@
 {
   "id": "01_douyin_creator_video_sync",
-  "name": "定时增量同步抖音创作者视频",
+  "name": "定时增量同步抖音创作者作品（视频与图集）",
   "start_node": "start",
   "triggers": [
     {
       "type": "Cron",
-      "name": "每天 12:00、18:00 同步抖音创作者视频",
+      "name": "每天 12:00、18:00 同步抖音创作者作品",
       "cron_expr": "0 12,18 * * *",
       "enabled": true,
       "initial_data": {}
@@ -43,62 +43,10 @@
           "label": "备注",
           "type": "string",
           "required": false
-        },
-        {
-          "key": "url",
-          "label": "列表接口 URL",
-          "description": "完整 HTTP(S) 地址；留空使用 http://127.0.0.1:2022/api/douyin/contact/feed/list。",
-          "type": "string",
-          "required": false
-        },
-        {
-          "key": "method",
-          "label": "列表接口 method",
-          "description": "留空使用 GET。GET/HEAD 使用查询参数，其他方法还会发送包含 sec_uid 和 next_marker 的 JSON 请求体；内置接口仅支持 GET。",
-          "type": "string",
-          "required": false,
-          "options": [
-            {
-              "label": "GET",
-              "value": "GET"
-            },
-            {
-              "label": "POST",
-              "value": "POST"
-            },
-            {
-              "label": "PUT",
-              "value": "PUT"
-            },
-            {
-              "label": "PATCH",
-              "value": "PATCH"
-            },
-            {
-              "label": "DELETE",
-              "value": "DELETE"
-            },
-            {
-              "label": "HEAD",
-              "value": "HEAD"
-            },
-            {
-              "label": "OPTIONS",
-              "value": "OPTIONS"
-            }
-          ]
-        },
-        {
-          "key": "token",
-          "label": "列表接口 token",
-          "description": "可选 Bearer token，只填写令牌本身；留空不发送认证头。",
-          "type": "string",
-          "required": false,
-          "secret": true
         }
       ],
       "config": {
-        "code": "(function () {\nif (typeof config.sec_uid !== 'string') throw new Error('必须配置字符串 sec_uid');\nvar sec_uid = config.sec_uid.trim().replace(/^douyin:/, '').trim();\nif (!/^[A-Za-z0-9_-]+$/.test(sec_uid) || sec_uid.indexOf('REPLACE_') >= 0) throw new Error('请填写抖音主页 /user/ 后的 sec_uid，不是主页链接、昵称或抖音号');\nvar url = (config.url || '').trim() || 'http://127.0.0.1:2022/api/douyin/contact/feed/list';\nvar method = (config.method || 'GET').trim().toUpperCase() || 'GET';\nif (['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].indexOf(method) < 0) throw new Error('列表接口 method 不支持');\nvar token = (config.token || '').trim();\nreturn {sec_uid: sec_uid, url: url, method: method, authentication: {type: token ? 'bearer' : 'none', token: token}};\n})()",
+        "code": "(function () {\nif (typeof config.sec_uid !== 'string') throw new Error('必须配置字符串 sec_uid');\nvar sec_uid = config.sec_uid.trim().replace(/^douyin:/, '').trim();\nif (!/^[A-Za-z0-9_-]+$/.test(sec_uid) || sec_uid.indexOf('REPLACE_') >= 0) throw new Error('请填写抖音主页 /user/ 后的 sec_uid，不是主页链接、昵称或抖音号');\nreturn {sec_uid: sec_uid};\n})()",
         "output_key": "creator"
       },
       "next_node_ids": [
@@ -124,7 +72,6 @@
             "page": 0,
             "items": [],
             "pending": [],
-            "all_existing": false,
             "next_cursor": "",
             "has_more": false,
             "visited_cursors": [
@@ -149,36 +96,21 @@
     "fetch_page": {
       "id": "fetch_page",
       "type": "WorkflowNode",
-      "name": "获取抖音创作者视频列表",
+      "name": "获取抖音创作者作品列表",
       "config": {
         "workflow": {
           "id": "douyin_creator_video_page",
-          "name": "按游标循环同步抖音创作者视频列表",
+          "name": "按游标循环同步抖音创作者作品列表",
           "start_node": "fork_page",
           "context_schema": [
             {
-              "key": "sec_uid",
+              "key": "profile",
               "type": "string",
               "required": true
             },
             {
-              "key": "next_marker",
+              "key": "page",
               "type": "string",
-              "required": true
-            },
-            {
-              "key": "url",
-              "type": "string",
-              "required": true
-            },
-            {
-              "key": "method",
-              "type": "string",
-              "required": true
-            },
-            {
-              "key": "authentication",
-              "type": "object",
               "required": true
             },
             {
@@ -201,7 +133,7 @@
             "fork_page": {
               "id": "fork_page",
               "type": "GatewayNode",
-              "name": "并行：提交待下载视频与获取当前游标列表",
+              "name": "并行：提交待下载作品与获取当前游标列表",
               "config": {
                 "gateway_type": "Parallel",
                 "join_node_id": "merge_page"
@@ -218,12 +150,12 @@
             "download_missing": {
               "id": "download_missing",
               "type": "LoopNode",
-              "name": "遍历不存在的视频，提交下载任务",
+              "name": "遍历不存在的作品，提交下载任务",
               "config": {
                 "items": "{{input.pending}}",
                 "workflow": {
                   "id": "douyin_creator_video_download",
-                  "name": "下载一个不存在的视频",
+                  "name": "下载一个不存在的作品",
                   "start_node": "start",
                   "context_schema": [
                     {
@@ -259,15 +191,17 @@
                     "download": {
                       "id": "download",
                       "type": "ServiceNode",
-                      "name": "解析抖音视频并提交下载，竞争时跳过已有任务",
+                      "name": "使用列表媒体创建下载任务，竞争时跳过已有任务",
                       "config": {
-                        "tool_name": "download_content",
+                        "tool_name": "create_download_task",
                         "arguments": {
-                          "url": "{{input.item.url}}",
+                          "platform": "douyin",
+                          "content": "{{input.item.content}}",
+                          "build_from_fetch": true,
                           "download_dir": "{{input.download_dir}}",
-                          "existing_action": "skip",
-                          "wait_for_completion": false,
-                          "timeout_seconds": 120
+                          "config": {
+                            "existing_action": "skip"
+                          }
                         },
                         "output_key": "download_result",
                         "timeout_seconds": 150
@@ -363,28 +297,13 @@
                   "start_node": "start",
                   "context_schema": [
                     {
-                      "key": "sec_uid",
+                      "key": "profile",
                       "type": "string",
                       "required": true
                     },
                     {
-                      "key": "next_marker",
+                      "key": "page",
                       "type": "string",
-                      "required": true
-                    },
-                    {
-                      "key": "url",
-                      "type": "string",
-                      "required": true
-                    },
-                    {
-                      "key": "method",
-                      "type": "string",
-                      "required": true
-                    },
-                    {
-                      "key": "authentication",
-                      "type": "object",
                       "required": true
                     }
                   ],
@@ -404,25 +323,13 @@
                     },
                     "fetch_list": {
                       "id": "fetch_list",
-                      "type": "APICallNode",
-                      "name": "获取创作者视频列表",
+                      "type": "DouyinFetchListNode",
+                      "name": "获取创作者作品列表（内置抖音节点）",
                       "config": {
-                        "url": "{{input.url}}",
-                        "method": "{{input.method}}",
-                        "query": {
-                          "sec_uid": "{{input.sec_uid}}",
-                          "next_marker": "{{input.next_marker}}"
-                        },
-                        "authentication": {
-                          "type": "{{input.authentication.type}}",
-                          "token": "{{input.authentication.token}}"
-                        },
-                        "output_key": "list_response",
-                        "timeout_seconds": 120,
-                        "body": {
-                          "sec_uid": "{{input.sec_uid}}",
-                          "next_marker": "{{input.next_marker}}"
-                        }
+                        "profile": "{{input.profile}}",
+                        "page": "{{input.page}}",
+                        "scope": "posts",
+                        "output_key": "list_response"
                       },
                       "next_node_ids": [
                         "end"
@@ -435,7 +342,7 @@
                     "end": {
                       "id": "end",
                       "type": "EndNode",
-                      "name": "返回视频列表响应",
+                      "name": "返回作品列表",
                       "config": {},
                       "next_node_ids": [],
                       "position": {
@@ -446,11 +353,8 @@
                   }
                 },
                 "arguments": {
-                  "sec_uid": "{{input.sec_uid}}",
-                  "next_marker": "{{input.next_marker}}",
-                  "url": "{{input.url}}",
-                  "authentication": "{{input.authentication}}",
-                  "method": "{{input.method}}"
+                  "profile": "{{input.profile}}",
+                  "page": "{{input.page}}"
                 },
                 "output_key": "list_result"
               },
@@ -465,7 +369,7 @@
             "no_next": {
               "id": "no_next",
               "type": "JSCodeNode",
-              "name": "无更多列表，仅完成待下载视频",
+              "name": "无更多列表，仅完成待下载作品",
               "config": {
                 "code": "({fetch_enabled: false})",
                 "output_key": "no_next_page"
@@ -508,14 +412,11 @@
           }
         },
         "arguments": {
-          "sec_uid": "{{output.validate.creator.sec_uid}}",
-          "url": "{{output.validate.creator.url}}",
-          "authentication": "{{output.validate.creator.authentication}}",
-          "next_marker": "{{global.scan_state.cursor}}",
+          "profile": "{{output.validate.creator.sec_uid}}",
+          "page": "{{global.scan_state.cursor}}",
           "pending": "{{global.scan_state.pending}}",
           "download_dir": "{{global.download_dir}}",
-          "fetch_enabled": "{{global.scan_state.fetch_enabled}}",
-          "method": "{{output.validate.creator.method}}"
+          "fetch_enabled": "{{global.scan_state.fetch_enabled}}"
         },
         "output_key": "page_execution"
       },
@@ -564,7 +465,7 @@
     "response_gate": {
       "id": "response_gate",
       "type": "GatewayNode",
-      "name": "本次是否获取了视频列表？",
+      "name": "本次是否获取了作品列表？",
       "config": {
         "gateway_type": "Exclusive",
         "condition_language": "js",
@@ -591,9 +492,9 @@
     "parse_page": {
       "id": "parse_page",
       "type": "JSCodeNode",
-      "name": "解析当前页响应并筛选视频",
+      "name": "解析当前页响应并筛选作品",
       "config": {
-        "code": "(function () {\nif (!(global.max_pages > 0) || Math.floor(global.max_pages) !== global.max_pages || !(global.max_videos > 0) || Math.floor(global.max_videos) !== global.max_videos) throw new Error('max_pages 和 max_videos 必须为正整数');\nvar response = global.page_response;\nif (!response || response.code !== 0) throw new Error('抖音列表接口返回错误：' + (response && response.msg || '响应缺少 code=0'));\nvar data = response.data;\nif (!data || !Array.isArray(data.items)) throw new Error('抖音列表响应缺少 data.items');\nif (data.owner_id !== output.validate.creator.sec_uid || data.scope !== 'posts') throw new Error('抖音列表响应账号或 scope 不匹配');\nif (data.next_marker !== undefined && typeof data.next_marker !== 'string') throw new Error('抖音分页游标必须为字符串');\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nstate.page += 1;\nif (state.page > global.max_pages) throw new Error('超过 max_pages，本次同步未完成');\nstate.items = []; state.pending = []; state.all_existing = false;\nvar page_ids = Object.create(null);\nfor (var i = 0; i < data.items.length; i++) {\n  var item = data.items[i];\n  if (!item || (item.type !== 'video' && item.type !== 'note')) throw new Error('抖音作品类型无效');\n  if (item.type !== 'video') continue;\n  if (typeof item.id !== 'string' || !/^[0-9]+$/.test(item.id)) throw new Error('抖音视频 ID 必须为数字字符串');\n  var oid = item.id;\n  if (page_ids[oid]) continue;\n  page_ids[oid] = true; state.seen_ids[oid] = true;\n  state.items.push({oid: oid, title: String(item.title || ''), url: 'https://www.douyin.com/video/' + oid});\n}\nif (Object.keys(state.seen_ids).length > global.max_videos) throw new Error('超过 max_videos，本次扫描未完成');\nstate.next_cursor = data.next_marker || '';\nstate.has_more = state.next_cursor !== '';\nreturn state;\n})()",
+        "code": "(function () {\nif (!(global.max_pages > 0) || Math.floor(global.max_pages) !== global.max_pages || !(global.max_videos > 0) || Math.floor(global.max_videos) !== global.max_videos) throw new Error('max_pages 和 max_videos 必须为正整数');\nvar response = global.page_response;\nif (!response || response.platform !== 'douyin' || !Array.isArray(response.list)) throw new Error('抖音作品列表节点未返回有效数据');\nif (response.scope !== 'posts') throw new Error('抖音作品列表 scope 必须为 posts');\nif (response.next_marker !== undefined && typeof response.next_marker !== 'string') throw new Error('抖音分页游标必须为字符串');\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nstate.page += 1;\nif (state.page > global.max_pages) throw new Error('超过 max_pages，本次同步未完成');\nstate.items = []; state.pending = [];\nvar page_ids = Object.create(null);\nfor (var i = 0; i < response.list.length; i++) {\n  var content = response.list[i];\n  if (!content || (content.type !== 'video' && content.type !== 'album')) continue;\n  var oid = String(content.external_id || '').trim();\n  if (!/^[0-9]+$/.test(oid)) throw new Error('抖音作品 ID 必须为数字字符串');\n  if (page_ids[oid]) continue;\n  page_ids[oid] = true; state.seen_ids[oid] = content.type;\n  var aweme;\n  try { aweme = JSON.parse(content.metadata || 'null'); } catch (error) { throw new Error('抖音列表作品元数据不是有效 JSON'); }\n  if (!aweme || aweme.aweme_id !== oid) throw new Error('抖音列表作品元数据与作品 ID 不匹配，请重新获取列表');\n  if (content.type === 'album') {\n    if (!Array.isArray(aweme.images) || !aweme.images.length) throw new Error('抖音列表图集缺少图片媒体数据，请重新获取列表');\n  } else if (!aweme.video || !aweme.video.play_addr || !Array.isArray(aweme.video.play_addr.url_list) || !aweme.video.play_addr.url_list.length) throw new Error('抖音列表作品缺少匹配的视频媒体数据，请重新获取列表');\n  state.items.push({oid: oid, title: String(content.title || ''), content: {aweme_detail: aweme}});\n}\nif (Object.keys(state.seen_ids).length > global.max_videos) throw new Error('超过 max_videos，本次扫描未完成');\nstate.next_cursor = response.next_marker || '';\nstate.has_more = state.next_cursor !== '';\nreturn state;\n})()",
         "output_key": "page_state"
       },
       "next_node_ids": [
@@ -624,7 +525,7 @@
     "prepare_checks": {
       "id": "prepare_checks",
       "type": "JSCodeNode",
-      "name": "收集本页视频的内容 ID",
+      "name": "收集本页作品的内容 ID",
       "config": {
         "code": "(function () {\nreturn global.scan_state.items.map(function (video) { return 'douyin:' + video.oid; });\n})()",
         "output_key": "content_ids"
@@ -640,7 +541,7 @@
     "check_videos": {
       "id": "check_videos",
       "type": "ServiceNode",
-      "name": "一次批量检查本页视频是否已有下载任务",
+      "name": "一次批量检查本页作品是否已有下载任务",
       "config": {
         "tool_name": "check_download_task_contents",
         "arguments": {
@@ -660,9 +561,9 @@
     "aggregate_checks": {
       "id": "aggregate_checks",
       "type": "JSCodeNode",
-      "name": "校验批量查询结果，筛选本地不存在的视频",
+      "name": "校验批量查询结果，筛选本地不存在的作品",
       "config": {
-        "code": "(function () {\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nvar response = output.check_videos.checks;\nif (!response || !Array.isArray(response.list) || response.total !== state.items.length || response.list.length !== state.items.length) throw new Error('批量视频存在性检查结果不完整');\nvar checks = Object.create(null);\nresponse.list.forEach(function (check) {\n  if (!check || typeof check.content_id !== 'string' || Object.prototype.hasOwnProperty.call(checks, check.content_id) || typeof check.exists !== 'boolean' || typeof check.task_count !== 'number' || !isFinite(check.task_count) || check.task_count < 0 || Math.floor(check.task_count) !== check.task_count || check.exists !== (check.task_count > 0)) throw new Error('批量视频存在性检查结果无效');\n  checks[check.content_id] = check;\n});\nstate.pending = [];\nfor (var i = 0; i < state.items.length; i++) {\n  var video = state.items[i], content_id = 'douyin:' + video.oid;\n  if (!Object.prototype.hasOwnProperty.call(checks, content_id)) throw new Error('批量检查缺少视频 ' + video.oid);\n  var check = checks[content_id];\n  state.checked += 1;\n  if (check.exists) state.skipped += 1;\n  else {\n    state.pending.push(video);\n  }\n}\nstate.all_existing = state.items.length > 0 && state.pending.length === 0;\nreturn state;\n})()",
+        "code": "(function () {\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nvar response = output.check_videos.checks;\nif (!response || !Array.isArray(response.list) || response.total !== state.items.length || response.list.length !== state.items.length) throw new Error('批量作品存在性检查结果不完整');\nvar checks = Object.create(null);\nresponse.list.forEach(function (check) {\n  if (!check || typeof check.content_id !== 'string' || Object.prototype.hasOwnProperty.call(checks, check.content_id) || typeof check.exists !== 'boolean' || typeof check.task_count !== 'number' || !isFinite(check.task_count) || check.task_count < 0 || Math.floor(check.task_count) !== check.task_count || check.exists !== (check.task_count > 0)) throw new Error('批量作品存在性检查结果无效');\n  checks[check.content_id] = check;\n});\nstate.pending = [];\nfor (var i = 0; i < state.items.length; i++) {\n  var video = state.items[i], content_id = 'douyin:' + video.oid;\n  if (!Object.prototype.hasOwnProperty.call(checks, content_id)) throw new Error('批量检查缺少作品 ' + video.oid);\n  var check = checks[content_id];\n  state.checked += 1;\n  if (check.exists) state.skipped += 1;\n  else {\n    state.pending.push(video);\n  }\n}\nreturn state;\n})()",
         "output_key": "checked_state"
       },
       "next_node_ids": [
@@ -683,37 +584,10 @@
         }
       },
       "next_node_ids": [
-        "all_existing"
-      ],
-      "position": {
-        "x": 6460,
-        "y": 0
-      }
-    },
-    "all_existing": {
-      "id": "all_existing",
-      "type": "GatewayNode",
-      "name": "本页视频是否全部已存在？",
-      "config": {
-        "gateway_type": "Exclusive",
-        "condition_language": "js",
-        "rules": [
-          {
-            "condition": "global.scan_state.all_existing",
-            "target_id": "summary"
-          },
-          {
-            "condition": "true",
-            "target_id": "advance_page"
-          }
-        ]
-      },
-      "next_node_ids": [
-        "summary",
         "advance_page"
       ],
       "position": {
-        "x": 6800,
+        "x": 6460,
         "y": 0
       }
     },
@@ -750,39 +624,12 @@
         "y": 1200
       }
     },
-    "summary": {
-      "id": "summary",
-      "type": "JSCodeNode",
-      "name": "增量同步与下载提交结果",
-      "config": {
-        "code": "(function () {\nvar state = global.scan_state;\nreturn {platform: 'douyin', sec_uid: output.validate.creator.sec_uid, pages: state.page, videos: Object.keys(state.seen_ids).length, checked: state.checked, submitted: state.submitted, skipped: state.skipped, stop_reason: state.all_existing ? 'all_existing' : 'no_more_pages', note: '已存在指已有下载任务；submitted 表示任务已启动，不表示文件已下载完成；遇到整页已存在即停止翻页'};\n})()",
-        "output_key": "sync_summary"
-      },
-      "next_node_ids": [
-        "end"
-      ],
-      "position": {
-        "x": 7140,
-        "y": 0
-      }
-    },
-    "end": {
-      "id": "end",
-      "type": "EndNode",
-      "name": "同步结束",
-      "config": {},
-      "next_node_ids": [],
-      "position": {
-        "x": 7480,
-        "y": 0
-      }
-    },
     "finish_summary": {
       "id": "finish_summary",
       "type": "JSCodeNode",
       "name": "全部页面检查完成，汇总结果",
       "config": {
-        "code": "(function () {\nvar state = global.scan_state;\nreturn {platform: 'douyin', sec_uid: output.validate.creator.sec_uid, pages: state.page, videos: Object.keys(state.seen_ids).length, checked: state.checked, submitted: state.submitted, skipped: state.skipped, stop_reason: state.all_existing ? 'all_existing' : 'no_more_pages', note: '已存在指已有下载任务；submitted 表示任务已启动，不表示文件已下载完成；遇到整页已存在即停止翻页'};\n})()",
+        "code": "(function () {\nvar state = global.scan_state;\nvar ids = Object.keys(state.seen_ids);\nreturn {platform: 'douyin', sec_uid: output.validate.creator.sec_uid, pages: state.page, works: ids.length, videos: ids.filter(function (id) { return state.seen_ids[id] === 'video'; }).length, albums: ids.filter(function (id) { return state.seen_ids[id] === 'album'; }).length, checked: state.checked, submitted: state.submitted, skipped: state.skipped, stop_reason: 'no_more_pages', note: '已存在指已有下载任务；submitted 表示任务已启动，不表示文件已下载完成；扫描全部页面以补齐缺失的视频与图集'};\n})()",
         "output_key": "sync_summary"
       },
       "next_node_ids": [
