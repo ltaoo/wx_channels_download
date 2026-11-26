@@ -83,6 +83,28 @@ func platform_fetch_list_node_type(platform_id string) string {
 	return platform_node_type_token(platform_id) + platform_fetch_list_node_suffix
 }
 
+// is_platform_fetch_node_type reports whether node_type is one of the dynamic
+// platform detail/list node types that RegisterPlatformFetchNodes registers.
+// It mirrors that registration scope: every adapter gets a detail node, but only
+// homepage-capable adapters get a list node.
+func is_platform_fetch_node_type(node_type string) bool {
+	if node_type == "" {
+		return false
+	}
+	for _, platform_id := range adapter.IDs() {
+		if node_type == platform_fetch_detail_node_type(platform_id) {
+			return true
+		}
+		if node_type != platform_fetch_list_node_type(platform_id) {
+			continue
+		}
+		if _, ok := adapter.Get(platform_id).(adapter.HomeContentsBuilder); ok {
+			return true
+		}
+	}
+	return false
+}
+
 // platform_fetch_node is a per-platform flow node. In detail mode it fetches a
 // single content URL through the scraper job pipeline and returns the
 // normalized detail payload; in list mode it reads one account homepage tab and
@@ -236,27 +258,74 @@ func (n *platform_fetch_node) execute_list(process_context *engine.ProcessContex
 	if scope == "" {
 		scope = default_platform_home_scope(builder, account)
 	}
+	page, err := n.resolved_string(process_context, "page")
+	if err != nil {
+		return err
+	}
+	contents, next_marker, used_scope, err := n.fetch_home_list(builder, handler, account, scope, strings.TrimSpace(page))
+	if err != nil {
+		return err
+	}
+	output := map[string]any{
+		"platform":    n.platform_id,
+		"scope":       used_scope,
+		"total":       len(contents),
+		"list":        contents,
+		"next_marker": next_marker,
+		"tabs":        builder.HomeContentTabs(account),
+	}
+	process_context.SetOutput(n.node_id, n.output_key(default_platform_list_output_key), output)
+	return nil
+}
+
+// fetch_home_list reads one homepage tab. When the node config declares a
+// "page" key and the adapter supports pagination, it fetches exactly that page
+// (page may be empty for the first page) and returns the next marker; otherwise
+// it falls back to a single unpaginated snapshot.
+func (n *platform_fetch_node) fetch_home_list(builder adapter.HomeContentsBuilder, handler adapter.AdapterHandler, account *model.Account, scope, page string) ([]model.Content, string, string, error) {
+	if _, has_page := n.Config["page"]; has_page {
+		if fetcher, ok := handler.(adapter.HomeDetailsFetcher); ok {
+			details, err := fetcher.FetchHomeDetails(account, scope, page)
+			if err != nil {
+				return nil, "", "", fmt.Errorf("获取主页列表失败: %w", err)
+			}
+			if details == nil {
+				return nil, "", "", fmt.Errorf("平台 %s 返回了空的主页列表", n.platform_id)
+			}
+			used_scope := first_non_empty(details.Scope, scope)
+			return home_details_contents(details.Contents), details.NextMarker, used_scope, nil
+		}
+	}
 	home, err := builder.BuildHomeContents(account, scope)
 	if err != nil {
-		return fmt.Errorf("获取主页列表失败: %w", err)
+		return nil, "", "", fmt.Errorf("获取主页列表失败: %w", err)
 	}
 	if home == nil {
-		return fmt.Errorf("平台 %s 返回了空的主页列表", n.platform_id)
+		return nil, "", "", fmt.Errorf("平台 %s 返回了空的主页列表", n.platform_id)
 	}
 	contents := home.Contents
 	if contents == nil {
 		contents = []model.Content{}
 	}
-	output := map[string]any{
-		"platform":    n.platform_id,
-		"scope":       home.Scope,
-		"total":       len(contents),
-		"list":        contents,
-		"next_marker": home.NextMarker,
-		"tabs":        builder.HomeContentTabs(account),
+	return contents, home.NextMarker, first_non_empty(home.Scope, scope), nil
+}
+
+// home_details_contents coerces the loosely-typed HomeDetails.Contents into the
+// normalized content list every adapter actually returns.
+func home_details_contents(value any) []model.Content {
+	switch typed := value.(type) {
+	case []model.Content:
+		if typed == nil {
+			return []model.Content{}
+		}
+		return typed
+	case *[]model.Content:
+		if typed == nil {
+			return []model.Content{}
+		}
+		return *typed
 	}
-	process_context.SetOutput(n.node_id, n.output_key(default_platform_list_output_key), output)
-	return nil
+	return []model.Content{}
 }
 
 func (n *platform_fetch_node) resolved_string(process_context *engine.ProcessContext, key string) (string, error) {
@@ -521,6 +590,7 @@ func platform_node_catalog() []UserFlowNodeCatalogItem {
 				{Key: "profile", Type: "string", Required: true, Description: "主页 URL 或用户名/账号 ID"},
 				{Key: "user_id", Type: "string", Description: "X 等平台需要的数字用户 ID"},
 				{Key: "scope", Type: "string", Description: "主页 tab，留空使用平台首个 tab"},
+				{Key: "page", Type: "string", Description: "分页游标；配置此项后按页抓取并输出 next_marker，留空取第一页"},
 				{Key: "output_key", Type: "string", Description: "结果写入上下文的键，默认 " + default_platform_list_output_key},
 			},
 		})

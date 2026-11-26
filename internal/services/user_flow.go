@@ -901,6 +901,9 @@ func user_flow_allows_node_type(node_type string, custom_nodes ...*flowengine.Cu
 	case "StartNode", "EndNode", "ExprNode", "GatewayNode", "APICallNode", "ManualNode", "ServiceNode", "JSCodeNode", "SetVariableNode", "LoopNode", "WorkflowNode", "WaitNode", "FailNode":
 		return true
 	default:
+		if is_platform_fetch_node_type(node_type) {
+			return true
+		}
 		return len(custom_nodes) > 0 && custom_nodes[0].Has(node_type)
 	}
 }
