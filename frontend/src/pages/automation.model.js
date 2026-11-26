@@ -3251,12 +3251,8 @@ function AutomationPageViewModel(props, options) {
       trigger: "click", side: "bottom", align: "end",
       items: [
         new Timeless.vm.MenuItemCore({
-          label: "触发", disabled: run_submitting_.value || pipeline_is_active(pipeline),
-          onClick() { menu.hide(); return ui.btn_pipeline_trigger$.bind(pipeline).click(); },
-        }),
-        new Timeless.vm.MenuItemCore({
-          label: "复制", disabled: ui.btn_pipeline_copy$.bind(pipeline).state.loading,
-          onClick() { menu.hide(); return ui.btn_pipeline_copy$.bind(pipeline).click(); },
+          label: "详情",
+          onClick() { menu.hide(); window.open(automation_pipeline_href(pipeline.id, "detail"), "_blank", "noopener,noreferrer"); },
         }),
         new Timeless.vm.MenuItemCore({
           label: "删除",

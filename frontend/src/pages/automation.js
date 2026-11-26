@@ -314,11 +314,6 @@ function AutomationPipelineList(props) {
         render(pipeline) {
           return [
             TextButton({ store: vm$.methods.pipelineActionButton("trigger", pipeline), attributes: { n: `automation-instance-run-${pipeline.id}`, type: "button", "aria-label": `执行配置实例 ${pipeline.name || pipeline.id}` } }, ["执行"]),
-            AutomationPipelineLink({
-              flowId: pipeline.id,
-              mode: "detail",
-              label: "详情",
-            }),
             DropdownMenu(
               {
                 store: vm$.methods.pipelineActionsMenu(pipeline),
