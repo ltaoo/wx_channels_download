@@ -2251,7 +2251,7 @@ export function AutomationRunHistory(props) {
           View({ class: "text-color-text-secondary", attributes: { n: "automation-run-current-node" } }, [`当前节点：${run.current_node || (run.status === "FAILED" ? "未进入节点执行" : "等待执行")}`]),
         ]),
         run.trigger_type ? View({ class: "text-color-text-secondary text-xs", attributes: { n: "automation-run-trigger-source" } }, [`触发来源：${vm$.methods.triggerLabel(run.trigger_type)}${run.trigger_key ? `（${run.trigger_key}）` : ""}`]) : null,
-        run.error ? ErrorMessage({ tip: vm$.methods.tip, error: run.error }) : null,
+        run.error ? View({ class: "text-color-danger text-sm leading-base whitespace-pre-wrap word-break-break-word", attributes: { n: "automation-run-error", role: "alert", title: run.error } }, [run.error]) : null,
         run.retry_of ? View({ class: "text-color-text-secondary text-xs", attributes: { n: "automation-run-retry-source" } }, ["由历史执行记录重试"]) : null,
         run.status === "WAITING" ? View({ class: "grid gap-2 min-w-0" }, [
           View({ as: "label", attributes: { for: "automation-manual-response" }, class: "text-color-text-secondary text-sm" }, ["人工确认输入 JSON"]),
