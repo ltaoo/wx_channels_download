@@ -30,7 +30,7 @@ function AutomationPageView(props) {
         ) {
           props.history.push(
             mode === "edit" ? "root.shell.flow_edit" : "root.shell.flow_detail",
-            { id: flow_id },
+            { id: flow_id, run_id: String(query.run_id || "").trim() },
           );
           return;
         }
@@ -291,12 +291,18 @@ function AutomationPipelineList(props) {
         render(pipeline) {
           const at = Number(pipeline.last_run_at) || 0;
           const status = String(pipeline.last_run_status || "").toUpperCase();
+          const can_open = at > 0;
+          const open_detail = () => vm$.methods.openRunDetail(pipeline);
           return [
             View({ class: "grid gap-0-5 min-w-0", attributes: { n: `automation-pipeline-last-run-${pipeline.id}` } }, [
-              at > 0
+              can_open
                 ? View({
-                    class: "overflow-hidden text-color-text-primary font-mono text-sm font-variant-numeric-tabular-nums text-ellipsis whitespace-nowrap",
-                    attributes: { n: `automation-pipeline-last-run-time-${pipeline.id}`, title: vm$.methods.formatTime(at) },
+                    class: "overflow-hidden text-color-text-primary font-mono text-sm font-variant-numeric-tabular-nums text-ellipsis whitespace-nowrap cursor-pointer hover:text-color-primary hover:underline focus-visible:text-color-primary focus-visible:underline",
+                    attributes: { n: `automation-pipeline-last-run-time-${pipeline.id}`, title: `${vm$.methods.formatTime(at)}（查看执行详情）`, role: "button", tabindex: "0", "aria-label": `查看 ${pipeline.name || pipeline.id} 最近一次执行详情` },
+                    onClick() { return open_detail(); },
+                    onKeyDown(event) {
+                      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open_detail(); }
+                    },
                   }, [vm$.methods.formatTime(at)])
                 : View({ class: "text-color-text-secondary text-sm", attributes: { n: `automation-pipeline-last-run-time-${pipeline.id}` } }, ["尚未执行"]),
               status
@@ -420,7 +426,7 @@ function AutomationDefinitionsDrawer(props) {
           { name: "actions", title: "操作", width: 192, cellClass: "flex flex-nowrap items-center justify-end gap-2 whitespace-nowrap", render(definition) {
             return [
               TextButton({ store: vm$.ui.btn_definition_instance$.bind(definition), attributes: { n: `automation-definition-create-instance-${definition.id}`, type: "button" } }, ["新增配置实例"]),
-              AutomationPipelineLink({ flowId: definition.id, mode: "edit", label: "编辑流程" }),
+              AutomationPipelineLink({ flowId: definition.id, mode: "edit", label: "编辑" }),
               TextButton({ store: vm$.ui.btn_definition_delete$.bind(definition), attributes: { n: `automation-definition-delete-${definition.id}`, type: "button", "aria-label": `删除自动化流程 ${definition.name || definition.id}` } }, ["删除"]),
             ];
           } },

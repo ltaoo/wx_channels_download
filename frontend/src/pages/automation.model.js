@@ -671,6 +671,7 @@ function automation_view_query(props, fallback_mode) {
       ? requested_mode
       : "list",
     flow_id: String(query.id || query.flow_id || "").trim(),
+    run_id: String(query.run_id || "").trim(),
   };
 }
 
@@ -746,7 +747,7 @@ function AutomationPageViewModel(props, options) {
   let pending_run_states = null;
   let pending_run_statuses = null;
   let clearing_runs = false;
-  const selected_run_id_ = ref("");
+  const selected_run_id_ = ref(view_query.run_id);
   const runs_loading_ = run_list$.state.loading;
   const canvas_revision_ = ref(0);
   const node_execution_states_ = refobj({});
@@ -1299,9 +1300,9 @@ function AutomationPageViewModel(props, options) {
       const active_run_id = finished ? "" : run_id;
       // 同步最近执行状态，列表行的“执行”按钮才能实时禁用/恢复。
       const last_run_status = finished ? status || "" : status || "RUNNING";
-      return pipeline.active_run_id === active_run_id && pipeline.last_run_status === last_run_status
+      return pipeline.active_run_id === active_run_id && pipeline.last_run_status === last_run_status && pipeline.last_run_id === run_id
         ? pipeline
-        : { ...pipeline, active_run_id, last_run_status };
+        : { ...pipeline, active_run_id, last_run_status, last_run_id: run_id };
     };
     if (pipelines_.value.some((pipeline) => update(pipeline) !== pipeline)) {
       pipelines_.as(pipelines_.value.map(update), { reset: true });
@@ -2925,6 +2926,17 @@ function AutomationPageViewModel(props, options) {
     }
   }
 
+  // 从列表的「最近执行」跳转到详情页并选中该次执行。
+  function open_run_detail(pipeline) {
+    const flow_id = pipeline && pipeline.id;
+    if (!flow_id) return null;
+    const run_id = String(pipeline.active_run_id || pipeline.last_run_id || "").trim();
+    if (props.history && typeof props.history.push === "function") {
+      props.history.push("root.shell.flow_detail", { id: flow_id, run_id });
+    }
+    return null;
+  }
+
   // --- create pipeline ---
   function open_create_dialog() {
     create_name_.as("");
@@ -3675,6 +3687,7 @@ function AutomationPageViewModel(props, options) {
     search: search_pipelines,
     changePage: change_page,
     selectPipeline: select_pipeline,
+    openRunDetail: open_run_detail,
     triggerSchedule(id) {
       return trigger_schedule(id);
     },
