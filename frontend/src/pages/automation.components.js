@@ -237,10 +237,10 @@ export function AutomationPipelineSkeletonRow() {
       View(
         { class: "dm-table-cell min-w-0", attributes: { n: "automation-pipeline-skeleton-name", role: "cell" } },
         [
-          View({ class: "grid gap-1-5 w-full" }, [
+          // 实际渲染只有两行：流程名称（小号）和实例名称（大号）。
+          View({ class: "grid gap-1 w-full" }, [
             automation_skeleton_block({ class: "rounded-content", style: { width: "30%", height: "10px" } }),
             automation_skeleton_block({ class: "rounded-content", style: { width: "62%", height: "15px" } }),
-            automation_skeleton_block({ class: "rounded-content", style: { width: "44%", height: "12px" } }),
           ]),
         ],
       ),
@@ -248,7 +248,6 @@ export function AutomationPipelineSkeletonRow() {
         { class: "dm-table-cell flex items-center gap-1 flex-wrap", attributes: { n: "automation-pipeline-skeleton-trigger", role: "cell" } },
         [
           automation_skeleton_block({ style: { width: "58px", height: "20px", borderRadius: "999px" } }),
-          automation_skeleton_block({ style: { width: "46px", height: "20px", borderRadius: "999px" } }),
         ],
       ),
       View(
@@ -273,8 +272,7 @@ export function AutomationPipelineSkeletonRow() {
         { class: "dm-table-cell flex flex-nowrap items-center justify-end gap-1-5 max-900:justify-start", attributes: { n: "automation-pipeline-skeleton-actions", role: "cell" } },
         [
           automation_skeleton_block({ class: "rounded-control", style: { width: "34px", height: "24px" } }),
-          automation_skeleton_block({ class: "rounded-control", style: { width: "34px", height: "24px" } }),
-          automation_skeleton_block({ class: "rounded-control", style: { width: "34px", height: "24px" } }),
+          automation_skeleton_block({ class: "rounded-control", style: { width: "48px", height: "24px" } }),
         ],
       ),
     ],
