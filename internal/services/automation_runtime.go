@@ -163,27 +163,35 @@ func (s *AutomationService) save_run_checkpoint(checkpoint *flowengine.RunCheckp
 	if s.db == nil || !strings.HasPrefix(checkpoint.RunID, "run-") {
 		return nil
 	}
-	// The frozen graph is already stored once in flow_run_record.definition.
-	// Persisting only the live context keeps every node boundary from
-	// re-serializing the whole graph; resume reattaches the definition.
-	persisted := *checkpoint
-	persisted.Definition = nil
-	raw, err := json.Marshal(&persisted)
-	if err != nil {
-		// Callback-based built-in definitions are intentionally process-local.
-		if checkpoint.Definition == nil || !strings.HasPrefix(checkpoint.Definition.ID, user_flow_id_prefix) {
-			return nil
-		}
-		return err
-	}
 	status := model.FlowRunStatusRunning
 	if checkpoint.Waiting {
 		status = model.FlowRunStatusWaiting
 	}
 	updates := map[string]interface{}{
-		"checkpoint": string(raw), "status": status, "current_node": checkpoint.CurrentNode,
+		"status": status, "current_node": checkpoint.CurrentNode,
 		"node_attempts": marshal_json(checkpoint.NodeAttempts),
 		"updated_at":    time.Now().UnixMilli(),
+	}
+	// Only a run parked on a manual node can be resumed (see ResumeRun); an
+	// interrupted RUNNING run is marked failed, never resumed. So persist the
+	// serialized context only when waiting. In-flight boundaries record just
+	// progress: rewriting the full (often multi-megabyte) context every couple
+	// of seconds saturated SQLite's single writer and starved concurrent runs
+	// and downloads into "database is locked".
+	if checkpoint.Waiting {
+		// The frozen graph is already stored once in flow_run_record.definition;
+		// resume reattaches it, so the persisted context omits the definition.
+		persisted := *checkpoint
+		persisted.Definition = nil
+		raw, err := json.Marshal(&persisted)
+		if err != nil {
+			// Callback-based built-in definitions are intentionally process-local.
+			if checkpoint.Definition == nil || !strings.HasPrefix(checkpoint.Definition.ID, user_flow_id_prefix) {
+				return nil
+			}
+			return err
+		}
+		updates["checkpoint"] = string(raw)
 	}
 	// Node states accumulate in memory and ride along with the boundary write
 	// instead of costing a SELECT + UPDATE per status event.
