@@ -1929,7 +1929,7 @@ function ScraperCacheContentDialog(props) {
       showClose: false,
     },
     [
-      View({ class: "p-[var(--dm-space-4)_var(--dm-space-4-5)_var(--dm-space-3)] flex items-start gap-3-5" }, [
+      DialogHeader({ class: "[&.dm-dialog-header]:flex-row [&.dm-dialog-header]:items-start [&.dm-dialog-header]:gap-3" }, [
         View({ class: "min-w-0 flex-1" }, [
           View({ class: "overflow-hidden text-lg font-680 text-ellipsis whitespace-nowrap" }, [cache_content.title]),
           View({ class: "mt-1 text-content-muted text-xs" }, [cache_content.meta_text]),
@@ -1942,43 +1942,45 @@ function ScraperCacheContentDialog(props) {
           ["×"],
         ),
       ]),
-      View(
-        {
-          class: "p-[0_var(--dm-space-4-5)_var(--dm-space-3)] overflow-hidden text-content-muted font-mono text-caption text-ellipsis whitespace-nowrap",
-          attributes: { title: cache_content.path },
-        },
-        [cache_content.path],
-      ),
-      View({ class: "min-h-260px flex overflow-hidden border-top-[1px_solid_var(--dm-content-border)] bg-content-panel-soft" }, [
-        Show({
-          when: cache_content.loading,
-          ok() {
-            return View({ class: "min-h-260px w-full flex items-center justify-center gap-2-5 text-content-muted text-md" }, [
-              View({
-                class: "dm-spinner",
-                attributes: { n: "scraper-cache-loading" },
-              }),
-              "正在读取缓存内容...",
-            ]);
+      DialogBody({ class: "[&.dm-dialog-body]:p-0" }, [
+        View(
+          {
+            class: "p-[0_var(--dm-space-4-5)_var(--dm-space-3)] overflow-hidden text-content-muted font-mono text-caption text-ellipsis whitespace-nowrap",
+            attributes: { title: cache_content.path },
           },
-          else() {
-            return Show({
-              when: computed(cache_content.error, (error) => Boolean(error)),
-              ok() {
-                return ErrorMessage({ tip: vm$.methods.tip, error: cache_content.error });
-              },
-              else() {
-                return View(
-                  {
-                    type: "pre",
-                    class: "w-full min-h-260px max-h-[min(68vh,_650px)] box-sizing-border-box m-0 p-[var(--dm-space-4)_var(--dm-space-4-5)] overflow-auto text-content-text font-mono text-sm leading-[1.6] tab-size-2 whitespace-pre-wrap word-break-break-word",
-                  },
-                  [cache_content.text],
-                );
-              },
-            });
-          },
-        }),
+          [cache_content.path],
+        ),
+        View({ class: "min-h-260px flex border-top-[1px_solid_var(--dm-content-border)] bg-content-panel-soft" }, [
+          Show({
+            when: cache_content.loading,
+            ok() {
+              return View({ class: "min-h-260px w-full flex items-center justify-center gap-2-5 text-content-muted text-md" }, [
+                View({
+                  class: "dm-spinner",
+                  attributes: { n: "scraper-cache-loading" },
+                }),
+                "正在读取缓存内容...",
+              ]);
+            },
+            else() {
+              return Show({
+                when: computed(cache_content.error, (error) => Boolean(error)),
+                ok() {
+                  return ErrorMessage({ tip: vm$.methods.tip, error: cache_content.error });
+                },
+                else() {
+                  return View(
+                    {
+                      type: "pre",
+                      class: "w-full min-h-260px box-sizing-border-box m-0 p-[var(--dm-space-4)_var(--dm-space-4-5)] text-content-text font-mono text-sm leading-[1.6] tab-size-2 whitespace-pre-wrap word-break-break-word",
+                    },
+                    [cache_content.text],
+                  );
+                },
+              });
+            },
+          }),
+        ]),
       ]),
     ],
   );
