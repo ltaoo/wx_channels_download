@@ -20,6 +20,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/ltaoo/echo"
+	"github.com/pterm/pterm"
 	"github.com/rs/zerolog"
 )
 
@@ -184,6 +185,8 @@ type liteapp_cache_result struct {
 }
 
 // Runs after the proxy starts so a subsequent SDK request receives the loader.
+// version identifies the installed WeChat build; when it changes the cache is
+// cleared again so the freshly cached SDK is served through the proxy.
 func start_liteapp_cache_cleanup(
 	ctx context.Context, version string, logger *zerolog.Logger,
 	profiles_root_path func() (string, error),
@@ -197,7 +200,10 @@ func start_liteapp_cache_cleanup(
 	}
 	is_running := func() (bool, error) { return cache_in_use(ctx) }
 	prepare_unversioned := func() (liteapp_cache_result, error) {
-		return prepare_cache_for_platform(profiles_root, is_running)
+		spinner, _ := pterm.DefaultSpinner.WithRemoveWhenDone(true).Start("正在处理 LiteApp SDK 缓存...")
+		result, err := prepare_cache_for_platform(profiles_root, is_running)
+		spinner.Stop()
+		return result, err
 	}
 	prepare_cache := func() (liteapp_cache_result, error) {
 		return prepare_liteapp_sdk_cache_for_version(profiles_root, version, prepare_unversioned)
@@ -217,7 +223,7 @@ func start_liteapp_cache_cleanup(
 	if !result.deferred {
 		return
 	}
-	color.Yellow("微信仍在运行。请完全退出微信，应用会自动检查并备份移走 LiteApp SDK 缓存；看到处理完成提示后再打开微信。")
+	color.Yellow("微信仍在运行。请完全退出微信，应用会自动检查并备份移走 LiteApp SDK 缓存（缓存目录：%s）\n看到处理完成提示后再打开微信。", profiles_root)
 	go func() {
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
@@ -252,7 +258,7 @@ func start_liteapp_cache_cleanup(
 func prepare_liteapp_sdk_cache_for_version(profiles_root, version string, prepare func() (liteapp_cache_result, error)) (liteapp_cache_result, error) {
 	version = strings.TrimSpace(version)
 	if version == "" {
-		return liteapp_cache_result{}, fmt.Errorf("empty application version for LiteApp SDK cache cleanup")
+		return liteapp_cache_result{}, fmt.Errorf("empty WeChat version for LiteApp SDK cache cleanup")
 	}
 	valid, err := liteapp_cache_directory(profiles_root)
 	if err != nil || !valid {
