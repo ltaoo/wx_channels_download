@@ -579,11 +579,9 @@ function node_config_values(raw) {
 }
 
 function pipeline_config_values(pipeline) {
-  const values = Object.create(null);
-  for (const layer of [pipeline.default_node_configs, pipeline.node_configs]) {
-    for (const [id, fields] of Object.entries(node_config_values(layer))) values[id] = { ...values[id], ...fields };
-  }
-  return values;
+  // 实例只展示自己显式覆盖的 node_configs；共享流程定义展示它自己的 default_node_configs。
+  // 不再把两层合并，否则实例的「配置」列会混入从自动化流程继承的默认值。
+  return node_config_values(pipeline.is_flow_definition ? pipeline.default_node_configs : pipeline.node_configs);
 }
 
 function secret_config_display(value, props) {
@@ -604,12 +602,18 @@ function secret_config_display(value, props) {
 function pipeline_config_groups(pipeline, props) {
   let values = {};
   try { values = pipeline_config_values(pipeline); } catch { /* Invalid stored configuration is empty in the list. */ }
+  // schema 里的 field.default 也是流程侧默认值；只有共享流程定义才回退到它。
+  const fallback_to_schema_default = Boolean(pipeline.is_flow_definition);
   return (pipeline.nodes || []).filter((node) => Array.isArray(node.config_schema) && node.config_schema.length).map((node) => ({
     id: node.id,
     name: node.name || node.id,
     fields: node.config_schema.map((field) => {
       const saved = Object.prototype.hasOwnProperty.call(values, node.id) ? values[node.id] : null;
-      const value = saved && Object.prototype.hasOwnProperty.call(saved, field.key) ? saved[field.key] : field.default;
+      const value = saved && Object.prototype.hasOwnProperty.call(saved, field.key)
+        ? saved[field.key]
+        : fallback_to_schema_default
+          ? field.default
+          : undefined;
       const filled = value !== undefined && value !== null && !(typeof value === "string" && !value.trim());
       const text = !filled ? "未填写" : field.secret ? "••••••" : typeof value === "string" ? value : JSON.stringify(value);
       return { key: field.key, label: field.label || field.key, text, filled, secret_display: field.secret && filled ? secret_config_display(value, props) : null };
