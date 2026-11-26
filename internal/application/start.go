@@ -17,6 +17,7 @@ import (
 	"wx_channel/frontend"
 	"wx_channel/internal/adapter"
 	"wx_channel/internal/api"
+	"wx_channel/internal/assets"
 	"wx_channel/internal/buildtags"
 	"wx_channel/internal/config"
 	"wx_channel/internal/database"
@@ -221,6 +222,13 @@ func Start(cfg *config.Config) error {
 		download_task_broadcaster.Notify(task_id, event, progress, finished_resources)
 		if event == hermes.EventFinished {
 			go bus.Publish(events.DownloadTaskFinished{TaskID: task_id})
+			if cfg.GetBool("download.playDoneAudio") {
+				go func() {
+					if err := assets.PlayDoneAudio(); err != nil {
+						logger.Debug().Err(err).Msg("failed to play completion audio")
+					}
+				}()
+			}
 		}
 	})
 	bridge_service := services.NewBridgeService(services.BridgeServiceOptions{
