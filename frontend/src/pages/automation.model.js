@@ -3294,7 +3294,7 @@ function AutomationPageViewModel(props, options) {
     const button = ui.btn_pipeline_copy$.bind(pipeline);
     if (button.state.loading || disposed) return;
     button.setLoading(true);
-    if (share_definition) ui.btn_definition_instance$.bind(pipeline).setDisabled(true);
+    if (share_definition) ui.btn_definition_instance$.bind(pipeline).disable();
     error_.as("");
     try {
       const response = await reqs.pipeline[share_definition ? "instance" : "copy"].run(share_definition ? { flow_id: pipeline.flow_id || pipeline.id } : { id: pipeline.id });
@@ -3306,7 +3306,7 @@ function AutomationPageViewModel(props, options) {
     } catch (error) { if (!disposed) set_error(error); }
     finally {
       button.setLoading(false);
-      if (share_definition) ui.btn_definition_instance$.bind(pipeline).setDisabled(false);
+      if (share_definition) ui.btn_definition_instance$.bind(pipeline).enable();
     }
   }
 
