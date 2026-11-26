@@ -669,7 +669,6 @@ export function TaskDetailDialog(props) {
                         ]);
                       },
                     }),
-                    Button({ store: vm$.ui.btn_save_task_detail$, attributes: { n: "download-task-edit-save", type: "button" } }, ["保存修改"]),
                   ];
                 },
               }),
@@ -709,7 +708,15 @@ export function TaskDetailDialog(props) {
           },
         }),
       ],
-    )],
+    ),
+    Show({
+      when: vm$.state.task_detail_editing,
+      ok() {
+        return DialogFooter({}, [
+          Button({ store: vm$.ui.btn_save_task_detail$, attributes: { n: "download-task-edit-save", type: "button" } }, ["保存修改"]),
+        ]);
+      },
+    })],
   );
 }
 
