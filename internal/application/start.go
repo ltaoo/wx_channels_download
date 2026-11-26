@@ -19,6 +19,7 @@ import (
 	"wx_channel/internal/adapter"
 	wxchannelsadapter "wx_channel/internal/adapter/wxchannels"
 	"wx_channel/internal/api"
+	"wx_channel/internal/assets"
 	"wx_channel/internal/buildtags"
 	"wx_channel/internal/config"
 	"wx_channel/internal/database"
@@ -255,6 +256,13 @@ func Start(cfg *config.Config) error {
 				}
 				bus.Publish(events.DownloadTaskFinished{TaskID: task_id, Task: task, DownloadDir: finished.DownloadDir})
 			}()
+			if cfg.GetBool("download.playDoneAudio") {
+				go func() {
+					if err := assets.PlayDoneAudio(); err != nil {
+						logger.Debug().Err(err).Msg("failed to play completion audio")
+					}
+				}()
+			}
 		}
 	})
 	var service_bridge *services.BridgeService
