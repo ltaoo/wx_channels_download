@@ -462,6 +462,12 @@ function normalize_pipeline(value) {
   };
 }
 
+export function automation_pipeline_href(flow_id, mode) {
+  const pathname = mode === "edit" ? "/automation/edit" : "/automation/detail";
+  const search = new URLSearchParams({ id: String(flow_id || "") });
+  return `${pathname}?${search.toString()}`;
+}
+
 function subflow_node_key(flow_id, node_id) {
   return `subflow:${JSON.stringify([flow_id, node_id])}`;
 }

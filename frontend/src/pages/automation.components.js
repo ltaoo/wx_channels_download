@@ -1,5 +1,6 @@
 import { ErrorMessage, ListState, list_scroll_props } from "@/dmui.js";
 import {
+  automation_pipeline_href,
   calculate_flow_minimap_geometry,
   calculate_pipeline_node_positions,
   calculate_execution_layout,
@@ -185,12 +186,6 @@ export function AutomationEmptyState(props = {}) {
         : null,
     ].filter(Boolean),
   );
-}
-
-export function automation_pipeline_href(flow_id, mode) {
-  const pathname = mode === "edit" ? "/automation/edit" : "/automation/detail";
-  const search = new URLSearchParams({ id: String(flow_id || "") });
-  return `${pathname}?${search.toString()}`;
 }
 
 export function AutomationPipelineLink(props) {
