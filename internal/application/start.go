@@ -277,6 +277,7 @@ func Start(cfg *config.Config) error {
 	// One flow engine is shared by the automation service and any caller that
 	// registers flow definitions on it.
 	flow_engine := flowengine.NewWorkflowEngine()
+	services.RegisterPlatformFetchNodes(flow_engine, service_scraper_job)
 	custom_nodes, err := flowengine.LoadCustomNodes(context.Background(), flow_engine, api_cfg.WorkDir, logger)
 	if err != nil {
 		task_store.Shutdown()

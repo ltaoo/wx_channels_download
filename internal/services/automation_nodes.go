@@ -160,6 +160,18 @@ func validate_automation_node_config(node_type string, config map[string]interfa
 		}
 	case "WaitNode":
 		return node_config_integer(config, "seconds", 1, 0, 86400)
+	default:
+		switch {
+		case strings.HasSuffix(node_type, platform_fetch_detail_node_suffix):
+			if address, _ := config["url"].(string); strings.TrimSpace(address) == "" {
+				return fmt.Errorf("url 不能为空")
+			}
+			return node_config_integer(config, "timeout_seconds", default_platform_fetch_timeout_seconds, 1, 86400)
+		case strings.HasSuffix(node_type, platform_fetch_list_node_suffix):
+			if profile, _ := config["profile"].(string); strings.TrimSpace(profile) == "" {
+				return fmt.Errorf("profile 不能为空")
+			}
+		}
 	}
 	return nil
 }

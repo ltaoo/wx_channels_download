@@ -42,7 +42,7 @@ type UserFlowConfigKey struct {
 }
 
 func user_flow_node_catalog() []UserFlowNodeCatalogItem {
-	return append(automation_additional_node_catalog(), []UserFlowNodeCatalogItem{
+	catalog := append(automation_additional_node_catalog(), []UserFlowNodeCatalogItem{
 		{
 			Type:        "ExprNode",
 			Name:        "表达式计算",
@@ -122,6 +122,7 @@ func user_flow_node_catalog() []UserFlowNodeCatalogItem {
 			Description: "流程结束节点",
 		},
 	}...)
+	return append(catalog, platform_node_catalog()...)
 }
 
 // CreateUserFlowInput describes a new user pipeline. Creating a pipeline always

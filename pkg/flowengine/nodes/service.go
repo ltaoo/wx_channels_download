@@ -109,6 +109,13 @@ func service_arguments(config map[string]interface{}, process_context *engine.Pr
 	return arguments, nil
 }
 
+// ResolveTemplates renders {{scope.path}} templates in an arbitrary config
+// value against the process context, using the same scopes and rules as
+// ServiceNode arguments. Callers must hold ctx.Mu for the duration of the call.
+func ResolveTemplates(value any, ctx *engine.ProcessContext) (any, error) {
+	return resolve_service_template(value, ctx)
+}
+
 // resolve_service_template renders {{scope.path}} templates in a single
 // argument value against the process context. A value that is not a string, or
 // a string without "{{", is returned unchanged. A string that is exactly one
