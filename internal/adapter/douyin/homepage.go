@@ -117,6 +117,7 @@ func douyin_home_contents_from_items(items []douyin.HomeContent, account *model.
 			Id: content_id, PlatformId: PlatformID, Type: content_type,
 			ExternalId: external_id, Title: title, Description: title,
 			URL: source_url, SourceURL: source_url, CoverURL: strings.TrimSpace(item.CoverURL),
+			Metadata:   string(item.Raw),
 			Timestamps: model.Timestamps{CreatedAt: now, UpdatedAt: now},
 		})
 	}
