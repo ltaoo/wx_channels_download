@@ -2010,7 +2010,9 @@ img.dm-lazy-img-image[data-lazy-img-state] {
   display: flex;
   flex-direction: column;
   gap: var(--dm-space-2);
-  padding: var(--dm-space-5) var(--dm-space-5) 0;
+  padding: var(--dm-space-4) var(--dm-space-5);
+  background: var(--dm-color-bg-subtle);
+  border-bottom: var(--dm-border-width) solid var(--dm-color-border);
 }
 
 .dm-dialog-title {

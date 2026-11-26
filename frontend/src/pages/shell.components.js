@@ -698,7 +698,7 @@ export function SettingsDialog(props) {
       attributes: { n: "settings-dialog" },
     },
     [
-      DialogTitle({ class: "flex items-center gap-3 flex-[0_0_auto] p-[var(--dm-space-4)_var(--dm-space-6)] border-bottom-[var(--dm-border-width)_solid_var(--dm-color-border)] max-520:p-[var(--dm-space-3)_var(--dm-space-4)]" }, [
+      DialogTitle({ class: "flex items-center gap-3 flex-[0_0_auto] p-[var(--dm-space-4)_var(--dm-space-6)] bg-color-bg-subtle border-bottom-[var(--dm-border-width)_solid_var(--dm-color-border)] max-520:p-[var(--dm-space-3)_var(--dm-space-4)]" }, [
         View({ class: "grid w-control-height-base h-control-height-base flex-[0_0_auto] place-items-center text-color-primary bg-color-primary-soft border-[var(--dm-border-width)_solid_var(--dm-color-primary-border)] rounded-content" }, [
           Timeless.Icon({ name: "settings", size: 18 }),
         ]),

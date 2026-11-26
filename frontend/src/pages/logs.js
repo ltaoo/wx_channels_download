@@ -352,7 +352,7 @@ function LogsPageImportDialog(props) {
     () => [
       DialogTitle(
         {
-          class: "flex items-center gap-3 flex-[0_0_auto] p-[var(--dm-space-4)_var(--dm-space-12)_var(--dm-space-4)_var(--dm-space-5)] border-bottom-[var(--dm-border-width)_solid_var(--dm-content-border)]",
+          class: "flex items-center gap-3 flex-[0_0_auto] p-[var(--dm-space-4)_var(--dm-space-12)_var(--dm-space-4)_var(--dm-space-5)] bg-color-bg-subtle border-bottom-[var(--dm-border-width)_solid_var(--dm-content-border)]",
           attributes: { n: "logs-import-dialog-header" },
         },
         [
@@ -625,7 +625,7 @@ function LogsPageJsonPreviewDialog(props) {
     () => [
       DialogTitle(
         {
-          class: "flex items-center gap-3 flex-[0_0_auto] p-[var(--dm-space-4)_var(--dm-space-12)_var(--dm-space-4)_var(--dm-space-5)] border-bottom-[var(--dm-border-width)_solid_var(--dm-content-border)]",
+          class: "flex items-center gap-3 flex-[0_0_auto] p-[var(--dm-space-4)_var(--dm-space-12)_var(--dm-space-4)_var(--dm-space-5)] bg-color-bg-subtle border-bottom-[var(--dm-border-width)_solid_var(--dm-content-border)]",
           attributes: { n: "logs-json-preview-header" },
         },
         [
