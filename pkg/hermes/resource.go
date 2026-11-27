@@ -83,6 +83,9 @@ func (d *HermesEngine) download_resource(ctx context.Context, task *TaskJob, res
 		if prepared.Size < 0 {
 			prepared.Size = 0
 		}
+		if prepared.ResolvedEndpoint != nil {
+			candidate.endpoint = *prepared.ResolvedEndpoint
+		}
 		// An adapter-provided canonical MIME type carries media semantics that a
 		// CDN Content-Type can lose (for example, an audio-only MP4 advertised as
 		// video/mp4). Keep that explicit declaration; otherwise detect the MIME.
@@ -823,6 +826,14 @@ func (d *HermesEngine) probe_one_resource(ctx context.Context, task_id int, res 
 				Err(err), c.endpoint).
 				Msg("run - initial resource size probe failed; download phase will retry")
 			continue
+		}
+		if prepared.ResolvedEndpoint != nil {
+			for index := range res.Endpoints {
+				if res.Endpoints[index].ID == c.endpoint.ID && res.Endpoints[index].URL == c.endpoint.URL {
+					res.Endpoints[index] = *prepared.ResolvedEndpoint
+					break
+				}
+			}
 		}
 		if prepared.Size > 0 {
 			_ = d.update_resource_size(task_id, res.ID, prepared.Size)

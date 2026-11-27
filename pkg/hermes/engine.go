@@ -154,6 +154,8 @@ type PreparedResource struct {
 	SupportsRange bool
 	ContentType   string
 	ProbeData     []byte // First 512 bytes returned by probe request, used for magic bytes detection
+	// ResolvedEndpoint retains the source and safe request headers validated by probing.
+	ResolvedEndpoint *Endpoint
 }
 
 // ReadRequest describes the byte range the Writer wants to read from the protocol driver.

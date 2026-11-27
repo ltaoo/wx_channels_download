@@ -59,6 +59,19 @@ func (d *HTTPDriver) Prepare(ctx context.Context, endpoint hermes.Endpoint) (her
 		ContentType: resp.Header.Get("Content-Type"),
 		ProbeData:   probe_data,
 	}
+	if resp.Request != nil && resp.Request.URL != nil && resp.Request.URL.String() != endpoint.URL {
+		resolved := endpoint
+		resolved.URL = resp.Request.URL.String()
+		resolved.Headers = make(map[string]string)
+		// Use the redirected request's headers so stripped credentials stay stripped.
+		for name := range resp.Request.Header {
+			if !strings.EqualFold(name, "Range") {
+				resolved.Headers[name] = resp.Request.Header.Get(name)
+			}
+		}
+		resolved.Cookies = ""
+		prepared.ResolvedEndpoint = &resolved
+	}
 	if resp.StatusCode == http.StatusPartialContent {
 		start, end, total, ok := parse_content_range(resp.Header.Get("Content-Range"))
 		if !ok || start != 0 {
@@ -270,7 +283,7 @@ func (d *HTTPDriver) standard_http_client_for_family(raw_proxy_url, family strin
 	if family != "" {
 		transport.DialContext = hermes.HTTPDialContext(family)
 	}
-	client := &http.Client{Transport: transport}
+	client := &http.Client{Transport: transport, CheckRedirect: preserve_redirect_referer}
 	d.std_https[cache_key] = client
 	return client, nil
 }
@@ -302,7 +315,21 @@ func new_isolated_http_client(raw_proxy_url string) (*http.Client, *http.Transpo
 		return nil, nil, err
 	}
 	transport := new_standard_http_transport(parsed_proxy_url)
-	return &http.Client{Transport: transport}, transport, nil
+	return &http.Client{Transport: transport, CheckRedirect: preserve_redirect_referer}, transport, nil
+}
+
+func preserve_redirect_referer(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	if via[len(via)-1].URL.Scheme == "https" && req.URL.Scheme == "http" {
+		req.Header.Del("Referer")
+		return nil
+	}
+	if referer := via[0].Header.Get("Referer"); referer != "" {
+		req.Header.Set("Referer", referer)
+	}
+	return nil
 }
 
 func new_standard_http_transport(parsed_proxy_url *url.URL) *http.Transport {
