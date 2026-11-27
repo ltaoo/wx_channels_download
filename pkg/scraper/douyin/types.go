@@ -7,6 +7,7 @@ type VideoInfo struct {
 	VideoID  string // video ID
 	CoverURL string // cover image URL
 	Source   string // source identifier (mobile/web)
+	Video    *Video `json:"video,omitempty"` // playback representations from the web API
 }
 
 // DouyinWebVideoProfileResp is the web API response.
@@ -52,14 +53,16 @@ type BitRate struct {
 	BitRate  int      `json:"bit_rate"`
 	PlayAddr PlayAddr `json:"play_addr"`
 	GearName string   `json:"gear_name"`
+	IsH265   int      `json:"is_h265"`
 }
 
 // PlayAddr holds playback URL information.
 type PlayAddr struct {
-	Uri     string   `json:"uri"`
-	UrlList []string `json:"url_list"`
-	Width   int      `json:"width"`
-	Height  int      `json:"height"`
+	Uri      string   `json:"uri"`
+	UrlList  []string `json:"url_list"`
+	Width    int      `json:"width"`
+	Height   int      `json:"height"`
+	DataSize int64    `json:"data_size"`
 }
 
 // PlayAddrH264 holds H264 playback URL information.
