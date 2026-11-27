@@ -28,6 +28,8 @@ func (c *APIClient) SetupRoutes() {
 	c.engine.GET("/api/scraper/fetch", c.handle_scraper_fetch)
 	c.engine.GET("/api/scraper/job", c.handle_scraper_job)
 	c.engine.GET("/api/scraper/platform/status", c.handle_scraper_platform_status)
+	c.engine.GET("/api/scraper/platform/list", c.handle_scraper_platform_list)
+	c.engine.POST("/api/scraper/platform/fetch", c.handle_scraper_platform_fetch)
 	c.engine.POST("/api/scraper/fetch/interrupt", c.handle_scraper_fetch_interrupt)
 	c.engine.GET("/api/scraper/cache/content", c.handle_scraper_cache_content)
 	c.engine.POST("/api/scraper/cache/clear", c.handle_scraper_cache_clear)

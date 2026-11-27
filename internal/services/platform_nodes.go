@@ -46,6 +46,11 @@ var platform_display_names = map[string]string{
 	"vqq":         "腾讯视频",
 	"youku":       "优酷",
 	"singlefile":  "单文件",
+	"webpage":     "网页提取",
+	"69shuba":     "69书吧",
+	"fanqienovel": "番茄小说",
+	"ttk":         "TT看书",
+	"tencent":     "腾讯视频",
 }
 
 func platform_display_name(platform_id string) string {
@@ -283,14 +288,19 @@ func (n *platform_fetch_node) execute_list(process_context *engine.ProcessContex
 // (page may be empty for the first page) and returns the next marker; otherwise
 // it falls back to a single unpaginated snapshot.
 func (n *platform_fetch_node) fetch_home_list(builder adapter.HomeContentsBuilder, handler adapter.AdapterHandler, account *model.Account, scope, page string) ([]model.Content, string, string, error) {
-	if _, has_page := n.Config["page"]; has_page {
+	_, has_page := n.Config["page"]
+	return fetch_platform_home_list(builder, handler, account, scope, page, has_page)
+}
+
+func fetch_platform_home_list(builder adapter.HomeContentsBuilder, handler adapter.AdapterHandler, account *model.Account, scope, page string, paginate bool) ([]model.Content, string, string, error) {
+	if paginate {
 		if fetcher, ok := handler.(adapter.HomeDetailsFetcher); ok {
 			details, err := fetcher.FetchHomeDetails(account, scope, page)
 			if err != nil {
 				return nil, "", "", fmt.Errorf("获取主页列表失败: %w", err)
 			}
 			if details == nil {
-				return nil, "", "", fmt.Errorf("平台 %s 返回了空的主页列表", n.platform_id)
+				return nil, "", "", fmt.Errorf("平台 %s 返回了空的主页列表", handler.PlatformID())
 			}
 			used_scope := first_non_empty(details.Scope, scope)
 			return home_details_contents(details.Contents), details.NextMarker, used_scope, nil
@@ -301,7 +311,7 @@ func (n *platform_fetch_node) fetch_home_list(builder adapter.HomeContentsBuilde
 		return nil, "", "", fmt.Errorf("获取主页列表失败: %w", err)
 	}
 	if home == nil {
-		return nil, "", "", fmt.Errorf("平台 %s 返回了空的主页列表", n.platform_id)
+		return nil, "", "", fmt.Errorf("平台 %s 返回了空的主页列表", handler.PlatformID())
 	}
 	contents := home.Contents
 	if contents == nil {

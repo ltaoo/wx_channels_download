@@ -4,9 +4,11 @@ package application
 // effects. Concrete adapters register themselves with adapter.Register, and
 // every adapter listed here is initialized without a separate config gate.
 import (
+	_ "wx_channel/internal/adapter/69shuba"
 	_ "wx_channel/internal/adapter/bilibili"
 	_ "wx_channel/internal/adapter/cctv"
 	_ "wx_channel/internal/adapter/douyin"
+	_ "wx_channel/internal/adapter/fanqienovel"
 	_ "wx_channel/internal/adapter/feishu"
 	_ "wx_channel/internal/adapter/hongguo"
 	_ "wx_channel/internal/adapter/instagram"
@@ -15,8 +17,10 @@ import (
 	_ "wx_channel/internal/adapter/mgtv"
 	_ "wx_channel/internal/adapter/quark"
 	_ "wx_channel/internal/adapter/singlefile"
+	_ "wx_channel/internal/adapter/ttk"
 	_ "wx_channel/internal/adapter/ucdrive"
 	_ "wx_channel/internal/adapter/vqq"
+	_ "wx_channel/internal/adapter/webpage"
 	_ "wx_channel/internal/adapter/weibo"
 	_ "wx_channel/internal/adapter/wxchannels"
 	_ "wx_channel/internal/adapter/wxmp"

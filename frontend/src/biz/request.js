@@ -254,6 +254,14 @@ export function fetchScraperCacheContent(params) {
   return request.get("/api/scraper/cache/content", params);
 }
 
+export function fetchScraperPlatforms() {
+  return request.get("/api/scraper/platform/list");
+}
+
+export function fetchScraperPlatform(body) {
+  return request.post("/api/scraper/platform/fetch", body, { timeout: 300000 });
+}
+
 /** 获取 MCP 服务状态。 */
 export function fetchMcpStatus() {
   return request.get("/api/mcp/status");

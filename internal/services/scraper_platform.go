@@ -113,6 +113,8 @@ var scraper_raw_url_rules = []scraper_raw_url_rule{
 
 // Keep specific path rules before broad host rules. The first match wins.
 var scraper_http_url_rules = []scraper_http_url_rule{
+	{platform_id: "69shuba", exact_hosts: []string{"69shuba.com", "www.69shuba.com"}},
+	{platform_id: "fanqienovel", exact_hosts: []string{"fanqienovel.com", "www.fanqienovel.com"}},
 	{platform_id: "iqiyi", domain_hosts: []string{"iqiyi.com"}},
 	{platform_id: "youku", exact_hosts: []string{"v.youku.com", "m.youku.com", "www.youku.com", "youku.com"}},
 	{platform_id: "tencent", exact_hosts: []string{"v.qq.com"}},

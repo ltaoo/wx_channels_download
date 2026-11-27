@@ -181,6 +181,11 @@ const routes_configure = {
         component: lazy("src/pages/scraper.js"),
         // options: animated_route_options,
       },
+      platforms: {
+        title: "平台列表",
+        pathname: "/platforms",
+        component: lazy("src/pages/platforms.js"),
+      },
       content: {
         title: "内容管理",
         pathname: "/content",
