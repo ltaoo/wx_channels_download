@@ -1,0 +1,136 @@
+{
+  "get": {
+    "tags": [
+      "应用"
+    ],
+    "summary": "分页读取应用日志",
+    "description": "从每个日志文件尾部读取 max_bytes 字节，再按筛选条件分页；total 是读取窗口内的匹配总数。page_size 优先于 limit；默认 300，限制 1–2000；max_bytes 默认 2 MiB，限制 64 KiB–10 MiB。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "../components.json#/schemas/api_api_log_entry"
+                      }
+                    },
+                    "files": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "../components.json#/schemas/api_api_log_file_info"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "page_size": {
+                      "type": "integer"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "get_api_logs",
+    "parameters": [
+      {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 1,
+          "minimum": 1
+        },
+        "description": "页码，从 1 开始"
+      },
+      {
+        "name": "page_size",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 300,
+          "minimum": 1,
+          "maximum": 2000
+        },
+        "description": "每页条数"
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer"
+        },
+        "description": "page_size 的兼容别名，仅在未提供 page_size 时使用"
+      },
+      {
+        "name": "max_bytes",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 2097152,
+          "minimum": 65536,
+          "maximum": 10485760
+        },
+        "description": "每个日志文件的最大尾部读取字节数"
+      },
+      {
+        "name": "keyword",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "搜索关键词"
+      },
+      {
+        "name": "source",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "日志来源筛选"
+      },
+      {
+        "name": "levels",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "日志级别，多个值以逗号分隔"
+      }
+    ]
+  }
+}

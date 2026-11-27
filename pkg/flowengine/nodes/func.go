@@ -29,7 +29,7 @@ func (n *FuncNode) Execute(ctx *engine.ProcessContext) (bool, []string, error) {
 		return false, nil, err
 	}
 	if outKey, ok := n.Config["output_key"].(string); ok && outKey != "" {
-		ctx.Data[outKey] = out
+		ctx.SetOutput(n.Id, outKey, out)
 	}
 	next := ctx.EngineRef.GetNextNodeIDsFromDefinition(ctx, n.Id)
 	return true, next, nil

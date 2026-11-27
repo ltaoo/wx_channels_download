@@ -16,6 +16,21 @@
   };
 
   function apiOrigin() {
+    // Report back to the origin this page was actually served from. The main
+    // app sets __d_config.apiOrigin = location.origin, and injected pages get
+    // the downloader's real origin from the interceptor. Only fall back to the
+    // hardcoded loopback for setups that never provide a config.
+    const config = global.__d_config || global.config;
+    const configured =
+      config && typeof config.apiOrigin === "string"
+        ? config.apiOrigin.trim()
+        : "";
+    if (configured) {
+      return configured.replace(/\/+$/, "");
+    }
+    if (typeof global.API_ORIGIN === "string" && global.API_ORIGIN.trim()) {
+      return global.API_ORIGIN.trim().replace(/\/+$/, "");
+    }
     return API_ORIGIN;
   }
 

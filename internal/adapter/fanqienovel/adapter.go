@@ -30,6 +30,7 @@ var _ adapter.PlatformAdapter = (*FanqieNovelAdapter)(nil)
 var _ adapter.ProgressFetchAdapter = (*FanqieNovelAdapter)(nil)
 var _ adapter.ContextProgressFetchAdapter = (*FanqieNovelAdapter)(nil)
 var _ adapter.FetchCacheAdapter = (*FanqieNovelAdapter)(nil)
+var _ adapter.FetchDownloadTaskBuilder = (*FanqieNovelAdapter)(nil)
 var _ adapter.RuntimeAdapter = (*FanqieNovelAdapter)(nil)
 var _ adapter.RuntimeHandle = (*FanqieNovelAdapter)(nil)
 var _ adapter.Postprocessor = (*FanqieNovelAdapter)(nil)
@@ -302,6 +303,14 @@ func (a *FanqieNovelAdapter) BuildDownloadTask(content_json json.RawMessage, con
 		if err != nil {
 			return nil, err
 		}
+	}
+	return build_download_task(result, config_json, a.runtime_file_cache())
+}
+
+func (a *FanqieNovelAdapter) BuildDownloadTaskFromFetch(data any, config_json json.RawMessage) (*adapter.DownloadTaskResult, error) {
+	result, err := fanqie_result_from_fetch(data)
+	if err != nil {
+		return nil, err
 	}
 	return build_download_task(result, config_json, a.runtime_file_cache())
 }

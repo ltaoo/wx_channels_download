@@ -1,0 +1,63 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "重试自动化运行",
+    "description": "重新发起运行，use_current_definition 默认 false，沿用原运行定义；true 时使用当前工作流定义。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/model_FlowRunRecord"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_automation_retry_run",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "use_current_definition": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "example": {
+            "id": "run-demo",
+            "use_current_definition": false
+          }
+        }
+      }
+    }
+  }
+}

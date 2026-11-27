@@ -7,11 +7,11 @@ import (
 )
 
 func (c *APIClient) handle_update_check(ctx *gin.Context) {
-	service := c.application_update_service
-	if service == nil {
+	if c.service_app == nil || c.service_app.Update == nil {
 		result.Err(ctx, 503, "更新服务未初始化")
 		return
 	}
+	service := c.service_app.Update
 	status, err := service.Check(ctx.Request.Context())
 	if err != nil {
 		result.Err(ctx, 500, err.Error())
@@ -21,20 +21,20 @@ func (c *APIClient) handle_update_check(ctx *gin.Context) {
 }
 
 func (c *APIClient) handle_update_status(ctx *gin.Context) {
-	service := c.application_update_service
-	if service == nil {
+	if c.service_app == nil || c.service_app.Update == nil {
 		result.Err(ctx, 503, "更新服务未初始化")
 		return
 	}
+	service := c.service_app.Update
 	result.Ok(ctx, service.Status())
 }
 
 func (c *APIClient) handle_update_download(ctx *gin.Context) {
-	service := c.application_update_service
-	if service == nil {
+	if c.service_app == nil || c.service_app.Update == nil {
 		result.Err(ctx, 503, "更新服务未初始化")
 		return
 	}
+	service := c.service_app.Update
 	status, err := service.Start()
 	if err != nil {
 		result.Err(ctx, 409, err.Error())
@@ -44,11 +44,11 @@ func (c *APIClient) handle_update_download(ctx *gin.Context) {
 }
 
 func (c *APIClient) handle_update_restart(ctx *gin.Context) {
-	service := c.application_update_service
-	if service == nil {
+	if c.service_app == nil || c.service_app.Update == nil {
 		result.Err(ctx, 503, "更新服务未初始化")
 		return
 	}
+	service := c.service_app.Update
 	status, err := service.Restart()
 	if err != nil {
 		result.Err(ctx, 409, err.Error())

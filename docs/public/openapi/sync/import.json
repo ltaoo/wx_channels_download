@@ -1,0 +1,53 @@
+{
+  "post": {
+    "tags": [
+      "同步"
+    ],
+    "summary": "导入同步归档包",
+    "description": "需要配置非空 sync.token 并通过 Authorization: Bearer <token> 提交。Content-Type 必须为 application/x-tar，首个条目必须是 metadata.json（version=1，contents/tasks/resources，最大 256 MiB）。文件路径为 files/{resource_id}/final/file，或 recording/playback 下的相对路径。导入会更新匹配记录并替换对应文件。失败仍为 HTTP 200，code 可为 401、415 或 400。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/api_sync_import_result"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_sync_import",
+    "security": [
+      {
+        "syncToken": []
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/x-tar": {
+          "schema": {
+            "type": "string",
+            "format": "binary"
+          }
+        }
+      }
+    }
+  }
+}

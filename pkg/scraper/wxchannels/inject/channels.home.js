@@ -14,6 +14,7 @@ function __wx_update_home_download_btn($btn) {
 }
 
 function __wx_init_home_download_btn($btn) {
+  $btn.setAttribute("data-n", "home-download-button");
   $btn.classList.add("wx-home-download-btn");
   $btn.onclick = function (event) {
     if (!__wx_channels_store__.feed) {
@@ -50,10 +51,13 @@ function __wx_insert_download_btn($parent) {
  */
 function __wx_render_sider_tools() {
   const $fixed_sider = document.createElement("div");
+  $fixed_sider.setAttribute("data-n", "home-download-sidebar");
   $fixed_sider.className = "wx-sider";
   const $sider_bg = document.createElement("div");
+  $sider_bg.setAttribute("data-n", "home-download-sidebar-background");
   $sider_bg.className = "wx-sider-bg";
   const $tools = document.createElement("div");
+  $tools.setAttribute("data-n", "home-download-sidebar-tools");
   $tools.className = "wx-sider-tools";
   const $btn = document.createElement("div");
   $btn.className = "wx-sider-tools-btn";
@@ -83,8 +87,9 @@ async function __wx_insert_download_btn_to_home_page() {
 }
 
 WXU.observe_node({
-  selector: ".slides-item",
+  selector: ".slides-item .click-box.op-item",
   container: "#app",
+  loading: ".loading-content",
   onOk: function () {
     __wx_insert_download_btn_to_home_page();
   },

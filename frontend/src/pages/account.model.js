@@ -1,8 +1,10 @@
+import { create_list_model, create_list_request } from "@/list.model.js";
+import { track_error } from "@/utils.js";
+import { fetchAccountList, fetchAccountContents } from "@/biz/request.js";
 import { proxy_image_url } from "@/image-proxy.model.js";
-import {
-  content_type_label,
-  normalize_content_item,
-} from "./content.model.js";
+import { format_time } from "@/utils.js";
+
+import { content_type_label, normalize_content_item } from "./content.model.js";
 
 function first_non_empty(...values) {
   for (const value of values) {
@@ -32,9 +34,7 @@ function select_search(placeholder) {
 }
 
 function account_search_from_query(query = {}) {
-  const account_id = String(
-    first_non_empty(query.id, query.account_id),
-  ).trim();
+  const account_id = String(first_non_empty(query.id, query.account_id)).trim();
   return {
     keyword: String(first_non_empty(query.keyword, account_id)),
     account_id,
@@ -131,7 +131,7 @@ function format_content_count(value) {
 }
 
 function account_home_default_scope(account) {
-  const platform_id = String(account && account.platform_id || "").trim();
+  const platform_id = String((account && account.platform_id) || "").trim();
   if (platform_id === "zhihu") return "answers";
   if (platform_id === "bilibili") return "video";
   if (platform_id === "douyin") return "posts";
@@ -155,7 +155,9 @@ function normalize_home_tab(raw) {
       ),
     ).trim(),
     content_types: Array.isArray(source.content_types)
-      ? source.content_types.map((item) => String(item || "").trim()).filter(Boolean)
+      ? source.content_types
+          .map((item) => String(item || "").trim())
+          .filter(Boolean)
       : [],
   };
 }
@@ -167,13 +169,13 @@ function normalize_home_detail_content(raw, account) {
     source.object_desc,
     source.ObjectDesc,
   );
-  const object_desc = object_desc_source && typeof object_desc_source === "object"
-    ? object_desc_source
-    : {};
+  const object_desc =
+    object_desc_source && typeof object_desc_source === "object"
+      ? object_desc_source
+      : {};
   const media_list = Array.isArray(object_desc.media) ? object_desc.media : [];
-  const media = media_list[0] && typeof media_list[0] === "object"
-    ? media_list[0]
-    : {};
+  const media =
+    media_list[0] && typeof media_list[0] === "object" ? media_list[0] : {};
   const media_type = number_or_default(
     first_non_empty(object_desc.mediaType, media.mediaType),
     0,
@@ -187,34 +189,49 @@ function normalize_home_detail_content(raw, account) {
       source.type,
       source.Type,
     ),
-  ).trim().toLowerCase();
-  const content_type = declared_type || (media_type === 2
-    ? "album"
-    : media_type === 9
-      ? "live"
-      : media_list.length > 0
-        ? "video"
-        : "text");
+  )
+    .trim()
+    .toLowerCase();
+  const content_type =
+    declared_type ||
+    (media_type === 2
+      ? "album"
+      : media_type === 9
+        ? "live"
+        : media_list.length > 0
+          ? "video"
+          : "text");
   const media_url = String(first_non_empty(media.url, media.URL)).trim();
   const media_token = String(
     first_non_empty(media.urlToken, media.URLToken),
   ).trim();
-  const preview_images = media_list.map((item) => {
-    const item_url = String(first_non_empty(item.url, item.URL)).trim();
-    const item_token = String(
-      first_non_empty(item.urlToken, item.URLToken),
-    ).trim();
-    return proxy_image_url(
-      account && account.platform_id,
-      first_non_empty(
-        item.thumbUrl,
-        item.coverUrl,
-        item.thumb_url,
-        item.cover_url,
-        item_url ? `${item_url}${item_token}` : "",
-      ),
-    );
-  }).filter(Boolean);
+  const decode_key = String(
+    first_non_empty(
+      media.decodeKey,
+      media.DecodeKey,
+      media.decode_key,
+      source.decode_key,
+      source.decodeKey,
+    ),
+  ).trim();
+  const preview_images = media_list
+    .map((item) => {
+      const item_url = String(first_non_empty(item.url, item.URL)).trim();
+      const item_token = String(
+        first_non_empty(item.urlToken, item.URLToken),
+      ).trim();
+      return proxy_image_url(
+        account && account.platform_id,
+        first_non_empty(
+          item.thumbUrl,
+          item.coverUrl,
+          item.thumb_url,
+          item.cover_url,
+          item_url ? `${item_url}${item_token}` : "",
+        ),
+      );
+    })
+    .filter(Boolean);
   const fallback_cover_url = proxy_image_url(
     account && account.platform_id,
     first_non_empty(
@@ -228,12 +245,27 @@ function normalize_home_detail_content(raw, account) {
   if (preview_images.length === 0 && fallback_cover_url) {
     preview_images.push(fallback_cover_url);
   }
+  // Live feed items expose media dimensions; DB-backed associated records only
+  // carry cover dimensions. Fall back to the cover so the waterfall keeps its
+  // varied card heights instead of collapsing to a uniform grid.
   const media_width = number_or_default(
-    first_non_empty(media.width, media.Width),
+    first_non_empty(
+      media.width,
+      media.Width,
+      source.cover_width,
+      source.coverWidth,
+      source.CoverWidth,
+    ),
     0,
   );
   const media_height = number_or_default(
-    first_non_empty(media.height, media.Height),
+    first_non_empty(
+      media.height,
+      media.Height,
+      source.cover_height,
+      source.coverHeight,
+      source.CoverHeight,
+    ),
     0,
   );
 
@@ -259,6 +291,7 @@ function normalize_home_detail_content(raw, account) {
       source.sourceUrl,
       media_url ? `${media_url}${media_token}` : "",
     ),
+    decode_key,
     cover_url: first_non_empty(
       media.thumbUrl,
       media.coverUrl,
@@ -276,15 +309,10 @@ function normalize_home_detail_content(raw, account) {
       source.publish_time,
     ),
     preview_images,
-    preview_aspect_ratio: media_width > 0 && media_height > 0
-      ? media_width / media_height
-      : 0,
+    preview_aspect_ratio:
+      media_width > 0 && media_height > 0 ? media_width / media_height : 0,
     duration: number_or_default(
-      first_non_empty(
-        media.videoPlayLen,
-        media.duration,
-        source.duration,
-      ),
+      first_non_empty(media.videoPlayLen, media.duration, source.duration),
       0,
     ),
     account_name: first_non_empty(
@@ -300,9 +328,7 @@ function normalize_home_details_response(data) {
     scopes: Array.isArray(source.scopes) ? source.scopes : [],
     scope: String(first_non_empty(source.scope, source.Scope)).trim(),
     contents: Array.isArray(source.contents) ? source.contents : [],
-    next_marker: String(
-      first_non_empty(source.next_marker, source.nextMarker),
-    ),
+    next_marker: String(first_non_empty(source.next_marker, source.nextMarker)),
   };
 }
 
@@ -311,94 +337,93 @@ function AccountViewModel(props) {
   const initial_search = account_search_from_query(
     props.view && props.view.query,
   );
-  const accounts_ = refarr([]);
-  const total_ = ref(0);
-  const page_ = ref(1);
-  const page_size_ = ref(PAGE_SIZE_DEFAULT);
   const keyword_ = ref(initial_search.keyword);
   const account_id_ = ref(initial_search.account_id);
   const platform_id_ = ref(initial_search.platform_id);
-  const initial_ = ref(true);
-  const loading_ = ref(false);
-  const error_ = ref("");
   const copied_account_id_ = ref("");
   const selected_account_ = ref(null);
   const drawer_tabs_ = refarr([]);
   const drawer_scope_ = ref("");
-  const drawer_contents_ = refarr([]);
-  const drawer_initial_ = ref(true);
-  const drawer_loading_ = ref(false);
   const drawer_loading_more_ = ref(false);
+  const drawer_resetting_ = ref(false);
   const drawer_next_marker_ = ref("");
-  const drawer_more_error_ = ref("");
-  const drawer_error_ = ref("");
-  let request_sequence = 0;
-  let drawer_request_sequence = 0;
+  const drawer_more_error_ = track_error(ref(""), props.tip);
+  const drawer_player_content_ = ref(null);
+  const drawer_player_download_loading_ = ref(false);
+  const drawer_player_download_error_ = track_error(ref(""), props.tip);
+  const drawer_player_download_success_ = ref("");
+  const content_detail_id_ = ref("");
   let copy_feedback_timer = null;
+  let drawer_load_token = 0;
 
   const reqs = {
     account: {
-      list: new Timeless.kit.RequestCore(
-        (params) => window.request.get("/api/account/list", params),
-        { client: props.client },
-      ),
-      details: new Timeless.kit.RequestCore(
-        (request) => window.request.get(
-          `/api/account/${encodeURIComponent(request.scope)}/content/list`,
-          request.params,
-        ),
-        { client: props.client },
-      ),
+      details: new Timeless.kit.RequestCore(fetchAccountContents, {
+        client: props.client,
+      }),
     },
   };
+
+  const drawer_list$ = create_list_model({
+    request: create_list_request(async (params) => {
+      const result = await reqs.account.details.run({
+        scope: params.scope,
+        params: { id: params.account.id, page: String(params.next_marker || "") },
+      });
+      if (result.error) throw result.error;
+      const details = normalize_home_details_response(result.data);
+      const seen = new Set(params.page > 1 ? drawer_contents_.value.map((content) => content.id) : []);
+      const list = details.contents.map((content) => normalize_home_detail_content(content, params.account))
+        .filter((content) => {
+          if (!content.id) return true;
+          if (seen.has(content.id)) return false;
+          seen.add(content.id);
+          return true;
+        });
+      return { ...details, list, page: params.page, page_size: Math.max(1, list.length),
+        isEnd: !details.next_marker };
+    }),
+    tip(tip) { if (!drawer_loading_more_.value) props.tip(tip); },
+  });
+  const { rows: drawer_contents_, initial: drawer_initial_, loading: drawer_loading_, error: drawer_error_ } = drawer_list$.state;
+
+  const list$ = create_list_model({
+    request: new Timeless.kit.RequestCore(fetchAccountList, { client: props.client }),
+    page_size: PAGE_SIZE_DEFAULT,
+    tip: props.tip,
+    normalize(data, params) {
+      const response = normalize_account_list_response(data, params.page, params.page_size);
+      return { ...response, list: response.list.map(normalize_account_item) };
+    },
+  });
+  const { rows: accounts_, total: total_, page: page_, page_size: page_size_,
+    initial: initial_, loading: loading_, error: error_, status: list_status_ } = list$.state;
 
   const page_count_ = combine(
     { total: total_, pageSize: page_size_ },
     (state) =>
       Math.max(1, Math.ceil(state.total / Math.max(1, state.pageSize))),
   );
-  const list_status_ = combine(
-    {
-      initial: initial_,
-      error: error_,
-      accounts: accounts_,
-    },
-    (state) => {
-      if (state.initial) return "initial";
-      if (state.error) return "error";
-      return state.accounts.length === 0 ? "empty" : "normal";
-    },
-  );
-  const range_text_ = combine(
-    {
-      total: total_,
-      page: page_,
-      pageSize: page_size_,
-      count: computed(accounts_, (accounts) => accounts.length),
-    },
-    (state) => {
-      if (!state.total || !state.count) {
-        return `共 ${state.total || 0} 个账号`;
-      }
-      const start = (state.page - 1) * state.pageSize + 1;
-      return `第 ${start}-${start + state.count - 1} 个，共 ${state.total} 个账号`;
-    },
-  );
+  const range_text_ = computed(total_, (total) => `共 ${total || 0} 个账号`);
   const drawer_status_ = combine(
     {
+      // A fresh account/scope resets the shared list; keep the skeleton up
+      // until the latest request settles so stale rows never flash.
+      resetting: drawer_resetting_,
       initial: drawer_initial_,
+      loading: drawer_loading_,
       error: drawer_error_,
       count: computed(drawer_contents_, (contents) => contents.length),
     },
     (state) => {
-      if (state.initial) return "initial";
+      if (state.resetting || state.initial) return "initial";
+      if (state.loading && state.count === 0) return "loading";
       if (state.error && state.count === 0) return "error";
       return state.count === 0 ? "empty" : "normal";
     },
   );
-  const drawer_empty_description_ = computed(
-    drawer_scope_,
-    (scope) => scope ? "该分类暂未返回内容" : "点击上方 tab 获取对应内容",
+  const drawer_empty_description_ = computed(drawer_scope_, (scope) =>
+    scope ? "该分类暂未返回内容" : "点击上方 tab 获取对应内容",
   );
 
   const ui = {
@@ -454,7 +479,7 @@ function AccountViewModel(props) {
       },
     }),
     account_contents_drawer$: new Timeless.vm.DialogCore({
-      title: "账号内容",
+      title: "关联内容",
       closeable: true,
       footer: false,
     }),
@@ -468,7 +493,29 @@ function AccountViewModel(props) {
         );
       },
     }),
+    btn_download_player$: new Timeless.vm.ButtonCore({
+      variant: "primary",
+      onClick() {
+        return create_player_download_task(drawer_player_content_.value);
+      },
+    }),
+    player_drawer$: new Timeless.vm.DialogCore({
+      title: "视频播放",
+      closeable: true,
+      footer: false,
+      onClose() {
+        drawer_player_content_.as(null);
+      },
+    }),
+    content_detail_drawer$: new Timeless.vm.DialogCore({
+      title: "内容详情",
+      closeable: true,
+      footer: false,
+    }),
   };
+  ui.content_detail_drawer$.onHidden(() => {
+    content_detail_id_.as("");
+  });
 
   keyword_.subscribe({
     onChange(value) {
@@ -493,6 +540,12 @@ function AccountViewModel(props) {
       ui.btn_drawer_retry$.setLoading(Boolean(loading));
     },
   });
+
+  drawer_player_download_loading_.subscribe({
+    onChange(loading) {
+      ui.btn_download_player$.setLoading(Boolean(loading));
+    },
+  });
   function sync_search_location() {
     const keyword = String(keyword_.value || "").trim();
     const account_id = String(account_id_.value || "").trim();
@@ -507,15 +560,8 @@ function AccountViewModel(props) {
     );
   }
 
-  async function load(targetPage = page_.value) {
-    const sequence = ++request_sequence;
-    const requestedPage = Math.max(1, Number(targetPage) || 1);
-    loading_.as(true);
-    error_.as("");
-
+  function load(target_page = 1) {
     const params = {
-      page: requestedPage,
-      page_size: page_size_.value,
     };
     const keyword = String(keyword_.value || "").trim();
     if (keyword && keyword !== account_id_.value) {
@@ -529,27 +575,7 @@ function AccountViewModel(props) {
     if (platform_id) {
       params.platform_id = platform_id;
     }
-    const r = await reqs.account.list.run(params);
-    if (sequence !== request_sequence) {
-      return r;
-    }
-    loading_.as(false);
-    if (r.error) {
-      error_.as(r.error.message || String(r.error));
-      initial_.as(false);
-      return r;
-    }
-    const data = normalize_account_list_response(
-      r.data,
-      requestedPage,
-      page_size_.value,
-    );
-    accounts_.as(data.list.map(normalize_account_item), { reset: true });
-    total_.as(data.total);
-    page_.as(data.page);
-    page_size_.as(data.page_size);
-    initial_.as(false);
-    return r;
+    return list$.search({ ...params, page: Math.max(1, Number(target_page) || 1) });
   }
 
   function set_keyword(value) {
@@ -566,73 +592,85 @@ function AccountViewModel(props) {
       Math.max(1, Number(target_page) || 1),
     );
     if (page === page_.value || loading_.value) return null;
-    return load(page);
+    return list$.goto(page);
   }
 
   async function load_account_contents(account, scope, options = {}) {
-    if (!account || !account.id || !scope) return null;
+    if (!account?.id || !scope) return null;
     const append = Boolean(options.append);
     if (append && drawer_loading_more_.value) return null;
-    const sequence = ++drawer_request_sequence;
+    // Reset the shared drawer list before a fresh load so the waterfall shows
+    // the skeleton instead of the previous account's rows. The token lets a
+    // superseded load settle without clobbering the newer request's state.
+    const token = append ? drawer_load_token : ++drawer_load_token;
+    if (!append) {
+      drawer_list$.clear();
+      drawer_resetting_.as(true);
+    }
     drawer_scope_.as(String(scope));
     drawer_loading_more_.as(append);
     drawer_more_error_.as("");
-    if (!append) {
-      drawer_initial_.as(true);
-      drawer_loading_.as(true);
-      drawer_error_.as("");
-      drawer_next_marker_.as("");
-      drawer_contents_.as([], { reset: true });
-    }
-
-    const result = await reqs.account.details.run({
-      scope: String(scope),
-      params: {
-        id: account.id,
-        page: String(
-          options.page || (append ? drawer_next_marker_.value : ""),
-        ),
-      },
-    });
-    if (sequence !== drawer_request_sequence) return result;
-    drawer_loading_.as(false);
+    const result = await (append ? drawer_list$.loadMore() : drawer_list$.search({ account, scope: String(scope) }));
     drawer_loading_more_.as(false);
-    drawer_initial_.as(false);
+    if (token !== drawer_load_token) return result;
+    drawer_resetting_.as(false);
+    if (!result) return result;
     if (result.error) {
-      const message = result.error.message || String(result.error);
       if (append) {
-        drawer_more_error_.as(message);
+        drawer_more_error_.as(result.error.message || String(result.error));
       } else {
-        drawer_error_.as(message);
+        // Keep the error state authoritative even if a superseded request
+        // repopulated the shared list in the meantime. Only drop the rows —
+        // clearing the whole list would flip it back to "initial".
+        drawer_list$.setDataSource([]);
       }
       return result;
     }
-    const details = normalize_home_details_response(result.data);
-    drawer_tabs_.as(
-      details.scopes.map(normalize_home_tab).filter((tab) => tab.scope),
-      { reset: true },
-    );
+    const details = drawer_list$.request.response;
+    drawer_tabs_.as(details.scopes.map(normalize_home_tab).filter((tab) => tab.scope), { reset: true });
     drawer_scope_.as(details.scope || String(scope));
-    const loaded_contents = details.contents.map((content) =>
-      normalize_home_detail_content(content, account)
-    );
-    const contents = append
-      ? [...drawer_contents_.value, ...loaded_contents]
-      : loaded_contents;
-    const unique_contents = [];
-    const seen = new Set();
-    contents.forEach((content, index) => {
-      const key = String(content.id || `${content.content_type}:${index}`);
-      if (seen.has(key)) return;
-      seen.add(key);
-      unique_contents.push(content);
-    });
-    drawer_contents_.as(unique_contents, { reset: true });
-    drawer_next_marker_.as(details.next_marker);
+    drawer_next_marker_.as(details.next_marker || "");
     return result;
   }
 
+  async function create_player_download_task(content) {
+    if (drawer_player_download_loading_.value || !content) return null;
+    drawer_player_download_loading_.as(true);
+    drawer_player_download_error_.as("");
+    drawer_player_download_success_.as("");
+
+    try {
+      if (!window.dl$) throw new Error("下载服务尚未初始化");
+      const result = await window.dl$.create(content, {
+        platform: "wxchannels",
+        filename: content.title || content.external_id || "",
+      });
+      const error = result.error || result.data.error;
+      if (error) {
+        drawer_player_download_error_.as(error.message || String(error));
+        return result;
+      }
+
+      drawer_player_download_success_.as("下载任务创建成功");
+      props.tip({ msg: ["下载任务创建成功"], type: "success" });
+      return result;
+    } catch (error) {
+      drawer_player_download_error_.as(
+        error.message || String(error),
+      );
+      return Timeless.Result.Err(error);
+    } finally {
+      drawer_player_download_loading_.as(false);
+    }
+  }
+
   const methods = {
+    tip: props.tip,
+    destroy() {
+      list$.destroy();
+      drawer_list$.destroy();
+      clearTimeout(copy_feedback_timer);
+    },
     ready() {
       return load(1);
     },
@@ -646,10 +684,10 @@ function AccountViewModel(props) {
     setKeyword: set_keyword,
     changePage: change_page,
     previousPage() {
-      return change_page(page_.value - 1);
+      return page_.value > 1 && !loading_.value ? list$.prev() : null;
     },
     nextPage() {
-      return change_page(page_.value + 1);
+      return page_.value < page_count_.value && !loading_.value ? list$.next() : null;
     },
     copyId(account) {
       const result = props.app.copy(account.id);
@@ -662,36 +700,51 @@ function AccountViewModel(props) {
       const scope = account_home_default_scope(account);
       selected_account_.as(account);
       drawer_tabs_.as([], { reset: true });
+      drawer_player_content_.as(null);
+      if (content_detail_id_.value) {
+        ui.content_detail_drawer$.hide();
+        content_detail_id_.as("");
+      }
       drawer_scope_.as(scope);
       ui.account_contents_drawer$.show();
       return load_account_contents(account, scope);
     },
     selectHomeTab(tab) {
       const scope = String((tab && tab.scope) || "").trim();
-      if (
-        !scope ||
-        drawer_loading_.value ||
-        drawer_loading_more_.value
-      ) return null;
+      if (!scope || drawer_loading_.value || drawer_loading_more_.value)
+        return null;
       return load_account_contents(selected_account_.value, scope);
     },
     loadMoreAccountContents() {
       const account = selected_account_.value;
       const scope = drawer_scope_.value;
       const page = drawer_next_marker_.value;
-      if (!account || !scope || !page || drawer_loading_more_.value) return null;
+      if (!account || !scope || !page || drawer_loading_more_.value)
+        return null;
       return load_account_contents(account, scope, { append: true, page });
     },
     openContent(content) {
-      if (content && content.url) props.app.openWindow(content.url);
+      const content_id = String(
+        (content && (content.id || content.ID)) || "",
+      ).trim();
+      if (!content_id) return null;
+      content_detail_id_.as(content_id);
+      ui.content_detail_drawer$.show();
+      return null;
+    },
+    closeContentPlayer() {
+      ui.player_drawer$.hide();
+      drawer_player_content_.as(null);
     },
     platformName: account_platform_name,
     contentTypeLabel: content_type_label,
-    formatTime: window.format_time,
+    formatTime: format_time,
     formatContentCount: format_content_count,
   };
 
   const state = {
+    drawer_list: drawer_list$,
+    list: list$,
     accounts: accounts_,
     total: total_,
     page: page_,
@@ -713,6 +766,11 @@ function AccountViewModel(props) {
     drawer_loading_more: drawer_loading_more_,
     drawer_more_error: drawer_more_error_,
     drawer_error: drawer_error_,
+    drawer_player_content: drawer_player_content_,
+    drawer_player_download_error: drawer_player_download_error_,
+    drawer_player_download_loading: drawer_player_download_loading_,
+    drawer_player_download_success: drawer_player_download_success_,
+    content_detail_id: content_detail_id_,
     drawer_status: drawer_status_,
     drawer_empty_description: drawer_empty_description_,
   };

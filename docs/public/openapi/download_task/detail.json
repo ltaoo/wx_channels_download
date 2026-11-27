@@ -4,7 +4,7 @@
       "下载任务"
     ],
     "summary": "获取下载任务详情",
-    "description": "返回一个任务、关联内容与账号，以及增加了本地路径、文件类型、访问 URL 和存在性标记的文件列表。所有业务响应的 HTTP 状态码均为 200。",
+    "description": "返回一个任务、关联内容与账号，以及增加了本地路径、文件类型、访问 URL 和存在性标记的文件列表。所有业务响应的 HTTP 状态码均为 200。 文件项还包含 file_url、playback_available；直播 STREAM 资源带 playback_url，可读取 HLS 清单。playback_available=false 表示尚无可播放清单。",
     "parameters": [
       {
         "name": "id",
@@ -88,7 +88,8 @@
                         "local_path": "/absolute/path/downloads/示例视频.mp4",
                         "file_type": "video",
                         "file_url": "/api/file?path=%2Fabsolute%2Fpath%2Fdownloads%2F%E7%A4%BA%E4%BE%8B%E8%A7%86%E9%A2%91.mp4",
-                        "exists": true
+                        "exists": true,
+                        "playback_available": false
                       }
                     ],
                     "file_count": 1,

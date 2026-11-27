@@ -6,11 +6,13 @@
   }
   const {
     build_download_article,
+    collect_finder_feeds,
     collect_push_article_entries,
     first_non_empty,
     get_page_data_value,
     get_url_param,
     parse_official_account_msg_list,
+    wxmp_article_downloadable,
   } = window.WXMPUtils;
 
   var APIHostname = WXEnv.get("apiOrigin");
@@ -138,15 +140,40 @@
 
   async function create_download_task(popover$, $btn) {
     WXU.log.Info().Msg("[mp.wx.js]create_download_task");
-    const [error, data] = await WXU.downloader.create([window.cgiDataNew], {
-      platform: "wxmp",
-    });
-    if (error) {
-      WXU.log.Error(error).Msg("[mp.wx.js]create failed");
-      WXU.error({ msg: error.message, source: "mp.main.js:189" });
+    // 正文走 wxmp；内嵌的视频号 feed 由 interceptor 捕获后走 wxchannels
+    // （与视频号页面一致的解密和地址规整），两者互不替代。文章正文为空时
+    // 不再提交 wxmp 任务，否则只会得到一个没有端点的资源。
+    const pending_tasks = [];
+    if (wxmp_article_downloadable(window.cgiDataNew)) {
+      pending_tasks.push({ feeds: [window.cgiDataNew], platform: "wxmp" });
+    }
+    const finder_feeds = collect_finder_feeds();
+    if (finder_feeds.length) {
+      pending_tasks.push({ feeds: finder_feeds, platform: "wxchannels" });
+    }
+    if (!pending_tasks.length) {
+      WXU.error({
+        msg: "当前文章没有可下载的内容",
+        source: "mp.main.js:189",
+      });
       return;
     }
-    if (data.skipped) {
+    let created = 0;
+    for (const task of pending_tasks) {
+      const [error, data] = await WXU.downloader.create(task.feeds, {
+        platform: task.platform,
+      });
+      if (error) {
+        WXU.log.Error(error).Msg("[mp.wx.js]create failed");
+        WXU.error({ msg: error.message, source: "mp.main.js:189" });
+        return;
+      }
+      if (!data || data.skipped) {
+        continue;
+      }
+      created += 1;
+    }
+    if (!created) {
       return;
     }
     WXU.toast("创建下载任务成功");
@@ -452,6 +479,9 @@
         );
         if (!article.bizuin || !article.mid || !article.user_name) {
           throw new Error("文章信息不完整，无法创建下载任务");
+        }
+        if (!wxmp_article_downloadable(article)) {
+          throw new Error("该文章没有可下载的正文内容");
         }
         if (!WXU.downloader || typeof WXU.downloader.create !== "function") {
           throw new Error("下载器尚未就绪");

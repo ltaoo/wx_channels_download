@@ -17,7 +17,6 @@ import (
 
 	"wx_channel/frontend"
 	result "wx_channel/internal/apiresult"
-	"wx_channel/internal/config"
 	"wx_channel/internal/logtime"
 )
 
@@ -68,9 +67,6 @@ func (c *APIClient) render_frontend_html(data []byte) []byte {
 		max_running = 3
 	}
 	frontend_variables := map[string]any{
-		"apiHost":                    config.APIClientHost(c.cfg.Hostname, c.cfg.Port),
-		"apiOrigin":                  config.APIClientOrigin(c.cfg.Protocol, c.cfg.Hostname, c.cfg.Port),
-		"apiProtocol":                c.cfg.Protocol,
 		"remoteServerEnabled":        c.cfg.Original.GetBool("download.remoteServer.enabled"),
 		"remoteServerOrigin":         fmt.Sprintf("%s://%s:%d", c.cfg.RemoteServerProtocol, c.cfg.RemoteServerHostname, c.cfg.RemoteServerPort),
 		"maxRunning":                 max_running,
@@ -595,10 +591,10 @@ func set_frontend_html_cache_headers(header http.Header) {
 }
 
 func (c *APIClient) is_logging_enabled() bool {
-	if c.cfg == nil || c.cfg.Original == nil {
+	if c.cfg == nil || c.cfg.Original == nil || c.logger == nil {
 		return false
 	}
-	return c.cfg.Original.LogPath() != "" || c.cfg.Original.GetBool("log.enabled")
+	return zerolog.GlobalLevel() < zerolog.Disabled && c.logger.GetLevel() < zerolog.Disabled
 }
 
 // handle_frontend_tip handles frontend log/tip messages posted from injected pages.

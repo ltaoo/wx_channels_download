@@ -38,11 +38,12 @@ type HomeResult struct {
 
 // HomeContent is one video or image note rendered in a user's works tab.
 type HomeContent struct {
-	ID       string `json:"id"`
-	Type     string `json:"type"`
-	Title    string `json:"title"`
-	URL      string `json:"url"`
-	CoverURL string `json:"cover_url,omitempty"`
+	ID       string          `json:"id"`
+	Type     string          `json:"type"`
+	Title    string          `json:"title"`
+	URL      string          `json:"url"`
+	CoverURL string          `json:"cover_url,omitempty"`
+	Raw      json.RawMessage `json:"raw,omitempty"`
 }
 
 // HomeContentList is the structured works list from a Douyin user page.
@@ -125,7 +126,7 @@ func (c *Client) FetchHome(id string) (*HomeResult, error) {
 // slower rendered-page compatibility fallback.
 func (c *Client) fetch_home_prefer_api(id string, page_url string, require_pagination bool) (*HomeResult, error) {
 	if cached_home, ok, cache_err := c.read_home_cache(page_url, douyin_home_cache_ttl); cache_err == nil && ok {
-		if !require_pagination || cached_home.PaginationKnown {
+		if !require_pagination || home_cache_has_raw_items(cached_home) {
 			return cached_home, nil
 		}
 	} else if cache_err != nil {
@@ -139,7 +140,7 @@ func (c *Client) fetch_home_prefer_api(id string, page_url string, require_pagin
 		return home, nil
 	}
 	if cached_home, ok, cache_err := c.read_home_cache(page_url, 0); cache_err == nil && ok {
-		if !require_pagination || cached_home.PaginationKnown {
+		if !require_pagination || home_cache_has_raw_items(cached_home) {
 			c.logger.Warn().Err(api_err).Str("url", page_url).Msg("douyin home: works API failed, using stale cache")
 			return cached_home, nil
 		}
@@ -147,6 +148,18 @@ func (c *Client) fetch_home_prefer_api(id string, page_url string, require_pagin
 		c.logger.Warn().Err(cache_err).Str("url", page_url).Msg("douyin home: read stale cache failed")
 	}
 	return nil, api_err
+}
+
+func home_cache_has_raw_items(home *HomeResult) bool {
+	if !home.PaginationKnown {
+		return false
+	}
+	for _, item := range home.Contents {
+		if len(item.Raw) == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Client) fetch_home_live(id string, page_url string) (*HomeResult, error) {

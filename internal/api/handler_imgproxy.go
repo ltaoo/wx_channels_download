@@ -3,11 +3,11 @@ package api
 import (
 	"fmt"
 	"net/http"
-	"sync"
 
 	"github.com/gin-gonic/gin"
 
 	"wx_channel/pkg/clawreq"
+	"wx_channel/pkg/util"
 )
 
 func (c *APIClient) handle_img_proxy(ctx *gin.Context) {
@@ -17,7 +17,12 @@ func (c *APIClient) handle_img_proxy(ctx *gin.Context) {
 		return
 	}
 
-	resp, err := c.get_clawreq_client().Get(ctx.Request.Context(), raw_url,
+	client := c.get_clawreq_client()
+	if client == nil {
+		ctx.Status(http.StatusBadGateway)
+		return
+	}
+	resp, err := client.Get(ctx.Request.Context(), raw_url,
 		clawreq.WithHeader("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"),
 	)
 	if err != nil {
@@ -29,20 +34,21 @@ func (c *APIClient) handle_img_proxy(ctx *gin.Context) {
 		return
 	}
 
-	content_type := resp.ContentType()
+	content_type := util.SafeImageContentType(resp.Body)
 	if content_type == "" {
-		content_type = "image/jpeg"
+		ctx.JSON(http.StatusBadGateway, gin.H{"code": -1, "msg": "upstream did not return a safe image"})
+		return
 	}
 
 	ctx.Header("Content-Type", content_type)
 	ctx.Header("Cache-Control", "public, max-age=31536000, immutable")
+	ctx.Header("X-Content-Type-Options", "nosniff")
+	ctx.Header("Content-Security-Policy", "sandbox; default-src 'none'")
 	ctx.Data(resp.StatusCode, content_type, resp.Body)
 }
 
-var clawreq_init_once sync.Once
-
 func (c *APIClient) get_clawreq_client() *clawreq.Client {
-	clawreq_init_once.Do(func() {
+	c.claw_init_once.Do(func() {
 		client, err := clawreq.New(clawreq.Config{
 			Profile:         clawreq.ProfileChrome,
 			FollowRedirects: true,

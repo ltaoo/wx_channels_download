@@ -297,6 +297,9 @@ func (p *SunnyNetProxy) HandleHTTPRequest(Conn SunnyNet.ConnHTTP) {
 			case *SunnyNetPlugin:
 				if hostMatches(host, pl.Match) {
 					log.Printf("[SunnyNet] Match host: %s, pattern: %s\n", host, pl.Match)
+					if pl.OnRequest != nil {
+						pl.OnRequest(ctx)
+					}
 					if pl.Target != nil {
 						log.Printf("[SunnyNet] Target found: %+v\n", pl.Target)
 						targetProto := strings.ToLower(pl.Target.Protocol)
@@ -335,7 +338,6 @@ func (p *SunnyNetProxy) HandleHTTPRequest(Conn SunnyNet.ConnHTTP) {
 						// Conn.SetAgent(fmt.Sprintf("%s:%d", targetHost, targetPort))
 						return
 					}
-					pl.OnRequest(ctx)
 				}
 			}
 		}

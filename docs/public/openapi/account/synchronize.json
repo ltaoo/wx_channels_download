@@ -1,0 +1,83 @@
+{
+  "post": {
+    "tags": [
+      "账号"
+    ],
+    "summary": "查询主页分区或同步账号内容",
+    "description": "account_id 是归档账号主键。scope 省略时仅返回 tabs、空 list 和 total=0；指定有效分区后构建并归档该分区内容。仅支持提供主页同步能力的平台。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "tabs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "scope": {
+                      "type": "string"
+                    },
+                    "list": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "../components.json#/schemas/model_Content"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_account_synchronize",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "account_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "scope": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "account_id"
+            ]
+          },
+          "example": {
+            "account_id": "bilibili:123456"
+          }
+        }
+      }
+    }
+  }
+}

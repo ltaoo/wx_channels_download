@@ -13,9 +13,10 @@ import (
 	"wx_channel/pkg/hermes"
 )
 
-type download_task_local_file_candidate struct {
-	path           string
-	candidate_type string
+type DownloadTaskLocalFileCandidate struct {
+	Path          string
+	PathSource    string
+	CandidateType string
 }
 
 // DeleteTaskWithFiles stops and soft-deletes one task, optionally removing its files first.
@@ -56,35 +57,71 @@ func (s *DownloadTaskService) DeleteTaskWithFiles(task_id int, delete_files bool
 }
 
 func (s *DownloadTaskService) delete_download_task_local_files(task model.DownloadTask, resources []model.DownloadResource) error {
+	protected_paths := make(map[string]bool)
+	if s.db != nil {
+		var other_resources []model.DownloadResource
+		if err := s.db.Table("download_resource AS r").Select("r.*").
+			Joins("LEFT JOIN download_task AS t ON t.id = r.task_id").
+			Where("r.deleted_at IS NULL AND (r.task_id IS NULL OR (r.task_id <> ? AND t.deleted_at IS NULL))", task.Id).
+			Find(&other_resources).Error; err != nil {
+			return fmt.Errorf("检查共享文件失败: %w", err)
+		}
+		var other_tasks []model.DownloadTask
+		if err := s.db.Where("deleted_at IS NULL AND id <> ?", task.Id).Find(&other_tasks).Error; err != nil {
+			return fmt.Errorf("检查共享任务失败: %w", err)
+		}
+		tasks_by_id := make(map[int]model.DownloadTask, len(other_tasks))
+		for _, other_task := range other_tasks {
+			tasks_by_id[other_task.Id] = other_task
+		}
+		for _, other_resource := range other_resources {
+			var other_task model.DownloadTask
+			if other_resource.TaskId != nil {
+				other_task = tasks_by_id[*other_resource.TaskId]
+			}
+			for _, candidate := range s.DownloadTaskLocalFileCandidates(other_task, other_resource) {
+				protected_paths[candidate.Path] = true
+				if resolved_path, err := filepath.EvalSymlinks(candidate.Path); err == nil {
+					protected_paths[resolved_path] = true
+				}
+			}
+		}
+	}
 	deletion_errors := make([]string, 0)
 	for _, resource := range resources {
-		candidates := s.download_task_local_file_candidates(task, resource)
+		candidates := s.DownloadTaskLocalFileCandidates(task, resource)
 		if len(candidates) == 0 {
 			deletion_errors = append(deletion_errors, fmt.Sprintf("资源 %d (%q) 没有可安全删除的本地文件路径", resource.Id, resource.Name))
 			continue
 		}
 		for _, candidate := range candidates {
-			info, err := os.Lstat(candidate.path)
-			if os.IsNotExist(err) {
+			if protected_paths[candidate.Path] {
+				continue
+			}
+			if resolved_path, err := filepath.EvalSymlinks(candidate.Path); err == nil && protected_paths[resolved_path] {
+				continue
+			}
+			info, err := os.Lstat(candidate.Path)
+			if is_missing_download_task_local_file_error(err) {
 				continue
 			}
 			if err != nil {
-				deletion_errors = append(deletion_errors, fmt.Sprintf("检查 %q 失败: %v", candidate.path, err))
+				deletion_errors = append(deletion_errors, fmt.Sprintf("检查 %q 失败: %v", candidate.Path, err))
 				continue
 			}
-			is_sidecar_dir := (candidate.candidate_type == "recording" && strings.HasSuffix(candidate.path, ".recording")) ||
-				(candidate.candidate_type == "playback" && strings.HasSuffix(candidate.path, ".playback"))
+			is_sidecar_dir := (candidate.CandidateType == "recording" && strings.HasSuffix(candidate.Path, ".recording")) ||
+				(candidate.CandidateType == "playback" && strings.HasSuffix(candidate.Path, ".playback"))
 			is_sidecar_dir = is_sidecar_dir && info.IsDir()
 			if info.Mode()&os.ModeSymlink != 0 || (!info.Mode().IsRegular() && !is_sidecar_dir) {
-				deletion_errors = append(deletion_errors, fmt.Sprintf("拒绝删除非普通文件 %q (mode=%s)", candidate.path, info.Mode()))
+				deletion_errors = append(deletion_errors, fmt.Sprintf("拒绝删除非普通文件 %q (mode=%s)", candidate.Path, info.Mode()))
 				continue
 			}
 			remove := os.Remove
 			if is_sidecar_dir {
 				remove = os.RemoveAll
 			}
-			if err := remove(candidate.path); err != nil && !os.IsNotExist(err) {
-				deletion_errors = append(deletion_errors, fmt.Sprintf("删除 %q 失败: %v", candidate.path, err))
+			if err := remove(candidate.Path); err != nil && !is_missing_download_task_local_file_error(err) {
+				deletion_errors = append(deletion_errors, fmt.Sprintf("删除 %q 失败: %v", candidate.Path, err))
 			}
 		}
 	}
@@ -94,11 +131,26 @@ func (s *DownloadTaskService) delete_download_task_local_files(task model.Downlo
 	return nil
 }
 
-func (s *DownloadTaskService) download_task_local_file_candidates(task model.DownloadTask, resource model.DownloadResource) []download_task_local_file_candidate {
-	names := []string{strings.TrimSpace(resource.Name), strings.TrimSpace(resource.UniqueID)}
+func (s *DownloadTaskService) DownloadTaskLocalFileCandidates(task model.DownloadTask, resource model.DownloadResource) []DownloadTaskLocalFileCandidate {
+	var task_config map[string]any
+	_ = json.Unmarshal([]byte(task.ConfigJSON), &task_config)
+	duplicate, _ := task_config["duplicate"].(bool)
+	download_name := hermes.ResourceDownloadName(task.Id, resource.Id, resource.UniqueID, duplicate)
+	var extra map[string]string
+	_ = json.Unmarshal([]byte(resource.Extra), &extra)
+	if extra["_hermes_download_name"] != "" {
+		download_name = extra["_hermes_download_name"]
+	}
+	names := []string{strings.TrimSpace(download_name)}
+	if task.Status == model.TaskStatusFinished || extra["_hermes_finalized"] == "1" {
+		names = append([]string{strings.TrimSpace(resource.Name)}, names...)
+	}
+	if pending_name := extra["_hermes_postprocessed"]; pending_name != "" {
+		names = append(names, pending_name)
+	}
 	roots := s.download_task_local_file_roots(task, resource)
 	seen := make(map[string]struct{})
-	candidates := make([]download_task_local_file_candidate, 0, len(roots)*6)
+	candidates := make([]DownloadTaskLocalFileCandidate, 0, len(roots)*6)
 	for root := range roots {
 		for _, name := range names {
 			if name == "" {
@@ -112,21 +164,21 @@ func (s *DownloadTaskService) download_task_local_file_candidates(task model.Dow
 			if !download_task_path_within_root(root, path) {
 				continue
 			}
-			resource_candidates := []download_task_local_file_candidate{
-				{path: path, candidate_type: "final"},
-				{path: path + ".part", candidate_type: "partial"},
+			resource_candidates := []DownloadTaskLocalFileCandidate{
+				{Path: path, PathSource: "resource_path", CandidateType: "final"},
+				{Path: path + ".part", PathSource: "resource_path", CandidateType: "partial"},
 			}
 			if strings.EqualFold(resource.Type, model.ResourceTypeStream) {
 				resource_candidates = append(resource_candidates,
-					download_task_local_file_candidate{path: hermes.StreamRecordingDir(path), candidate_type: "recording"},
-					download_task_local_file_candidate{path: hermes.StreamPlaybackDir(path), candidate_type: "playback"},
+					DownloadTaskLocalFileCandidate{Path: hermes.StreamRecordingDir(path), CandidateType: "recording"},
+					DownloadTaskLocalFileCandidate{Path: hermes.StreamPlaybackDir(path), CandidateType: "playback"},
 				)
 			}
 			for _, candidate := range resource_candidates {
-				if _, exists := seen[candidate.path]; exists {
+				if _, exists := seen[candidate.Path]; exists {
 					continue
 				}
-				seen[candidate.path] = struct{}{}
+				seen[candidate.Path] = struct{}{}
 				candidates = append(candidates, candidate)
 			}
 		}
@@ -149,8 +201,10 @@ func (s *DownloadTaskService) download_task_local_file_roots(task model.Download
 			roots[filepath.Clean(absolute_root)] = struct{}{}
 		}
 	}
-	add_root(s.download_dir)
-
+	if strings.TrimSpace(resource.DownloadDir) != "" {
+		add_root(hermes.ResolveOutputPath(s.download_dir, resource.DownloadDir, ""))
+		return roots
+	}
 	if strings.TrimSpace(task.ConfigJSON) != "" {
 		var task_config map[string]any
 		if json.Unmarshal([]byte(task.ConfigJSON), &task_config) == nil {
@@ -158,11 +212,9 @@ func (s *DownloadTaskService) download_task_local_file_roots(task model.Download
 			add_root(download_dir)
 		}
 	}
-	resource_download_dir := strings.TrimSpace(resource.DownloadDir)
-	if resource_download_dir != "" && !filepath.IsAbs(resource_download_dir) {
-		resource_download_dir = filepath.Join(s.download_dir, resource_download_dir)
+	if len(roots) == 0 {
+		add_root(s.download_dir)
 	}
-	add_root(resource_download_dir)
 	return roots
 }
 
@@ -171,5 +223,14 @@ func download_task_path_within_root(root string, target string) bool {
 	if err != nil || relative == "." || relative == ".." {
 		return false
 	}
-	return !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+	if strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return false
+	}
+	resolved_root, root_err := filepath.EvalSymlinks(root)
+	resolved_parent, parent_err := filepath.EvalSymlinks(filepath.Dir(target))
+	if root_err == nil && parent_err == nil {
+		relative, err = filepath.Rel(resolved_root, resolved_parent)
+		return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+	}
+	return (root_err == nil || os.IsNotExist(root_err)) && (parent_err == nil || os.IsNotExist(parent_err))
 }

@@ -39,11 +39,6 @@ jobs:
             echo "$node_bin" >> "$GITHUB_PATH"
           fi
 
-      - name: Install cross-compiler for windows
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-mingw-w64 g++-mingw-w64
-
       # TODO: Temporarily disabled SunnyNet build
       # - name: Patch SunnyNet for MinGW
       #   run: |

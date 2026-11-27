@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	stdhtml "html"
 	"io"
@@ -16,11 +17,11 @@ import (
 )
 
 const (
-	douyin_home_api_url         = "https://www.douyin.com/aweme/v1/web/aweme/post/"
+	douyin_home_api_url         = "https://www-hj.douyin.com/aweme/v1/web/aweme/post/"
 	douyin_home_api_count       = "18"
 	douyin_home_api_timeout     = 15 * time.Second
-	douyin_home_user_agent      = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
-	douyin_home_sec_ch_ua       = `"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"`
+	douyin_home_user_agent      = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
+	douyin_home_sec_ch_ua       = `"Not:A-Brand";v="8", "Chromium";v="156", "Google Chrome";v="156"`
 	douyin_home_sec_ch_platform = `"macOS"`
 )
 
@@ -38,11 +39,11 @@ var douyin_home_api_param_order = []string{
 }
 
 type douyin_home_api_response struct {
-	AwemeList  []douyin_home_api_aweme `json:"aweme_list"`
-	HasMore    int                     `json:"has_more"`
-	MaxCursor  int64                   `json:"max_cursor"`
-	StatusCode int                     `json:"status_code"`
-	StatusMsg  string                  `json:"status_msg"`
+	AwemeList  []json.RawMessage `json:"aweme_list"`
+	HasMore    int               `json:"has_more"`
+	MaxCursor  int64             `json:"max_cursor"`
+	StatusCode int               `json:"status_code"`
+	StatusMsg  string            `json:"status_msg"`
 }
 
 type douyin_home_api_aweme struct {
@@ -71,19 +72,39 @@ func (c *Client) fetch_home_api_page(owner_id string, page_url string, page_mark
 	}
 	started_at := time.Now()
 	cookie_header := c.home_cookie_header()
+	if home_uifid(cookie_header) == "" {
+		return nil, fmt.Errorf("抖音作品列表需要 UIFID 或 UIFID_TEMP Cookie，请同步 .douyin.com Cookie 或设置 douyin.cookie")
+	}
 	params := douyin_home_api_page_params(owner_id, cookie_header, page_marker)
 	request_url := douyin_home_api_url + "?" + queryStringify(params, douyin_home_api_param_order)
-	body, err := c.request_home_api(page_url, request_url, cookie_header)
-	if err != nil {
-		return nil, err
+	for attempt := 0; attempt < 2; attempt++ {
+		sources, err := c.load_home_sdk(attempt > 0)
+		if err != nil {
+			return nil, err
+		}
+		signed, err := sign_home_request(request_url, cookie_header, sources)
+		if err != nil {
+			douyin_home_sdk_cache.Lock()
+			douyin_home_sdk_cache.sources = nil
+			douyin_home_sdk_cache.Unlock()
+			return nil, err
+		}
+		body, err := c.request_home_api(page_url, signed, cookie_header)
+		if attempt == 0 && errors.Is(err, err_home_signature_rejected) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		return c.decode_home_api_response(owner_id, page_marker, body, started_at)
 	}
-	return c.decode_home_api_response(owner_id, page_marker, body, started_at)
+	return nil, err_home_signature_rejected
 }
 
-func (c *Client) request_home_api(page_url string, request_url string, cookie_header string) ([]byte, error) {
+func (c *Client) request_home_api(page_url string, signed *douyin_home_signed_request, cookie_header string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), douyin_home_api_timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, request_url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, signed.URL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("douyin home API: construct request: %w", err)
 	}
@@ -98,21 +119,30 @@ func (c *Client) request_home_api(page_url string, request_url string, cookie_he
 	req.Header.Set("Sec-Fetch-Mode", "cors")
 	req.Header.Set("Sec-Fetch-Site", "same-site")
 	req.Header.Set("User-Agent", douyin_home_user_agent)
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Pragma", "no-cache")
 	if cookie_header != "" {
 		req.Header.Set("Cookie", cookie_header)
 	}
-	if uifid := home_cookie_value(cookie_header, "UIFID"); uifid != "" {
-		req.Header.Set("uifid", uifid)
+	for name, value := range signed.Headers {
+		req.Header.Set(name, value)
 	}
 
 	resp, err := c.web.request_client().Do(req)
 	if err != nil {
+		var request_err *url.Error
+		if errors.As(err, &request_err) {
+			err = request_err.Err
+		}
 		return nil, fmt.Errorf("douyin home API: request: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("douyin home API: read response: %w", err)
+	}
+	if home_signature_rejected(resp.StatusCode, body) {
+		return nil, err_home_signature_rejected
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return nil, fmt.Errorf("douyin home API: HTTP %d body=%q", resp.StatusCode, log_body_preview(body))
@@ -128,7 +158,13 @@ func (c *Client) decode_home_api_response(owner_id string, page_marker string, b
 	if result.StatusCode != 0 {
 		return nil, fmt.Errorf("douyin home API: status %d: %s", result.StatusCode, strings.TrimSpace(result.StatusMsg))
 	}
-	contents := home_contents_from_api_response(result.AwemeList)
+	if result.AwemeList == nil {
+		return nil, fmt.Errorf("douyin home API: response missing aweme_list")
+	}
+	contents, err := home_contents_from_api_response(result.AwemeList)
+	if err != nil {
+		return nil, err
+	}
 	next_marker := ""
 	if result.HasMore != 0 && result.MaxCursor > 0 {
 		next_marker = strconv.FormatInt(result.MaxCursor, 10)
@@ -165,17 +201,17 @@ func douyin_home_api_page_params(owner_id string, cookie_header string, page_mar
 		"show_live_replay_strategy": "1", "need_time_list": need_time_list, "time_list_query": "0",
 		"whale_cut_token": "", "cut_version": "1", "count": douyin_home_api_count,
 		"publish_video_strategy_type": "2", "from_user_page": "1", "update_version_code": "170400",
-		"pc_client_type": "1", "pc_libra_divert": "Mac", "support_h265": "1", "support_dash": "1",
+		"pc_client_type": "1", "pc_libra_divert": "Mac", "support_h265": "0", "support_dash": "0",
 		"cpu_core_num": "10", "version_code": "290100", "version_name": "29.1.0",
 		"cookie_enabled": strconv.FormatBool(cookie_header != ""), "screen_width": "1512", "screen_height": "982",
 		"browser_language": "zh-CN", "browser_platform": "MacIntel", "browser_name": "Chrome",
-		"browser_version": "152.0.0.0", "browser_online": "true", "engine_name": "Blink",
-		"engine_version": "152.0.0.0", "os_name": "Mac OS", "os_version": "10.15.7",
+		"browser_version": "156.0.0.0", "browser_online": "true", "engine_name": "Blink",
+		"engine_version": "156.0.0.0", "os_name": "Mac OS", "os_version": "10.15.7",
 		"device_memory": "32", "platform": "PC", "downlink": "10", "effective_type": "4g",
 		"round_trip_time": "100", "webid": douyin_home_webid(owner_id, cookie_header),
 		"msToken": "", "timestamp": strconv.FormatInt(time.Now().Unix(), 10),
 	}
-	if uifid := home_cookie_value(cookie_header, "UIFID"); uifid != "" {
+	if uifid := home_uifid(cookie_header); uifid != "" {
 		params["uifid"] = uifid
 	}
 	if verify_fp := home_cookie_value(cookie_header, "s_v_web_id"); verify_fp != "" {
@@ -198,7 +234,7 @@ func normalize_home_page_marker(page_marker string) (string, error) {
 }
 
 func douyin_home_webid(owner_id string, cookie_header string) string {
-	seed := home_cookie_value(cookie_header, "UIFID")
+	seed := home_uifid(cookie_header)
 	if seed == "" {
 		seed = home_cookie_value(cookie_header, "ttwid")
 	}
@@ -212,14 +248,14 @@ func douyin_home_webid(owner_id string, cookie_header string) string {
 }
 
 func (c *Client) home_cookie_header() string {
+	if c != nil && c.web != nil && strings.TrimSpace(c.web.cookie) != "" {
+		return strings.TrimSpace(c.web.cookie)
+	}
 	if c != nil && c.cookie_reader != nil {
-		cookie_header, err := c.cookie_reader.HeaderForDomain("www.douyin.com")
+		cookie_header, err := c.cookie_reader.HeaderForURL(douyin_home_api_url)
 		if err == nil && strings.TrimSpace(cookie_header) != "" {
 			return strings.TrimSpace(cookie_header)
 		}
-	}
-	if c != nil && c.web != nil {
-		return strings.TrimSpace(c.web.cookie)
 	}
 	return ""
 }
@@ -235,10 +271,14 @@ func home_cookie_value(cookie_header string, name string) string {
 	return ""
 }
 
-func home_contents_from_api_response(aweme_list []douyin_home_api_aweme) []HomeContent {
+func home_contents_from_api_response(aweme_list []json.RawMessage) ([]HomeContent, error) {
 	contents := make([]HomeContent, 0, len(aweme_list))
 	seen := make(map[string]struct{}, len(aweme_list))
-	for _, aweme := range aweme_list {
+	for _, raw := range aweme_list {
+		var aweme douyin_home_api_aweme
+		if err := json.Unmarshal(raw, &aweme); err != nil {
+			return nil, fmt.Errorf("douyin home API: invalid aweme: %w", err)
+		}
 		aweme_id := strings.TrimSpace(aweme.AwemeID)
 		if aweme_id == "" {
 			continue
@@ -262,11 +302,12 @@ func home_contents_from_api_response(aweme_list []douyin_home_api_aweme) []HomeC
 		}
 		contents = append(contents, HomeContent{
 			ID: aweme_id, Type: content_type, Title: strings.TrimSpace(aweme.Desc),
+			Raw:      raw,
 			URL:      "https://www.douyin.com/" + content_type + "/" + url.PathEscape(aweme_id),
 			CoverURL: cover_url,
 		})
 	}
-	return contents
+	return contents, nil
 }
 
 func home_contents_html(contents []HomeContent) string {

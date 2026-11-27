@@ -15,6 +15,19 @@ func (h *handler) HomeContentTabs(_ *model.Account) []adapter.HomeContentTab {
 }
 
 func (h *handler) BuildHomeContents(account *model.Account, scope string) (*adapter.HomeContents, error) {
+	return h.fetch_home_contents(account, scope, "")
+}
+
+func (h *handler) FetchHomeDetails(account *model.Account, scope string, page_marker string) (*adapter.HomeDetails, error) {
+	result, err := h.fetch_home_contents(account, scope, page_marker)
+	if err != nil {
+		return nil, err
+	}
+	return &adapter.HomeDetails{Scopes: []adapter.HomeDetailsScope{{Label: "帖子", Value: "posts"}},
+		Scope: result.Scope, Contents: result.Contents, NextMarker: result.NextMarker}, nil
+}
+
+func (h *handler) fetch_home_contents(account *model.Account, scope string, page_marker string) (*adapter.HomeContents, error) {
 	if account == nil || account.PlatformId != PlatformID {
 		return nil, fmt.Errorf("instagram: invalid homepage account")
 	}
@@ -37,24 +50,11 @@ func (h *handler) BuildHomeContents(account *model.Account, scope string) (*adap
 		return nil, err
 	}
 	defer client.Close()
-	result, err := client.FetchHomeContents(username)
+	result, err := client.FetchHomeContentsPage(username, page_marker)
 	if err != nil {
 		return nil, err
 	}
-	return &adapter.HomeContents{Scope: scope, Contents: home_contents(result)}, nil
-}
-
-func (h *handler) FetchHomeDetails(account *model.Account, scope string, page_marker string) (*adapter.HomeDetails, error) {
-	// ponytail: anonymous HTML exposes only the initial grid; add pagination once its request is verified.
-	if strings.TrimSpace(page_marker) != "" {
-		return nil, fmt.Errorf("instagram: homepage pagination is not supported yet")
-	}
-	result, err := h.BuildHomeContents(account, scope)
-	if err != nil {
-		return nil, err
-	}
-	return &adapter.HomeDetails{Scopes: []adapter.HomeDetailsScope{{Label: "帖子", Value: "posts"}},
-		Scope: result.Scope, Contents: result.Contents, NextMarker: result.NextMarker}, nil
+	return &adapter.HomeContents{Scope: scope, Contents: home_contents(result), NextMarker: result.NextMarker}, nil
 }
 
 func home_contents(result *instagram.HomeResult) []model.Content {

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"wx_channel/pkg/dm"
 )
 
 func (d *HermesEngine) finish_task(job *TaskJob) error {
@@ -29,7 +31,11 @@ func (d *HermesEngine) finish_task(job *TaskJob) error {
 	for i := range job.Resources {
 		r := &job.Resources[i]
 		if r.FilePath == "" {
-			r.FilePath = d.abs_file_path(resource_download_dir(job, r), r.UniqueID)
+			var path_err error
+			r.FilePath, path_err = d.file_path_for_job_resource(job, r, "")
+			if path_err != nil {
+				return path_err
+			}
 		}
 		original_resource_ids = append(original_resource_ids, r.ID)
 		d.logger.Info().
@@ -41,8 +47,14 @@ func (d *HermesEngine) finish_task(job *TaskJob) error {
 			Msg("run - finishTask")
 	}
 
-	// 4. Call postprocessor if set
-	if d.postprocessor != nil {
+	postprocessing_complete := len(job.Resources) > 0
+	for _, resource := range job.Resources {
+		if resource.Extra["_hermes_finalized"] != "1" && resource.Extra["_hermes_postprocessed"] == "" {
+			postprocessing_complete = false
+		}
+	}
+	// A retry must not decrypt or merge already processed files a second time.
+	if d.postprocessor != nil && !postprocessing_complete {
 		d.logger.Info().Int("task_id", task_id).Msg("run - starting postprocessing")
 		if err := d.postprocessor.Process(context.Background(), job); err != nil {
 			d.logger.Error().Int("task_id", task_id).Err(err).Msg("postprocessing failed")
@@ -64,23 +76,43 @@ func (d *HermesEngine) finish_task(job *TaskJob) error {
 			}
 			if cleanup_store, ok := d.store.(ResourceCleanupStore); ok {
 				if err := cleanup_store.DeleteStaleResources(task_id, stale_ids); err != nil {
-					d.logger.Warn().Int("task_id", task_id).Err(err).Msg("failed to clean up stale resources")
+					return fmt.Errorf("failed to clean up stale resources: %w", err)
 				} else {
 					d.logger.Info().Int("task_id", task_id).Ints("stale_ids", stale_ids).Msg("cleaned up stale resources after postprocessing")
 				}
 			}
 		}
+		for i := range job.Resources {
+			resource := &job.Resources[i]
+			if resource.DownloadDir == "" {
+				resource.DownloadDir = job.DownloadDir
+			}
+			root, err := filepath.Abs(d.abs_file_path(resource.DownloadDir, ""))
+			if err != nil {
+				return err
+			}
+			output_path, err := filepath.Abs(resource.FilePath)
+			if err != nil {
+				return err
+			}
+			relative_path, err := filepath.Rel(root, output_path)
+			if err != nil || relative_path == "." || relative_path == ".." || strings.HasPrefix(relative_path, ".."+string(filepath.Separator)) {
+				return fmt.Errorf("postprocessed output is outside resource directory: %s", output_path)
+			}
+			if resource.Extra == nil {
+				resource.Extra = make(map[string]string)
+			}
+			resource.Extra["_hermes_postprocessed"] = relative_path
+		}
+		if err := d.persist_resource_outputs(task_id, job.Resources); err != nil {
+			return fmt.Errorf("failed to checkpoint postprocessed outputs: %w", err)
+		}
 	}
 
 	// 5. Rename files from unique_id-based names to display names,
 	// then apply filename template and hook for the final output name.
-	d.finalize_resource_filenames(job)
-
-	// 6. Persist the final Resource values. Postprocessing and filename
-	// finalization may have changed Name, MIME Kind and Size. Extension is
-	// derived from Kind and is intentionally not stored.
-	if err := d.persist_resource_outputs(task_id, job.Resources); err != nil {
-		d.logger.Warn().Int("task_id", task_id).Err(err).Msg("failed to update final resource outputs")
+	if err := d.finalize_resource_filenames(job); err != nil {
+		return err
 	}
 
 	// Rebuild filePaths after possible postprocessing changes
@@ -100,15 +132,16 @@ func (d *HermesEngine) finish_task(job *TaskJob) error {
 	// 8. Terminal hooks (async, non-blocking). The outcome-specific hook runs
 	// before onTaskFinish so the latter has conventional finally semantics.
 	if d.hooks != nil && (d.hooks.HasSuccessHook() || d.hooks.HasFinishHook()) {
-		go d.invoke_terminal_hooks(job, hook_task_status_success, "", final_paths)
+		d.dispatch_terminal_hooks(job, TaskStatusFinished, "")
 	}
 
 	// 9. Emit final progress and EventFinished
 	d.emit_progress(task_id)
 	d.emit(EventFinished, TaskFinishedEventData{
-		TaskID:    task_id,
-		FilePaths: append([]string(nil), final_paths...),
-		Resources: finished_resource_snapshot(job.Resources),
+		TaskID:      task_id,
+		DownloadDir: job.DownloadDir,
+		FilePaths:   append([]string(nil), final_paths...),
+		Resources:   finished_resource_snapshot(job.Resources),
 	})
 	d.delete_tracker(task_id)
 	return nil
@@ -262,11 +295,25 @@ func BuildFinalResourceName(input FinalResourceNameInput) FinalResourceNameResul
 // produce the final output filename. This is done after download and
 // postprocessing so that templates/hooks work on clean display names instead of
 // internal unique IDs.
-func (d *HermesEngine) finalize_resource_filenames(job *TaskJob) {
+func (d *HermesEngine) finalize_resource_filenames(job *TaskJob) error {
+	// Reserve final names through the move so concurrent completions cannot choose the same path.
+	d.output_mu.Lock()
+	defer d.output_mu.Unlock()
 	for i := range job.Resources {
 		r := &job.Resources[i]
 		if strings.TrimSpace(r.DownloadDir) == "" {
 			r.DownloadDir = strings.TrimSpace(job.DownloadDir)
+		}
+		if r.Extra["_hermes_finalized"] == "1" && r.FilePath == d.abs_file_path(r.DownloadDir, r.Name) {
+			continue
+		}
+		if strings.EqualFold(r.Type, ResourceTypeStream) {
+			if r.Extra == nil {
+				r.Extra = make(map[string]string)
+			}
+			if r.Extra["_hermes_download_name"] == "" {
+				r.Extra["_hermes_download_name"] = ResourceDownloadName(job.ID, r.ID, r.UniqueID, get_config_bool(job.Config, "duplicate"))
+			}
 		}
 		resolved := BuildFinalResourceName(FinalResourceNameInput{
 			TaskID:           job.ID,
@@ -281,7 +328,7 @@ func (d *HermesEngine) finalize_resource_filenames(job *TaskJob) {
 			Hooks:            d.hooks,
 		})
 		if resolved.Name == "" {
-			continue
+			return fmt.Errorf("final filename is empty: resource_id=%d", r.ID)
 		}
 		if resolved.TemplateError != nil {
 			d.logger.Warn().Err(resolved.TemplateError).Msg("filename template error")
@@ -322,24 +369,31 @@ func (d *HermesEngine) finalize_resource_filenames(job *TaskJob) {
 		old_path := strings.TrimSpace(r.FilePath)
 		resource_path := resource_download_dir(job, r)
 		if old_path == "" {
-			old_path = d.abs_file_path(resource_path, r.UniqueID)
+			var path_err error
+			old_path, path_err = d.file_path_for_job_resource(job, r, "")
+			if path_err != nil {
+				return path_err
+			}
 		}
 		final_name := preferred_name
 		if filepath.Clean(old_path) != filepath.Clean(d.abs_file_path(resource_path, preferred_name)) {
 			var resolve_err error
-			final_name, resolve_err = d.resolve_duplicate_filename(resource_path, resolved.Directories, resolved.BaseName, resolved.Extension)
+			final_name, resolve_err = d.resolve_duplicate_filename(resource_path, resolved.Directories, resolved.BaseName, resolved.Extension, [2]int{job.ID, r.ID})
 			if resolve_err != nil {
 				d.logger.Warn().
 					Int("resource_id", r.ID).
 					Err(resolve_err).
 					Msg("run - failed to resolve final resource filename")
-				continue
+				return fmt.Errorf("failed to resolve final filename resource_id=%d: %w", r.ID, resolve_err)
 			}
 		}
 		new_path := d.abs_file_path(resource_path, final_name)
 		if old_path == new_path {
 			r.Name = final_name
 			r.FilePath = new_path
+			if err := d.persist_final_resource(job.ID, r); err != nil {
+				return err
+			}
 			continue
 		}
 
@@ -350,7 +404,7 @@ func (d *HermesEngine) finalize_resource_filenames(job *TaskJob) {
 				Str("dir", filepath.Dir(new_path)).
 				Err(err).
 				Msg("run - failed to create directory for final filename")
-			continue
+			return fmt.Errorf("failed to create final output directory: %w", err)
 		}
 
 		if err := os.Rename(old_path, new_path); err != nil {
@@ -360,16 +414,46 @@ func (d *HermesEngine) finalize_resource_filenames(job *TaskJob) {
 				Str("new_path", new_path).
 				Err(err).
 				Msg("run - rename to final filename failed")
-			continue
+			return fmt.Errorf("failed to rename final output resource_id=%d: %w", r.ID, err)
 		}
 		d.logger.Info().
 			Int("resource_id", r.ID).
 			Str("old_name", r.Name).
 			Str("new_name", final_name).
 			Msg("run - final filename applied")
-		r.Name = final_name
-		r.FilePath = new_path
+		original_name, original_path := r.Name, r.FilePath
+		r.Name, r.FilePath = final_name, new_path
+		if err := d.persist_final_resource(job.ID, r); err != nil {
+			if rollback_err := os.Rename(new_path, old_path); rollback_err != nil {
+				return fmt.Errorf("%w; output remains at %q: rollback failed: %v", err, new_path, rollback_err)
+			}
+			r.Name, r.FilePath = original_name, original_path
+			return err
+		}
 	}
+	return nil
+}
+
+func (d *HermesEngine) persist_final_resource(task_id int, resource *ResourceJob) error {
+	if resource.Extra == nil {
+		resource.Extra = make(map[string]string)
+	}
+	previous_state, existed := resource.Extra["_hermes_finalized"]
+	postprocessed_path := resource.Extra["_hermes_postprocessed"]
+	resource.Extra["_hermes_finalized"] = "1"
+	delete(resource.Extra, "_hermes_postprocessed")
+	if err := d.persist_resource_outputs(task_id, []ResourceJob{*resource}); err != nil {
+		if existed {
+			resource.Extra["_hermes_finalized"] = previous_state
+		} else {
+			delete(resource.Extra, "_hermes_finalized")
+		}
+		if postprocessed_path != "" {
+			resource.Extra["_hermes_postprocessed"] = postprocessed_path
+		}
+		return err
+	}
+	return nil
 }
 
 func final_output_name(base_name, ext string) string {
@@ -459,6 +543,7 @@ func (d *HermesEngine) persist_resource_outputs(task_id int, resources []Resourc
 		update := ResourceOutputUpdate{
 			TaskID: task_id, ResourceID: r.ID, DownloadDir: r.DownloadDir, ResourceName: r.Name,
 			ResourceKind: r.Kind, ResourceSize: r.Size, ResourceDownloaded: r.Downloaded,
+			ResourceExtra: r.Extra,
 		}
 		d.logger.Info().
 			Int("task_id", task_id).
@@ -474,67 +559,41 @@ func (d *HermesEngine) persist_resource_outputs(task_id int, resources []Resourc
 	return nil
 }
 
-const (
-	hook_task_status_success = "success"
-	hook_task_status_failed  = "failed"
-)
-
-func (d *HermesEngine) invoke_terminal_hooks(job *TaskJob, status, err_msg string, file_paths []string) {
-	if d.hooks == nil || job == nil {
+func (d *HermesEngine) dispatch_terminal_hooks(job *TaskJob, status int, err_msg string) {
+	if d.task_detail_provider == nil {
+		d.logger.Warn().Int("task_id", job.ID).Msg("terminal hook task detail provider is not configured")
 		return
 	}
-	file_paths_copy := make([]string, len(file_paths))
-	copy(file_paths_copy, file_paths)
-
-	resources := make([]ResourceInfo, 0, len(job.Resources))
-	for _, r := range job.Resources {
-		endpoints := make([]EndpointInfo, 0, len(r.Endpoints))
-		for _, e := range r.Endpoints {
-			endpoints = append(endpoints, EndpointInfo{
-				Protocol: e.Protocol,
-				URL:      e.URL,
-			})
-		}
-		resources = append(resources, ResourceInfo{
-			ID:        r.ID,
-			Name:      r.Name,
-			Kind:      r.Kind,
-			Size:      r.Size,
-			UniqueID:  r.UniqueID,
-			Extra:     r.Extra,
-			Endpoints: endpoints,
-		})
+	var snapshot []TaskFinishedResource
+	if status == TaskStatusFinished {
+		snapshot = finished_resource_snapshot(job.Resources)
 	}
-
-	ctx := &FinishContext{
-		Task: TaskInfo{
-			ID:          job.ID,
-			Name:        job.Name,
-			DownloadDir: job.DownloadDir,
-			Config:      job.Config,
-		},
-		Config:      job.Config,
-		Metadata:    job.Metadata,
-		Resources:   resources,
-		FilePaths:   file_paths_copy,
-		DownloadDir: job.DownloadDir,
-		Status:      status,
-		Error:       err_msg,
+	detail, err := d.task_detail_provider(job.ID, snapshot)
+	if err != nil || detail == nil {
+		d.logger.Warn().Int("task_id", job.ID).Err(err).Msg("failed to build terminal hook task detail")
+		return
 	}
+	detail.Status, detail.Error = status, err_msg
+	go d.invoke_terminal_hooks(detail, job.DownloadDir)
+}
 
-	if status == hook_task_status_success && d.hooks.HasSuccessHook() {
-		if err := d.hooks.InvokeSuccessHook(ctx); err != nil {
-			d.logger.Warn().Err(err).Msg("success hook execution failed")
+func (d *HermesEngine) invoke_terminal_hooks(detail *dm.DownloadTask, download_dir string) {
+	if d.hooks == nil || detail == nil {
+		return
+	}
+	if detail.Status == TaskStatusFinished && d.hooks.HasSuccessHook() {
+		if err := d.hooks.InvokeSuccessHook(detail, download_dir); err != nil {
+			d.logger.Warn().Int("task_id", detail.ID).Err(err).Msg("success hook execution failed")
 		}
 	}
-	if status == hook_task_status_failed && d.hooks.HasFailedHook() {
-		if err := d.hooks.InvokeFailedHook(ctx); err != nil {
-			d.logger.Warn().Err(err).Msg("failed hook execution failed")
+	if detail.Status == TaskStatusFailed && d.hooks.HasFailedHook() {
+		if err := d.hooks.InvokeFailedHook(detail, download_dir); err != nil {
+			d.logger.Warn().Int("task_id", detail.ID).Err(err).Msg("failed hook execution failed")
 		}
 	}
 	if d.hooks.HasFinishHook() {
-		if err := d.hooks.InvokeFinishHook(ctx); err != nil {
-			d.logger.Warn().Err(err).Msg("finish hook execution failed")
+		if err := d.hooks.InvokeFinishHook(detail, download_dir); err != nil {
+			d.logger.Warn().Int("task_id", detail.ID).Err(err).Msg("finish hook execution failed")
 		}
 	}
 }

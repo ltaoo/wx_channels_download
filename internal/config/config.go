@@ -17,21 +17,23 @@ import (
 	"github.com/adrg/xdg"
 	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
+
+	"wx_channel/internal/logfile"
 )
 
 type Config struct {
-	RootDir  string // Directory where the binary is located
-	WorkDir  string // Runtime data directory
-	Filename string // Config file name
-	FullPath string // Full path to the config file
-	Existing bool   // Whether the config file exists
-	Error    error
-	Debug    bool
-	Version  string
-	Mode     string
-	logger   *zerolog.Logger
-	log_file *os.File
-	log_path string
+	RootDir    string // Directory where the binary is located
+	WorkDir    string // Runtime data directory
+	Filename   string // Config file name
+	FullPath   string // Full path to the config file
+	Existing   bool   // Whether the config file exists
+	Error      error
+	Debug      bool
+	Version    string
+	Mode       string
+	logger     *zerolog.Logger
+	log_writer *logfile.Writer
+	log_path   string
 
 	// Resolved global script
 	GlobalScriptPath string // Absolute path to configured global script
@@ -77,7 +79,7 @@ const EnvConfigPath = "WX_CHANNELS_DOWNLOAD_CONFIG_FILEPATH"
 
 var config_write_mu sync.Mutex
 
-func New(ver string, mode string, logger *zerolog.Logger, log_file *os.File, log_path string) *Config {
+func New(ver string, mode string, logger *zerolog.Logger, log_writer *logfile.Writer, log_path string) *Config {
 	exe, _ := os.Executable()
 	exe_dir := filepath.Dir(exe)
 	base_dir := exe_dir
@@ -103,7 +105,7 @@ func New(ver string, mode string, logger *zerolog.Logger, log_file *os.File, log
 			Version:  ver,
 			Mode:     mode,
 		}
-		c.set_logger(logger, log_file, log_path)
+		c.set_logger(logger, log_writer, log_path)
 		return c
 	}
 
@@ -140,16 +142,16 @@ func New(ver string, mode string, logger *zerolog.Logger, log_file *os.File, log
 		Version:  ver,
 		Mode:     mode,
 	}
-	c.set_logger(logger, log_file, log_path)
+	c.set_logger(logger, log_writer, log_path)
 	return c
 }
 
-func (c *Config) set_logger(logger *zerolog.Logger, log_file *os.File, log_path string) {
+func (c *Config) set_logger(logger *zerolog.Logger, log_writer *logfile.Writer, log_path string) {
 	if c == nil {
 		return
 	}
 	c.logger = logger
-	c.log_file = log_file
+	c.log_writer = log_writer
 	c.log_path = log_path
 }
 
@@ -157,8 +159,8 @@ func (c *Config) Logger() *zerolog.Logger {
 	return c.logger
 }
 
-func (c *Config) LogFile() *os.File {
-	return c.log_file
+func (c *Config) LogWriter() *logfile.Writer {
+	return c.log_writer
 }
 
 func (c *Config) LogPath() string {
@@ -413,6 +415,14 @@ func (c *Config) LoadConfig() error {
 		HotReload:   true,
 	})
 	Register(ConfigField{
+		Key:         "debug.enabled",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "是否开启调试并记录日志，默认不记录日志",
+		Title:       "调试日志",
+		Group:       "Debug",
+	})
+	Register(ConfigField{
 		Key:         "debug.error",
 		Type:        ConfigTypeBool,
 		Default:     true,
@@ -491,6 +501,15 @@ func (c *Config) LoadConfig() error {
 		Default:     true,
 		Description: "下载完成时是否播放完成音效",
 		Title:       "播放完成音效",
+		Group:       "Download",
+		HotReload:   true,
+	})
+	Register(ConfigField{
+		Key:         "download.cover",
+		Type:        ConfigTypeBool,
+		Default:     false,
+		Description: "视频号下载时，除主资源外额外保存一份封面图片；与 channels.download.cover 任一开启即生效",
+		Title:       "额外下载封面",
 		Group:       "Download",
 		HotReload:   true,
 	})
@@ -619,6 +638,14 @@ func (c *Config) LoadConfig() error {
 		Description: "指定 API 服务的端口",
 		Title:       "API 服务端口",
 		Group:       "API",
+	})
+	Register(ConfigField{
+		Key: "api.username", Type: ConfigTypeString, Default: "",
+		Description: "可选的 HTTP Basic Auth 用户名；与密码均非空时启用认证，重启生效", Title: "API 用户名", Group: "API",
+	})
+	Register(ConfigField{
+		Key: "api.password", Type: ConfigTypeString, Default: "", Sensitive: true,
+		Description: "可选的 HTTP Basic Auth 密码；与用户名均非空时启用认证，重启生效", Title: "API 密码", Group: "API",
 	})
 	Register(ConfigField{
 		Key:         "mcp.enabled",
@@ -834,6 +861,41 @@ func (c *Config) LoadConfig() error {
 		HotReload:   true,
 	})
 
+	// Workflow automation scheduler and run concurrency. These are read once at
+	// startup, so a change takes effect after a restart.
+	Register(ConfigField{
+		Key:         "automation.maxConcurrentRuns",
+		Type:        ConfigTypeInt,
+		Default:     16,
+		Description: "同时执行的自动化运行上限（1-128）；超出上限的运行会排队等待，重启生效",
+		Title:       "自动化并发上限",
+		Group:       "Automation",
+	})
+	Register(ConfigField{
+		Key:         "automation.tickIntervalSeconds",
+		Type:        ConfigTypeInt,
+		Default:     30,
+		Description: "调度器扫描到期定时任务的间隔秒数（1-600），重启生效",
+		Title:       "调度扫描间隔",
+		Group:       "Automation",
+	})
+	Register(ConfigField{
+		Key:         "automation.tickBatchLimit",
+		Type:        ConfigTypeInt,
+		Default:     64,
+		Description: "单次调度扫描最多启动的任务数量（1-1024），其余由后续扫描接手，重启生效",
+		Title:       "调度批量上限",
+		Group:       "Automation",
+	})
+	Register(ConfigField{
+		Key:         "automation.runRetentionDays",
+		Type:        ConfigTypeInt,
+		Default:     30,
+		Description: "已结束的自动化运行及其节点日志保留天数；设为 0 表示永久保留，重启生效",
+		Title:       "运行历史保留天数",
+		Group:       "Automation",
+	})
+
 	if c.Existing {
 		// config.FilePath = config_filepath
 		if err := read_config_file(c.FullPath); err != nil {
@@ -843,6 +905,11 @@ func (c *Config) LoadConfig() error {
 				return err
 			}
 		}
+	}
+
+	if err := c.configure_logging(); err != nil {
+		c.Error = err
+		return err
 	}
 
 	// Load plugin configs: each plugin declares its schema and reads its own config
@@ -869,6 +936,34 @@ func (c *Config) LoadConfig() error {
 	c.resolve_script_path("download.hooksScript", &c.HookScriptPath)
 	c.resolve_script("inject.contentScript", &c.ContentScriptContent)
 
+	return nil
+}
+
+func (c *Config) configure_logging() error {
+	zerolog.SetGlobalLevel(zerolog.Disabled)
+	c.Debug = c.GetBool("debug.enabled")
+	log_enabled := c.Debug || c.GetBool("log.enabled")
+	for _, env_name := range []string{"ENABLE_LOG", "WX_ENABLE_LOG"} {
+		env_enabled, _ := strconv.ParseBool(strings.TrimSpace(os.Getenv(env_name)))
+		log_enabled = log_enabled || env_enabled
+	}
+	if !log_enabled {
+		return nil
+	}
+	if c.log_writer != nil {
+		if err := os.MkdirAll(filepath.Dir(c.log_writer.Filename), 0755); err != nil {
+			return fmt.Errorf("创建日志目录失败: %w", err)
+		}
+		// Preserve truncate-on-start only when logging is explicitly enabled.
+		if err := c.log_writer.Truncate(); err != nil {
+			return fmt.Errorf("初始化日志文件失败: %w", err)
+		}
+	}
+	log_level := zerolog.InfoLevel
+	if c.Debug {
+		log_level = zerolog.DebugLevel
+	}
+	zerolog.SetGlobalLevel(log_level)
 	return nil
 }
 

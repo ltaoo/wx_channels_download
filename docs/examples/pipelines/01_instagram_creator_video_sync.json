@@ -1,0 +1,393 @@
+{
+  "id": "01_instagram_creator_video_sync",
+  "name": "定时增量同步 Instagram 创作者帖子（分页，视频与图集）",
+  "start_node": "start",
+  "triggers": [
+    {
+      "type": "Cron",
+      "name": "每天 12:00、18:00 同步 Instagram 创作者帖子",
+      "cron_expr": "0 12,18 * * *",
+      "enabled": true,
+      "initial_data": {}
+    }
+  ],
+  "context_schema": [],
+  "nodes": {
+    "start": {
+      "id": "start",
+      "type": "StartNode",
+      "name": "开始：每天 12:00、18:00 定时触发",
+      "config": {},
+      "next_node_ids": [
+        "validate"
+      ],
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    "validate": {
+      "id": "validate",
+      "type": "JSCodeNode",
+      "name": "校验 Instagram 创作者参数",
+      "config": {
+        "code": "(function () {\nif (typeof config.username !== 'string') throw new Error('必须配置字符串 username');\nvar username = config.username.trim().replace(/^instagram:/i, '').replace(/^@/, '');\nif (/^https:\\/\\//i.test(username)) {\n  var profile = /^https:\\/\\/(?:www\\.|m\\.)?instagram\\.com\\/([A-Za-z0-9._]{1,30})\\/?(?:[?#].*)?$/i.exec(username);\n  if (!profile) throw new Error('请填写 Instagram 用户名或有效的 HTTPS 主页链接');\n  username = profile[1];\n}\nusername = username.toLowerCase();\nif (!/^[a-z0-9._]{1,30}$/.test(username) || ['p', 'reel', 'reels', 'tv', 'accounts', 'explore', 'direct', 'stories', 'about', 'developer', 'legal'].indexOf(username) >= 0) throw new Error('请填写有效的 Instagram 用户名，不是昵称或帖子链接');\nreturn {username: username};\n})()",
+        "output_key": "creator"
+      },
+      "next_node_ids": [
+        "config"
+      ],
+      "position": {
+        "x": 340,
+        "y": 0
+      },
+      "config_schema": [
+        {
+          "key": "username",
+          "label": "Instagram 用户名",
+          "description": "填写用户名、@用户名或 https://www.instagram.com/用户名/；支持 instagram: 前缀，不是显示名称或帖子链接。",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "remark",
+          "label": "备注",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    "config": {
+      "id": "config",
+      "type": "SetVariableNode",
+      "name": "配置下载目录与分页上限",
+      "config": {
+        "variables": {
+          "download_dir": "",
+          "max_pages": 1000,
+          "max_posts": 100000,
+          "scan_state": {
+            "cursor": "",
+            "pages": 0,
+            "seen_ids": {},
+            "visited_cursors": [
+              ""
+            ],
+            "checked": 0,
+            "submitted": 0,
+            "skipped": 0
+          }
+        }
+      },
+      "next_node_ids": [
+        "fetch_list"
+      ],
+      "position": {
+        "x": 680,
+        "y": 0
+      }
+    },
+    "fetch_list": {
+      "id": "fetch_list",
+      "type": "InstagramFetchListNode",
+      "name": "获取当前页 Instagram 创作者帖子",
+      "config": {
+        "profile": "{{output.validate.creator.username}}",
+        "page": "{{global.scan_state.cursor}}",
+        "scope": "posts",
+        "output_key": "list_response"
+      },
+      "next_node_ids": [
+        "parse_posts"
+      ],
+      "position": {
+        "x": 1020,
+        "y": 0
+      }
+    },
+    "parse_posts": {
+      "id": "parse_posts",
+      "type": "JSCodeNode",
+      "name": "校验当前页帖子并跨页去重",
+      "config": {
+        "code": "(function () {\nvar response = output.fetch_list.list_response;\nif (!response || response.platform !== 'instagram' || response.scope !== 'posts' || !Array.isArray(response.list)) throw new Error('Instagram 帖子列表节点未返回有效数据');\nif (typeof response.next_marker !== 'string') throw new Error('Instagram 分页游标必须为字符串');\nif (!(global.max_pages > 0) || Math.floor(global.max_pages) !== global.max_pages || !(global.max_posts > 0) || Math.floor(global.max_posts) !== global.max_posts) throw new Error('max_pages 和 max_posts 必须为正整数');\nvar items = [], seen = JSON.parse(JSON.stringify(global.scan_state.seen_ids));\nfor (var i = 0; i < response.list.length; i++) {\n  var content = response.list[i];\n  if (!content || (content.type !== 'video' && content.type !== 'album')) continue;\n  var oid = content.external_id;\n  if (typeof oid !== 'string' || !/^[0-9]+$/.test(oid)) throw new Error('Instagram 帖子 ID 必须为数字字符串');\n  if (content.platform_id !== 'instagram' || content.id !== 'instagram:' + oid) throw new Error('Instagram 列表帖子的平台或内容 ID 不匹配');\n  var url = String(content.source_url || content.url || '').trim();\n  var match = /^https:\\/\\/(?:www\\.|m\\.)?instagram\\.com\\/(?:p|reel|tv)\\/([A-Za-z0-9_-]+)\\/?(?:[?#].*)?$/i.exec(url);\n  if (!match || (content.external_id2 && content.external_id2 !== match[1])) throw new Error('Instagram 列表帖子缺少匹配的来源链接');\n  if (Object.prototype.hasOwnProperty.call(seen, oid)) continue;\n  seen[oid] = content.type;\n  items.push({oid: oid, title: String(content.title || ''), type: content.type, url: url, shortcode: match[1]});\n}\nif (Object.keys(seen).length > global.max_posts) throw new Error('超过 max_posts，本次同步未完成');\nreturn {seen_ids: seen, next_cursor: response.next_marker, items: items, content_ids: items.map(function (item) { return 'instagram:' + item.oid; })};\n})()",
+        "output_key": "page"
+      },
+      "next_node_ids": [
+        "check_posts"
+      ],
+      "position": {
+        "x": 1360,
+        "y": 0
+      }
+    },
+    "check_posts": {
+      "id": "check_posts",
+      "type": "ServiceNode",
+      "name": "批量检查帖子是否已有下载任务",
+      "config": {
+        "tool_name": "check_download_task_contents",
+        "arguments": {
+          "content_ids": "{{output.parse_posts.page.content_ids}}"
+        },
+        "output_key": "checks",
+        "timeout_seconds": 30
+      },
+      "next_node_ids": [
+        "select_missing"
+      ],
+      "position": {
+        "x": 1700,
+        "y": 0
+      }
+    },
+    "select_missing": {
+      "id": "select_missing",
+      "type": "JSCodeNode",
+      "name": "校验检查结果并筛选缺失帖子",
+      "config": {
+        "code": "(function () {\nvar items = output.parse_posts.page.items;\nvar response = output.check_posts.checks;\nif (!response || !Array.isArray(response.list) || response.total !== items.length || response.list.length !== items.length) throw new Error('批量帖子存在性检查结果不完整');\nvar checks = Object.create(null);\nresponse.list.forEach(function (check) {\n  if (!check || typeof check.content_id !== 'string' || Object.prototype.hasOwnProperty.call(checks, check.content_id) || typeof check.exists !== 'boolean' || typeof check.task_count !== 'number' || !isFinite(check.task_count) || check.task_count < 0 || Math.floor(check.task_count) !== check.task_count || check.exists !== (check.task_count > 0)) throw new Error('批量帖子存在性检查结果无效');\n  checks[check.content_id] = check;\n});\nvar pending = [], skipped = 0;\nfor (var i = 0; i < items.length; i++) {\n  var item = items[i], content_id = 'instagram:' + item.oid;\n  if (!Object.prototype.hasOwnProperty.call(checks, content_id)) throw new Error('批量检查缺少帖子 ' + item.oid);\n  if (checks[content_id].exists) skipped += 1;\n  else pending.push(item);\n}\nreturn {pending: pending, skipped: skipped};\n})()",
+        "output_key": "selection"
+      },
+      "next_node_ids": [
+        "download_missing"
+      ],
+      "position": {
+        "x": 2040,
+        "y": 0
+      }
+    },
+    "download_missing": {
+      "id": "download_missing",
+      "type": "LoopNode",
+      "name": "逐条获取缺失帖子详情并提交下载",
+      "config": {
+        "items": "{{output.select_missing.selection.pending}}",
+        "workflow": {
+          "id": "instagram_creator_post_download",
+          "name": "获取缺失帖子详情并创建 Instagram 下载任务",
+          "start_node": "start",
+          "context_schema": [
+            {
+              "key": "item",
+              "type": "object",
+              "required": true
+            },
+            {
+              "key": "index",
+              "type": "number",
+              "required": true
+            },
+            {
+              "key": "download_dir",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "nodes": {
+            "start": {
+              "id": "start",
+              "type": "StartNode",
+              "name": "开始下载",
+              "config": {},
+              "next_node_ids": [
+                "fetch_detail"
+              ],
+              "position": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            "fetch_detail": {
+              "id": "fetch_detail",
+              "type": "InstagramFetchDetailNode",
+              "name": "获取 Instagram 帖子详情与完整媒体",
+              "config": {
+                "url": "{{input.item.url}}",
+                "output_key": "detail_response",
+                "timeout_seconds": 300
+              },
+              "next_node_ids": [
+                "validate_detail"
+              ],
+              "position": {
+                "x": 340,
+                "y": 0
+              }
+            },
+            "validate_detail": {
+              "id": "validate_detail",
+              "type": "JSCodeNode",
+              "name": "校验帖子详情与媒体数据",
+              "config": {
+                "code": "(function () {\nvar detail = output.fetch_detail.detail_response;\nif (!detail || detail.platform !== 'instagram' || !detail.content || detail.content.id !== 'instagram:' + input.item.oid) throw new Error('Instagram 详情与待下载帖子不匹配');\nvar result = detail.result;\nif (!result || result.external_id !== input.item.oid || result.shortcode !== input.item.shortcode || !Array.isArray(result.media) || !result.media.length) throw new Error('Instagram 详情缺少匹配的媒体数据');\nreturn result;\n})()",
+                "output_key": "download_content"
+              },
+              "next_node_ids": [
+                "download"
+              ],
+              "position": {
+                "x": 680,
+                "y": 0
+              }
+            },
+            "download": {
+              "id": "download",
+              "type": "ServiceNode",
+              "name": "使用刚获取的完整媒体创建下载任务",
+              "config": {
+                "tool_name": "create_download_task",
+                "arguments": {
+                  "platform": "instagram",
+                  "content": "{{output.validate_detail.download_content}}",
+                  "build_from_fetch": true,
+                  "download_dir": "{{input.download_dir}}",
+                  "config": {
+                    "existing_action": "skip"
+                  }
+                },
+                "output_key": "download_result",
+                "timeout_seconds": 150
+              },
+              "next_node_ids": [
+                "inspect"
+              ],
+              "position": {
+                "x": 1020,
+                "y": 0
+              }
+            },
+            "inspect": {
+              "id": "inspect",
+              "type": "JSCodeNode",
+              "name": "确认下载任务创建结果",
+              "config": {
+                "code": "(function () {\nvar result = output.download.download_result;\nif (!result || (result.created !== true && result.skipped !== true)) throw new Error('下载工具没有返回已创建或已跳过结果');\nreturn {oid: input.item.oid, created: result.created === true, skipped: result.skipped === true};\n})()",
+                "output_key": "download_status"
+              },
+              "next_node_ids": [
+                "end"
+              ],
+              "position": {
+                "x": 1360,
+                "y": 0
+              }
+            },
+            "end": {
+              "id": "end",
+              "type": "EndNode",
+              "name": "下载任务已提交",
+              "config": {},
+              "next_node_ids": [],
+              "position": {
+                "x": 1700,
+                "y": 0
+              }
+            }
+          }
+        },
+        "arguments": {
+          "download_dir": "{{global.download_dir}}"
+        },
+        "max_iterations": 10000,
+        "concurrency": 1,
+        "continue_on_error": false,
+        "output_key": "downloads"
+      },
+      "next_node_ids": [
+        "record_page"
+      ],
+      "position": {
+        "x": 2380,
+        "y": 0
+      }
+    },
+    "record_page": {
+      "id": "record_page",
+      "type": "JSCodeNode",
+      "name": "记录当前页结果并校验下一页游标",
+      "config": {
+        "code": "(function () {\nvar items = output.parse_posts.page.items;\nvar selection = output.select_missing.selection;\nvar results = output.download_missing.downloads;\nif (!Array.isArray(results) || results.length !== selection.pending.length) throw new Error('下载遍历结果不完整');\nvar submitted = 0, skipped = selection.skipped;\nfor (var i = 0; i < results.length; i++) {\n  var result = results[i].output.inspect.download_status;\n  if (result.oid !== selection.pending[i].oid) throw new Error('下载遍历结果与帖子不匹配');\n  if (result.skipped) skipped += 1;\n  else if (result.created) submitted += 1;\n  else throw new Error('下载任务未创建');\n}\nvar state = JSON.parse(JSON.stringify(global.scan_state));\nstate.pages += 1;\nstate.seen_ids = output.parse_posts.page.seen_ids;\nstate.checked += items.length;\nstate.submitted += submitted;\nstate.skipped += skipped;\nstate.cursor = output.parse_posts.page.next_cursor;\nif (state.cursor) {\n  if (state.visited_cursors.indexOf(state.cursor) >= 0) throw new Error('Instagram 分页游标重复，本次同步未完成');\n  if (state.pages >= global.max_pages) throw new Error('达到 max_pages，本次同步未完成');\n  state.visited_cursors.push(state.cursor);\n}\nreturn state;\n})()",
+        "output_key": "page_state"
+      },
+      "next_node_ids": [
+        "store_page"
+      ],
+      "position": {
+        "x": 2720,
+        "y": 0
+      }
+    },
+    "store_page": {
+      "id": "store_page",
+      "type": "SetVariableNode",
+      "name": "保存分页进度",
+      "config": {
+        "variables": {
+          "scan_state": "{{output.record_page.page_state}}"
+        }
+      },
+      "next_node_ids": [
+        "next_page"
+      ],
+      "position": {
+        "x": 3060,
+        "y": 0
+      }
+    },
+    "next_page": {
+      "id": "next_page",
+      "type": "GatewayNode",
+      "name": "有下一页则继续检查",
+      "config": {
+        "gateway_type": "Exclusive",
+        "condition_language": "js",
+        "rules": [
+          {
+            "condition": "global.scan_state.cursor !== ''",
+            "target_id": "fetch_list"
+          },
+          {
+            "condition": "true",
+            "target_id": "finish_summary"
+          }
+        ]
+      },
+      "next_node_ids": [
+        "fetch_list",
+        "finish_summary"
+      ],
+      "position": {
+        "x": 3400,
+        "y": 0
+      }
+    },
+    "finish_summary": {
+      "id": "finish_summary",
+      "type": "JSCodeNode",
+      "name": "全部页面检查完成，汇总结果",
+      "config": {
+        "code": "(function () {\nvar state = global.scan_state, ids = Object.keys(state.seen_ids);\nreturn {platform: 'instagram', username: output.validate.creator.username, pages: state.pages, works: ids.length, videos: ids.filter(function (id) { return state.seen_ids[id] === 'video'; }).length, albums: ids.filter(function (id) { return state.seen_ids[id] === 'album'; }).length, checked: state.checked, submitted: state.submitted, skipped: state.skipped, stop_reason: 'no_more_pages', note: '已按平台返回的游标检查全部可访问页面；已有下载任务即跳过；submitted 表示任务已启动，不表示文件已下载完成'};\n})()",
+        "output_key": "sync_summary"
+      },
+      "next_node_ids": [
+        "finish_end"
+      ],
+      "position": {
+        "x": 3740,
+        "y": 400
+      }
+    },
+    "finish_end": {
+      "id": "finish_end",
+      "type": "EndNode",
+      "name": "本次分页同步结束",
+      "config": {},
+      "next_node_ids": [],
+      "position": {
+        "x": 4080,
+        "y": 400
+      }
+    }
+  }
+}

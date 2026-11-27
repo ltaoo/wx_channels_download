@@ -1,0 +1,80 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "更新流程实例",
+    "description": "未提交的实例字段保持原值。node_configs 是完整显式覆盖集合，{} 清空全部覆盖。triggers 是完整自定义规则列表，[] 清空规则并取消继承。inherit_triggers=true 恢复默认触发器并清空触发器覆盖，不能同时提交 triggers；false 仅取消继承，不停用已有规则。trigger_overrides 是按默认触发器 ID 组织的完整覆盖集合，{} 恢复默认；不能与 triggers 或 inherit_triggers 同时提交。",
+    "operationId": "post_api_v1_automation_update_flow_instance",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "node_configs": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "triggers": {
+                "type": "array",
+                "items": {
+                  "$ref": "../components.json#/schemas/services_UserFlowTriggerInput"
+                }
+              },
+              "inherit_triggers": {
+                "type": "boolean"
+              },
+              "trigger_overrides": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "code=0 表示成功。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/model_UserFlowInstance"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

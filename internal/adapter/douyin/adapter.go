@@ -198,6 +198,17 @@ func (h *handler) BuildDownloadTaskFromFetch(data any, config_json json.RawMessa
 }
 
 func (h *handler) build_download_task_from_model_data(model_data *douyin_model_data, config map[string]any) (*adapter.DownloadTaskResult, error) {
+	var selected_variant *model.ContentVideoVariant
+	if model_data.content_type != douyin_content_type_album {
+		var err error
+		selected_variant, err = douyin_selected_video_variant(model_data.video_variants, config)
+		if err != nil {
+			return nil, err
+		}
+		if selected_variant != nil {
+			model_data.video_url = selected_variant.URL
+		}
+	}
 	if model_data.content_type == douyin_content_type_album && len(model_data.images) == 0 {
 		return nil, fmt.Errorf("抖音图集 %s 图片列表为空", model_data.video_id)
 	}
@@ -259,10 +270,17 @@ func (h *handler) build_download_task_from_model_data(model_data *douyin_model_d
 	if model_data.content_type == douyin_content_type_album {
 		resources = append(resources, douyin_album_resource_infos(model_data, content_id, title, extra_json)...)
 	} else {
+		asset_key := "default"
+		var size int64
+		if selected_variant != nil {
+			asset_key = selected_variant.VariantKey
+			size = selected_variant.Size
+		}
 		video_resource := model.DownloadResource{
 			ContentId: &content_id,
 			Name:      title,
 			Kind:      "video",
+			Size:      size,
 			UniqueID:  model_data.video_id,
 			Extra:     extra_json,
 		}
@@ -278,7 +296,7 @@ func (h *handler) build_download_task_from_model_data(model_data *douyin_model_d
 			ContentAssets: []adapter.ContentAssetReference{{
 				Kind:     model.ContentAssetKindVideo,
 				Role:     model.ContentAssetRoleVideoVariant,
-				AssetKey: "default",
+				AssetKey: asset_key,
 				Relation: model.DownloadResourceAssetRelationSource,
 			}},
 		})

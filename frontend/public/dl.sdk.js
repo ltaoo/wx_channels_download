@@ -413,7 +413,9 @@
   function merge_task_record(current, update) {
     const next = Object.assign({}, current || {}, update || {});
     if (Object.prototype.hasOwnProperty.call(update || {}, "files")) {
-      next.files = merge_files(current && current.files, update.files);
+      next.files = success_statuses.has(normalize_status(update.status))
+        ? task_files(update)
+        : merge_files(current && current.files, update.files);
       delete next.resources;
     } else if (
       Object.prototype.hasOwnProperty.call(update || {}, "resources")
@@ -459,6 +461,8 @@
     let ready_state = deferred();
     let finished_state = deferred();
     let terminal_state = null;
+    let success_detail = null;
+    let completion_request = null;
     let last_failure = null;
     let task_channel = null;
     let task_channel_id = "";
@@ -525,6 +529,9 @@
         return ready_state.promise;
       },
       get finished() {
+        if (success_statuses.has(status_.value) && !terminal_state) {
+          load_success_detail();
+        }
         return finished_state.promise;
       },
       get files() {
@@ -548,7 +555,9 @@
           .Msg("add success handler");
         const unsubscribe = bus.on("task:success", handler);
         if (terminal_state === "success") {
-          global.queueMicrotask(() => handler(raw_.value));
+          global.queueMicrotask(() => handler(success_detail));
+        } else if (success_statuses.has(status_.value)) {
+          load_success_detail();
         }
         return unsubscribe;
       },
@@ -902,6 +911,8 @@
 
     function begin(status) {
       terminal_state = null;
+      success_detail = null;
+      completion_request = null;
       last_failure = null;
       error_.as(null);
       finished_state = deferred();
@@ -909,6 +920,41 @@
         status_.as(normalize_status(status));
       }
       return model;
+    }
+
+    function load_success_detail() {
+      if (completion_request) return;
+      const completion_state = finished_state;
+      const task_id = id_.value;
+      const pending = (async () => {
+        const detail_request = reqs.download && reqs.download.detail;
+        if (!detail_request) {
+          throw new Error("Download task detail request is unavailable");
+        }
+        const response = await detail_request.run({ id: task_id });
+        if (
+          disposed || finished_state !== completion_state ||
+          !success_statuses.has(status_.value)
+        ) return;
+        if (!response || response.error) {
+          throw (response && response.error) || new Error("Load download task detail failed");
+        }
+        const detail = response.data;
+        if (!detail || String(detail.id) !== String(task_id) || detail.status !== 5) {
+          throw new Error("Download task detail is not a completed task");
+        }
+        update(detail, { replace: true, detail: true });
+      })().catch((error) => {
+        if (
+          !disposed && finished_state === completion_state &&
+          success_statuses.has(status_.value)
+        ) {
+          fail(error, { creation: false, preserve_status: true });
+        }
+      }).finally(() => {
+        if (completion_request === pending) completion_request = null;
+      });
+      completion_request = pending;
     }
 
     function fail(value, options) {
@@ -987,6 +1033,8 @@
           failure_statuses.has(previous_status))
       ) {
         terminal_state = null;
+        success_detail = null;
+        completion_request = null;
         last_failure = null;
         error_.as(null);
         finished_state = deferred();
@@ -1002,14 +1050,19 @@
         .Str("terminal_state", terminal_state)
         .Msg("update - check whether the task is completed");
       if (success_statuses.has(next_status) && terminal_state !== "success") {
-        terminal_state = "success";
-        error_.as(null);
-        bus.emit("task:success", next_raw);
-        if (!finished_state.settled) {
-          finished_state.settled = true;
-          finished_state.resolve(model);
+        if (opt && opt.detail) {
+          terminal_state = "success";
+          success_detail = next_raw;
+          error_.as(null);
+          bus.emit("task:success", success_detail);
+          if (!finished_state.settled) {
+            finished_state.settled = true;
+            finished_state.resolve(model);
+          }
+          methods.disconnectWebSocket();
+        } else {
+          load_success_detail();
         }
-        methods.disconnectWebSocket();
       } else if (
         failure_statuses.has(next_status) &&
         terminal_state !== "fail"
@@ -1175,7 +1228,7 @@
    *   platform: "wxchannels",
    *   skip: true,
    * });
-   * task$.onSuccess((detail) => console.log(detail.files[0].local_path));
+   * task$.onSuccess((detail) => console.log(detail.files[0].file_path));
    * task$.onFailed((error) => console.error(error));
    */
   function DownloaderModel(props) {
@@ -1239,7 +1292,6 @@
     const last_error_ = ref(null);
     /** @type {Map<string, DownloadTaskModel>} */
     const tasks_by_id = new Map();
-    const socket_status_by_id = new Map();
     const websocket_url = default_web_socket_url();
     const reconnect_interval = Math.max(
       250,
@@ -1255,7 +1307,6 @@
     let ready_promise = null;
     let refresh_sequence = 0;
     let current_refresh_options = null;
-    let paged_refresh_timer = null;
 
     const state = {
       task_list: task_list_,
@@ -1605,10 +1656,6 @@
     }
 
     async function refresh(options) {
-      if (paged_refresh_timer !== null) {
-        global.clearTimeout(paged_refresh_timer);
-        paged_refresh_timer = null;
-      }
       const normalized_options = Object.assign({}, options || {});
       normalized_options.all = normalized_options.all !== false;
       normalized_options.page = Math.max(
@@ -1750,7 +1797,6 @@
       if (!result || result.error) {
         throw (result && result.error) || new Error(fallback);
       }
-      await refresh_current();
       return task_list_;
     }
 
@@ -1775,7 +1821,16 @@
       if (r.error) {
         throw (r && r.error) || new Error("Clear download tasks failed");
       }
-      await refresh_current();
+      const results = (r.data && r.data.results) || [];
+      results.forEach((item) => {
+        if (item.success) {
+          const task = get(item.task_id);
+          if (task) task._update({ id: item.task_id, status: "deleted" });
+          remove_task(item.task_id, false);
+        }
+      });
+      const failure = results.find((item) => item.success === false);
+      if (failure) throw error_value(failure.error, "Clear download tasks failed");
       return task_list_;
     }
 
@@ -1864,79 +1919,13 @@
       );
     }
 
-    function schedule_paged_refresh() {
-      if (!paged_mode_enabled() || destroyed) {
-        return;
-      }
-      if (paged_refresh_timer !== null) {
-        global.clearTimeout(paged_refresh_timer);
-      }
-      paged_refresh_timer = global.setTimeout(() => {
-        paged_refresh_timer = null;
-        refresh_current().catch((error) => last_error_.as(error));
-      }, 80);
-    }
-
-    function socket_status_matches_current_filter(status) {
-      const filter = String(
-        (current_refresh_options && current_refresh_options.status) || "",
-      );
-      if (!filter || !status) {
-        return false;
-      }
-      const status_code = {
-        waiting: "0",
-        preparing: "1",
-        downloading: "2",
-        paused: "3",
-        merging: "4",
-        finished: "5",
-        failed: "6",
-        cancelled: "7",
-      }[status];
-      return !!status_code && filter.split(",").includes(status_code);
-    }
-
     function upsert_socket_task(record, options) {
       if (!paged_mode_enabled()) {
         return upsert(record, options);
       }
       const id = record && (record.id ?? record.task_id);
-      const key = id === undefined || id === null ? "" : String(id);
-      const previous_socket_status = socket_status_by_id.get(key);
-      const socket_status = Object.prototype.hasOwnProperty.call(
-        record || {},
-        "status",
-      )
-        ? normalize_status(record.status)
-        : previous_socket_status;
-      if (key && socket_status) {
-        socket_status_by_id.set(key, socket_status);
-      }
       const task = id === undefined || id === null ? null : get(id);
-      if (!task) {
-        const should_refresh_missing =
-          !options ||
-          options.refresh_missing === true ||
-          typeof options.refresh_missing === "undefined" ||
-          (options.refresh_missing === "status" &&
-            previous_socket_status !== socket_status &&
-            (socket_status_matches_current_filter(previous_socket_status) ||
-              socket_status_matches_current_filter(socket_status)));
-        if (should_refresh_missing) {
-          schedule_paged_refresh();
-        }
-        return null;
-      }
-      const previous_status = task.state.status.value;
-      upsert(record, options);
-      if (
-        (!options || options.refresh_status !== false) &&
-        previous_status !== task.state.status.value
-      ) {
-        schedule_paged_refresh();
-      }
-      return task;
+      return task ? upsert(record, options) : null;
     }
 
     function handle_snapshot(message) {
@@ -1954,7 +1943,6 @@
           size: aggregate.total,
           speed: aggregate.speed,
         },
-        { refresh_missing: false },
       );
     }
 
@@ -1968,19 +1956,15 @@
       }
       if (message.type === "task_create" || message.type === "task_upsert") {
         (Array.isArray(message.tasks) ? message.tasks : []).forEach((task) => {
-          upsert_socket_task(task, {
-            refresh_missing: message.type === "task_create" ? false : "status",
-          });
+          if (message.type === "task_create") upsert(task);
+          else upsert_socket_task(task);
         });
-        if (message.type === "task_create") {
-          schedule_paged_refresh();
-        }
         return;
       }
       if (message.type === "task_update") {
         (Array.isArray(message.updates) ? message.updates : []).forEach(
           (task) => {
-            upsert_socket_task(task, { refresh_missing: "status" });
+            upsert_socket_task(task);
           },
         );
         return;
@@ -1988,7 +1972,6 @@
       if (message.type === "task_delete") {
         (Array.isArray(message.task_ids) ? message.task_ids : []).forEach(
           (id) => {
-            socket_status_by_id.delete(String(id));
             const task = get(id);
             if (task) {
               task._update({ id, status: "deleted" });
@@ -1996,7 +1979,6 @@
             }
           },
         );
-        schedule_paged_refresh();
         return;
       }
       if (message.type === "task_snapshot") {
@@ -2009,7 +1991,6 @@
         (Array.isArray(message.data) ? message.data : []).forEach((task) => {
           upsert_socket_task(task, {
             prepend: false,
-            refresh_missing: false,
           });
         });
         return;
@@ -2022,13 +2003,9 @@
           const id =
             (task_record && (task_record.id ?? task_record.task_id)) ||
             data.task_id;
-          if (id !== undefined && id !== null) {
-            socket_status_by_id.delete(String(id));
-          }
           if (id !== undefined && id !== null && get(id)) {
             remove_task(id, false);
           }
-          schedule_paged_refresh();
           return;
         }
         if (task_record) {
@@ -2110,14 +2087,9 @@
         return;
       }
       destroyed = true;
-      if (paged_refresh_timer !== null) {
-        global.clearTimeout(paged_refresh_timer);
-        paged_refresh_timer = null;
-      }
       channel$.destroy();
       (task_list_.value || []).forEach((task) => task._dispose());
       tasks_by_id.clear();
-      socket_status_by_id.clear();
       task_list_.as([]);
     }
 

@@ -1,0 +1,53 @@
+{
+  "get": {
+    "tags": [
+      "公众号"
+    ],
+    "summary": "通过微信页面获取公众号消息",
+    "description": "username 为公众号微信用户名；offset 为上游分页游标字符串。需要在线公众号页面连接。",
+    "responses": {
+      "200": {
+        "description": "HTTP 200；code=0 成功，非零为业务失败，以 msg 判断错误。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "parameters": [
+      {
+        "name": "username",
+        "in": "query",
+        "required": true,
+        "description": "username",
+        "schema": {
+          "type": "string"
+        }
+      },
+      {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "description": "offset",
+        "schema": {
+          "type": "string"
+        }
+      }
+    ]
+  }
+}

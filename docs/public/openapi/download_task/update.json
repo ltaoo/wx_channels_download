@@ -1,0 +1,51 @@
+{
+  "post": {
+    "tags": ["下载任务"],
+    "summary": "编辑失败的下载任务",
+    "description": "仅允许修改失败或已取消（status=6/7）的任务名称及文件主下载链接。files 中的 id 是任务详情 files[].id，必须属于该任务且不能重复；url 必须为 HTTP/HTTPS 地址。名称和链接在同一事务中保存，保留任务状态、文件、端点请求头与 Cookie。保存后可调用 retry 重新下载。未提供的文件保持原值。",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "required": ["id", "name"],
+            "properties": {
+              "id": { "type": "integer", "minimum": 1 },
+              "name": { "type": "string", "minLength": 1 },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["id", "url"],
+                  "properties": {
+                    "id": { "type": "integer", "minimum": 1 },
+                    "url": { "type": "string", "format": "uri" }
+                  }
+                }
+              }
+            }
+          },
+          "example": {
+            "id": 42,
+            "name": "示例视频",
+            "files": [{ "id": 73, "url": "https://example.com/video.mp4" }]
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "统一业务响应：成功 code=0；非法参数、非失败状态或文件归属校验失败 code=400，msg 为具体原因。",
+        "content": {
+          "application/json": {
+            "examples": {
+              "success": { "value": { "code": 0, "msg": "成功", "data": {} } },
+              "invalid_state": { "value": { "code": 400, "msg": "任务不存在或当前状态不允许编辑，仅支持失败任务" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

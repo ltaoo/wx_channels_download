@@ -84,7 +84,6 @@ func ensure_local_certificate(cfg *config.Config, check_certificate func([]byte,
 			return fmt.Errorf("保存本机证书配置失败: %w", err)
 		}
 	}
-	fmt.Printf("代理根证书: %s（自动安装: %t）\n", cert.Name, !cfg.GetBool("proxy.skipInstallRootCert"))
 	return nil
 }
 

@@ -6,6 +6,9 @@ if (typeof WXEnv === "undefined") {
 }
 
 (() => {
+  if (WXEnv.get("remoteServerEnabled") === true) {
+    return;
+  }
   function ws_protocol(protocol) {
     return protocol === "https" ? "wss" : "ws";
   }

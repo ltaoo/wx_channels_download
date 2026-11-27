@@ -4,7 +4,7 @@
       "下载任务"
     ],
     "summary": "批量创建平台下载任务",
-    "description": "使用平台注册适配器从原始 content 构建并持久化下载任务。默认自动启动；单项失败记录在 tasks 中，不影响同批其他对象。config.existing_action 可设置 skip、duplicate 或 overwrite 处理重复内容。所有业务响应的 HTTP 状态码均为 200。",
+    "description": "使用平台注册适配器从原始 content 构建并持久化下载任务。默认自动启动；单项失败记录在 tasks 中，不影响同批其他对象。config.existing_action 可设置 skip、duplicate 或 overwrite 处理重复内容。所有业务响应的 HTTP 状态码均为 200。 未指定 config.existing_action 时沿用应用配置 download.defaultActionWhenExisting。skip 可以返回已有任务；duplicate 新建；overwrite 清理可覆盖的冲突任务或文件后重新创建。 existing_action=error 可显式返回重复冲突；overwrite 可能清理冲突文件。",
     "requestBody": {
       "required": true,
       "content": {
@@ -54,9 +54,10 @@
                           "enum": [
                             "skip",
                             "duplicate",
-                            "overwrite"
+                            "overwrite",
+                            "error"
                           ],
-                          "description": "检测到已有相同内容任务时的处理方式"
+                          "description": "重复内容处理：skip 跳过，duplicate 重复创建，overwrite 清理冲突后创建，error 返回冲突。overwrite 会移除可覆盖的终态任务记录或冲突文件。"
                         }
                       },
                       "description": "平台下载配置"
@@ -76,6 +77,14 @@
                         "derived",
                         "dependency"
                       ]
+                    },
+                    "resource_indexes": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "description": "从预览资源数组选择要下载的资源，索引从 0 开始；省略或空数组保留全部资源。"
                     }
                   }
                 }
@@ -103,7 +112,7 @@
     },
     "responses": {
       "200": {
-        "description": "批量创建结果。tasks 与输入对象逐项对应；ids 仅包含本次实际创建成功的任务 ID。",
+        "description": "tasks 与输入对象逐项对应；ids 仅包含本次实际创建成功的任务 ID，skip 返回的已有任务不计入 ids。",
         "content": {
           "application/json": {
             "examples": {

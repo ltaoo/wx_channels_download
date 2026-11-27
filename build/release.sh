@@ -4,6 +4,10 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+if [ "${1:-}" = "nas" ]; then
+  exec bash ./deploy.sh
+fi
+
 # Load environment variables from .env file
 if [ -f .env ]; then
   set -a
@@ -36,77 +40,23 @@ BUILD_VERSION="${APP_VER}-${GIT_COMMIT}"
 
 echo "🚧 Building for Linux/amd64 (Version: ${BUILD_VERSION})..."
 build_binary() {
-  local ldflags="-s -w -linkmode external -extldflags=-static -X main.AppVer=${BUILD_VERSION} -X main.Mode=release"
-  local tags="with_gvisor,embed_frontend_inject"
-  local docker_mode="${SERVER_BUILD_WITH_DOCKER:-auto}"
-  local docker_ready="false"
-  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-    docker_ready="true"
-  fi
+  local ldflags="-s -w -X main.AppVer=${BUILD_VERSION} -X main.Mode=release"
+  local tags="sqlite_only,embed_frontend_inject"
 
-  docker_build() {
+  if [ "${SERVER_BUILD_WITH_DOCKER:-auto}" = "1" ]; then
+    if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+      echo "❌ SERVER_BUILD_WITH_DOCKER=1 but Docker is not running."
+      exit 1
+    fi
     docker run --rm --platform linux/amd64 \
       -v "$PWD:/workspace" \
       -w /workspace \
       "$BUILD_IMAGE" \
-      bash -lc "CGO_ENABLED=1 GOOS=linux GOARCH=amd64 bash build/build-go.sh -trimpath -tags '$tags' -ldflags '$ldflags' -o 'dist/$BINARY_NAME' main.go"
-  }
-
-  go_build() {
-    local cc="${1:-}"
-    if [ -n "$cc" ]; then
-      echo "   Using CGO_ENABLED=1 with CC=$cc"
-      CC="$cc" CGO_ENABLED=1 GOOS=linux GOARCH=amd64 bash build/build-go.sh -trimpath -tags "$tags" -ldflags="$ldflags" -o "dist/$BINARY_NAME" main.go
-    else
-      echo "   Using CGO_ENABLED=1"
-      CGO_ENABLED=1 GOOS=linux GOARCH=amd64 bash build/build-go.sh -trimpath -tags "$tags" -ldflags="$ldflags" -o "dist/$BINARY_NAME" main.go
-    fi
-  }
-
-  if [ "$docker_mode" = "1" ]; then
-    if [ "$docker_ready" != "true" ]; then
-      echo "❌ SERVER_BUILD_WITH_DOCKER=1 but Docker is not running."
-      exit 1
-    fi
-    docker_build
+      bash -lc "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 bash build/build-go.sh -trimpath -tags '$tags' -ldflags '$ldflags' -o 'dist/$BINARY_NAME' main.go"
     return
   fi
 
-  if [ -n "${SERVER_CC:-}" ]; then
-    go_build "$SERVER_CC"
-    return
-  fi
-
-  if [ "$(go env GOOS)" = "linux" ] && [ "$(go env GOARCH)" = "amd64" ]; then
-    go_build
-    return
-  fi
-
-  if command -v x86_64-linux-gnu-gcc >/dev/null 2>&1; then
-    go_build "x86_64-linux-gnu-gcc"
-    return
-  fi
-  if command -v x86_64-linux-musl-gcc >/dev/null 2>&1; then
-    go_build "x86_64-linux-musl-gcc"
-    return
-  fi
-  if command -v zig >/dev/null 2>&1; then
-    go_build "zig cc -target x86_64-linux-gnu"
-    return
-  fi
-
-  if [ "$docker_mode" != "0" ] && [ "$docker_ready" = "true" ]; then
-    docker_build
-    return
-  fi
-
-  echo "❌ Linux/amd64 build requires CGO_ENABLED=1 and a Linux C toolchain."
-  echo "   Use one of these:"
-  echo "   - Start Docker/OrbStack and retry"
-  echo "   - Install zig"
-  echo "   - Set SERVER_CC to a Linux amd64 cross compiler"
-  echo "   - Run this script on a Linux/amd64 host"
-  exit 1
+  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 bash build/build-go.sh -trimpath -tags "$tags" -ldflags="$ldflags" -o "dist/$BINARY_NAME" main.go
 }
 
 build_binary

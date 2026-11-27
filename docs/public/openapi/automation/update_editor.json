@@ -1,0 +1,81 @@
+{
+  "post": {
+    "tags": [
+      "自动化"
+    ],
+    "summary": "更新在线 Pipeline 编辑器草稿",
+    "description": "需提供读取快照中的 editor_id、正整数 revision 和完整 draft；更新仅应用到页面草稿，不保存工作流，成功返回 applied=true、saved=false。请求体上限 1 MiB。页面未在 5 秒内确认时，应重新读取草稿再决定是否重试。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "object",
+                  "properties": {
+                    "editor_id": {
+                      "type": "string"
+                    },
+                    "snapshot": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "applied": {
+                      "type": "boolean"
+                    },
+                    "saved": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "post_api_v1_automation_update_editor",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "editor_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "revision": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 1
+              },
+              "draft": {
+                "$ref": "../components.json#/schemas/services_PipelineEditorDraft"
+              }
+            },
+            "required": [
+              "editor_id",
+              "revision",
+              "draft"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

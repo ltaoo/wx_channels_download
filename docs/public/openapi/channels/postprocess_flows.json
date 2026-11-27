@@ -1,0 +1,47 @@
+{
+  "get": {
+    "tags": [
+      "视频号"
+    ],
+    "summary": "获取视频号后处理工作流",
+    "description": "获取视频号后处理工作流。",
+    "responses": {
+      "200": {
+        "description": "HTTP 200；code=0 成功，非零为业务失败，以 msg 判断错误。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/flowengine_FlowVisualizationPayload"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "parameters": [
+      {
+        "name": "flow_id",
+        "in": "query",
+        "required": false,
+        "description": "flow_id",
+        "schema": {
+          "type": "string"
+        }
+      }
+    ]
+  }
+}

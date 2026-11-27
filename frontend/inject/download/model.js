@@ -2267,6 +2267,7 @@ function DownloaderPanelViewModel(props = {}) {
         return;
       }
       deleting_task_.as(true);
+      ui.deleteConfirmDialog$.okBtn.setLoading(true);
       try {
         const ok = taskIds.length
           ? await methods.deleteTasksByIds(taskIds, {
@@ -2286,6 +2287,7 @@ function DownloaderPanelViewModel(props = {}) {
           source: "model.js:confirmDeleteTask",
         });
       } finally {
+        ui.deleteConfirmDialog$.okBtn.setLoading(false);
         deleting_task_.as(false);
       }
     },
@@ -2366,6 +2368,7 @@ function DownloaderPanelViewModel(props = {}) {
         return;
       }
       clearing_tasks_.as(true);
+      ui.clearConfirmDialog$.okBtn.setLoading(true);
       try {
         const ok = await methods.clearAllTasks({
           deleteFiles: delete_delete_files_.value,
@@ -2374,6 +2377,7 @@ function DownloaderPanelViewModel(props = {}) {
           ui.clearConfirmDialog$.hide();
         }
       } finally {
+        ui.clearConfirmDialog$.okBtn.setLoading(false);
         clearing_tasks_.as(false);
       }
     },
@@ -2413,6 +2417,7 @@ function DownloaderPanelViewModel(props = {}) {
         }
       }
       creating_task_.as(true);
+      ui.createPlatformTaskDialog$.okBtn.setLoading(true);
       try {
         const r = await reqs.task.prepareFromPlatform.run({
           platform: platform,
@@ -2439,6 +2444,7 @@ function DownloaderPanelViewModel(props = {}) {
         ui.createPlatformTaskDialog$.hide();
         ui.createPlatformTaskPreviewDialog$.show();
       } finally {
+        ui.createPlatformTaskDialog$.okBtn.setLoading(false);
         creating_task_.as(false);
       }
     },
@@ -2459,6 +2465,7 @@ function DownloaderPanelViewModel(props = {}) {
         return;
       }
       creating_task_.as(true);
+      ui.createTaskDialog$.okBtn.setLoading(true);
       try {
         const r = await prepareTaskReq.run({
           url: text,
@@ -2476,6 +2483,7 @@ function DownloaderPanelViewModel(props = {}) {
         ui.createTaskDialog$.hide();
         ui.createTaskPreviewDialog$.show();
       } finally {
+        ui.createTaskDialog$.okBtn.setLoading(false);
         creating_task_.as(false);
       }
     },
@@ -2488,6 +2496,7 @@ function DownloaderPanelViewModel(props = {}) {
         return;
       }
       creating_task_.as(true);
+      ui.createTaskPreviewDialog$.okBtn.setLoading(true);
       try {
         const url = create_task_text_.value || preview.url || "";
         const filename = create_task_filename_.value || preview.task_name || "";
@@ -2520,6 +2529,7 @@ function DownloaderPanelViewModel(props = {}) {
           });
         }
       } finally {
+        ui.createTaskPreviewDialog$.okBtn.setLoading(false);
         creating_task_.as(false);
       }
     },
@@ -2532,6 +2542,7 @@ function DownloaderPanelViewModel(props = {}) {
         return;
       }
       creating_task_.as(true);
+      ui.createPlatformTaskPreviewDialog$.okBtn.setLoading(true);
       try {
         const platform = create_platform_text_.value || preview.platform || "";
         var content = {};
@@ -2600,6 +2611,7 @@ function DownloaderPanelViewModel(props = {}) {
           });
         }
       } finally {
+        ui.createPlatformTaskPreviewDialog$.okBtn.setLoading(false);
         creating_task_.as(false);
       }
     },
@@ -3238,6 +3250,8 @@ function DownloaderPanelViewModel(props = {}) {
         return;
       }
       overwrite_processing_.as(true);
+      ui.overwriteConfirmDialog$.okBtn.setLoading(true);
+      ui.batchOverwriteConfirmDialog$.okBtn.setLoading(true);
       try {
         if (action !== "skip") {
           console.log(
@@ -3284,6 +3298,8 @@ function DownloaderPanelViewModel(props = {}) {
           hide_duplicate_download_confirm_dialog();
         }
       } finally {
+        ui.overwriteConfirmDialog$.okBtn.setLoading(false);
+        ui.batchOverwriteConfirmDialog$.okBtn.setLoading(false);
         overwrite_processing_.as(false);
       }
     },
@@ -3495,57 +3511,62 @@ function DownloaderPanelViewModel(props = {}) {
           return;
         }
 
-        const obj = duplicated_feed_prepare_download.objects[0];
-        const overwrite = action === "overwrite";
-        const duplicate = action === "duplicate";
-        WXU.log
-          .Info()
-          .Str("file", "/download/model.js")
-          .Str("id", obj.content.id || "")
-          .Str("object", obj)
-          .Str("action", action)
-          .Bool("overwrite", overwrite)
-          .Bool("duplicate", duplicate)
-          .Msg(
-            "overwriteConfirmDialog: preparing to retry creating download task",
-          );
-        const [err, data] = await methods.createDownloadTask([obj.content], {
-          ...obj.config,
-          platform: obj.platform,
-          overwrite,
-          duplicate,
-        });
-        if (err) {
-          overwrite_error_.as(err.message || "创建下载任务失败");
+        ui.overwriteConfirmDialog$.okBtn.setLoading(true);
+        try {
+          const obj = duplicated_feed_prepare_download.objects[0];
+          const overwrite = action === "overwrite";
+          const duplicate = action === "duplicate";
           WXU.log
-            .Error()
-            .Str("error", err.message || "")
-            .Int("code", err.code || 0)
-            .Msg("overwriteConfirmDialog: retry creating download task failed");
-          WXU.error({
-            msg: err.message || "创建下载任务失败",
-            source: "model.js:2487",
+            .Info()
+            .Str("file", "/download/model.js")
+            .Str("id", obj.content.id || "")
+            .Str("object", obj)
+            .Str("action", action)
+            .Bool("overwrite", overwrite)
+            .Bool("duplicate", duplicate)
+            .Msg(
+              "overwriteConfirmDialog: preparing to retry creating download task",
+            );
+          const [err, data] = await methods.createDownloadTask([obj.content], {
+            ...obj.config,
+            platform: obj.platform,
+            overwrite,
+            duplicate,
           });
-          return;
-        }
-        if (data && data.skipped) {
-          overwrite_error_.as("创建下载任务失败：仍存在相同的下载任务");
-          WXU.log
-            .Warn()
-            .Msg("overwriteConfirmDialog: retry still returned 409 conflict");
-          return;
-        }
+          if (err) {
+            overwrite_error_.as(err.message || "创建下载任务失败");
+            WXU.log
+              .Error()
+              .Str("error", err.message || "")
+              .Int("code", err.code || 0)
+              .Msg("overwriteConfirmDialog: retry creating download task failed");
+            WXU.error({
+              msg: err.message || "创建下载任务失败",
+              source: "model.js:2487",
+            });
+            return;
+          }
+          if (data && data.skipped) {
+            overwrite_error_.as("创建下载任务失败：仍存在相同的下载任务");
+            WXU.log
+              .Warn()
+              .Msg("overwriteConfirmDialog: retry still returned 409 conflict");
+            return;
+          }
 
-        WXU.log
-          .Info()
-          .Msg(
-            "overwriteConfirmDialog: retry creating download task succeeded",
-          );
-        duplicated_feed_prepare_download = null;
-        overwrite_error_.as("");
-        ui.overwriteConfirmDialog$.hide();
-        await reloadTasks();
-        return;
+          WXU.log
+            .Info()
+            .Msg(
+              "overwriteConfirmDialog: retry creating download task succeeded",
+            );
+          duplicated_feed_prepare_download = null;
+          overwrite_error_.as("");
+          ui.overwriteConfirmDialog$.hide();
+          await reloadTasks();
+          return;
+        } finally {
+          ui.overwriteConfirmDialog$.okBtn.setLoading(false);
+        }
       },
     }),
     singleOverwriteConfirmDialog$: new Timeless.vm.DialogCore({

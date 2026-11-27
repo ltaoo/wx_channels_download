@@ -38,6 +38,7 @@ var (
 	_ adapter.ProgressFetchAdapter        = (*Shuba69Adapter)(nil)
 	_ adapter.ContextProgressFetchAdapter = (*Shuba69Adapter)(nil)
 	_ adapter.FetchCacheAdapter           = (*Shuba69Adapter)(nil)
+	_ adapter.FetchDownloadTaskBuilder    = (*Shuba69Adapter)(nil)
 	_ adapter.RuntimeAdapter              = (*Shuba69Adapter)(nil)
 	_ adapter.RuntimeHandle               = (*Shuba69Adapter)(nil)
 )
@@ -301,4 +302,12 @@ func (a *Shuba69Adapter) BuildDownloadTask(content_json json.RawMessage, config_
 
 	cookie := a.config_string("69shuba.cookie")
 	return build_download_task(novel, config_json, cookie)
+}
+
+func (a *Shuba69Adapter) BuildDownloadTaskFromFetch(data any, config_json json.RawMessage) (*adapter.DownloadTaskResult, error) {
+	novel, err := novel_from_fetch(data)
+	if err != nil {
+		return nil, err
+	}
+	return build_download_task(novel, config_json, a.config_string("69shuba.cookie"))
 }

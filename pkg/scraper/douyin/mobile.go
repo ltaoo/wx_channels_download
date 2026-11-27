@@ -71,7 +71,7 @@ func (c *DouyinMobileClient) Parse(raw_url string) (json.RawMessage, error) {
 	req.Header.Set("User-Agent", ua)
 
 	request_started_at := time.Now()
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := new_douyin_web_http_client().Do(req)
 	if err != nil {
 		c.logger.Error().
 			Err(err).
@@ -124,7 +124,7 @@ func (c *DouyinMobileClient) Parse(raw_url string) (json.RawMessage, error) {
 			Int64("content_length", resp.ContentLength).
 			Int("body_bytes", len(html)).
 			Str("body_preview", log_body_preview(html)).
-			Msg("douyin mobile: _ROUTER_DATA not found")
+			Msg("douyin mobile: router data is missing or incomplete")
 		return nil, err
 	}
 	c.logger.Info().
@@ -141,5 +141,17 @@ func extract_router_json(html []byte) (json.RawMessage, error) {
 	if len(matches) < 2 {
 		return nil, fmt.Errorf("未找到_ROUTER_DATA")
 	}
-	return json.RawMessage(bytes.TrimSpace(matches[1])), nil
+	router_json := json.RawMessage(bytes.TrimSpace(matches[1]))
+	router_data, err := decode_douyin_pc_json_object(router_json)
+	if err != nil {
+		return nil, fmt.Errorf("douyin mobile: invalid router JSON: %w", err)
+	}
+	page, err := find_douyin_pc_video_page(router_data)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := normalize_douyin_pc_ssr_detail(router_data, page); err != nil {
+		return nil, fmt.Errorf("douyin mobile: incomplete router data: %w", err)
+	}
+	return router_json, nil
 }

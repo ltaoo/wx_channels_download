@@ -1,0 +1,66 @@
+{
+  "get": {
+    "tags": [
+      "账号"
+    ],
+    "summary": "获取账号主页内容（兼容路径）",
+    "description": "与 /api/account/{scope}/content/list 完全相同的兼容路径。",
+    "responses": {
+      "200": {
+        "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "../components.json#/schemas/adapter_HomeDetails"
+                }
+              },
+              "required": [
+                "code",
+                "msg"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "operationId": "get_api_account_details_scope_content_list",
+    "parameters": [
+      {
+        "name": "scope",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "平台账号主页分区值，取自响应 scopes[].value；不是内容列表的 all/task 范围"
+      },
+      {
+        "name": "id",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "归档账号主键字符串"
+      },
+      {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "页码，从 1 开始；账号主页接口使用平台分页游标"
+      }
+    ]
+  }
+}

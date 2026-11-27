@@ -160,7 +160,7 @@ build_macos_target() {
     local binary_path="$OUTPUT_DIR/$binary_name"
 
     echo "Building macOS $archive_arch..."
-    CGO_ENABLED=1 GOOS=darwin GOARCH="$go_arch" SDKROOT=$(xcrun --sdk macosx --show-sdk-path) bash "$SCRIPT_DIR/build-go.sh" -trimpath -tags "embed_inject,sqlite_only,embed_frontend_inject" -ldflags="-s -w -X main.Mode=release" -o "$binary_path"
+    CGO_ENABLED=0 GOOS=darwin GOARCH="$go_arch" bash "$SCRIPT_DIR/build-go.sh" -trimpath -tags "embed_inject,sqlite_only,embed_frontend_inject" -ldflags="-s -w -X main.Mode=release" -o "$binary_path"
     echo "Done: $binary_path"
     package_zip "$binary_path" "darwin_$archive_arch"
 }
@@ -195,7 +195,7 @@ build_linux() {
     local binary_path="$OUTPUT_DIR/wx_video_download_linux"
 
     echo "Building Linux x86_64..."
-    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 bash "$SCRIPT_DIR/build-go.sh" -trimpath -tags "embed_inject,sqlite_only,embed_frontend_inject" -ldflags="-s -w -X main.Mode=release" -o "$binary_path"
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 bash "$SCRIPT_DIR/build-go.sh" -trimpath -tags "embed_inject,sqlite_only,embed_frontend_inject" -ldflags="-s -w -X main.Mode=release" -o "$binary_path"
     echo "Done: $binary_path"
     package_zip "$binary_path" "linux_x86_64"
 }
@@ -204,7 +204,7 @@ build_linux_arm64() {
     local binary_path="$OUTPUT_DIR/wx_video_download_linux_arm64"
 
     echo "Building Linux arm64..."
-    CGO_ENABLED=1 GOOS=linux GOARCH=arm64 bash "$SCRIPT_DIR/build-go.sh" -trimpath -tags "embed_inject,sqlite_only,embed_frontend_inject" -ldflags="-s -w -X main.Mode=release" -o "$binary_path"
+    CGO_ENABLED=0 GOOS=linux GOARCH=arm64 bash "$SCRIPT_DIR/build-go.sh" -trimpath -tags "embed_inject,sqlite_only,embed_frontend_inject" -ldflags="-s -w -X main.Mode=release" -o "$binary_path"
     echo "Done: $binary_path"
     package_zip "$binary_path" "linux_arm64"
 }

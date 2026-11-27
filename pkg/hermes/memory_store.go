@@ -276,6 +276,7 @@ func (s *memory_store) UpdateResourceOutput(update ResourceOutputUpdate) error {
 		resource.Kind = update.ResourceKind
 		resource.Size = update.ResourceSize
 		resource.Downloaded = update.ResourceDownloaded
+		resource.Extra = clone_string_map(update.ResourceExtra)
 	}
 	state.mu.Unlock()
 	return nil

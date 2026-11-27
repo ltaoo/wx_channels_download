@@ -3,12 +3,9 @@
  */
 (() => {
   var my_username = "";
-  function __wx_insert_batch_download_btn() {
-    const $operation = document.querySelector(".opr-area");
-    if (!$operation) {
-      return false;
-    }
+  function __wx_insert_batch_download_btn($operation) {
     const $btn = document.createElement("button");
+    $btn.setAttribute("data-n", "profile-batch-download-button");
     $btn.className = "button h-7 ml-2 weui-btn weui-btn_default weui-btn_mini";
     $btn.innerText = "批量下载";
 
@@ -136,8 +133,14 @@
   WXU.observe_node({
     selector: ".opr-area",
     container: "#app",
-    onOk: () => {
-      __wx_insert_batch_download_btn();
+    loading: ".loading-content",
+    onOk: __wx_insert_batch_download_btn,
+    onError: () => {
+      const $sider = document.createElement("div");
+      $sider.setAttribute("data-n", "profile-download-sidebar");
+      $sider.className = "wx-sider";
+      __wx_insert_batch_download_btn($sider);
+      document.body.appendChild($sider);
     },
   });
 })();

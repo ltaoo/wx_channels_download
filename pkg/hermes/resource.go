@@ -28,6 +28,24 @@ func (d *HermesEngine) download_resource(ctx context.Context, task *TaskJob, res
 	if strings.TrimSpace(resource.UniqueID) == "" {
 		return "", errors.New("resource unique ID is required")
 	}
+	completed_name := resource.Extra["_hermes_postprocessed"]
+	if resource.Extra["_hermes_finalized"] == "1" {
+		completed_name = resource.Name
+	}
+	if completed_name != "" {
+		output_path, path_err := d.resolve_resource_path(resource_download_dir(task, resource), completed_name, "")
+		if path_err != nil {
+			return "", path_err
+		}
+		if info, stat_err := os.Stat(output_path); stat_err == nil && info.Mode().IsRegular() && info.Size() == resource.Size {
+			if err := d.claim_output_path(task.ID, resource.ID, output_path); err != nil {
+				return "", err
+			}
+			resource.FilePath = output_path
+			return output_path, nil
+		}
+		return "", fmt.Errorf("completed resource is missing or modified: %s; create a new task to download it again", output_path)
+	}
 	candidates, err := d.endpoint_candidates(resource.Endpoints)
 	if err != nil {
 		return "", err
@@ -64,6 +82,9 @@ func (d *HermesEngine) download_resource(ctx context.Context, task *TaskJob, res
 		}
 		if prepared.Size < 0 {
 			prepared.Size = 0
+		}
+		if prepared.ResolvedEndpoint != nil {
+			candidate.endpoint = *prepared.ResolvedEndpoint
 		}
 		// An adapter-provided canonical MIME type carries media semantics that a
 		// CDN Content-Type can lose (for example, an audio-only MP4 advertised as
@@ -110,6 +131,9 @@ func (d *HermesEngine) download_resource(ctx context.Context, task *TaskJob, res
 		}
 		file_path, err = d.file_path_for_job_resource(task, resource, candidate.endpoint.URL)
 		if err != nil {
+			return "", err
+		}
+		if err := d.claim_output_path(task.ID, resource.ID, file_path); err != nil {
 			return "", err
 		}
 		if err := os.MkdirAll(filepath.Dir(file_path), 0755); err != nil {
@@ -771,6 +795,12 @@ func (d *HermesEngine) ensure_resource_sizes(ctx context.Context, task_id int, r
 }
 
 func (d *HermesEngine) probe_one_resource(ctx context.Context, task_id int, res *ResourceJob, mu *sync.Mutex, sizes *map[int]int64) {
+	if res.Extra["_hermes_finalized"] == "1" || res.Extra["_hermes_postprocessed"] != "" {
+		mu.Lock()
+		(*sizes)[res.ID] = res.Size
+		mu.Unlock()
+		return
+	}
 	candidates, err := d.endpoint_candidates(res.Endpoints)
 	if err != nil {
 		return
@@ -796,6 +826,14 @@ func (d *HermesEngine) probe_one_resource(ctx context.Context, task_id int, res 
 				Err(err), c.endpoint).
 				Msg("run - initial resource size probe failed; download phase will retry")
 			continue
+		}
+		if prepared.ResolvedEndpoint != nil {
+			for index := range res.Endpoints {
+				if res.Endpoints[index].ID == c.endpoint.ID && res.Endpoints[index].URL == c.endpoint.URL {
+					res.Endpoints[index] = *prepared.ResolvedEndpoint
+					break
+				}
+			}
 		}
 		if prepared.Size > 0 {
 			_ = d.update_resource_size(task_id, res.ID, prepared.Size)
@@ -852,7 +890,39 @@ func (d *HermesEngine) file_path_for_job_resource(task *TaskJob, resource *Resou
 	if task == nil || resource == nil {
 		return "", errors.New("task and resource jobs are required")
 	}
-	return d.resolve_resource_path(resource_download_dir(task, resource), resource.UniqueID, endpoint_url)
+	name := ResourceDownloadName(task.ID, resource.ID, resource.UniqueID, get_config_bool(task.Config, "duplicate"))
+	if persisted_name := resource.Extra["_hermes_download_name"]; persisted_name != "" {
+		name = persisted_name
+	}
+	return d.resolve_resource_path(resource_download_dir(task, resource), name, endpoint_url)
+}
+
+// ResourceDownloadName isolates duplicate transfers while keeping their source identity unchanged.
+func ResourceDownloadName(task_id, resource_id int, unique_id string, duplicate bool) string {
+	if !duplicate {
+		return unique_id
+	}
+	directory, basename := filepath.Split(unique_id)
+	basename = NewFilenameProcessor("", nil).truncate_string(basename, 160)
+	return filepath.Join(directory, fmt.Sprintf("%s.task-%d-resource-%d", basename, task_id, resource_id))
+}
+
+func (d *HermesEngine) claim_output_path(task_id, resource_id int, path string) error {
+	absolute_path, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	d.output_mu.Lock()
+	defer d.output_mu.Unlock()
+	owner := [2]int{task_id, resource_id}
+	if existing, ok := d.output_owners[absolute_path]; ok && existing != owner {
+		return fmt.Errorf("download path is already in use by task %d resource %d: %s", existing[0], existing[1], absolute_path)
+	}
+	if d.output_owners == nil {
+		d.output_owners = make(map[string][2]int)
+	}
+	d.output_owners[absolute_path] = owner
+	return nil
 }
 
 func (d *HermesEngine) resolve_resource_path(download_dir, unique_id, endpoint_url string) (string, error) {
@@ -1002,7 +1072,7 @@ func (d *HermesEngine) find_next_duplicate_name(task *TaskJob, resource *Resourc
 
 // resolveDuplicateFilename appends (1), (2), ... to baseName when the final
 // filename already exists on disk. ext is appended after the duplicate suffix.
-func (d *HermesEngine) resolve_duplicate_filename(download_dir string, directories []string, base_name, ext string) (string, error) {
+func (d *HermesEngine) resolve_duplicate_filename(download_dir string, directories []string, base_name, ext string, owner [2]int) (string, error) {
 	for counter := 0; ; counter++ {
 		candidate_name := final_output_name(base_name, ext)
 		if counter > 0 {
@@ -1010,6 +1080,13 @@ func (d *HermesEngine) resolve_duplicate_filename(download_dir string, directori
 		}
 		candidate := join_output_path(directories, candidate_name)
 		candidate_path := d.abs_file_path(download_dir, candidate)
+		absolute_path, err := filepath.Abs(candidate_path)
+		if err != nil {
+			return "", err
+		}
+		if existing, occupied := d.output_owners[absolute_path]; occupied && existing != owner {
+			continue
+		}
 		if _, err := os.Stat(candidate_path); err != nil {
 			if os.IsNotExist(err) {
 				return candidate, nil

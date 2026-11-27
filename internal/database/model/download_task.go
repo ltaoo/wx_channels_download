@@ -18,6 +18,13 @@ const (
 	TaskStatusCancelled   = 7
 )
 
+// Resource statuses use a separate mapping from DownloadTask statuses.
+const (
+	ResourceStatusWaiting     = 0
+	ResourceStatusDownloading = 1
+	ResourceStatusFinished    = 2
+)
+
 // ResourceType enum
 const (
 	ResourceTypeFile       = "FILE"

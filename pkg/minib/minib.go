@@ -89,10 +89,25 @@ func NewMiniBrowser(timeout time.Duration, cookie_providers ...*cookies.Reader) 
 	}, nil
 }
 
-// Request sends one request with exactly headers, plus cookies kept by this session.
+// Request sends one HTTP request with exactly headers, plus cookies kept by
+// this session. File URLs read the local filesystem without cookies or HTTP
+// request headers.
 func (b *MiniBrowser) Request(ctx context.Context, method, raw_url string, body io.Reader, headers http.Header) (*clawreq.Response, error) {
 	if b == nil || b.http_client == nil {
 		return nil, fmt.Errorf("minib: browser is closed")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	request_url, err := url.Parse(raw_url)
+	if err != nil {
+		return nil, err
+	}
+	if request_url.Scheme == "file" {
+		started_at := time.Now()
+		response, file_err := request_local_file(ctx, method, request_url)
+		har_recorder_from_context(ctx).record_network(ctx, started_at, time.Since(started_at), method, raw_url, headers, nil, response, file_err)
+		return response, file_err
 	}
 	release_request := func() {}
 	if b.request_scheduler != nil {
@@ -104,10 +119,6 @@ func (b *MiniBrowser) Request(ctx context.Context, method, raw_url string, body 
 	}
 	defer release_request()
 	prepared_headers, err := b.prepare_request_headers(raw_url, headers)
-	if err != nil {
-		return nil, err
-	}
-	request_url, err := url.Parse(raw_url)
 	if err != nil {
 		return nil, err
 	}
@@ -330,6 +341,7 @@ func (b *MiniBrowser) execute_js(ctx context.Context, expression string, modifie
 	}
 	var request_started chan struct{}
 	if b.page_runtime != nil {
+		ctx = restrict_local_file_access(ctx, b.page_runtime.page.URL)
 		b.page_runtime.ctx = ctx
 		b.page_runtime.network_ctx = ctx
 		if modifier != nil {
@@ -342,8 +354,8 @@ func (b *MiniBrowser) execute_js(ctx context.Context, expression string, modifie
 			})
 		}
 		defer func() {
-			b.page_runtime.ctx = b.lifecycle_ctx
-			b.page_runtime.network_ctx = b.lifecycle_ctx
+			b.page_runtime.ctx = b.page_runtime.lifecycle_ctx
+			b.page_runtime.network_ctx = b.page_runtime.lifecycle_ctx
 		}()
 	}
 	finished := make(chan struct{})
@@ -429,6 +441,7 @@ func (b *MiniBrowser) Click(ctx context.Context, selector string) error {
 	click_navigation_options := current_page.navigate_options
 	click_navigation_options.WaitForSelector = ""
 	click_navigation_options.WaitForContent = ""
+	ctx = restrict_local_file_access(ctx, current_page.URL)
 	navigated_page, err := b.Navigate(ctx, current_page.navigation_url, navigation_headers, click_navigation_options)
 	if err != nil {
 		return fmt.Errorf("minib: follow click navigation to %q: %w", current_page.navigation_url, err)

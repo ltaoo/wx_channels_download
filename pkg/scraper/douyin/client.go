@@ -97,7 +97,7 @@ func (c *Client) Fetch(raw_url string) (any, error) {
 			Dur("pc_elapsed", time.Since(pc_started_at)).
 			Dur("elapsed", time.Since(started_at)).
 			Msg("douyin fetch: completed with PC-compatible detail JSON")
-		return detail_json, nil
+		return c.enrich_playback_variants(detail_json), nil
 	}
 	c.logger.Warn().
 		Err(pc_err).
@@ -113,7 +113,7 @@ func (c *Client) Fetch(raw_url string) (any, error) {
 			Dur("mobile_elapsed", time.Since(mobile_started_at)).
 			Dur("elapsed", time.Since(started_at)).
 			Msg("douyin fetch: completed with raw mobile JSON")
-		return router_json, nil
+		return c.enrich_playback_variants(router_json), nil
 	}
 	c.logger.Warn().
 		Err(mobile_err).
@@ -168,7 +168,7 @@ func (c *Client) Fetch(raw_url string) (any, error) {
 		return nil, wrap_web_status_error(mobile_err, resp)
 	}
 
-	info := convertWebResp(resp)
+	info := convert_web_resp(resp)
 	c.logger.Info().
 		Str("video_id", info.VideoID).
 		Dur("web_elapsed", time.Since(web_started_at)).
@@ -224,41 +224,41 @@ func (c *Client) GetVideoInfo(raw_url string) (*VideoInfo, error) {
 	if resp.StatusCode != 0 {
 		return nil, wrap_web_status_error(nil, resp)
 	}
-	return convertWebResp(resp), nil
+	return convert_web_resp(resp), nil
 }
 
-// convertWebResp converts web API response to VideoInfo.
-func convertWebResp(resp *DouyinWebVideoProfileResp) *VideoInfo {
+// convert_web_resp converts web API response to VideoInfo.
+func convert_web_resp(resp *DouyinWebVideoProfileResp) *VideoInfo {
 	detail := resp.AwemeDetail
 	video := detail.Video
 
 	// Choose best video URL: prefer H264 playback address
-	var videoURL string
+	var video_url string
 	if len(video.PlayAddrH264.UrlList) > 0 {
-		videoURL = video.PlayAddrH264.UrlList[0]
+		video_url = video.PlayAddrH264.UrlList[0]
 	} else if len(video.PlayAddr265.UrlList) > 0 {
-		videoURL = video.PlayAddr265.UrlList[0]
+		video_url = video.PlayAddr265.UrlList[0]
 	} else if len(video.PlayAddr.UrlList) > 0 {
-		videoURL = video.PlayAddr.UrlList[0]
+		video_url = video.PlayAddr.UrlList[0]
 	} else {
 		// Try bitrate list
 		for _, br := range video.BitRate {
 			if len(br.PlayAddr.UrlList) > 0 {
-				videoURL = br.PlayAddr.UrlList[0]
+				video_url = br.PlayAddr.UrlList[0]
 				break
 			}
 		}
 	}
 
 	// Replace watermarked URL with non-watermarked URL
-	videoURL = strings.Replace(videoURL, "playwm", "play", 1)
+	video_url = strings.Replace(video_url, "playwm", "play", 1)
 
 	// Cover URL
-	var coverURL string
+	var cover_url string
 	if len(video.OriginCover.UrlList) > 0 {
-		coverURL = video.OriginCover.UrlList[0]
+		cover_url = video.OriginCover.UrlList[0]
 	} else if len(video.Cover.UrlList) > 0 {
-		coverURL = video.Cover.UrlList[0]
+		cover_url = video.Cover.UrlList[0]
 	}
 
 	title := sanitizeFilename(detail.Desc)
@@ -267,10 +267,11 @@ func convertWebResp(resp *DouyinWebVideoProfileResp) *VideoInfo {
 	}
 
 	return &VideoInfo{
-		URL:      videoURL,
+		URL:      video_url,
 		Title:    title,
 		VideoID:  detail.AwemeId,
-		CoverURL: coverURL,
+		CoverURL: cover_url,
 		Source:   "web",
+		Video:    &video,
 	}
 }

@@ -15,7 +15,7 @@ func (c *APIClient) handle_mcp_status(ctx *gin.Context) {
 }
 
 func (c *APIClient) handle_mcp_enable(ctx *gin.Context) {
-	if err := c.mcp_service.Enable(); err != nil {
+	if err := c.service_mcp.Enable(); err != nil {
 		result.Err(ctx, http.StatusServiceUnavailable, err.Error())
 		return
 	}
@@ -23,7 +23,7 @@ func (c *APIClient) handle_mcp_enable(ctx *gin.Context) {
 }
 
 func (c *APIClient) handle_mcp_disable(ctx *gin.Context) {
-	if err := c.mcp_service.Disable(); err != nil {
+	if err := c.service_mcp.Disable(); err != nil {
 		result.Err(ctx, http.StatusServiceUnavailable, err.Error())
 		return
 	}
@@ -31,7 +31,7 @@ func (c *APIClient) handle_mcp_disable(ctx *gin.Context) {
 }
 
 func (c *APIClient) mcp_status_data(request *http.Request) gin.H {
-	status := c.mcp_service.Status()
+	status := c.service_mcp.Status()
 	return gin.H{
 		"enabled":   status.Enabled,
 		"status":    status.Status,
@@ -42,7 +42,7 @@ func (c *APIClient) mcp_status_data(request *http.Request) gin.H {
 }
 
 func (c *APIClient) handle_mcp_transport(ctx *gin.Context) {
-	c.mcp_service.ServeHTTP(ctx.Writer, ctx.Request)
+	c.service_mcp.ServeHTTP(ctx.Writer, ctx.Request)
 }
 
 func mcp_request_endpoint(request *http.Request) string {

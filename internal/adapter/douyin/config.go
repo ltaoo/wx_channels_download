@@ -17,7 +17,7 @@ func (c *DouyinPluginConfig) ConfigSchema() []config.ConfigField {
 			Key:         "cookie",
 			Type:        config.ConfigTypeText,
 			Default:     "",
-			Description: "抖音请求 Cookie，用于 web 端 API 回退（mobile 端优先，不需要 cookie）；不会输出到日志",
+			Description: "用于作品列表及视频详情 web API；作品列表需要 UIFID 或 UIFID_TEMP。留空时读取同步的 .douyin.com Cookie，填写时优先使用此配置；不会输出到日志",
 			Title:       "抖音 Cookie",
 			Group:       "Douyin",
 			HotReload:   true,

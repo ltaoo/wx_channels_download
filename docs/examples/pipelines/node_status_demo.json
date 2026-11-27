@@ -1,0 +1,196 @@
+{
+  "id": "node-status-demo",
+  "name": "节点状态刷新模拟（子流程循环 3 次）",
+  "start_node": "prepare",
+  "context_schema": [],
+  "triggers": [],
+  "nodes": {
+    "prepare": {
+      "type": "WaitNode",
+      "name": "准备（3 秒）",
+      "config": {
+        "seconds": 3
+      },
+      "next_node_ids": [
+        "init_count"
+      ],
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    "init_count": {
+      "type": "SetVariableNode",
+      "name": "初始化 count = 0",
+      "config": {
+        "variables": {
+          "count": 0
+        }
+      },
+      "next_node_ids": [
+        "check_count"
+      ],
+      "position": {
+        "x": 260,
+        "y": 0
+      }
+    },
+    "check_count": {
+      "type": "GatewayNode",
+      "name": "count < 3？",
+      "config": {
+        "gateway_type": "Exclusive",
+        "condition_language": "js",
+        "rules": [
+          {
+            "condition": "global.count < 3",
+            "target_id": "child"
+          },
+          {
+            "condition": "true",
+            "target_id": "finish"
+          }
+        ]
+      },
+      "next_node_ids": [
+        "child",
+        "finish"
+      ],
+      "position": {
+        "x": 520,
+        "y": 0
+      }
+    },
+    "child": {
+      "type": "WorkflowNode",
+      "name": "循环调用同一子流程（3 秒）",
+      "config": {
+        "arguments": {
+          "count": "{{global.count}}"
+        },
+        "output_key": "child_result",
+        "flow_id": "node-status-demo-child"
+      },
+      "next_node_ids": [
+        "process"
+      ],
+      "position": {
+        "x": 780,
+        "y": 0
+      }
+    },
+    "process": {
+      "type": "WaitNode",
+      "name": "处理（3 秒）",
+      "config": {
+        "seconds": 3
+      },
+      "next_node_ids": [
+        "increment_count"
+      ],
+      "position": {
+        "x": 1040,
+        "y": 0
+      }
+    },
+    "increment_count": {
+      "type": "JSCodeNode",
+      "name": "计算 count + 1",
+      "config": {
+        "code": "global.count + 1",
+        "output_key": "count"
+      },
+      "next_node_ids": [
+        "store_count"
+      ],
+      "position": {
+        "x": 1040,
+        "y": 200
+      }
+    },
+    "store_count": {
+      "type": "SetVariableNode",
+      "name": "保存 count，返回循环判断",
+      "config": {
+        "variables": {
+          "count": "{{output.increment_count.count}}"
+        }
+      },
+      "next_node_ids": [
+        "check_count"
+      ],
+      "position": {
+        "x": 780,
+        "y": 200
+      }
+    },
+    "finish": {
+      "type": "WaitNode",
+      "name": "完成（3 秒）",
+      "config": {
+        "seconds": 3
+      },
+      "next_node_ids": [],
+      "position": {
+        "x": 520,
+        "y": 400
+      }
+    }
+  },
+  "subflows": {
+    "node-status-demo-child": {
+      "id": "node-status-demo-child",
+      "name": "模拟子流程",
+      "start_node": "child_wait",
+      "nodes": {
+        "child_wait": {
+          "type": "WaitNode",
+          "name": "准备子流程输入（1 秒）",
+          "config": {
+            "seconds": 1
+          },
+          "next_node_ids": [
+            "child_process"
+          ],
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        "child_process": {
+          "type": "WaitNode",
+          "name": "执行子流程处理（1 秒）",
+          "config": {
+            "seconds": 1
+          },
+          "next_node_ids": [
+            "child_finish"
+          ],
+          "position": {
+            "x": 260,
+            "y": 0
+          }
+        },
+        "child_finish": {
+          "type": "WaitNode",
+          "name": "返回子流程结果（1 秒）",
+          "config": {
+            "seconds": 1
+          },
+          "next_node_ids": [],
+          "position": {
+            "x": 520,
+            "y": 0
+          }
+        }
+      },
+      "context_schema": [
+        {
+          "key": "count",
+          "type": "number",
+          "required": true
+        }
+      ]
+    }
+  }
+}

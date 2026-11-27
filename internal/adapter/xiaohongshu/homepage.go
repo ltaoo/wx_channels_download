@@ -44,17 +44,17 @@ func (a *XiaohongshuAdapter) build_home_contents_page(account *model.Account, sc
 	}
 	return &adapter.HomeContents{
 		Scope:      scope,
-		Contents:   xiaohongshu_home_contents(home_result.Items, home_result.Source),
+		Contents:   xiaohongshu_home_contents(home_result.Items),
 		NextMarker: home_result.NextMarker,
 	}, nil
 }
 
-func xiaohongshu_home_contents(note_items []xiaohongshu.HomeNoteItem, profile_url string) []model.Content {
+func xiaohongshu_home_contents(note_items []xiaohongshu.HomeNoteItem) []model.Content {
 	contents := make([]model.Content, 0, len(note_items))
 	seen := make(map[string]struct{}, len(note_items))
 	now := util.NowMillis()
 	for _, note_item := range note_items {
-		content, ok := xiaohongshu_home_note_to_content(note_item, profile_url, now)
+		content, ok := xiaohongshu_home_note_to_content(note_item, now)
 		if !ok {
 			continue
 		}
@@ -67,7 +67,7 @@ func xiaohongshu_home_contents(note_items []xiaohongshu.HomeNoteItem, profile_ur
 	return contents
 }
 
-func xiaohongshu_home_note_to_content(note_item xiaohongshu.HomeNoteItem, profile_url string, now int64) (model.Content, bool) {
+func xiaohongshu_home_note_to_content(note_item xiaohongshu.HomeNoteItem, now int64) (model.Content, bool) {
 	note_id := first_non_empty(note_item.NoteCard.NoteID, note_item.ID)
 	note_type := strings.ToLower(strings.TrimSpace(note_item.NoteCard.Type))
 	content_type := model.ContentTypeAlbum
@@ -90,9 +90,9 @@ func xiaohongshu_home_note_to_content(note_item xiaohongshu.HomeNoteItem, profil
 		title += "_" + note_id
 	}
 	xsec_token := first_non_empty(note_item.NoteCard.XSecToken, note_item.XSecToken)
-	source_url := first_non_empty(note_item.URL, profile_url)
+	source_url := ""
 	if !redacted {
-		source_url = first_non_empty(note_item.URL, xiaohongshu_home_note_url(note_id, xsec_token))
+		source_url = xiaohongshu_home_note_url(note_id, xsec_token)
 	}
 	cover_url := xiaohongshu.ImageURL(note_item.NoteCard.Cover)
 	metadata_json, _ := json.Marshal(note_item.NoteCard)

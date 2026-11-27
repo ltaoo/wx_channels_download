@@ -23,6 +23,8 @@ type APIConfig struct {
 	Protocol                  string
 	Hostname                  string
 	Port                      int
+	Username                  string
+	Password                  string
 	RemoteServerEnabled       bool   `json:"remoteServerEnabled"`
 	RemoteServerProtocol      string `json:"remoteServerProtocol"`
 	RemoteServerHostname      string `json:"remoteServerHostname"`
@@ -77,6 +79,8 @@ func NewAPIConfig(c *config.Config) *APIConfig {
 		Protocol:              c.GetString("api.protocol"),
 		Hostname:              c.GetString("api.hostname"),
 		Port:                  c.GetInt("api.port"),
+		Username:              c.GetString("api.username"),
+		Password:              c.GetString("api.password"),
 		RemoteServerEnabled:   c.GetBool("download.remoteServer.enabled"),
 		RemoteServerProtocol:  c.GetString("download.remoteServer.protocol"),
 		RemoteServerHostname:  c.GetString("download.remoteServer.hostname"),
