@@ -12,7 +12,7 @@ import (
 
 const (
 	sqlite_busy_timeout_millis  = 5000
-	sqlite_max_open_connections = 4
+	sqlite_max_open_connections = 1
 )
 
 // SQLiteDSN applies connection-local pragmas for both SQLite drivers used by
@@ -62,6 +62,8 @@ func ConfigureSQLiteRuntime(db *gorm.DB) error {
 }
 
 func configure_sqlite_pool(sql_db *sql.DB) {
+	// SQLite has one writer; queue automation and download writes in the shared
+	// pool instead of letting separate connections compete for the write lock.
 	sql_db.SetMaxOpenConns(sqlite_max_open_connections)
 	sql_db.SetMaxIdleConns(sqlite_max_open_connections)
 }

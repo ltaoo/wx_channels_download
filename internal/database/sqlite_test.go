@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"database/sql"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -65,13 +64,16 @@ func TestVeloSQLiteMigratesAndPreservesData(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	var connections []*sql.Conn
+	if max_open := sql_db.Stats().MaxOpenConnections; max_open != 1 {
+		t.Fatalf("max open connections=%d, want one shared SQLite connection", max_open)
+	}
+	// Discard each checked connection so the DSN is also tested on reconnect.
+	sql_db.SetMaxIdleConns(0)
 	for i := 0; i < 2; i++ {
 		connection, err := sql_db.Conn(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
-		connections = append(connections, connection)
 		t.Cleanup(func() { _ = connection.Close() })
 		for pragma, expected := range map[string]string{
 			"journal_mode": "wal",
@@ -86,10 +88,11 @@ func TestVeloSQLiteMigratesAndPreservesData(t *testing.T) {
 				t.Fatalf("connection %d %s=%s, want %s", i, pragma, actual, expected)
 			}
 		}
+		if err := connection.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
-	for _, connection := range connections {
-		_ = connection.Close()
-	}
+	configure_sqlite_pool(sql_db)
 	var workers sync.WaitGroup
 	for i := 0; i < 4; i++ {
 		workers.Add(1)
