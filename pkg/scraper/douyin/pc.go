@@ -112,6 +112,16 @@ func (c *DouyinPCClient) FetchDetail(raw_url string) (json.RawMessage, error) {
 	started_at := time.Now()
 	c.logger.Info().Str("url", douyin_url).Msg("douyin PC: detail fetch started")
 	page_request_url := douyin_url
+	if page_url, parse_err := url.Parse(douyin_url); parse_err == nil {
+		path_parts := strings.Split(strings.Trim(page_url.Path, "/"), "/")
+		if len(path_parts) == 2 && (path_parts[0] == "note" || path_parts[0] == "video") && douyin_pc_digits(path_parts[1]) {
+			// The mobile share page serves details without the desktop challenge.
+			page_url.Scheme = "https"
+			page_url.Host = "www.iesdouyin.com"
+			page_url.Path = "/share/video/" + path_parts[1] + "/"
+			page_request_url = page_url.String()
+		}
+	}
 	attempt_errors := make([]string, 0, c.request_attempts)
 
 	for attempt := 1; attempt <= c.request_attempts; attempt++ {
@@ -149,13 +159,9 @@ func (c *DouyinPCClient) FetchDetail(raw_url string) (json.RawMessage, error) {
 }
 
 func new_douyin_pc_http_client() *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	jar, _ := cookiejar.New(nil)
-	return &http.Client{
-		Transport: transport,
-		Jar:       jar,
-	}
+	client := new_douyin_web_http_client()
+	client.Jar, _ = cookiejar.New(nil)
+	return client
 }
 
 func (c *DouyinPCClient) fetch_detail_attempt(page_request_url string) (map[string]any, string, error) {

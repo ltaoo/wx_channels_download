@@ -1,7 +1,10 @@
 package douyin
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -40,6 +43,21 @@ func NewDouyinWebClientWithLogger(cookie string, parent_logger *zerolog.Logger) 
 func new_douyin_web_http_client() *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
+	dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+	tcp_dns_dialer := *dialer
+	tcp_dns_dialer.Resolver = &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, _ string, addr string) (net.Conn, error) {
+		return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", addr)
+	}}
+	// Some NAS hosts resolve Douyin IPv6 addresses without a usable IPv6 route.
+	transport.DialContext = func(ctx context.Context, _ string, addr string) (net.Conn, error) {
+		connection, err := dialer.DialContext(ctx, "tcp4", addr)
+		var dns_error *net.DNSError
+		if !errors.As(err, &dns_error) {
+			return connection, err
+		}
+		// Broken DNS proxies can echo EDNS before answers; TCP bypasses them.
+		return tcp_dns_dialer.DialContext(ctx, "tcp4", addr)
+	}
 	return &http.Client{Transport: transport}
 }
 
@@ -64,7 +82,6 @@ func (c *DouyinWebClient) FetchVideoProfile(aweme_id string) (*DouyinWebVideoPro
 	}
 	params["aweme_id"] = aweme_id
 	params["msToken"] = ""
-
 	ab := NewABogus("")
 	a_bogus := ab.GetValue(params, paramOrder, "GET", 0, 0, nil, nil, nil)
 
@@ -74,7 +91,6 @@ func (c *DouyinWebClient) FetchVideoProfile(aweme_id string) (*DouyinWebVideoPro
 		"Referer":         "https://www.douyin.com/",
 		"Cookie":          c.cookie,
 	}
-
 	search := queryStringify(params, paramOrder) + "&a_bogus=" + a_bogus
 	api_url := "https://www.douyin.com/aweme/v1/web/aweme/detail/?" + search
 
@@ -158,7 +174,7 @@ func (c *DouyinWebClient) ExtraVideoId(content string) (string, error) {
 		return c.ShortLinkToFullURL(douyin_url)
 	}
 
-	video_path_pattern := regexp.MustCompile(`/(?:video|slides|share/(?:video|slides))/(\d+)`)
+	video_path_pattern := regexp.MustCompile(`/(?:video|slides|note|share/(?:video|slides))/(\d+)`)
 	matched := video_path_pattern.FindStringSubmatch(parsed_url.Path)
 	if len(matched) > 1 {
 		c.logger.Info().

@@ -71,7 +71,7 @@ func (c *DouyinMobileClient) Parse(raw_url string) (json.RawMessage, error) {
 	req.Header.Set("User-Agent", ua)
 
 	request_started_at := time.Now()
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := new_douyin_web_http_client().Do(req)
 	if err != nil {
 		c.logger.Error().
 			Err(err).

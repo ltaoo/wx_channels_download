@@ -1,6 +1,7 @@
 package douyin
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
@@ -97,6 +98,9 @@ func (c *Client) download_home_sdk(sdk_url string) (string, error) {
 	if len(body) == 0 || len(body) > max_sdk_bytes {
 		return "", fmt.Errorf("douyin home SDK: invalid source size")
 	}
+	if strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") || bytes.HasPrefix(bytes.TrimSpace(body), []byte("<")) {
+		return "", fmt.Errorf("douyin home SDK: CDN returned HTML instead of JavaScript")
+	}
 	return string(body), nil
 }
 
@@ -117,10 +121,27 @@ func sign_home_request(request_url string, cookie_header string, sources []strin
 	_ = vm.Set("__security_source", sources[1])
 	timer := time.AfterFunc(10*time.Second, func() { vm.Interrupt("SDK timeout") })
 	defer timer.Stop()
-	output, err := vm.RunString(douyin_home_sdk_environment)
+	output, err := vm.RunScript("douyin-home-sdk.js", douyin_home_sdk_environment)
 	if err != nil {
-		// SDK exceptions may contain login data; report only the stage that failed.
-		return nil, fmt.Errorf("douyin home SDK: 签名执行失败或超时，请检查官方 SDK 兼容性")
+		phase := "environment"
+		if value := vm.Get("__sdk_phase"); value != nil {
+			switch value.String() {
+			case "bdms_load", "bdms_sign", "security_load", "security_sign":
+				phase = value.String()
+			}
+		}
+		var interrupted *goja.InterruptedError
+		if errors.As(err, &interrupted) {
+			return nil, fmt.Errorf("douyin home SDK: %s 签名执行超时（10 秒）", phase)
+		}
+		// SDK exception messages may include cookies; expose only phase and source position.
+		var exception *goja.Exception
+		if errors.As(err, &exception) && len(exception.Stack()) > 0 {
+			frame := exception.Stack()[0]
+			position := frame.Position()
+			return nil, fmt.Errorf("douyin home SDK: %s 签名执行失败（%T, %d:%d）", phase, err, position.Line, position.Column)
+		}
+		return nil, fmt.Errorf("douyin home SDK: %s 签名执行失败（%T）", phase, err)
 	}
 	var signed douyin_home_signed_request
 	if err := json.Unmarshal([]byte(output.String()), &signed); err != nil {

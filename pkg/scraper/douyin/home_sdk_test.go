@@ -70,6 +70,46 @@ func TestHomeSigning(t *testing.T) {
 	}
 }
 
+func TestHomeSigningFailureReportsStageWithoutCookies(t *testing.T) {
+	for _, test_case := range []struct {
+		bdms     string
+		security string
+		stage    string
+	}{
+		{`throw new Error(document.cookie);`, test_home_security, "bdms_load"},
+		{`var bdms={init:function(){throw new Error(document.cookie);}};`, test_home_security, "bdms_sign"},
+		{test_home_bdms, `throw new Error(document.cookie);`, "security_load"},
+		{test_home_bdms, `function use(){return function(){throw new Error(document.cookie);};}`, "security_sign"},
+	} {
+		_, err := sign_home_request(douyin_home_api_url, "UIFID=private-credential", []string{test_case.bdms, test_case.security})
+		if err == nil || !strings.Contains(err.Error(), test_case.stage) || strings.Contains(err.Error(), "private-credential") || strings.Contains(err.Error(), "超时") {
+			t.Fatalf("incorrect failure diagnostic: %v", err)
+		}
+	}
+}
+
+func TestHomeSDKHTMLResponseUsesNextCDN(t *testing.T) {
+	douyin_home_sdk_cache.sources = nil
+	t.Cleanup(func() { douyin_home_sdk_cache.sources = nil })
+	client := NewClient("UIFID=fixture")
+	requests := 0
+	client.web.http_client = &http.Client{Transport: home_test_transport(func(req *http.Request) (*http.Response, error) {
+		requests++
+		body := test_home_bdms
+		if req.URL.String() == douyin_home_bdms_urls[0] {
+			body = "<!DOCTYPE html><html>CDN challenge</html>"
+		}
+		if req.URL.String() == douyin_home_security_sdk_url {
+			body = test_home_security
+		}
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	sources, err := client.load_home_sdk(false)
+	if err != nil || requests != 3 || sources[0] != test_home_bdms {
+		t.Fatalf("HTML must not enter the SDK cache: requests=%d err=%v", requests, err)
+	}
+}
+
 func TestHomeAPISigningAndRetry(t *testing.T) {
 	for _, test_case := range []struct {
 		name          string

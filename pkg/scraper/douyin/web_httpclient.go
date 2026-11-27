@@ -64,8 +64,8 @@ func (c *HttpClient) Request() (*HttpResponse, error) {
 	return c.RequestWithClient(nil)
 }
 
-// RequestWithClient sends the HTTP request with client. A nil client keeps the
-// legacy behavior and uses a default net/http client.
+// RequestWithClient sends the HTTP request with client. A nil client uses the
+// built-in Douyin client.
 func (c *HttpClient) RequestWithClient(client *http.Client) (*HttpResponse, error) {
 	if c == nil {
 		return nil, fmt.Errorf("HTTP client is nil")
@@ -78,7 +78,7 @@ func (c *HttpClient) RequestWithClient(client *http.Client) (*HttpResponse, erro
 	}
 
 	if client == nil {
-		client = &http.Client{}
+		client = new_douyin_web_http_client()
 	}
 	resp, err := client.Do(c.req)
 	if err != nil {

@@ -77,12 +77,12 @@ type douyin_mobile_url_data struct {
 }
 
 type douyin_mobile_image struct {
-	URI             string   `json:"uri"`
-	URLList         []string `json:"url_list"`
-	DownloadURLList []string `json:"download_url_list"`
-	Width           int      `json:"width"`
-	Height          int      `json:"height"`
-	LivePhotoType   int      `json:"live_photo_type"`
+	URI             string               `json:"uri"`
+	URLList         []string             `json:"url_list"`
+	DownloadURLList []string             `json:"download_url_list"`
+	Width           int                  `json:"width"`
+	Height          int                  `json:"height"`
+	LivePhotoType   int                  `json:"live_photo_type"`
 	Video           *douyin_mobile_video `json:"video"`
 }
 
@@ -637,6 +637,7 @@ func douyin_no_watermark_url(video_url string) string {
 // intentionally because Hermes requires identity encoding for byte ranges.
 func douyin_video_endpoint_headers() string {
 	headers := map[string]string{
+		"Referer":                   "https://www.douyin.com/",
 		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
 		"Accept-Language":           "zh-CN,zh;q=0.9",
 		"Cache-Control":             "no-cache",

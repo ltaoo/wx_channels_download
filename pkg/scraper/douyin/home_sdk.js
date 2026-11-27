@@ -1,5 +1,6 @@
 // Browser shim adapted from findrss-scripts douyin_sdk_environment.js.
 // shortcut: Only the browser APIs used by the signing SDK are emulated; extend when the SDK changes.
+var __sdk_phase = 'environment';
 
 // Goja's TypedArray.from requires an object; the SDK also passes binary strings.
 var typed_array_from = Uint8Array.from;
@@ -65,6 +66,7 @@ var SSR_RENDER_DATA={app:{envService:'prod',odin:{user_id:_secsdk_uifid}}};
 function atob(value){var alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/',bits=0,count=0,out='';String(value).replace(/=+$/,'').split('').forEach(function(c){var n=alphabet.indexOf(c);if(n<0)return;bits=(bits<<6)|n;count+=6;if(count>=8){count-=8;out+=String.fromCharCode((bits>>>count)&255);}});return out;}
 function btoa(value){var alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/',out='';for(var i=0;i<value.length;i+=3){var n=(value.charCodeAt(i)<<16)|((value.charCodeAt(i+1)||0)<<8)|(value.charCodeAt(i+2)||0);out+=alphabet[(n>>>18)&63]+alphabet[(n>>>12)&63]+(i+1<value.length?alphabet[(n>>>6)&63]:'=')+(i+2<value.length?alphabet[n&63]:'=');}return out;}
 
+__sdk_phase = 'bdms_load';
 eval(__bdms_source);
 
 var target = new URL(request.url);
@@ -74,14 +76,17 @@ target.searchParams.set('timestamp',String(signing_time));
 Date.now = function(){return signing_time*1000;};
 var verify_fp = sdk_cookies.get('s_v_web_id');
 if(verify_fp){target.searchParams.set('verifyFp',verify_fp);target.searchParams.set('fp',verify_fp);}
+__sdk_phase = 'bdms_sign';
 bdms.init({aid:6383,pageId:6241,boe:false,paths:['^/aweme/v1/'],ddrt:8.5,ic:8.5});
 var xhr=new XMLHttpRequest();
 xhr.open('GET',target.href,true);
 xhr.send();
 if(!signed_request_url || !new URL(signed_request_url).searchParams.get('a_bogus'))throw new Error('Douyin BDMS did not sign the request');
 
+__sdk_phase = 'security_load';
 eval(__security_source);
 
+__sdk_phase = 'security_sign';
 var secured = use('webSignUrl')(signed_request_url);
 if(!secured.headers['x-secsdk-web-signature'])throw new Error('Douyin security SDK did not generate signature');
 JSON.stringify(secured);

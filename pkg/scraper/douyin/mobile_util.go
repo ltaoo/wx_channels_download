@@ -24,10 +24,9 @@ func canParse(url string) bool {
 // resolveRedirects follows redirects from v.douyin.com short links until reaching the video page.
 func resolveRedirects(raw_url, user_agent string, logger *zerolog.Logger) (string, error) {
 	current_url := raw_url
-	client := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
+	client := new_douyin_web_http_client()
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
 	}
 
 	for redirect_index := 0; redirect_index < 5; redirect_index++ {
