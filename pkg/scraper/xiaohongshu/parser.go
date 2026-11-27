@@ -109,6 +109,9 @@ func merge_home_card_links(document_html string, items []HomeNoteItem) {
 		if card_url == "" {
 			continue
 		}
+		if note_id := first_non_empty(item.NoteCard.NoteID, item.ID); note_id != "" && !strings.EqualFold(note_id, home_note_id_from_url(card_url)) {
+			continue
+		}
 		item.URL = card_url
 		if note_id := home_note_id_from_url(card_url); note_id != "" {
 			if strings.TrimSpace(item.ID) == "" {
@@ -162,7 +165,7 @@ func find_home_cover_href(node *xhtml.Node) string {
 		return ""
 	}
 	if node.Type == xhtml.ElementNode && node.Data == "a" &&
-		html_node_has_class(node, "cover") && html_node_has_class(node, "mask") && html_node_has_class(node, "ld") {
+		html_node_has_class(node, "cover") && html_node_has_class(node, "mask") {
 		return strings.TrimSpace(html_node_attribute(node, "href"))
 	}
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
@@ -197,10 +200,14 @@ func html_node_has_class(node *xhtml.Node, class_name string) bool {
 func normalize_home_card_url(raw_url string) string {
 	parsed_url, err := url.Parse(strings.TrimSpace(raw_url))
 	if err != nil {
-		return strings.TrimSpace(raw_url)
+		return ""
 	}
 	base_url, _ := url.Parse("https://www.xiaohongshu.com/")
-	return base_url.ResolveReference(parsed_url).String()
+	resolved_url := base_url.ResolveReference(parsed_url)
+	if validate_request_url(resolved_url) != nil || home_note_id_from_url(resolved_url.String()) == "" {
+		return ""
+	}
+	return resolved_url.String()
 }
 
 func home_note_id_from_url(raw_url string) string {
