@@ -38,7 +38,7 @@ export function AutomationPipelineTriggerBadges(props) {
         title: item.type === "Cron" ? computed(vm$.state.schedules, () =>
           vm$.methods.pipelineTriggers(props.pipeline)
             .filter((trigger) => trigger.type === "Cron")
-            .map((trigger) => `${trigger.name || "定时触发"}：${trigger.cron_expr}（${trigger.enabled ? "已启用" : "已暂停"}）`)
+            .map((trigger) => `${trigger.name || "定时触发"}：${vm$.methods.scheduleLabel(trigger)}（${trigger.enabled ? "已启用" : "已暂停"}）`)
             .join("\n")) : undefined,
       });
     },
@@ -62,6 +62,30 @@ export function automation_status_badge(value, label) {
     },
     [label || normalized],
   );
+}
+
+function AutomationScheduleFields(trigger, prefix) {
+  const form = trigger.schedule_form;
+  const field = (label, store, name, kind = "input") => View({ class: "grid gap-1 min-w-0", attributes: { n: `${prefix}-${name}-field` } }, [
+    View({ as: "label", attributes: { n: `${prefix}-${name}-label`, for: `${prefix}-${name}` } }, [label]),
+    (kind === "select" ? Select : kind === "textarea" ? Textarea : Input)({ store, attributes: { n: `${prefix}-${name}`, id: `${prefix}-${name}`, "aria-label": label } }),
+  ]);
+  const when = (modes, render) => Show({ when: computed(form.mode, (mode) => modes.includes(mode)), ok: render });
+  return View({ class: "grid gap-2 min-w-0", attributes: { n: `${prefix}-schedule-fields` } }, [
+    field("定时方式", form.select_mode, "mode", "select"),
+    when(["interval"], () => field("间隔（分钟，5 至 1440）", form.interval, "interval")),
+    when(["times"], () => View({ class: "grid gap-2", attributes: { n: `${prefix}-times-fields` } }, [
+      field("时间点（如 08:00, 12:30, 18:00）", form.times, "times"),
+      field("星期（0 为周日，逗号分隔）", form.days, "days"),
+    ])),
+    when(["windows"], () => View({ class: "grid gap-2", attributes: { n: `${prefix}-windows-fields` } }, [
+      field("时段（每行：星期 开始-结束 间隔分钟）", form.windows, "windows", "textarea"),
+      View({ class: "text-color-text-secondary text-caption", attributes: { n: `${prefix}-windows-help` } }, ["例如 1,2,3,4,5 08:00-18:00 10。支持跨午夜，最多 8 段且不能重叠。"]),
+      field("时段外间隔（分钟，0 表示不执行）", form.outside_interval, "outside-interval"),
+    ])),
+    when(["cron"], () => field("Cron（五段表达式或 @daily、@every 1h）", trigger.input_cron$, "cron")),
+    when(["interval", "times", "windows", "cron"], () => field("时区（Asia/Shanghai、UTC；Local 为系统时区）", form.timezone, "timezone")),
+  ]);
 }
 
 export function AutomationStartTriggers(props) {
@@ -88,12 +112,12 @@ export function AutomationStartTriggers(props) {
         const prefix = `automation-trigger-${trigger.uid}`;
         const field = (label, store, name, kind = "input", key = name) => {
           const inheritance = trigger.inheritance?.[key];
-          const control = (kind === "checkbox" ? Checkbox : kind === "textarea" ? Textarea : Input)({ store, attributes: {
+          const control = kind === "schedule" ? AutomationScheduleFields(trigger, prefix) : (kind === "checkbox" ? Checkbox : kind === "textarea" ? Textarea : Input)({ store, attributes: {
             id: `${prefix}-${name}`, n: `${prefix}-${name}`, "aria-label": label,
             ...(kind === "textarea" ? { rows: "4", spellcheck: "false" } : {}),
           } });
           return View({ class: "min-w-0 flex flex-col gap-1", attributes: { n: `${prefix}-${name}-field` } }, [
-            View({ as: "label", class: "text-color-text-secondary text-xs font-semibold", attributes: { n: `${prefix}-${name}-label`, for: `${prefix}-${name}` } }, [label]),
+            View({ as: kind === "schedule" ? "div" : "label", class: "text-color-text-secondary text-xs font-semibold", attributes: { n: `${prefix}-${name}-label`, ...(kind === "schedule" ? {} : { for: `${prefix}-${name}` }) } }, [label]),
             View({ class: "flex items-center gap-3 min-w-0", attributes: { n: `${prefix}-${name}-controls` } }, [
               inheritance ? Checkbox({ store: inheritance.inherit$, class: "flex-none", attributes: { id: `${prefix}-${name}-inherit`, n: `${prefix}-${name}-inherit`, "aria-label": `${label} 继承流程配置` } }) : null,
               View({ class: "relative flex-1 min-w-0", attributes: { n: `${prefix}-${name}-value` } }, [
@@ -113,7 +137,7 @@ export function AutomationStartTriggers(props) {
             } }, ["移除触发器"]),
           ]),
           field("触发器名称", trigger.input_name$, "name"),
-          trigger.type === "Cron" ? field("Cron 表达式", trigger.input_cron$, "cron", "input", "cron_expr") : null,
+          trigger.type === "Cron" ? field("定时规则", null, "schedule", "schedule") : null,
           trigger.type === "Cron" ? field("启用定时触发", trigger.checkbox_enabled$, "enabled", "checkbox") : null,
           trigger.type === "Event" ? field("事件 Key", trigger.input_event_key$, "event-key", "input", "event_key") : null,
           trigger.type !== "Cron" ? field("启用触发器", trigger.checkbox_active$, "active", "checkbox") : null,
@@ -148,10 +172,10 @@ export function AutomationTriggerSummary(props) {
           }, [trigger.type === "Event" ? "触发事件" : "手动执行"]) : null,
         ].filter(Boolean)),
         View({ class: "group-automation-code font-mono text-sm overflow-visible text-overflow-initial whitespace-pre-wrap word-break-break-all" }, [
-          trigger.type === "Cron" ? trigger.cron_expr : trigger.event_key || "手动执行",
+          trigger.type === "Cron" ? vm$.methods.scheduleLabel(trigger) : trigger.event_key || "手动执行",
         ]),
         trigger.type === "Cron" ? View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base" }, [
-          trigger.enabled ? `已启用 · 下次 ${vm$.methods.formatTime(trigger.next_run_at)}` : "已暂停",
+          trigger.schedule?.mode === "manual" ? "仅手动执行" : trigger.enabled ? `已启用 · 下次 ${vm$.methods.formatTime(trigger.next_run_at)}` : "已暂停",
         ]) : null,
       ].filter(Boolean));
     } }),

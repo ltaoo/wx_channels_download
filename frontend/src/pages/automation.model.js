@@ -42,12 +42,13 @@ function parse_initial_data(value) {
 }
 
 function schedule_metadata(schedule) {
-  const metadata = { type: "Cron", start_node: "", event_key: "", active: true, webhook_token: "", default_trigger_id: "" };
+  const metadata = { type: "Cron", start_node: "", event_key: "", active: true, webhook_token: "", default_trigger_id: "", schedule: undefined };
   if (!schedule) return metadata;
   try {
     const data = parse_initial_data(schedule.initial_data);
     const raw = data.__automation;
     if (raw && typeof raw === "object") {
+      if (raw.schedule) metadata.schedule = raw.schedule;
       if (raw.type) metadata.type = String(raw.type);
       if (raw.start_node) metadata.start_node = String(raw.start_node);
       if (raw.event_key) metadata.event_key = String(raw.event_key);
@@ -62,6 +63,55 @@ function schedule_metadata(schedule) {
     metadata.type = "Cron";
   }
   return metadata;
+}
+
+function schedule_label(trigger) {
+  const policy = trigger.schedule;
+  if (!policy) return trigger.cron_expr || "@daily";
+  if (policy.mode === "manual") return "仅手动";
+  if (policy.mode === "interval") return `每 ${policy.interval / 60} 分钟`;
+  if (policy.mode === "times") return `${policy.times.join("、")} · 星期 ${(policy.days || [0, 1, 2, 3, 4, 5, 6]).join(",")}（${policy.timezone || "Asia/Shanghai"}）`;
+  if (policy.mode === "windows") return `分时段（${policy.timezone || "Asia/Shanghai"}）`;
+  return `${policy.cron}（${policy.timezone || "Asia/Shanghai"}）`;
+}
+
+function schedule_form_value(trigger) {
+  if (!trigger.schedule_edited) return trigger.schedule;
+  const form = trigger.schedule_form;
+  const mode = form.mode.value;
+  if (mode === "manual") return { mode };
+  const policy = { mode, timezone: form.timezone.state.value || "Asia/Shanghai" };
+  const interval = (value, allow_zero = false) => {
+    const number = Number(value);
+    if (allow_zero && number === 0) return 0;
+    if (!Number.isInteger(number) || number < 5 || number > 1440) throw new Error("定时间隔应为 5 至 1440 分钟的整数");
+    return number * 60;
+  };
+  const days = (value) => {
+    const parts = String(value).split(",").map((part) => part.trim());
+    const values = parts.map(Number);
+    if (parts.some((part) => !part) || !values.length || values.length > 7 || values.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) throw new Error("星期应为 0 至 6，逗号分隔");
+    return [...new Set(values)];
+  };
+  const time = (value) => {
+    if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new Error("时间应为 HH:mm，例如 08:30");
+    return value;
+  };
+  if (mode === "interval") policy.interval = interval(form.interval.state.value);
+  if (mode === "cron") policy.cron = trigger.input_cron$.state.value;
+  if (mode === "times") {
+    policy.days = days(form.days.state.value);
+    policy.times = form.times.state.value.split(",").map((value) => time(value.trim()));
+  }
+  if (mode === "windows") {
+    policy.outside_interval = interval(form.outside_interval.state.value, true);
+    policy.windows = form.windows.state.value.trim().split(/\n/).map((line) => {
+      const match = /^(\S+)\s+(\S+)-(\S+)\s+(\d+)$/.exec(line.trim());
+      if (!match) throw new Error("每行时段格式：星期 开始时间-结束时间 间隔分钟");
+      return { days: days(match[1]), start: time(match[2]), end: time(match[3]), interval: interval(match[4]) };
+    });
+  }
+  return policy;
 }
 
 function trigger_label(type) {
@@ -638,7 +688,7 @@ function pipeline_triggers(pipeline, schedules) {
       delete initial_data.__automation;
       return {
         id: schedule.id, type: metadata.type, name: schedule.name,
-        cron_expr: schedule.cron_expr, event_key: metadata.event_key,
+        cron_expr: schedule.cron_expr, schedule: metadata.schedule, event_key: metadata.event_key,
         enabled: schedule.enabled, next_run_at: schedule.next_run_at,
         active: metadata.active, webhook_token: metadata.webhook_token,
         default_id: metadata.default_trigger_id,
@@ -2296,8 +2346,23 @@ function AutomationPageViewModel(props, options) {
       defaultValue: trigger.name || "", onChange(value) { change("name", value); },
     });
     trigger.input_cron$ = new Timeless.vm.InputCore({
-      defaultValue: trigger.cron_expr || "@daily", onChange(value) { change("cron_expr", value); },
+      defaultValue: trigger.schedule?.cron || trigger.cron_expr || "@daily", onChange(value) { trigger.schedule_edited = true; change("cron_expr", value); },
     });
+    const policy = trigger.schedule || { mode: "cron", timezone: "Local" };
+    const mode = ref(policy.mode);
+    const input = (value) => new Timeless.vm.InputCore({ defaultValue: String(value), onChange() { trigger.schedule_edited = true; on_change(); } });
+    trigger.schedule_form = {
+      mode,
+      select_mode: new Timeless.vm.SelectCore({ defaultValue: policy.mode, position: "popper", options: [
+        ["interval", "按间隔"], ["times", "多个时间点"], ["windows", "分时段"], ["cron", "自定义 Cron"], ["manual", "仅手动"],
+      ].map(([value, label]) => new Timeless.vm.SelectItemCore({ value, label })), onChange(value) { mode.as(value); trigger.schedule_edited = true; on_change(); } }),
+      timezone: input(policy.timezone || "Asia/Shanghai"),
+      interval: input((policy.interval || 3600) / 60),
+      times: input((policy.times || ["08:00"]).join(", ")),
+      days: input((policy.days || [0, 1, 2, 3, 4, 5, 6]).join(",")),
+      windows: input((policy.windows || [{ days: [1, 2, 3, 4, 5], start: "08:00", end: "18:00", interval: 600 }]).map((period) => `${period.days.join(",")} ${period.start}-${period.end} ${period.interval / 60}`).join("\n")),
+      outside_interval: input((policy.outside_interval || 0) / 60),
+    };
     trigger.input_event_key$ = new Timeless.vm.InputCore({
       defaultValue: trigger.event_key || "", onChange(value) { change("event_key", value); },
     });
@@ -2317,20 +2382,23 @@ function AutomationPageViewModel(props, options) {
   function add_trigger(type, triggers = edit_triggers_, on_change = mark_edit_triggers_dirty) {
     triggers.as([...triggers.value, new_trigger_row({
       id: "", type, name: type === "Cron" ? "定时触发" : type === "Webhook" ? "Webhook" : "事件触发",
-      cron_expr: "@daily", event_key: "", enabled: type === "Cron", initial_data: {},
+      cron_expr: "@daily", schedule: type === "Cron" ? { mode: "interval", interval: 3600, timezone: "Asia/Shanghai" } : undefined, event_key: "", enabled: type === "Cron", initial_data: {},
     }, on_change)], { reset: true });
     on_change();
   }
 
   function new_trigger_override_row(defaults, overrides, binding, on_change = mark_edit_triggers_dirty) {
+    if (!Object.hasOwn(overrides, "schedule") && Object.hasOwn(overrides, "cron_expr")) {
+      overrides = { ...overrides, schedule: { mode: "cron", cron: overrides.cron_expr, timezone: defaults.schedule ? defaults.schedule.timezone || "Asia/Shanghai" : "Local" } };
+    }
     const trigger = new_trigger_row({ ...defaults, ...overrides, binding_id: binding?.id, webhook_token: binding?.webhook_token }, on_change);
-    const keys = ["name", "timeout_sec", "initial_data", ...(trigger.type === "Cron" ? ["cron_expr", "enabled"] : ["active", ...(trigger.type === "Event" ? ["event_key"] : [])])];
+    const keys = ["name", "timeout_sec", "initial_data", ...(trigger.type === "Cron" ? ["schedule", "enabled"] : ["active", ...(trigger.type === "Event" ? ["event_key"] : [])])];
     trigger.inheritance = Object.fromEntries(keys.map((key) => {
       const inherited = ref(!Object.hasOwn(overrides, key));
       const value = defaults[key] ?? (key === "initial_data" ? {} : key === "timeout_sec" ? 3600 : "");
       return [key, {
         inherited,
-        text: ["active", "enabled"].includes(key) ? (value === false ? "已暂停" : "已启用") : typeof value === "object" ? JSON.stringify(value, null, 2) : String(value),
+        text: key === "schedule" ? schedule_label(defaults) : ["active", "enabled"].includes(key) ? (value === false ? "已暂停" : "已启用") : typeof value === "object" ? JSON.stringify(value, null, 2) : String(value),
         inherit$: new Timeless.vm.CheckboxCore({ checked: inherited.value, onChange(value) { inherited.as(value); on_change(); } }),
       }];
     }));
@@ -2344,7 +2412,8 @@ function AutomationPageViewModel(props, options) {
       const values = {};
       for (const [key, field] of Object.entries(trigger.inheritance)) {
         if (field.inherited.value) continue;
-        if (key === "initial_data") values[key] = parse_initial_data(trigger.input_data$.state.value);
+        if (key === "schedule") values[key] = schedule_form_value(trigger) || { mode: "cron", cron: trigger.input_cron$.state.value, timezone: "Local" };
+        else if (key === "initial_data") values[key] = parse_initial_data(trigger.input_data$.state.value);
         else if (key === "timeout_sec") {
           const timeout = Number(trigger.input_timeout$.state.value);
           if (!Number.isInteger(timeout) || timeout < 1 || timeout > 86400) throw new Error("整体超时必须为 1 到 86400 秒的整数");
@@ -2366,7 +2435,7 @@ function AutomationPageViewModel(props, options) {
       }
       return {
         id: trigger.id, type: trigger.type, name: trigger.name,
-        cron_expr: trigger.cron_expr, event_key: trigger.event_key,
+        cron_expr: trigger.cron_expr, schedule: schedule_form_value(trigger), event_key: trigger.event_key,
         enabled: Boolean(trigger.enabled), active: trigger.active !== false, initial_data,
         timeout_sec: trigger.timeout_sec || undefined,
       };
@@ -3650,6 +3719,7 @@ function AutomationPageViewModel(props, options) {
         trigger_forms: edit_triggers_.value.map((trigger) => ({
           id: trigger.id, type: trigger.type, name: trigger.name,
           cron_expr: trigger.cron_expr, event_key: trigger.event_key,
+          schedule_form: { mode: trigger.schedule_form.mode.value, ...Object.fromEntries(["timezone", "interval", "times", "days", "windows", "outside_interval"].map((key) => [key, trigger.schedule_form[key].state.value])) },
           enabled: trigger.enabled, data_text: trigger.data_text,
         })),
         draft: {
@@ -3756,6 +3826,7 @@ function AutomationPageViewModel(props, options) {
     actOnRun: act_on_run,
     scheduleMetadata: schedule_metadata,
     triggerLabel: trigger_label,
+    scheduleLabel: schedule_label,
     schemaText: schema_text,
     formatTime: format_time,
     pipelineName: pipeline_name,
@@ -3920,7 +3991,7 @@ function AutomationPageViewModel(props, options) {
 
   const config_trigger_editor = {
     state: { edit_triggers: config_triggers_ },
-    methods: { triggerLabel: trigger_label },
+    methods: { triggerLabel: trigger_label, scheduleLabel: schedule_label },
     ui: {
       btn_add_cron_trigger$: new Timeless.vm.ButtonCore({ variant: "outline", size: "sm", onClick() { add_trigger("Cron", config_triggers_, () => { config_triggers_dirty = true; }); } }),
       btn_add_event_trigger$: new Timeless.vm.ButtonCore({ variant: "outline", size: "sm", onClick() { add_trigger("Event", config_triggers_, () => { config_triggers_dirty = true; }); } }),

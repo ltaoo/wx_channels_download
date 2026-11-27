@@ -4,7 +4,7 @@
       "自动化"
     ],
     "summary": "创建自动化计划",
-    "description": "name、cron_expr、flow_id 必填。timeout_sec 非正数时默认 3600 秒，上限 86400 秒。使用服务端 Cron 解析器校验表达式。 Cron 使用 5 字段（分、时、日、月、周），也支持 @daily 等描述符。",
+    "description": "name、instance_id 必填；schedule 与 cron_expr 至少提供一个。schedule 支持按间隔、多个时间点、分时段、Cron、仅手动，优先于 cron_expr；未提供时兼容原 Cron（五段及 @daily、@every）。新策略时区默认 Asia/Shanghai，间隔单位秒。timeout_sec 非正数时默认 3600，上限 86400。返回的 initial_data.__automation.schedule 保存定时策略。",
     "responses": {
       "200": {
         "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
@@ -71,19 +71,46 @@
               "instance_id": {
                 "type": "string",
                 "description": "流程实例 ID；执行历史按实例过滤。"
+              },
+              "schedule": {
+                "$ref": "../components.json#/schemas/flowengine_SchedulePolicy"
               }
             },
             "required": [
               "name",
-              "cron_expr",
               "instance_id"
+            ],
+            "anyOf": [
+              {
+                "required": [
+                  "cron_expr"
+                ]
+              },
+              {
+                "required": [
+                  "schedule"
+                ]
+              }
             ]
           },
           "example": {
-            "name": "每日执行",
-            "flow_id": "flow-demo",
-            "cron_expr": "0 9 * * *",
-            "timeout_sec": 3600
+            "name": "工作日早晚执行",
+            "instance_id": "instance-demo",
+            "schedule": {
+              "mode": "times",
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5
+              ],
+              "times": [
+                "08:00",
+                "18:00"
+              ],
+              "timezone": "Asia/Shanghai"
+            }
           }
         }
       }

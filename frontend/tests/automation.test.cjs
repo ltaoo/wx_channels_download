@@ -22,7 +22,7 @@ function load_model(t, client) {
     }
     const model = context.AutomationPageViewModel({ client, tip() {}, view: { query: {} } });
     t.after(() => model.methods.destroy());
-    return { model, Result: context.Timeless.Result };
+    return { model, context, Result: context.Timeless.Result };
   } catch (error) { throw new Error(error.message); }
 }
 
@@ -82,4 +82,41 @@ test("a failed instance state update preserves the saved state and allows retry"
   assert.match(model.state.error.value, /状态保存失败/);
   assert.equal(model.ui.btn_pipeline_toggle$.bind(pipeline).state.loading, false);
   assert.equal(model.methods.pipelineActionButton("trigger", pipeline).state.disabled, true);
+});
+
+
+test("schedule forms serialize each mode and preserve legacy cron", (t) => {
+  const { context } = load_model(t, {});
+  const plain = (value) => JSON.parse(JSON.stringify(value));
+  const form = (mode, fields = {}) => ({
+    schedule_edited: true, input_cron$: { state: { value: "0 8 * * 1-5" } },
+    schedule_form: { mode: { value: mode }, ...Object.fromEntries(Object.entries({ timezone: "UTC", interval: "5", times: "08:00, 12:30", days: "1,2,3,4,5", windows: "6 23:00-01:00 10", outside_interval: "0", ...fields }).map(([key, value]) => [key, { state: { value } }])) },
+  });
+  assert.equal(context.schedule_form_value({ cron_expr: "@daily" }), undefined);
+  assert.deepEqual(plain(context.schedule_form_value(form("interval"))), { mode: "interval", timezone: "UTC", interval: 300 });
+  assert.deepEqual(plain(context.schedule_form_value(form("times"))), { mode: "times", timezone: "UTC", days: [1,2,3,4,5], times: ["08:00", "12:30"] });
+  assert.deepEqual(plain(context.schedule_form_value(form("windows"))), { mode: "windows", timezone: "UTC", outside_interval: 0, windows: [{ days: [6], start: "23:00", end: "01:00", interval: 600 }] });
+  assert.equal(context.schedule_form_value(form("cron")).cron, "0 8 * * 1-5");
+  assert.deepEqual(plain(context.schedule_form_value(form("manual"))), { mode: "manual" });
+  assert.throws(() => context.schedule_form_value(form("interval", { interval: "0" })), /间隔/);
+  assert.throws(() => context.schedule_form_value(form("times", { times: "25:00" })), /HH:mm/);
+  assert.throws(() => context.schedule_form_value(form("times", { days: "1,,2" })), /星期/);
+  const trigger = context.pipeline_triggers({ id: "instance" }, [{ id: "schedule", instance_id: "instance", cron_expr: "@daily", initial_data: JSON.stringify({ __automation: { schedule: { mode: "interval", interval: 600 } } }) }])[0];
+  assert.deepEqual(plain(trigger.schedule), { mode: "interval", interval: 600 });
+  assert.equal(context.schedule_label(trigger), "每 10 分钟");
+});
+
+
+test("new timed trigger exposes bound controls for all schedule modes", (t) => {
+  const { model, context } = load_model(t, {});
+  model.ui.btn_add_cron_trigger$.click();
+  const trigger = model.state.edit_triggers.value[0];
+  assert.equal(context.schedule_form_value(trigger).interval, 3600);
+  trigger.schedule_form.select_mode.setValue("times");
+  trigger.schedule_form.times.setValue("09:00, 18:00");
+  trigger.schedule_form.days.setValue("1,3,5");
+  const policy = JSON.parse(JSON.stringify(context.schedule_form_value(trigger)));
+  assert.deepEqual(policy, { mode: "times", timezone: "Asia/Shanghai", days: [1,3,5], times: ["09:00", "18:00"] });
+  trigger.schedule_form.select_mode.setValue("manual");
+  assert.equal(context.schedule_form_value(trigger).mode, "manual");
 });

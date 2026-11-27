@@ -10,17 +10,19 @@ import (
 	result "wx_channel/internal/apiresult"
 	"wx_channel/internal/database/model"
 	"wx_channel/internal/services"
+	"wx_channel/pkg/flowengine"
 )
 
 type automation_schedule_create_body struct {
-	InstanceID  string                 `json:"instance_id"`
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	CronExpr    string                 `json:"cron_expr"`
-	FlowID      string                 `json:"flow_id"`
-	InitialData map[string]interface{} `json:"initial_data"`
-	Enabled     *bool                  `json:"enabled"`
-	TimeoutSec  int                    `json:"timeout_sec"`
+	InstanceID  string                     `json:"instance_id"`
+	Name        string                     `json:"name"`
+	Description string                     `json:"description"`
+	CronExpr    string                     `json:"cron_expr"`
+	Schedule    *flowengine.SchedulePolicy `json:"schedule"`
+	FlowID      string                     `json:"flow_id"`
+	InitialData map[string]interface{}     `json:"initial_data"`
+	Enabled     *bool                      `json:"enabled"`
+	TimeoutSec  int                        `json:"timeout_sec"`
 }
 
 type automation_schedule_list_body struct {
@@ -43,15 +45,16 @@ type automation_schedule_trigger_body struct {
 }
 
 type automation_schedule_update_body struct {
-	InstanceID  *string                `json:"instance_id"`
-	ID          string                 `json:"id"`
-	Name        *string                `json:"name"`
-	Description *string                `json:"description"`
-	CronExpr    *string                `json:"cron_expr"`
-	FlowID      *string                `json:"flow_id"`
-	InitialData map[string]interface{} `json:"initial_data"`
-	Enabled     *bool                  `json:"enabled"`
-	TimeoutSec  *int                   `json:"timeout_sec"`
+	InstanceID  *string                    `json:"instance_id"`
+	ID          string                     `json:"id"`
+	Name        *string                    `json:"name"`
+	Description *string                    `json:"description"`
+	CronExpr    *string                    `json:"cron_expr"`
+	Schedule    *flowengine.SchedulePolicy `json:"schedule"`
+	FlowID      *string                    `json:"flow_id"`
+	InitialData map[string]interface{}     `json:"initial_data"`
+	Enabled     *bool                      `json:"enabled"`
+	TimeoutSec  *int                       `json:"timeout_sec"`
 }
 
 type automation_run_list_body struct {
@@ -124,6 +127,7 @@ func (c *APIClient) handle_create_automation_schedule(ctx *gin.Context) {
 		Name:        body.Name,
 		Description: body.Description,
 		CronExpr:    body.CronExpr,
+		Schedule:    body.Schedule,
 		FlowID:      body.FlowID,
 		InitialData: body.InitialData,
 		Enabled:     body.Enabled,
@@ -169,6 +173,7 @@ func (c *APIClient) handle_update_automation_schedule(ctx *gin.Context) {
 		Name:        body.Name,
 		Description: body.Description,
 		CronExpr:    body.CronExpr,
+		Schedule:    body.Schedule,
 		FlowID:      body.FlowID,
 		InitialData: body.InitialData,
 		Enabled:     body.Enabled,

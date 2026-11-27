@@ -2748,6 +2748,10 @@
         "timeout_sec": {
           "type": "integer",
           "nullable": true
+        },
+        "schedule": {
+          "$ref": "./components.json#/schemas/flowengine_SchedulePolicy",
+          "description": "优先于 cron_expr；未提供时保留旧规则。"
         }
       }
     },
@@ -2937,6 +2941,10 @@
         "instance_id": {
           "type": "string",
           "description": "流程实例 ID。"
+        },
+        "schedule": {
+          "$ref": "./components.json#/schemas/flowengine_SchedulePolicy",
+          "description": "优先于 cron_expr；未提供时保留旧规则。"
         }
       }
     },
@@ -2981,6 +2989,10 @@
         "timeout_sec": {
           "type": "integer",
           "nullable": true
+        },
+        "schedule": {
+          "$ref": "./components.json#/schemas/flowengine_SchedulePolicy",
+          "description": "优先于 cron_expr；未提供时保留旧规则。"
         }
       }
     },
@@ -4206,6 +4218,103 @@
         },
         "updated_at": {
           "type": "integer"
+        }
+      }
+    },
+    "flowengine_SchedulePolicy": {
+      "type": "object",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "interval",
+            "times",
+            "windows",
+            "cron",
+            "manual"
+          ]
+        },
+        "timezone": {
+          "type": "string",
+          "default": "Asia/Shanghai"
+        },
+        "interval": {
+          "type": "integer",
+          "minimum": 300,
+          "maximum": 86400,
+          "description": "间隔秒数。"
+        },
+        "cron": {
+          "type": "string"
+        },
+        "days": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 6
+          },
+          "minItems": 1,
+          "maxItems": 7
+        },
+        "times": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+          },
+          "minItems": 1,
+          "maxItems": 48
+        },
+        "outside_interval": {
+          "type": "integer",
+          "description": "0 停止；其他值为 300 至 86400 秒。"
+        },
+        "windows": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "$ref": "./components.json#/schemas/flowengine_ScheduleWindow"
+          }
+        }
+      }
+    },
+    "flowengine_ScheduleWindow": {
+      "type": "object",
+      "required": [
+        "days",
+        "start",
+        "end",
+        "interval"
+      ],
+      "properties": {
+        "days": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 6
+          },
+          "minItems": 1,
+          "maxItems": 7
+        },
+        "start": {
+          "type": "string",
+          "description": "HH:mm"
+        },
+        "end": {
+          "type": "string",
+          "description": "HH:mm，支持跨午夜。"
+        },
+        "interval": {
+          "type": "integer",
+          "minimum": 300,
+          "maximum": 86400,
+          "description": "间隔秒数。"
         }
       }
     }

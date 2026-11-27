@@ -7,20 +7,22 @@ import (
 	"strings"
 
 	"wx_channel/pkg/dm"
+	"wx_channel/pkg/flowengine"
 )
 
 // AutomationScheduleSummary is the compact schedule view returned by listings.
 type AutomationScheduleSummary struct {
-	InstanceID    string `json:"instance_id"`
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Description   string `json:"description,omitempty"`
-	CronExpr      string `json:"cron_expr"`
-	FlowID        string `json:"flow_id"`
-	Enabled       bool   `json:"enabled"`
-	NextRunAt     *int64 `json:"next_run_at,omitempty"`
-	LastRunID     string `json:"last_run_id,omitempty"`
-	LastRunStatus string `json:"last_run_status,omitempty"`
+	InstanceID    string                     `json:"instance_id"`
+	ID            string                     `json:"id"`
+	Name          string                     `json:"name"`
+	Description   string                     `json:"description,omitempty"`
+	CronExpr      string                     `json:"cron_expr"`
+	Schedule      *flowengine.SchedulePolicy `json:"schedule,omitempty"`
+	FlowID        string                     `json:"flow_id"`
+	Enabled       bool                       `json:"enabled"`
+	NextRunAt     *int64                     `json:"next_run_at,omitempty"`
+	LastRunID     string                     `json:"last_run_id,omitempty"`
+	LastRunStatus string                     `json:"last_run_status,omitempty"`
 }
 
 // AutomationScheduleDetail adds the fields that only matter when inspecting a
@@ -53,6 +55,7 @@ type AutomationCreateScheduleInput struct {
 	Name        string
 	Description string
 	CronExpr    string
+	Schedule    *flowengine.SchedulePolicy
 	FlowID      string
 	InitialData map[string]interface{}
 	Enabled     *bool
@@ -83,14 +86,15 @@ type get_automation_schedule_arguments struct {
 }
 
 type create_automation_schedule_arguments struct {
-	InstanceID  string                 `json:"instance_id"`
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	CronExpr    string                 `json:"cron_expr"`
-	FlowID      string                 `json:"flow_id"`
-	InitialData map[string]interface{} `json:"initial_data"`
-	Enabled     *bool                  `json:"enabled"`
-	TimeoutSec  int                    `json:"timeout_sec"`
+	InstanceID  string                     `json:"instance_id"`
+	Name        string                     `json:"name"`
+	Description string                     `json:"description"`
+	CronExpr    string                     `json:"cron_expr"`
+	Schedule    *flowengine.SchedulePolicy `json:"schedule"`
+	FlowID      string                     `json:"flow_id"`
+	InitialData map[string]interface{}     `json:"initial_data"`
+	Enabled     *bool                      `json:"enabled"`
+	TimeoutSec  int                        `json:"timeout_sec"`
 }
 
 type toggle_automation_schedule_arguments struct {
@@ -233,6 +237,7 @@ func (s *ToolSet) create_automation_schedule_tool(ctx context.Context, raw_argum
 		Name:        arguments.Name,
 		Description: arguments.Description,
 		CronExpr:    arguments.CronExpr,
+		Schedule:    arguments.Schedule,
 		FlowID:      arguments.FlowID,
 		InitialData: arguments.InitialData,
 		Enabled:     arguments.Enabled,
@@ -358,8 +363,8 @@ var tools_automation = []tool{
 	{
 		name:         create_automation_schedule_tool_name,
 		title:        `创建定时任务`,
-		description:  `创建一个按 cron 表达式周期性执行工作流的定时任务。cron_expr 支持标准 5 字段表达式，也支持 @every 1m、@daily 等简写。创建前应先获得用户确认。`,
-		input_schema: json.RawMessage(`{"additionalProperties":false,"properties":{"cron_expr":{"description":"cron 表达式，例如 \"0 9 * * *\" 表示每天 9 点，\"@every 30m\" 表示每 30 分钟。","type":"string"},"description":{"description":"定时任务说明。","type":"string"},"enabled":{"description":"创建后是否立即启用，默认 true。","type":"boolean"},"instance_id":{"description":"要执行的自动化流程实例 ID。","type":"string"},"flow_id":{"description":"所属流程 ID，可省略；由实例确定。","type":"string"},"initial_data":{"additionalProperties":true,"description":"传给工作流的初始上下文数据。","type":"object"},"name":{"description":"定时任务名称。","type":"string"},"timeout_sec":{"description":"单次执行的超时秒数，默认 3600。","type":"integer"}},"required":["name","cron_expr","instance_id"],"type":"object"}`),
+		description:  `创建工作流定时任务。schedule 支持 interval、times、windows、cron、manual；未提供 schedule 时使用 cron_expr，兼容 5 字段表达式及 @every 1m、@daily。创建前应先获得用户确认。`,
+		input_schema: json.RawMessage(`{"additionalProperties":false,"properties":{"schedule":{"type":"object","required":["mode"],"properties":{"mode":{"type":"string","enum":["interval","times","windows","cron","manual"]},"timezone":{"type":"string","description":"默认 Asia/Shanghai；Local 使用系统时区。"},"interval":{"type":"integer","minimum":300,"maximum":86400},"cron":{"type":"string"},"days":{"type":"array","items":{"type":"integer","minimum":0,"maximum":6}},"times":{"type":"array","items":{"type":"string"}},"outside_interval":{"type":"integer"},"windows":{"type":"array","items":{"type":"object","required":["days","start","end","interval"],"properties":{"days":{"type":"array","items":{"type":"integer"}},"start":{"type":"string"},"end":{"type":"string"},"interval":{"type":"integer"}},"additionalProperties":false}}},"additionalProperties":false,"description":"间隔单位秒，时间点为 HH:mm，星期 0 为周日；分时段支持跨午夜。优先于 cron_expr。"},"cron_expr":{"description":"cron 表达式，例如 \"0 9 * * *\" 表示每天 9 点，\"@every 30m\" 表示每 30 分钟。","type":"string"},"description":{"description":"定时任务说明。","type":"string"},"enabled":{"description":"创建后是否立即启用，默认 true。","type":"boolean"},"instance_id":{"description":"要执行的自动化流程实例 ID。","type":"string"},"flow_id":{"description":"所属流程 ID，可省略；由实例确定。","type":"string"},"initial_data":{"additionalProperties":true,"description":"传给工作流的初始上下文数据。","type":"object"},"name":{"description":"定时任务名称。","type":"string"},"timeout_sec":{"description":"单次执行的超时秒数，默认 3600。","type":"integer"}},"required":["name","instance_id"],"anyOf":[{"required":["cron_expr"]},{"required":["schedule"]}],"type":"object"}`),
 		annotations:  json.RawMessage(`{"destructiveHint":false,"idempotentHint":false,"openWorldHint":false,"readOnlyHint":false}`),
 		supports:     supports_automation,
 		handle:       (*ToolSet).create_automation_schedule_tool,

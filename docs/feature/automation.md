@@ -122,6 +122,22 @@ API 通过 `update_flow` 的 `default_node_configs` 保存流程默认配置，�
 
 API 使用 `update_flow.triggers` 设置流程默认规则；实例使用 `update_flow_instance.trigger_overrides`，按流程触发器 ID 保存字段覆盖。例如 `{"daily":{"cron_expr":"0 9 * * *"}}` 只覆盖 daily 的 Cron，其余字段继续读取默认值。省略 `trigger_overrides` 保留覆盖，提交 `{}` 清空所有覆盖，省略某个字段则恢复该字段的继承。布尔值 `false` 会作为显式覆盖保留，输入对象按整个字段覆盖。触发器的增删及类型在流程中维护，实例不能通过覆盖创建未知规则或改变规则 ID、类型。直接修改已绑定调度规则的 Cron、启停等字段也会保存为字段覆盖；仅更新运行时进度不创建配置覆盖。
 
+定时触发器（`type: "Cron"`）的 `schedule` 支持以下方式，默认配置和实例覆盖均可设置；设置后优先于旧 `cron_expr`。未设置 `schedule` 的已有规则继续使用原 Cron 与系统时区。
+
+| mode | 配置示例 | 行为 |
+| --- | --- | --- |
+| interval | `{"mode":"interval","interval":3600}` | 每小时执行，保留秒数 |
+| times | `{"mode":"times","days":[1,2,3,4,5],"times":["08:00","12:30"]}` | 工作日每天两个时间点；省略 days 为每天 |
+| windows | `{"mode":"windows","outside_interval":0,"windows":[{"days":[1,2,3,4,5],"start":"08:00","end":"18:00","interval":600}]}` | 工作日指定时段每 10 分钟执行，时段外停止 |
+| cron | `{"mode":"cron","cron":"0 8 * * 1-5","timezone":"UTC"}` | 工作日 UTC 08:00；兼容 @daily、@every 等简写 |
+| manual | `{"mode":"manual"}` | 不安排自动执行，仍可手动触发 |
+
+间隔单位为秒，范围为 300 至 86400；界面使用分钟。时间点采用 HH:mm，最多 48 个；星期 0 为周日、1 至 6 为周一至周六。分时段最多 8 段，支持跨午夜（星期表示开始日），时段不能重叠；`outside_interval` 默认为 0，其他值也需在间隔范围内。进入新时段即执行一次，离开时段重新按时段外间隔计时，避免将快速间隔带入慢速时段。
+
+新规则可用 `timezone` 指定 IANA 时区，默认为 Asia/Shanghai，`Local` 沿用系统时区；Cron 内不再嵌入 TZ/CRON_TZ。跳过错过的时间点，不补跑积压任务，实际启动受现有调度扫描周期影响（默认 30 秒）。智能刷新依赖新内容数量反馈，未加入通用流程定时。
+
+例如实例覆盖 `{"daily":{"schedule":{"mode":"times","times":["08:00","18:00"],"timezone":"Asia/Shanghai"}}}` 替换该规则的整个定时策略，省略该字段恢复继承。`create_schedule` 和 `update_schedule` 也接受顶层 `schedule`；查询调度绑定时从 `initial_data.__automation.schedule` 读取，不新增数据库列，执行前会移除此元数据。直接修改 `cron_expr` 会把已有策略切换为 Cron 并保留时区；同时提供 `schedule` 时以它为准。
+
 实际调度绑定的触发器类型及扩展参数保存在规则的 `initial_data.__automation` 中：
 
 ```json

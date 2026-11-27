@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"wx_channel/internal/database/model"
+	"wx_channel/pkg/flowengine"
 )
 
 // UserFlowTriggerInput configures an additional entry rule on a pipeline's
@@ -16,15 +17,16 @@ import (
 type UserFlowTriggerInput struct {
 	default_trigger_id    string
 	configured_input_keys []string
-	Active                *bool                  `json:"active,omitempty"`
-	ID                    string                 `json:"id"`
-	Type                  string                 `json:"type"`
-	Name                  string                 `json:"name"`
-	CronExpr              string                 `json:"cron_expr"`
-	EventKey              string                 `json:"event_key"`
-	Enabled               bool                   `json:"enabled"`
-	InitialData           map[string]interface{} `json:"initial_data"`
-	TimeoutSec            *int                   `json:"timeout_sec"`
+	Active                *bool                      `json:"active,omitempty"`
+	ID                    string                     `json:"id"`
+	Type                  string                     `json:"type"`
+	Name                  string                     `json:"name"`
+	CronExpr              string                     `json:"cron_expr"`
+	Schedule              *flowengine.SchedulePolicy `json:"schedule,omitempty"`
+	EventKey              string                     `json:"event_key"`
+	Enabled               bool                       `json:"enabled"`
+	InitialData           map[string]interface{}     `json:"initial_data"`
+	TimeoutSec            *int                       `json:"timeout_sec"`
 }
 
 // replace_user_flow_triggers runs in the same transaction as the graph save.
@@ -86,11 +88,12 @@ func (s *AutomationService) replace_user_flow_triggers(tx *gorm.DB, flow_id stri
 			"type": trigger_type, "event_key": event_key, "start_node": start_node_id,
 			"default_trigger_id":    default_trigger_id,
 			"configured_input_keys": configured_input_keys,
+			"schedule":              input.Schedule,
 		}
 		cron_expr := strings.TrimSpace(input.CronExpr)
 		enabled := trigger_type == model.FlowRunTriggerCron && input.Enabled
-		if trigger_type != model.FlowRunTriggerCron {
-			cron_expr = "@daily" // Inert storage value for non-timed rules.
+		if trigger_type != model.FlowRunTriggerCron || (cron_expr == "" && input.Schedule != nil) {
+			cron_expr = "@daily" // Storage placeholder when the rule does not use legacy Cron.
 		}
 		if found {
 			update := UpdateScheduleInput{Name: &name, InitialData: initial_data, TimeoutSec: input.TimeoutSec}
@@ -153,7 +156,13 @@ func (s *AutomationService) normalize_default_triggers(inputs []UserFlowTriggerI
 		}
 		if trigger.Type == model.FlowRunTriggerCron {
 			trigger.CronExpr = strings.TrimSpace(trigger.CronExpr)
-			if _, err := s.next_run_at(trigger.CronExpr, time.Now()); err != nil {
+			var err error
+			if trigger.Schedule != nil {
+				_, err = flowengine.NextScheduleAt(*trigger.Schedule, time.Now())
+			} else {
+				_, err = s.next_run_at(trigger.CronExpr, time.Now())
+			}
+			if err != nil {
 				return nil, err
 			}
 		} else {
@@ -241,7 +250,7 @@ func (s *AutomationService) merge_trigger_overrides(defaults []UserFlowTriggerIn
 		known[trigger.ID] = true
 		fields := map[string]bool{"name": true, "timeout_sec": true, "initial_data": true}
 		if trigger.Type == model.FlowRunTriggerCron {
-			fields["cron_expr"], fields["enabled"] = true, true
+			fields["cron_expr"], fields["enabled"], fields["schedule"] = true, true, true
 		} else {
 			fields["active"] = true
 			if trigger.Type == model.FlowRunTriggerEvent {
@@ -267,6 +276,9 @@ func (s *AutomationService) merge_trigger_overrides(defaults []UserFlowTriggerIn
 			if value != nil {
 				merged[key], values[key] = value, value
 			}
+		}
+		if expression, ok := values["cron_expr"].(string); ok && values["schedule"] == nil && trigger.Schedule != nil {
+			merged["schedule"] = &flowengine.SchedulePolicy{Mode: "cron", Cron: expression, Timezone: trigger.Schedule.Timezone}
 		}
 		if len(values) > 0 {
 			cleaned[trigger.ID] = values

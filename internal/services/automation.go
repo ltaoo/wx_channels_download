@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -306,6 +307,7 @@ type CreateScheduleInput struct {
 	Name        string
 	Description string
 	CronExpr    string
+	Schedule    *flowengine.SchedulePolicy
 	FlowID      string
 	InitialData map[string]interface{}
 	Enabled     *bool
@@ -319,6 +321,7 @@ type UpdateScheduleInput struct {
 	Name        *string
 	Description *string
 	CronExpr    *string
+	Schedule    *flowengine.SchedulePolicy
 	FlowID      *string
 	InitialData map[string]interface{}
 	Enabled     *bool
@@ -356,8 +359,8 @@ func (s *AutomationService) CreateSchedule(input CreateScheduleInput) (*model.Fl
 		return nil, fmt.Errorf("name 不能为空")
 	}
 	cron_expr := strings.TrimSpace(input.CronExpr)
-	if cron_expr == "" {
-		return nil, fmt.Errorf("cron_expr 不能为空")
+	if cron_expr == "" && input.Schedule != nil {
+		cron_expr = "@daily" // Legacy storage value; schedule policy takes precedence.
 	}
 	flow_id := strings.TrimSpace(input.FlowID)
 	if input.InstanceID != "" {
@@ -383,11 +386,7 @@ func (s *AutomationService) CreateSchedule(input CreateScheduleInput) (*model.Fl
 	if timeout_sec > max_schedule_timeout_sec {
 		return nil, fmt.Errorf("timeout_sec 不能超过 %d", max_schedule_timeout_sec)
 	}
-	if _, err := s.next_run_at(cron_expr, time.Now()); err != nil {
-		return nil, err
-	}
-
-	initial_data, err := marshal_automation_initial_data(input.InitialData)
+	initial_data, err := marshal_schedule_initial_data(input.InitialData, input.Schedule)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +417,7 @@ func (s *AutomationService) CreateSchedule(input CreateScheduleInput) (*model.Fl
 			UpdatedAt: now,
 		},
 	}
-	next_run, err := s.next_run_at(cron_expr, time.Now())
+	next_run, err := s.next_schedule_run_at(*schedule, time.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -473,8 +472,34 @@ func (s *AutomationService) UpdateSchedule(id string, input UpdateScheduleInput)
 		}
 		updates["timeout_sec"] = *input.TimeoutSec
 	}
-	if input.InitialData != nil {
-		initial_data, err := marshal_automation_initial_data(input.InitialData)
+	if input.CronExpr != nil && input.Schedule == nil {
+		metadata, _ := input.InitialData[automation_metadata_key].(map[string]interface{})
+		if _, has_policy := metadata["schedule"]; !has_policy {
+			previous_policy, err := automation_schedule_policy(*schedule)
+			if err != nil {
+				return nil, err
+			}
+			if previous_policy != nil {
+				input.Schedule = &flowengine.SchedulePolicy{Mode: "cron", Cron: strings.TrimSpace(*input.CronExpr), Timezone: previous_policy.Timezone}
+			}
+		}
+	}
+	if input.InitialData != nil || input.Schedule != nil {
+		data := input.InitialData
+		if data == nil {
+			data = decode_initial_data(schedule.InitialData)
+		}
+		policy := input.Schedule
+		metadata, _ := data[automation_metadata_key].(map[string]interface{})
+		_, has_policy := metadata["schedule"]
+		if policy == nil && !has_policy {
+			var err error
+			policy, err = automation_schedule_policy(*schedule)
+			if err != nil {
+				return nil, err
+			}
+		}
+		initial_data, err := marshal_schedule_initial_data(data, policy)
 		if err != nil {
 			return nil, err
 		}
@@ -508,13 +533,25 @@ func (s *AutomationService) UpdateSchedule(id string, input UpdateScheduleInput)
 	if enabled && metadata.Type != model.FlowRunTriggerCron {
 		return nil, fmt.Errorf("%s 触发的流程不能启用 Cron 调度", metadata.Type)
 	}
-	if input.CronExpr != nil || enabled_changed {
-		next_run, err := s.next_run_at(cron_expr, time.Now())
-		if err != nil {
-			return nil, err
-		}
+	previous_metadata := automation_schedule_metadata(*schedule)
+	previous_policy, err := automation_schedule_policy(*schedule)
+	if err != nil {
+		return nil, err
+	}
+	patched := *schedule
+	patched.CronExpr, patched.InitialData = cron_expr, initial_data
+	policy, err := automation_schedule_policy(patched)
+	if err != nil {
+		return nil, err
+	}
+	next_run, err := s.next_schedule_run_at(patched, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	policy_changed := !reflect.DeepEqual(previous_policy, policy)
+	if input.CronExpr != nil || enabled_changed || policy_changed || metadata.Type != previous_metadata.Type {
 		if enabled {
-			updates["next_run_at"] = *next_run
+			updates["next_run_at"] = next_run
 		} else {
 			updates["next_run_at"] = nil
 		}
@@ -532,7 +569,12 @@ func (s *AutomationService) UpdateSchedule(id string, input UpdateScheduleInput)
 			overrides[field] = value
 		}
 	}
-	previous_metadata := automation_schedule_metadata(*schedule)
+	if policy_changed {
+		if overrides == nil {
+			overrides = map[string]interface{}{}
+		}
+		overrides["schedule"] = policy
+	}
 	if metadata.Active != previous_metadata.Active || metadata.EventKey != previous_metadata.EventKey {
 		if overrides == nil {
 			overrides = map[string]interface{}{}
@@ -659,11 +701,11 @@ func (s *AutomationService) ToggleSchedule(id string) (*model.FlowSchedule, erro
 		"updated_at": time.Now().UnixMilli(),
 	}
 	if enabled {
-		next_run, err := s.next_run_at(schedule.CronExpr, time.Now())
+		next_run, err := s.next_schedule_run_at(*schedule, time.Now())
 		if err != nil {
 			return nil, err
 		}
-		updates["next_run_at"] = *next_run
+		updates["next_run_at"] = next_run
 	} else {
 		updates["next_run_at"] = nil
 	}
@@ -1072,8 +1114,8 @@ func (s *AutomationService) advance_schedule(schedule model.FlowSchedule, run *m
 	}
 	if run.TriggerType == model.FlowRunTriggerCron {
 		if latest, err := s.GetSchedule(schedule.ID); err == nil && latest.Enabled {
-			if next_run, err := s.next_run_at(latest.CronExpr, time.Now()); err == nil {
-				updates["next_run_at"] = *next_run
+			if next_run, err := s.next_schedule_run_at(*latest, time.Now()); err == nil {
+				updates["next_run_at"] = next_run
 			}
 		}
 	}
@@ -1130,13 +1172,13 @@ func (s *AutomationService) advance_claimed_schedule(schedule model.FlowSchedule
 	if s == nil || s.db == nil {
 		return
 	}
-	next_run, err := s.next_run_at(schedule.CronExpr, time.Now())
+	next_run, err := s.next_schedule_run_at(schedule, time.Now())
 	if err != nil {
 		return
 	}
 	if err := s.db.Model(&model.FlowSchedule{}).
 		Where("id = ? AND deleted_at IS NULL AND next_run_at IS NOT NULL AND next_run_at <= ?", schedule.ID, time.Now().UnixMilli()).
-		Update("next_run_at", *next_run).Error; err != nil {
+		Update("next_run_at", next_run).Error; err != nil {
 		s.log_error(err, "failed to advance claimed flow schedule")
 	}
 }
@@ -1152,7 +1194,11 @@ func (s *AutomationService) next_run_at(expression string, from time.Time) (*int
 	if err != nil {
 		return nil, fmt.Errorf("cron 表达式无效: %w", err)
 	}
-	next := schedule.Next(from).UnixMilli()
+	next_time := schedule.Next(from)
+	if next_time.IsZero() {
+		return nil, fmt.Errorf("Cron 没有可执行时间")
+	}
+	next := next_time.UnixMilli()
 	return &next, nil
 }
 
@@ -1322,4 +1368,62 @@ func marshal_json(value interface{}) string {
 		return ""
 	}
 	return string(encoded)
+}
+
+// Policies share the existing trigger metadata so old databases need no migration.
+func marshal_schedule_initial_data(data map[string]interface{}, policy *flowengine.SchedulePolicy) (string, error) {
+	if policy == nil {
+		return marshal_automation_initial_data(data)
+	}
+	if _, err := flowengine.NextScheduleAt(*policy, time.Now()); err != nil {
+		return "", err
+	}
+	cloned := make(map[string]interface{}, len(data)+1)
+	for key, value := range data {
+		cloned[key] = value
+	}
+	metadata := map[string]interface{}{}
+	if raw, ok := data[automation_metadata_key].(map[string]interface{}); ok {
+		for key, value := range raw {
+			metadata[key] = value
+		}
+	}
+	metadata["schedule"] = policy
+	cloned[automation_metadata_key] = metadata
+	return marshal_automation_initial_data(cloned)
+}
+
+func automation_schedule_policy(schedule model.FlowSchedule) (*flowengine.SchedulePolicy, error) {
+	metadata, _ := decode_initial_data(schedule.InitialData)[automation_metadata_key].(map[string]interface{})
+	if metadata["schedule"] == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(metadata["schedule"])
+	if err != nil {
+		return nil, err
+	}
+	var policy flowengine.SchedulePolicy
+	if err := json.Unmarshal(raw, &policy); err != nil {
+		return nil, fmt.Errorf("定时策略格式无效: %w", err)
+	}
+	return &policy, nil
+}
+
+func (s *AutomationService) next_schedule_run_at(schedule model.FlowSchedule, from time.Time) (*int64, error) {
+	policy, err := automation_schedule_policy(schedule)
+	if err != nil {
+		return nil, err
+	}
+	if policy == nil {
+		return s.next_run_at(schedule.CronExpr, from)
+	}
+	next, err := flowengine.NextScheduleAt(*policy, from)
+	if err != nil {
+		return nil, err
+	}
+	if next.IsZero() {
+		return nil, nil
+	}
+	value := next.UnixMilli()
+	return &value, nil
 }

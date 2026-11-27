@@ -14,6 +14,7 @@ import (
 	"wx_channel/internal/mcpserver"
 	"wx_channel/internal/services"
 	"wx_channel/internal/workers/sph"
+	"wx_channel/pkg/flowengine"
 )
 
 // mcp_automation_max_rows caps how many schedules or runs an MCP listing may
@@ -552,6 +553,7 @@ func (b *mcp_automation_backend) CreateSchedule(
 		Name:        input.Name,
 		Description: input.Description,
 		CronExpr:    input.CronExpr,
+		Schedule:    input.Schedule,
 		FlowID:      input.FlowID,
 		InitialData: input.InitialData,
 		Enabled:     input.Enabled,
@@ -622,11 +624,18 @@ func (b *mcp_automation_backend) ListRuns(
 }
 
 func mcp_automation_schedule_summary(schedule model.FlowSchedule) mcpserver.AutomationScheduleSummary {
+	var metadata struct {
+		Automation struct {
+			Schedule *flowengine.SchedulePolicy `json:"schedule"`
+		} `json:"__automation"`
+	}
+	_ = json.Unmarshal([]byte(schedule.InitialData), &metadata)
 	return mcpserver.AutomationScheduleSummary{
 		ID:            schedule.ID,
 		Name:          schedule.Name,
 		Description:   schedule.Description,
 		CronExpr:      schedule.CronExpr,
+		Schedule:      metadata.Automation.Schedule,
 		FlowID:        schedule.FlowID,
 		InstanceID:    schedule.InstanceID,
 		Enabled:       schedule.Enabled,

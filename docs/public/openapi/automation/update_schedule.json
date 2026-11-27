@@ -4,7 +4,7 @@
       "自动化"
     ],
     "summary": "更新自动化计划",
-    "description": "按 id 更新，省略的指针字段保留原值；initial_data 非 null 时替换已有初始数据。 timeout_sec 更新时必须在 1–86400 秒之间。",
+    "description": "按 id 更新，省略的指针字段保留原值；initial_data 非 null 时替换已有初始数据。 timeout_sec 更新时必须在 1–86400 秒之间。 schedule 替换整个定时策略并重新计算下次时间，manual 清空下次时间；省略/null 保留已有策略，initial_data 替换时也保留策略。单独修改 cron_expr 将已有策略切换为 Cron 并保留时区，同时提供 schedule 时以 schedule 为准。",
     "responses": {
       "200": {
         "description": "成功时 code=0；业务失败仍使用 HTTP 200，以 code 和 msg 判断结果。",
@@ -75,6 +75,9 @@
               "instance_id": {
                 "type": "string",
                 "description": "流程实例 ID；执行历史按实例过滤。"
+              },
+              "schedule": {
+                "$ref": "../components.json#/schemas/flowengine_SchedulePolicy"
               }
             },
             "required": [
