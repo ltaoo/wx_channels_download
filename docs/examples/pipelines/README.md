@@ -7,6 +7,7 @@
 | `01_creator_video_sync.json` | 通过 HTTP 接口逐页检查视频，仅下载缺失视频，遇到整页已存在时停止 | 每天 12:00、18:00（已内置） |
 | `01_creator_video_sync_service.json` | 使用内置工具获取列表，其余增量检查与下载流程和 HTTP 版相同 | 每天 12:00、18:00（已内置） |
 | `01_douyin_creator_video_sync.json` | 抖音：逐页同步视频和图集，复用列表媒体，仅下载缺失作品 | 每天 12:00、18:00（已内置） |
+| `01_instagram_creator_video_sync.json` | Instagram：逐页检查帖子，为缺失帖子获取详情并下载视频和图集 | 每天 12:00、18:00（已内置） |
 | `02_creator_live_record.json` | 查询创作者当前直播，开播时创建录制任务 | Cron `*/1 * * * *` |
 | `03_creator_new_video_notify.json` | 按本地下载任务判断新视频，支持企业微信和通用 Webhook | Cron `*/5 * * * *` |
 | `download_finished_qiniu_webhook.json` | 通过 JS 自定义节点上传七牛云，再发送任务详情到 Webhook | 事件 `downloadtask.finished`（已内置） |
@@ -15,6 +16,10 @@
 导入步骤、配置、通知行为及运行边界统一见[流程示例说明](../../feature/pipelines/index.md)。新视频通知第一次运行就会通知扫描范围内没有下载任务的视频；尚未创建下载任务的视频可能在后续运行中再次通知。
 
 抖音示例同步视频与图集（含列表提供的实况照片视频），保留列表作品的完整媒体数据，通过 `create_download_task`（`build_from_fetch: true`）直接创建下载任务，无需再解析视频详情。已有任务仍按 `existing_action: skip` 跳过；即使整页已存在也会继续扫描，以补齐之前遗漏的图集。`max_videos` 沿用旧配置名，现在限制视频与图集的总作品数。已有流程需重新导入或更新已保存的流程定义；仅升级程序不会替换已导入的 JSON。
+
+导入 [Instagram 配置](01_instagram_creator_video_sync.json) 后，在流程「配置」中填写 `username`，支持用户名、`@用户名` 或 HTTPS 主页链接；可在「配置下载目录与分页上限」节点修改 `download_dir`，留空使用默认目录。`max_pages` 默认 1000 页，`max_posts` 默认 100000 条去重帖子，均须为正整数；达到上限且扫描未完成时会报错。定时器按服务运行时区每天 12:00、18:00 执行。
+
+流程沿 `next_marker` 逐页读取并按帖子 ID 跨页去重，再批量检查本地下载任务，仅为缺失帖子调用 `InstagramFetchDetailNode`，把新获取的完整媒体交给 `create_download_task`（`build_from_fetch: true`）。支持视频、单图与轮播图集，创建时仍以 `existing_action: skip` 避免重复任务。即使整页已有任务或当前页为空，只要还有游标就继续检查；缺失、无效或重复游标会报错，避免把未完成的扫描记为成功。已有失败任务也会跳过，需在下载列表重试；汇总中的 `submitted` 只表示已提交任务，不表示文件下载完成。公开主页使用未登录查询进行分页，无需配置登录 Cookie。运行环境需能访问 Instagram；受限或不可见的账号、帖子可能无法获取，平台访问或频率限制会直接报错。
 
 七牛上传流程需先安装 `docs/examples/nodes/qiniu_upload.js`，详见[安装与 Hook 迁移](../../feature/pipelines/download-finished-qiniu-webhook.md)。
 

@@ -119,13 +119,27 @@ func (c *Client) fetch_page(fetch_context context.Context, page_url string) (str
 		"Sec-Fetch-User":            {"?1"},
 		"Upgrade-Insecure-Requests": {"1"},
 	}
+	return c.fetch_request(request)
+}
+
+func (c *Client) fetch_request(request *http.Request) (string, error) {
+	if c == nil || c.http_client == nil {
+		return "", fmt.Errorf("instagram: client is closed")
+	}
 	if c.cookie_reader != nil {
-		cookie_header, err := c.cookie_reader.HeaderForURL(page_url)
+		cookie_header, err := c.cookie_reader.HeaderForURL(request.URL.String())
 		if err != nil && !errors.Is(err, cookies.ErrCookieNotFound) {
 			return "", fmt.Errorf("instagram: read cookies: %w", err)
 		}
 		if cookie_header != "" {
 			request.Header.Set("Cookie", cookie_header)
+			if request.Method == http.MethodPost {
+				for _, cookie := range request.Cookies() {
+					if cookie.Name == "csrftoken" {
+						request.Header.Set("X-CSRFToken", cookie.Value)
+					}
+				}
+			}
 		}
 	}
 	response, err := c.http_client.Do(request)
