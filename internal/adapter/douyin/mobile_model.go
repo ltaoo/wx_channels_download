@@ -67,6 +67,7 @@ type douyin_mobile_video struct {
 	Height   int                    `json:"height"`
 	PlayAddr douyin_mobile_url_data `json:"play_addr"`
 	Cover    douyin_mobile_url_data `json:"cover"`
+	BitRate  []douyin.BitRate       `json:"bit_rate"`
 }
 
 type douyin_mobile_url_data struct {
@@ -121,6 +122,7 @@ type douyin_model_data struct {
 	description    string
 	video_url      string
 	video_uri      string
+	video_variants []model.ContentVideoVariant
 	cover_url      string
 	source_url     string
 	cover_width    int
@@ -178,6 +180,10 @@ func douyin_model_data_from_fetch(data any) (*douyin_model_data, error) {
 func douyin_model_data_from_json(raw_json json.RawMessage) (*douyin_model_data, error) {
 	if len(strings.TrimSpace(string(raw_json))) == 0 {
 		return nil, fmt.Errorf("douyin mobile JSON is empty")
+	}
+	var video_info douyin.VideoInfo
+	if err := json.Unmarshal(raw_json, &video_info); err == nil && strings.TrimSpace(video_info.VideoID) != "" {
+		return douyin_model_data_from_video_info(&video_info)
 	}
 
 	// DouyinPCClient returns the normalized detail envelope directly, while the
@@ -252,6 +258,7 @@ func douyin_model_data_from_json(raw_json json.RawMessage) (*douyin_model_data, 
 	content_type := douyin_content_type_video
 	video_url := ""
 	video_uri := ""
+	var video_variants []model.ContentVideoVariant
 	images := make([]douyin_model_image, 0, len(item.Images))
 	bgm_url := ""
 	if len(item.Images) > 0 || item.AwemeType == douyin_aweme_type_album {
@@ -267,6 +274,10 @@ func douyin_model_data_from_json(raw_json json.RawMessage) (*douyin_model_data, 
 		bgm_url = douyin_album_bgm_url(item.Video.PlayAddr.URI)
 	} else {
 		video_url = douyin_no_watermark_url(first_douyin_url(item.Video.PlayAddr.URLList))
+		video_variants = douyin_video_variants(video_id, video_url, item.Video.Width, item.Video.Height, item.Video.BitRate)
+		if video_url == "" && len(video_variants) > 0 {
+			video_url = video_variants[0].URL
+		}
 		if video_url == "" {
 			return nil, fmt.Errorf("douyin mobile video %s has no play URL", video_id)
 		}
@@ -295,6 +306,7 @@ func douyin_model_data_from_json(raw_json json.RawMessage) (*douyin_model_data, 
 		description:    strings.TrimSpace(item.Desc),
 		video_url:      video_url,
 		video_uri:      video_uri,
+		video_variants: video_variants,
 		cover_url:      cover_url,
 		source_url:     douyin_content_source_url(content_type, video_id),
 		cover_width:    cover_width,
@@ -370,17 +382,25 @@ func douyin_model_data_from_video_info(video_info *douyin.VideoInfo) (*douyin_mo
 	if title == "" {
 		title = "douyin_" + video_id
 	}
+	video := video_info.Video
+	if video == nil {
+		video = &douyin.Video{}
+	}
 	return &douyin_model_data{
-		content_type: douyin_content_type_video,
-		video_id:     video_id,
-		title:        title,
-		description:  strings.TrimSpace(video_info.Title),
-		video_url:    strings.TrimSpace(video_info.URL),
-		cover_url:    strings.TrimSpace(video_info.CoverURL),
-		source_url:   douyin_content_source_url(douyin_content_type_video, video_id),
-		author_id:    video_id,
-		author_name:  "抖音用户",
-		source:       strings.TrimSpace(video_info.Source),
+		content_type:   douyin_content_type_video,
+		video_id:       video_id,
+		title:          title,
+		description:    strings.TrimSpace(video_info.Title),
+		video_url:      douyin_no_watermark_url(video_info.URL),
+		video_variants: douyin_video_variants(video_id, video_info.URL, video.Width, video.Height, video.BitRate),
+		width:          video.Width,
+		height:         video.Height,
+		duration:       int64(video.Duration),
+		cover_url:      strings.TrimSpace(video_info.CoverURL),
+		source_url:     douyin_content_source_url(douyin_content_type_video, video_id),
+		author_id:      video_id,
+		author_name:    "抖音用户",
+		source:         strings.TrimSpace(video_info.Source),
 	}, nil
 }
 
@@ -445,7 +465,7 @@ func douyin_account_from_data(data *douyin_model_data) *model.Account {
 }
 
 func douyin_video_from_data(data *douyin_model_data) *model.ContentVideo {
-	return &model.ContentVideo{
+	video := &model.ContentVideo{
 		Id:        BuildContentID(data.video_id),
 		Duration:  data.duration,
 		Width:     data.width,
@@ -453,7 +473,26 @@ func douyin_video_from_data(data *douyin_model_data) *model.ContentVideo {
 		Format:    "mp4",
 		URL:       data.video_url,
 		PlayTimes: data.view_count,
+		Variants:  data.video_variants,
 	}
+	for _, variant := range data.video_variants {
+		if variant.URL != data.video_url {
+			continue
+		}
+		video.Size = variant.Size
+		video.Codec = variant.Codec
+		if variant.Width != nil {
+			video.Width = *variant.Width
+		}
+		if variant.Height != nil {
+			video.Height = *variant.Height
+		}
+		if variant.Bitrate != nil {
+			video.Bitrate = *variant.Bitrate
+		}
+		break
+	}
+	return video
 }
 
 func douyin_album_from_data(data *douyin_model_data) *model.ContentAlbum {
