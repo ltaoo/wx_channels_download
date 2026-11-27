@@ -1015,6 +1015,9 @@ func (s *DownloadTaskService) StartTask(task_id int) (*model.DownloadTask, error
 		task.Status != model.TaskStatusFailed {
 		return nil, fmt.Errorf("当前状态不允许启动")
 	}
+	if task.Status == model.TaskStatusFailed {
+		return s.RetryTask(task.Id)
+	}
 
 	s.logger.Info().Int("task_id", task_id).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("received start download task request")
 
@@ -1122,18 +1125,18 @@ func (s *DownloadTaskService) RetryTask(task_id int) (*model.DownloadTask, error
 	}
 
 	s.logger.Info().Int("task_id", task_id).Str("task_name", task.Name).Int("previous_status", task.Status).Msg("retrying download task")
-	if err := s.db.Model(&task).Updates(map[string]any{
-		"error_message": "",
-		"status":        model.TaskStatusWaiting,
-		"updated_at":    time.Now().UnixMilli(),
-	}).Error; err != nil {
+	if err := s.reset_retry_task(&task); err != nil {
 		return nil, fmt.Errorf("重置下载任务失败: %w", err)
 	}
-	task.Status = model.TaskStatusWaiting
-	task.ErrorMessage = ""
 
 	if err := s.downloader.StartTask(task.Id); err != nil {
 		s.logger.Error().Int("task_id", task_id).Err(err).Msg("failed to retry download task")
+		task.Status = model.TaskStatusFailed
+		task.ErrorMessage = err.Error()
+		if update_err := s.db.Model(&task).Where("status = ?", model.TaskStatusWaiting).
+			Updates(map[string]any{"status": task.Status, "error_message": task.ErrorMessage, "updated_at": time.Now().UnixMilli()}).Error; update_err != nil {
+			return &task, fmt.Errorf("重试下载任务失败: %v；保存失败状态时出错: %w", err, update_err)
+		}
 		return &task, fmt.Errorf("重试下载任务失败: %w", err)
 	}
 	task.Status = model.TaskStatusPreparing
@@ -1249,7 +1252,7 @@ func (s *DownloadTaskService) StartAllTasks(status string) (int, int, error) {
 
 	var started int
 	for _, task := range tasks {
-		if err := s.downloader.StartTask(task.Id); err != nil {
+		if _, err := s.StartTask(task.Id); err != nil {
 			continue
 		}
 		started++
