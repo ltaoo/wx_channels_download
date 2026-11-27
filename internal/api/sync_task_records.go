@@ -89,6 +89,9 @@ func (c *APIClient) recreate_sync_tasks(tx *gorm.DB, bundle sync_bundle, result 
 			var parent_id *int
 			if record.Task.ParentTaskID != nil {
 				mapped_id, ok := task_ids[*record.Task.ParentTaskID]
+				if !ok && bundle.Version == 3 && bundle.TargetParentTaskID != nil {
+					mapped_id, ok = *bundle.TargetParentTaskID, true
+				}
 				if !ok {
 					next = append(next, record)
 					continue

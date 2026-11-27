@@ -43,15 +43,17 @@ type sync_server_record struct {
 }
 
 type sync_bundle struct {
-	Version   int                             `json:"version"`
-	SourceID  string                          `json:"source_id,omitempty"`
-	Contents  []model.Content                 `json:"contents"`
-	Tasks     []model.DownloadTask            `json:"tasks"`
-	Resources []model.DownloadResource        `json:"resources"`
-	Records   []*services.DownloadTaskArchive `json:"records,omitempty"`
+	Version            int                             `json:"version"`
+	SourceID           string                          `json:"source_id,omitempty"`
+	Contents           []model.Content                 `json:"contents"`
+	Tasks              []model.DownloadTask            `json:"tasks"`
+	Resources          []model.DownloadResource        `json:"resources"`
+	Records            []*services.DownloadTaskArchive `json:"records,omitempty"`
+	TargetParentTaskID *int                            `json:"target_parent_task_id,omitempty"`
 }
 
 type sync_source_file struct {
+	TaskID      int
 	Path        string
 	ArchivePath string
 	Size        int64
@@ -140,15 +142,15 @@ func (c *APIClient) handle_sync_to_server(ctx *gin.Context) {
 		result.Err(ctx, http.StatusBadRequest, err.Error())
 		return
 	}
-	sync_result, err := c.send_sync_bundle(ctx.Request, servers[server_id], task_ids...)
+	sync_result, err := c.send_sync_bundle(ctx.Request, servers[server_id], nil, task_ids...)
 	if err != nil {
-		result.Err(ctx, http.StatusBadGateway, err.Error())
+		result.ErrWithData(ctx, http.StatusBadGateway, err.Error(), sync_result)
 		return
 	}
 	result.Ok(ctx, sync_result)
 }
 
-func (c *APIClient) send_sync_bundle(source_request *http.Request, server sync_server_config, task_ids ...int) (*sync_import_result, error) {
+func (c *APIClient) send_sync_bundle(source_request *http.Request, server sync_server_config, progress func(int, int, *sync_import_result), task_ids ...int) (*sync_import_result, error) {
 	if err := check_sync_receiver(source_request.Context(), server); err != nil {
 		return nil, err
 	}
@@ -156,6 +158,75 @@ func (c *APIClient) send_sync_bundle(source_request *http.Request, server sync_s
 	if err != nil {
 		return nil, err
 	}
+	files_by_task := make(map[int][]sync_source_file)
+	for _, file := range source_files {
+		files_by_task[file.TaskID] = append(files_by_task[file.TaskID], file)
+	}
+	imported_ids := make(map[int]int)
+	confirmed := sync_bundle{}
+	confirmed_contents := make(map[string]bool)
+	imported := &sync_import_result{}
+	pending := bundle.Records
+	for len(pending) > 0 {
+		next := []*services.DownloadTaskArchive{}
+		for _, record := range pending {
+			task := record.Task
+			var parent_id *int
+			if task.ParentTaskID != nil {
+				mapped_id, ok := imported_ids[*task.ParentTaskID]
+				if !ok {
+					next = append(next, record)
+					continue
+				}
+				parent_id = &mapped_id
+			}
+			if progress != nil {
+				progress(len(bundle.Tasks), task.Id, imported)
+			}
+			single := sync_bundle{Version: 3, SourceID: bundle.SourceID, Tasks: []model.DownloadTask{task}, Records: []*services.DownloadTaskArchive{record}, TargetParentTaskID: parent_id}
+			for _, resource := range record.Resources {
+				single.Resources = append(single.Resources, resource.Resource)
+			}
+			for _, content := range record.Contents {
+				single.Contents = append(single.Contents, content.Content)
+			}
+			completed, err := send_sync_archive(source_request, server, single, files_by_task[task.Id])
+			if err != nil {
+				return imported, fmt.Errorf("同步任务 %d 失败（已完成 %d/%d）: %w", task.Id, imported.Tasks, len(bundle.Tasks), err)
+			}
+			if completed.Tasks != 1 || len(completed.TargetTaskIDs) != 1 || completed.TargetTaskIDs[0] <= 0 {
+				return imported, fmt.Errorf("同步任务 %d 返回无效结果，请核对目标记录后重试", task.Id)
+			}
+			imported_ids[task.Id] = completed.TargetTaskIDs[0]
+			confirmed.Tasks = append(confirmed.Tasks, task)
+			confirmed.Records = append(confirmed.Records, record)
+			confirmed.Resources = append(confirmed.Resources, single.Resources...)
+			for _, content := range single.Contents {
+				if !confirmed_contents[content.Id] {
+					confirmed.Contents = append(confirmed.Contents, content)
+					confirmed_contents[content.Id] = true
+				}
+			}
+			counts := sync_record_counts(confirmed)
+			imported = &sync_import_result{
+				Tasks: len(confirmed.Tasks), Resources: len(confirmed.Resources), Contents: len(confirmed.Contents),
+				Accounts: counts["account"], Tables: counts,
+				Files: imported.Files + completed.Files, Bytes: imported.Bytes + completed.Bytes,
+				TargetTaskIDs: append(append([]int(nil), imported.TargetTaskIDs...), completed.TargetTaskIDs...),
+			}
+			if progress != nil {
+				progress(len(bundle.Tasks), 0, imported)
+			}
+		}
+		if len(next) == len(pending) {
+			return imported, fmt.Errorf("下载任务父子关系包含循环或缺失的父任务")
+		}
+		pending = next
+	}
+	return imported, nil
+}
+
+func send_sync_archive(source_request *http.Request, server sync_server_config, bundle sync_bundle, source_files []sync_source_file) (*sync_import_result, error) {
 	pipe_reader, pipe_writer := io.Pipe()
 	defer pipe_reader.Close()
 	go func() {
@@ -220,6 +291,9 @@ func (c *APIClient) build_sync_bundle(task_ids ...int) (sync_bundle, []sync_sour
 		files, err := c.sync_resource_files(task, resource)
 		if err != nil {
 			return bundle, nil, err
+		}
+		for index := range files {
+			files[index].TaskID = task.Id
 		}
 		source_files = append(source_files, files...)
 	}
@@ -334,8 +408,16 @@ func (c *APIClient) import_sync_archive(reader io.Reader) (*sync_import_result, 
 		return nil, fmt.Errorf("读取同步记录失败")
 	}
 	var bundle sync_bundle
-	if err := json.Unmarshal(metadata, &bundle); err != nil || (bundle.Version != 1 && bundle.Version != 2) {
+	if err := json.Unmarshal(metadata, &bundle); err != nil || (bundle.Version != 1 && bundle.Version != 2 && bundle.Version != 3) {
 		return nil, fmt.Errorf("同步记录版本无效")
+	}
+	if bundle.Version == 3 {
+		if len(bundle.Tasks) != 1 || len(bundle.Records) != 1 || bundle.Records[0] == nil || bundle.Records[0].Task.Id != bundle.Tasks[0].Id {
+			return nil, fmt.Errorf("逐条同步包必须包含一个下载任务及其归档")
+		}
+		if (bundle.Records[0].Task.ParentTaskID == nil) != (bundle.TargetParentTaskID == nil) || (bundle.TargetParentTaskID != nil && *bundle.TargetParentTaskID <= 0) {
+			return nil, fmt.Errorf("逐条同步父任务映射无效")
+		}
 	}
 	resources_by_id := make(map[int]model.DownloadResource, len(bundle.Resources))
 	tasks_by_id := make(map[int]model.DownloadTask, len(bundle.Tasks))
@@ -374,7 +456,7 @@ func (c *APIClient) import_sync_archive(reader io.Reader) (*sync_import_result, 
 				resource.Extra = string(encoded_extra)
 			}
 		}
-		if bundle.Version == 2 {
+		if bundle.Version >= 2 {
 			if _, err := sync_resource_path(c.cfg.DownloadDir, resource.Name); err != nil {
 				return nil, err
 			}
@@ -448,7 +530,7 @@ func (c *APIClient) import_sync_archive(reader io.Reader) (*sync_import_result, 
 		resource_files[resource_id] = true
 		resource_bytes[resource_id] += copied
 	}
-	if bundle.Version == 2 {
+	if bundle.Version >= 2 {
 		for index := range bundle.Resources {
 			resource := &bundle.Resources[index]
 			if !resource_files[resource.Id] || resource.Status != model.ResourceStatusFinished {
@@ -572,7 +654,7 @@ func path_within_root(root string, target string) (string, error) {
 }
 
 func (c *APIClient) import_sync_records(tx *gorm.DB, bundle sync_bundle, import_result *sync_import_result) error {
-	if bundle.Version == 2 {
+	if bundle.Version >= 2 {
 		return c.recreate_sync_tasks(tx, bundle, import_result)
 	}
 	for content_index := range bundle.Contents {

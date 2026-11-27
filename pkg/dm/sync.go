@@ -37,7 +37,7 @@ func (c *Client) StartSync(ctx context.Context, server_id int, task_ids ...int) 
 	return c.do(ctx, http.MethodPost, "/api/v1/sync/servers/"+strconv.Itoa(server_id)+"/jobs", nil, map[string]any{"task_ids": task_ids})
 }
 
-// SyncStatus returns a background export's current state and final counts.
+// SyncStatus returns progress and cumulative counts of committed tasks.
 func (c *Client) SyncStatus(ctx context.Context, job_id string) (json.RawMessage, error) {
 	return c.get(ctx, "/api/v1/sync/jobs/"+url.PathEscape(job_id), nil)
 }

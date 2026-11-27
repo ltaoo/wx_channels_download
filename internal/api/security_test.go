@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
 	"wx_channel/internal/config"
+	"wx_channel/internal/database/model"
 )
 
 func TestAPIRequestTrustAndRemoteAuthentication(t *testing.T) {
@@ -171,10 +172,10 @@ func TestSyncUsesServerSideAuthenticationWithoutExposingCredentials(t *testing.T
 		case "/api/status":
 			_, _ = io.WriteString(w, `{"code":0,"data":{"version":"v2"}}`)
 		case "/api/v1/sync/info":
-			_, _ = io.WriteString(w, `{"code":0,"data":{"version":2,"receive_enabled":true}}`)
+			_, _ = io.WriteString(w, `{"code":0,"data":{"version":3,"receive_enabled":true}}`)
 		case "/api/v1/sync/import":
 			_, _ = io.Copy(io.Discard, r.Body)
-			_, _ = io.WriteString(w, `{"code":0,"data":{"tasks":0}}`)
+			_, _ = io.WriteString(w, `{"code":0,"data":{"tasks":1,"target_task_ids":[42]}}`)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -189,6 +190,9 @@ func TestSyncUsesServerSideAuthenticationWithoutExposingCredentials(t *testing.T
 	t.Cleanup(func() { viper.Set("sync.servers", previous) })
 	viper.Set("sync.servers", []map[string]string{{"name": "authenticated target", "url": target.String()}})
 	client := new_sync_test_client(t, t.TempDir())
+	if err := client.db.Create(&model.DownloadTask{Id: 1, Name: "authenticated sync", Timestamps: model.Timestamps{CreatedAt: 1}}).Error; err != nil {
+		t.Fatal(err)
+	}
 	client.cfg.Original = &config.Config{}
 	router := gin.New()
 	router.GET("/servers", client.handle_sync_servers)
@@ -207,7 +211,7 @@ func TestSyncUsesServerSideAuthenticationWithoutExposingCredentials(t *testing.T
 	if err := check_sync_receiver(context.Background(), server); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.send_sync_bundle(httptest.NewRequest(http.MethodPost, "/", nil), server); err != nil {
+	if _, err := client.send_sync_bundle(httptest.NewRequest(http.MethodPost, "/", nil), server, nil); err != nil {
 		t.Fatal(err)
 	}
 }

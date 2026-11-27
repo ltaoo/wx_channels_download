@@ -18,12 +18,15 @@ import (
 )
 
 type sync_job struct {
-	ID       string              `json:"job_id"`
-	ServerID int                 `json:"server_id"`
-	TaskIDs  []int               `json:"task_ids,omitempty"`
-	Status   string              `json:"status"`
-	Result   *sync_import_result `json:"result,omitempty"`
-	Error    string              `json:"error,omitempty"`
+	ID             string              `json:"job_id"`
+	ServerID       int                 `json:"server_id"`
+	TaskIDs        []int               `json:"task_ids,omitempty"`
+	Status         string              `json:"status"`
+	Result         *sync_import_result `json:"result,omitempty"`
+	Error          string              `json:"error,omitempty"`
+	TotalTasks     int                 `json:"total_tasks"`
+	CompletedTasks int                 `json:"completed_tasks"`
+	CurrentTaskID  int                 `json:"current_task_id,omitempty"`
 }
 
 // Jobs outlive a single MCP/HTTP request. Completed results are retained until
@@ -36,7 +39,7 @@ var sync_jobs = struct {
 }{jobs: make(map[string]sync_job)}
 
 func (c *APIClient) handle_sync_info(ctx *gin.Context) {
-	result.Ok(ctx, gin.H{"version": 2, "receive_enabled": true})
+	result.Ok(ctx, gin.H{"version": 3, "receive_enabled": true})
 }
 
 func check_sync_receiver(ctx context.Context, server sync_server_config) error {
@@ -58,8 +61,8 @@ func check_sync_receiver(ctx context.Context, server sync_server_config) error {
 			ReceiveEnabled bool `json:"receive_enabled"`
 		} `json:"data"`
 	}
-	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&envelope); err != nil || response.StatusCode != http.StatusOK || envelope.Code != 0 || envelope.Data.Version < 2 {
-		return fmt.Errorf("目标服务不支持完整数据同步，请先更新目标服务")
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&envelope); err != nil || response.StatusCode != http.StatusOK || envelope.Code != 0 || envelope.Data.Version < 3 {
+		return fmt.Errorf("目标服务不支持逐条同步，请先更新目标服务")
 	}
 	if !envelope.Data.ReceiveEnabled {
 		return fmt.Errorf("目标服务未启用同步接收")
@@ -152,7 +155,7 @@ func (c *APIClient) handle_sync_start(ctx *gin.Context) {
 		result.Err(ctx, 409, "已有同步任务正在执行，请先查询其状态")
 		return
 	}
-	job := sync_job{ID: uuid.NewString(), ServerID: server_id, Status: "running", TaskIDs: task_ids}
+	job := sync_job{ID: uuid.NewString(), ServerID: server_id, Status: "running", TaskIDs: task_ids, TotalTasks: len(task_ids)}
 	sync_jobs.active = true
 	sync_jobs.jobs[job.ID] = job
 	sync_jobs.order = append(sync_jobs.order, job.ID)
@@ -165,7 +168,13 @@ func (c *APIClient) handle_sync_start(ctx *gin.Context) {
 		job_ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		request := (&http.Request{}).WithContext(job_ctx)
-		imported, sync_err := c.send_sync_bundle(request, servers[server_id], job.TaskIDs...)
+		imported, sync_err := c.send_sync_bundle(request, servers[server_id], func(total, current_task_id int, imported *sync_import_result) {
+			job.TotalTasks, job.CurrentTaskID = total, current_task_id
+			job.CompletedTasks, job.Result = imported.Tasks, imported
+			sync_jobs.Lock()
+			sync_jobs.jobs[job.ID] = job
+			sync_jobs.Unlock()
+		}, job.TaskIDs...)
 		job.Result = imported
 		job.Status = "completed"
 		if sync_err != nil {

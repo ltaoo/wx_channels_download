@@ -3,12 +3,21 @@ package api
 import (
 	"archive/tar"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -29,7 +38,7 @@ func new_sync_test_client(t *testing.T, root string) *APIClient {
 	}
 	connection.SetMaxOpenConns(1)
 	t.Cleanup(func() { connection.Close() })
-	if err := db.AutoMigrate(&model.DownloadTask{}, &model.DownloadResource{}, &model.DownloadEndpoint{}); err != nil {
+	if err := db.AutoMigrate(&model.DownloadTask{}, &model.DownloadResource{}, &model.DownloadEndpoint{}, &model.DownloadResourceAsset{}); err != nil {
 		t.Fatal(err)
 	}
 	return &APIClient{cfg: &APIConfig{DownloadDir: root}, db: db,
@@ -115,7 +124,7 @@ func TestSyncStreamPlaybackUsesImportedFiles(t *testing.T) {
 	for _, test_case := range []struct {
 		version   int
 		duplicate bool
-	}{{1, false}, {2, false}, {1, true}, {2, true}} {
+	}{{1, false}, {2, false}, {3, false}, {1, true}, {2, true}, {3, true}} {
 		t.Run(fmt.Sprintf("version-%d/duplicate-%t", test_case.version, test_case.duplicate), func(t *testing.T) {
 			version := test_case.version
 			root := t.TempDir()
@@ -131,7 +140,7 @@ func TestSyncStreamPlaybackUsesImportedFiles(t *testing.T) {
 			}
 			resource := model.DownloadResource{Id: 1, TaskId: &task_id, Name: "title.mp4", UniqueID: "live-123", Type: model.ResourceTypeStream, Status: model.ResourceStatusFinished, Timestamps: model.Timestamps{CreatedAt: 1}}
 			bundle := sync_bundle{Version: version, SourceID: "test", Tasks: []model.DownloadTask{task}, Resources: []model.DownloadResource{resource}}
-			if version == 2 {
+			if version >= 2 {
 				bundle.Records = []*services.DownloadTaskArchive{{Task: task, Resources: []*adapter.ResourceInfo{{Resource: resource}}}}
 			}
 			for attempt := 0; attempt < 2; attempt++ {
@@ -154,5 +163,137 @@ func TestSyncStreamPlaybackUsesImportedFiles(t *testing.T) {
 				t.Fatalf("imported playback unavailable: content=%q error=%v", content, err)
 			}
 		})
+	}
+}
+
+func TestSyncCommitsEachTaskBeforeSendingTheNext(t *testing.T) {
+	for _, fail_second := range []bool{false, true} {
+		t.Run(fmt.Sprintf("fail-second-%t", fail_second), func(t *testing.T) {
+			source := new_sync_test_client(t, t.TempDir())
+			target := new_sync_test_client(t, t.TempDir())
+			parent_id := 20
+			// The child sorts first, so sending in ID order would lose its parent.
+			for _, task := range []model.DownloadTask{
+				{Id: parent_id, Name: "parent", PlatformId: "douyin", UniqueID: "parent", Status: model.TaskStatusFinished, Timestamps: model.Timestamps{CreatedAt: 1}},
+				{Id: 10, Name: "child", PlatformId: "douyin", UniqueID: "child", ParentTaskID: &parent_id, RootTaskID: parent_id, RelationType: model.TaskRelationDiscovered, Status: model.TaskStatusFinished, Timestamps: model.Timestamps{CreatedAt: 2}},
+			} {
+				if err := source.db.Create(&task).Error; err != nil {
+					t.Fatal(err)
+				}
+				name := task.Name + ".mp4"
+				if err := os.WriteFile(filepath.Join(source.cfg.DownloadDir, name), []byte(task.Name), 0600); err != nil {
+					t.Fatal(err)
+				}
+				resource := model.DownloadResource{Id: task.Id, TaskId: &task.Id, UniqueID: task.UniqueID, Name: name, DownloadDir: source.cfg.DownloadDir, Status: model.ResourceStatusFinished, Timestamps: model.Timestamps{CreatedAt: task.CreatedAt}}
+				if err := source.db.Create(&resource).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			blocked, release := make(chan struct{}), make(chan struct{})
+			var release_once sync.Once
+			var imports atomic.Int32
+			router := gin.New()
+			router.GET("/api/v1/sync/info", target.handle_sync_info)
+			router.POST("/api/v1/sync/import", func(ctx *gin.Context) {
+				if imports.Add(1) == 2 {
+					close(blocked)
+					<-release
+					if fail_second {
+						_, _ = io.Copy(io.Discard, ctx.Request.Body)
+						ctx.JSON(200, gin.H{"code": 500, "msg": "second task failed"})
+						return
+					}
+				}
+				target.handle_sync_import(ctx)
+			})
+			upstream := httptest.NewServer(router)
+			defer upstream.Close()
+			defer release_once.Do(func() { close(release) })
+			server := sync_server_config{Name: "test", URL: upstream.URL}
+			type outcome struct {
+				result *sync_import_result
+				err    error
+			}
+			done := make(chan outcome, 1)
+			progress := make(chan *sync_import_result, 8)
+			go func() {
+				imported, err := source.send_sync_bundle(httptest.NewRequest(http.MethodPost, "/", nil), server, func(total, current_task_id int, imported *sync_import_result) {
+					if total != 2 {
+						t.Errorf("total=%d, want 2", total)
+					}
+					progress <- imported
+				})
+				done <- outcome{imported, err}
+			}()
+			select {
+			case <-blocked:
+			case result := <-done:
+				t.Fatalf("sync stopped before second task: %+v", result)
+			case <-time.After(10 * time.Second):
+				t.Fatal("second task was never sent")
+			}
+			var parent model.DownloadTask
+			if err := target.db.Where("unique_id = ?", "parent").First(&parent).Error; err != nil {
+				t.Fatalf("first task not visible while second is uploading: %v", err)
+			}
+			var resource model.DownloadResource
+			if err := target.db.Where("task_id = ?", parent.Id).First(&resource).Error; err != nil {
+				t.Fatal(err)
+			}
+			content, err := os.ReadFile(filepath.Join(resource.DownloadDir, resource.Name))
+			if err != nil || string(content) != "parent" || parent.Status != model.TaskStatusFinished {
+				t.Fatalf("first task's file/state not committed: content=%q status=%d error=%v", content, parent.Status, err)
+			}
+			// Earlier snapshots must not change as subsequent tasks finish.
+			initial, first := <-progress, <-progress
+			if initial.Tasks != 0 || first.Tasks != 1 || len(first.TargetTaskIDs) != 1 {
+				t.Fatalf("unexpected progress: initial=%+v first=%+v", initial, first)
+			}
+			release_once.Do(func() { close(release) })
+			var result outcome
+			select {
+			case result = <-done:
+			case <-time.After(10 * time.Second):
+				t.Fatal("sync did not finish")
+			}
+			if fail_second {
+				if result.err == nil || !strings.Contains(result.err.Error(), "已完成 1/2") || result.result.Tasks != 1 {
+					t.Fatalf("partial failure lost confirmed result: %+v", result)
+				}
+				var count int64
+				target.db.Model(&model.DownloadTask{}).Count(&count)
+				if count != 1 {
+					t.Fatalf("failed task was committed: count=%d", count)
+				}
+				result.result, result.err = source.send_sync_bundle(httptest.NewRequest(http.MethodPost, "/", nil), server, nil)
+			}
+			if result.err != nil || result.result.Tasks != 2 || result.result.Files != 2 || result.result.Bytes != int64(len("parentchild")) || len(result.result.TargetTaskIDs) != 2 {
+				t.Fatalf("wrong final result: result=%+v error=%v", result.result, result.err)
+			}
+			var child model.DownloadTask
+			if err := target.db.Where("unique_id = ?", "child").First(&child).Error; err != nil {
+				t.Fatal(err)
+			}
+			if child.ParentTaskID == nil || *child.ParentTaskID != parent.Id || child.RootTaskID != parent.Id {
+				t.Fatalf("lineage lost across requests: parent=%+v child=%+v", parent, child)
+			}
+			var count int64
+			if err := target.db.Model(&model.DownloadTask{}).Count(&count).Error; err != nil || count != 2 {
+				t.Fatalf("retry created duplicates: count=%d error=%v", count, err)
+			}
+		})
+	}
+}
+
+func TestSyncRejectsOldReceiverBeforeSending(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/v1/sync/info" {
+			t.Errorf("sent data to an old receiver: %s", request.URL.Path)
+		}
+		_, _ = io.WriteString(w, `{"code":0,"data":{"version":2,"receive_enabled":true}}`)
+	}))
+	defer upstream.Close()
+	if err := check_sync_receiver(context.Background(), sync_server_config{URL: upstream.URL}); err == nil {
+		t.Fatal("old receiver accepted for incremental sync")
 	}
 }

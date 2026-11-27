@@ -133,13 +133,13 @@ var tools_sync = []tool{
 		supports:     supports_api_client, handle: (*ToolSet).configure_sync_server,
 	},
 	{
-		name: "sync_to_server", title: "重建下载记录并上传已有文件", description: "经用户授权后，在目标服务复用创建下载任务的保存流程，重建本机下载任务及其关联内容、账号和资源，上传已有文件；不调用平台解析，不启动下载。目标分配自增 ID 并重建关联，不要求两端 ID 相同。完整文件上传成功后保留完成状态；缺失或未完成的资源设为暂停。不包含浏览记录或无关账号、内容。后台执行返回 job_id；必须调用 get_sync_status，只有 status=completed 才表示成功。两端均需支持同步协议 v2。",
+		name: "sync_to_server", title: "重建下载记录并上传已有文件", description: "经用户授权后，在目标服务逐条重建下载任务及其关联内容、账号和资源，每条文件上传并提交后立即更新目标下载列表；不调用平台解析，不启动下载。目标分配自增 ID 并重建关联，不要求两端 ID 相同。完整文件上传成功后保留完成状态；缺失或未完成的资源设为暂停。不包含浏览记录或无关账号、内容。后台执行返回 job_id；必须调用 get_sync_status，只有 status=completed 才表示全部成功。中途失败保留此前成功的任务。两端均需支持同步协议 v3。",
 		input_schema: json.RawMessage(`{"type":"object","additionalProperties":false,"required":["server_id"],"properties":{"server_id":{"type":"integer","minimum":0,"description":"get_sync_servers 返回的目标 ID"},"task_ids":{"type":"array","items":{"type":"integer","minimum":1},"minItems":1,"maxItems":1000,"uniqueItems":true,"description":"仅同步这些任务；未选父任务不会自动加入"},"all":{"type":"boolean","description":"用户明确要求全量时设为 true，与 task_ids 二选一"}}}`),
 		annotations:  json.RawMessage(`{"readOnlyHint":false,"destructiveHint":true,"idempotentHint":false,"openWorldHint":true}`),
 		supports:     supports_api_client, handle: (*ToolSet).sync_to_server,
 	},
 	{
-		name: "get_sync_status", title: "查询数据同步结果", description: "查询 sync_to_server 返回的 job_id。running 表示执行中，completed 表示目标已提交记录和文件，failed 表示失败。任务结果最多保留最近 20 条，重启后失效；状态丢失不能视为成功，应先核对目标数据。",
+		name: "get_sync_status", title: "查询数据同步结果", description: "查询 sync_to_server 返回的 job_id。total_tasks 为总数，completed_tasks 为目标已提交的任务数，current_task_id 为正在传输的源任务 ID；result 为已成功任务的累计记录、文件、字节数和 target_task_ids。running 表示执行中，completed 表示全部完成，failed 表示中途失败，已成功任务保留。任务结果最多保留最近 20 条，重启后失效；状态丢失不能视为成功，应先核对目标数据。",
 		input_schema: json.RawMessage(`{"type":"object","additionalProperties":false,"required":["job_id"],"properties":{"job_id":{"type":"string","minLength":1}}}`),
 		annotations:  json.RawMessage(`{"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true,"openWorldHint":false}`),
 		supports:     supports_api_client, handle: (*ToolSet).get_sync_status,

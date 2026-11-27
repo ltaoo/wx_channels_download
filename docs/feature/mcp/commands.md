@@ -192,4 +192,4 @@ NFO 根节点使用 `movie`，包含标题、简介、账号（`studio`）、发
 | `configure_sync_server` | `name`、`url` | 按名称添加或更新目标，立即生效，无需令牌。 |
 | `preview_sync` | 可选 `task_ids` | 只读统计选定任务的记录、文件及字节数。 |
 | `sync_to_server` | `server_id`，`task_ids` 或 `all=true` | 用户授权后启动指定范围的后台同步，返回 `job_id`；全量须显式指定。 |
-| `get_sync_status` | `job_id` | 查询任务，只有 `completed` 表示同步成功。 |
+| `get_sync_status` | `job_id` | 查询已完成/总任务数、当前源任务 ID 和已提交的累计结果；只有 `completed` 表示全部同步成功，中途失败保留此前成功的任务。 |
