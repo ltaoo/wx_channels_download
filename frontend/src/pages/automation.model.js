@@ -1218,6 +1218,9 @@ function AutomationPageViewModel(props, options) {
       onClick(pipeline) { return copy_pipeline(pipeline); },
     }),
     btn_pipeline_more$: new Timeless.vm.ButtonInListCore(),
+    btn_pipeline_toggle$: new Timeless.vm.ButtonInListCore({
+      onClick(pipeline) { return toggle_pipeline_disabled(pipeline); },
+    }),
     btn_pipeline_trigger$: new Timeless.vm.ButtonInListCore({
       variant: "outline",
       size: "sm",
@@ -1280,7 +1283,7 @@ function AutomationPageViewModel(props, options) {
 
   function update_trigger_buttons() {
     const submitting = run_submitting_.value;
-    const disabled = submitting || selected_pipeline_.value?.is_flow_definition || pipeline_is_active(selected_pipeline_.value);
+    const disabled = submitting || selected_pipeline_.value?.disabled || selected_pipeline_.value?.is_flow_definition || pipeline_is_active(selected_pipeline_.value);
     [ui.btn_run_flow$, ui.btn_run_submit$].forEach((button) => {
       button.setLoading(submitting);
       if (disabled) button.disable();
@@ -1288,7 +1291,7 @@ function AutomationPageViewModel(props, options) {
     });
     pipelines_.value.forEach((pipeline) => {
       const button = ui.btn_pipeline_trigger$.bind(pipeline);
-      if (submitting || pipeline_is_active(pipeline)) button.disable();
+      if (submitting || pipeline.disabled || pipeline_is_active(pipeline)) button.disable();
       else button.enable();
     });
   }
@@ -2932,7 +2935,7 @@ function AutomationPageViewModel(props, options) {
     if (!flow_id) return null;
     const run_id = String(pipeline.active_run_id || pipeline.last_run_id || "").trim();
     if (props.history && typeof props.history.push === "function") {
-      props.history.push("root.shell.flow_detail", { id: flow_id, run_id });
+      props.history.push("root.flow_detail", { id: flow_id, run_id });
     }
     return null;
   }
@@ -3026,7 +3029,7 @@ function AutomationPageViewModel(props, options) {
       await load_data();
       props.tip({ msg: ["Pipeline 已创建，请在开始节点配置触发器"], type: "success" });
       if (props.history && typeof props.history.push === "function") {
-        props.history.push("root.shell.flow_edit", { id: flow.id });
+        props.history.push("root.flow_edit", { id: flow.id });
       }
     } catch (err) {
       set_error(err);
@@ -3275,6 +3278,22 @@ function AutomationPageViewModel(props, options) {
     return menu;
   }
 
+  async function toggle_pipeline_disabled(pipeline) {
+    const button = ui.btn_pipeline_toggle$.bind(pipeline);
+    if (button.state.loading || disposed) return;
+    const disabled = !(find_pipeline(pipeline.id) || pipeline).disabled;
+    button.setLoading(true);
+    error_.as("");
+    try {
+      const response = await reqs.pipeline.update.run({ id: pipeline.id, disabled });
+      if (response.error) throw request_result_error(response, "实例状态更新失败");
+      if (disposed) return;
+      props.tip({ msg: [disabled ? "实例已禁用，已开始的执行继续运行" : "实例已启用"], type: "success" });
+      await load_data();
+    } catch (error) { if (!disposed) set_error(error); }
+    finally { button.setLoading(false); }
+  }
+
   function pipeline_action_button(action, pipeline) {
     const button = ui[`btn_pipeline_${action}$`].bind(pipeline);
     button.setVariant("link");
@@ -3414,6 +3433,7 @@ function AutomationPageViewModel(props, options) {
   async function run_flow_direct(initial_data) {
     const flow_id = selected_flow_id_.value;
     if (!flow_id) return null;
+    if ((find_pipeline(flow_id) || selected_pipeline_.value)?.disabled) throw new Error("配置实例已禁用，请先启用");
     if (pipeline_is_active(selected_pipeline_.value)) throw new Error("该自动化已有进行中的执行，请等待结束后再触发");
     error_.as("");
     execution_run_status_.as("QUEUED");
@@ -3450,6 +3470,10 @@ function AutomationPageViewModel(props, options) {
     if (run_submitting_.value) return null;
     const flow_id = selected_flow_id_.value;
     if (!flow_id) return null;
+    if ((find_pipeline(flow_id) || selected_pipeline_.value)?.disabled) {
+      set_error(new Error("配置实例已禁用，请先启用"));
+      return null;
+    }
     if (pipeline_is_active(selected_pipeline_.value)) {
       set_error(new Error("该自动化已有进行中的执行，请等待结束后再触发"));
       return null;
@@ -3536,7 +3560,7 @@ function AutomationPageViewModel(props, options) {
       await load_data();
       props.tip({ msg: ["Pipeline 已导入"], type: "success" });
       if (props.history && typeof props.history.push === "function") {
-        props.history.push("root.shell.flow_edit", { id: flow.id });
+        props.history.push("root.flow_edit", { id: flow.id });
       }
     } catch (err) {
       import_error_.as(err && err.message ? err.message : String(err || ""));

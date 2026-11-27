@@ -25,6 +25,7 @@ type user_flow_update_body struct {
 	ID                 string                            `json:"id"`
 	Name               *string                           `json:"name"`
 	Description        *string                           `json:"description"`
+	Disabled           *bool                             `json:"disabled"`
 	ContextSchema      []engine.FieldSchema              `json:"context_schema"`
 	StartNodeID        string                            `json:"start_node_id"`
 	Nodes              []services.UserFlowNodeInput      `json:"nodes"`

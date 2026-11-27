@@ -102,6 +102,7 @@ CREATE INDEX `idx_user_flow_deleted_at` ON `user_flow` (`deleted_at`);
 CREATE TABLE `user_flow_instance` (
  `id` TEXT PRIMARY KEY, `flow_id` TEXT NOT NULL REFERENCES user_flow(id),
  `name` TEXT NOT NULL, `description` TEXT,
+ `disabled` BOOLEAN NOT NULL DEFAULT 0,
  `node_configs` TEXT NOT NULL DEFAULT '{}',
  `inherit_triggers` BOOLEAN NOT NULL DEFAULT 0,
  `trigger_overrides` TEXT NOT NULL DEFAULT '{}',

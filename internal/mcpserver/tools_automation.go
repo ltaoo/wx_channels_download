@@ -178,7 +178,7 @@ func (s *ToolSet) update_automation_instance_tool(ctx context.Context, raw_argum
 			return nil, fmt.Errorf("name 不能为空")
 		}
 	}
-	if arguments.Name == nil && arguments.Description == nil && arguments.NodeConfigs == nil && arguments.Triggers == nil && arguments.InheritTriggers == nil && arguments.TriggerOverrides == nil {
+	if arguments.Name == nil && arguments.Description == nil && arguments.Disabled == nil && arguments.NodeConfigs == nil && arguments.Triggers == nil && arguments.InheritTriggers == nil && arguments.TriggerOverrides == nil {
 		return nil, fmt.Errorf("请至少提供一个要修改的实例字段")
 	}
 	instance, err := s.api_client.client.UpdateFlowInstance(ctx, arguments)
@@ -325,8 +325,8 @@ var tools_automation = []tool{
 	},
 	{
 		name: "update_automation_instance", title: "编辑流程实例",
-		description:  `修改实例标题 name、说明 description、节点配置覆盖及触发规则；先用 get_automation_instance 读取最新值。只提交要修改的字段，省略的字段保持原值。node_configs 是完整覆盖值集合，按节点 ID 到配置对象组织；{} 清空全部覆盖，单项修改须合并原有覆盖后提交。triggers 是完整的自定义触发器列表，[] 清空规则并取消继承。inherit_triggers=true 恢复默认触发器并清空触发器覆盖；false 不会停用已有规则。trigger_overrides 是按默认触发器 ID 组织的完整覆盖集合，{} 恢复默认；不能和 triggers 或 inherit_triggers 同时提交。触发规则修改立即生效。仅编辑实例，不修改共享流程图或流程默认配置。`,
-		input_schema: json.RawMessage(`{"type":"object","required":["id"],"properties":{"id":{"type":"string","minLength":1,"description":"实例 ID，非 flow_id。"},"name":{"type":"string","minLength":1,"description":"实例标题。"},"description":{"type":"string","description":"实例说明，空字符串清空。"},"node_configs":{"type":"object","additionalProperties":{"type":"object","additionalProperties":true},"description":"完整节点配置覆盖集合，{} 清空覆盖。"},"inherit_triggers":{"type":"boolean","description":"true 恢复继承默认触发器；false 仅取消继承，不停用现有规则。"},"trigger_overrides":{"type":"object","additionalProperties":{"type":"object","additionalProperties":true},"description":"按默认触发器 ID 保存覆盖；不能与 triggers 或 inherit_triggers 同时提交。"},"triggers":{"type":"array","items":{"type":"object","additionalProperties":true},"description":"完整自定义触发器列表，[] 清空规则。字段遵循现有流程触发器格式。"}},"additionalProperties":false}`),
+		description:  `修改实例标题 name、说明 description、禁用状态 disabled、节点配置覆盖及触发规则；disabled=true 阻止所有新执行（含手动和重试），false 重新启用；已开始的执行继续运行，原触发器设置保留。先用 get_automation_instance 读取最新值。只提交要修改的字段，省略的字段保持原值。node_configs 是完整覆盖值集合，按节点 ID 到配置对象组织；{} 清空全部覆盖，单项修改须合并原有覆盖后提交。triggers 是完整的自定义触发器列表，[] 清空规则并取消继承。inherit_triggers=true 恢复默认触发器并清空触发器覆盖；false 不会停用已有规则。trigger_overrides 是按默认触发器 ID 组织的完整覆盖集合，{} 恢复默认；不能和 triggers 或 inherit_triggers 同时提交。触发规则修改立即生效。仅编辑实例，不修改共享流程图或流程默认配置。`,
+		input_schema: json.RawMessage(`{"type":"object","required":["id"],"properties":{"id":{"type":"string","minLength":1,"description":"实例 ID，非 flow_id。"},"disabled":{"type":"boolean","description":"true 禁用实例并阻止新执行；false 启用。保留触发器设置，不中止已开始的执行。"},"name":{"type":"string","minLength":1,"description":"实例标题。"},"description":{"type":"string","description":"实例说明，空字符串清空。"},"node_configs":{"type":"object","additionalProperties":{"type":"object","additionalProperties":true},"description":"完整节点配置覆盖集合，{} 清空覆盖。"},"inherit_triggers":{"type":"boolean","description":"true 恢复继承默认触发器；false 仅取消继承，不停用现有规则。"},"trigger_overrides":{"type":"object","additionalProperties":{"type":"object","additionalProperties":true},"description":"按默认触发器 ID 保存覆盖；不能与 triggers 或 inherit_triggers 同时提交。"},"triggers":{"type":"array","items":{"type":"object","additionalProperties":true},"description":"完整自定义触发器列表，[] 清空规则。字段遵循现有流程触发器格式。"}},"additionalProperties":false}`),
 		annotations:  json.RawMessage(`{"readOnlyHint":false,"destructiveHint":true,"idempotentHint":false,"openWorldHint":false}`),
 		supports:     supports_api_client, handle: (*ToolSet).update_automation_instance_tool,
 	},

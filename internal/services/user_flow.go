@@ -144,6 +144,7 @@ type UpdateUserFlowInput struct {
 	DefaultNodeConfigs map[string]map[string]interface{}
 	Name               *string
 	Description        *string
+	Disabled           *bool
 	ContextSchema      []engine.FieldSchema
 	StartNodeID        string
 	Nodes              []UserFlowNodeInput
@@ -676,6 +677,11 @@ func (s *AutomationService) CopyUserFlowInstance(id string) (*model.UserFlowInst
 
 // Instance settings and shared graph updates have separate persisted ownership.
 func (s *AutomationService) UpdateUserFlowInstance(id string, input UpdateUserFlowInput) (*model.UserFlowInstance, error) {
+	if input.Disabled != nil {
+		// Serialize state changes with run reservation so disabling blocks new starts.
+		s.claim_mu.Lock()
+		defer s.claim_mu.Unlock()
+	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		scoped := &AutomationService{db: tx, cron_parser: s.cron_parser, custom_nodes: s.custom_nodes}
 		instance, err := scoped.GetUserFlowInstance(id)
@@ -765,11 +771,16 @@ func (s *AutomationService) UpdateUserFlowInstance(id string, input UpdateUserFl
 		} else if input.InheritTriggers != nil {
 			instance.InheritTriggers = false
 		}
-		return tx.Model(instance).Updates(map[string]interface{}{"name": instance.Name, "description": instance.Description, "node_configs": marshal_json(values), "trigger_type": instance.TriggerType, "event_key": instance.EventKey, "inherit_triggers": instance.InheritTriggers, "trigger_overrides": instance.TriggerOverrides, "updated_at": time.Now().UnixMilli()}).Error
+		updates := map[string]interface{}{"name": instance.Name, "description": instance.Description, "node_configs": marshal_json(values), "trigger_type": instance.TriggerType, "event_key": instance.EventKey, "inherit_triggers": instance.InheritTriggers, "trigger_overrides": instance.TriggerOverrides, "updated_at": time.Now().UnixMilli()}
+		if input.Disabled != nil {
+			updates["disabled"] = *input.Disabled
+		}
+		return tx.Model(instance).Updates(updates).Error
 	})
 	if err != nil {
 		return nil, err
 	}
+	s.invalidate_event_schedules()
 	instance, err := s.GetUserFlowInstance(id)
 	if err == nil {
 		s.load_user_flows(instance.FlowID)

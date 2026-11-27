@@ -270,6 +270,7 @@ func (s *AutomationService) tick() {
 	var due []model.FlowSchedule
 	err := s.db.
 		Where("enabled = ? AND next_run_at IS NOT NULL AND next_run_at <= ? AND deleted_at IS NULL", true, now).
+		Where("instance_id IN (?)", s.db.Model(&model.UserFlowInstance{}).Select("id").Where("disabled = ? AND deleted_at IS NULL", false)).
 		Order("next_run_at ASC").
 		Limit(batch_limit).
 		Find(&due).Error

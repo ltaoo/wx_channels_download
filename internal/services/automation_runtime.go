@@ -25,6 +25,13 @@ func (s *AutomationService) reserve_run(schedule model.FlowSchedule, trigger_typ
 	}
 	s.claim_mu.Lock()
 	defer s.claim_mu.Unlock()
+	var instance model.UserFlowInstance
+	if err := s.db.Select("disabled").Where("id=? AND deleted_at IS NULL", schedule.InstanceID).First(&instance).Error; err != nil {
+		return nil, err
+	}
+	if instance.Disabled {
+		return nil, fmt.Errorf("配置实例已禁用，请先启用")
+	}
 	query := s.db.Model(&model.FlowRunRecord{}).Where("status IN ? AND deleted_at IS NULL", []string{"QUEUED", "RUNNING", "WAITING"})
 	if schedule.InstanceID != "" {
 		query = query.Where("instance_id=?", schedule.InstanceID)

@@ -50,7 +50,7 @@ export function automation_status_badge(value, label) {
   let tone = "info";
   if (["COMPLETED", "ENABLED", "TRUE", "YES"].includes(normalized)) {
     tone = "success";
-  } else if (["FAILED", "FALSE", "NO", "CANCELLED"].includes(normalized)) {
+  } else if (["FAILED", "FALSE", "NO", "CANCELLED", "DISABLED"].includes(normalized)) {
     tone = "danger";
   } else if (["RUNNING", "WAITING", "QUEUED"].includes(normalized)) {
     tone = "warning";
@@ -70,7 +70,7 @@ export function AutomationStartTriggers(props) {
   return View({ class: plain ? "grid gap-3 min-w-0" : "grid gap-3 min-w-0 py-4 border-top-[1px_solid_var(--dm-color-border)]", attributes: { n: "automation-start-triggers" } }, [
     plain ? null : View({ class: "text-color-text-primary font-display text-base font-semibold", attributes: { n: "automation-start-triggers-title" } }, [props.title || "开始节点触发器"]),
     plain ? null : View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base", attributes: { n: "automation-start-triggers-description" } }, [
-      props.description || "手动执行始终可用。可同时添加定时、事件和 Webhook 触发器，保存后生效。",
+      props.description || "实例启用后可手动执行。可同时添加定时、事件和 Webhook 触发器，保存后生效。",
     ]),
     props.overrides ? null : View({ class: "flex flex-wrap items-center gap-2 min-w-0", attributes: { n: "automation-trigger-actions" } }, [
       Button({ store: vm$.ui.btn_add_cron_trigger$, attributes: { n: "automation-add-cron-trigger", type: "button" } }, ["添加定时触发"]),
@@ -133,7 +133,7 @@ export function AutomationTriggerSummary(props) {
     ({ flow }) => vm$.methods.pipelineTriggers(flow));
   return View({ class: "grid gap-3 min-w-0 py-4 border-top-[1px_solid_var(--dm-color-border)]", attributes: { n: "automation-trigger-summary" } }, [
     View({ class: "text-color-text-primary text-base font-semibold" }, ["开始节点触发器"]),
-    View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base" }, ["手动执行始终可用。选择「编辑 Pipeline」，在开始节点中管理触发器。"]),
+    View({ class: "mt-0-5 text-color-text-secondary text-caption leading-base", attributes: { n: "automation-trigger-summary-description" } }, ["实例启用后可手动执行。选择「编辑 Pipeline」，在开始节点中管理触发器。"]),
     For({ each: triggers, render(value) {
       const trigger = value && value.value !== undefined ? value.value : value;
       return View({ class: "grid gap-3 min-w-0 border-top-[1px_solid_var(--dm-color-border)] pt-3" }, [

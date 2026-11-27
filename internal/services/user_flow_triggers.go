@@ -12,7 +12,7 @@ import (
 )
 
 // UserFlowTriggerInput configures an additional entry rule on a pipeline's
-// start node. Manual/debug execution is always available without a rule.
+// start node. Enabled instances can run manually without a rule.
 type UserFlowTriggerInput struct {
 	default_trigger_id    string
 	configured_input_keys []string

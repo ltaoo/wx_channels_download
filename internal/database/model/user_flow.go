@@ -21,6 +21,7 @@ type UserFlowInstance struct {
 	Name               string `gorm:"not null" json:"name"`
 	Description        string `gorm:"type:text" json:"description"`
 	TriggerType        string `gorm:"not null;default:Manual" json:"trigger_type"`
+	Disabled           bool   `gorm:"not null;default:false" json:"disabled"`
 	EventKey           string `json:"event_key"`
 	NodeConfigs        string `gorm:"type:text;not null;default:'{}'" json:"node_configs"`
 	InheritTriggers    bool   `gorm:"not null" json:"inherit_triggers"`

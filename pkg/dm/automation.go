@@ -12,6 +12,7 @@ type UpdateFlowInstanceRequest struct {
 	ID               string                     `json:"id"`
 	Name             *string                    `json:"name,omitempty"`
 	Description      *string                    `json:"description,omitempty"`
+	Disabled         *bool                      `json:"disabled,omitempty"`
 	NodeConfigs      *map[string]map[string]any `json:"node_configs,omitempty"`
 	Triggers         *[]map[string]any          `json:"triggers,omitempty"`
 	InheritTriggers  *bool                      `json:"inherit_triggers,omitempty"`

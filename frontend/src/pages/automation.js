@@ -29,7 +29,7 @@ function AutomationPageView(props) {
           typeof props.history.push === "function"
         ) {
           props.history.push(
-            mode === "edit" ? "root.shell.flow_edit" : "root.shell.flow_detail",
+            mode === "edit" ? "root.flow_edit" : "root.flow_detail",
             { id: flow_id, run_id: String(query.run_id || "").trim() },
           );
           return;
@@ -206,7 +206,7 @@ function AutomationPipelineList(props) {
     containerClass: "group-content-main flex-[1_1_auto] min-w-0 p-4  automation-index",
     containerAttributes: { n: "automation-pipeline-table-container" },
     panelAttributes: { n: "automation-pipeline-table-panel" },
-    rowKey: (pipeline) => `${pipeline.id}:${pipeline.name || ""}:${pipeline.updated_at || pipeline.created_at || 0}:${pipeline.active_run_id || ""}:${pipeline.last_run_at || 0}:${pipeline.last_run_status || ""}:${vm$.methods.pipelineDefinitionLabel(pipeline)}`,
+    rowKey: (pipeline) => `${pipeline.id}:${pipeline.name || ""}:${pipeline.disabled}:${pipeline.updated_at || pipeline.created_at || 0}:${pipeline.active_run_id || ""}:${pipeline.last_run_at || 0}:${pipeline.last_run_status || ""}:${vm$.methods.pipelineDefinitionLabel(pipeline)}`,
     skeletonCount: 8,
     renderSkeletonRow: AutomationPipelineSkeletonRow,
     columns: [
@@ -315,11 +315,12 @@ function AutomationPipelineList(props) {
       {
         name: "actions",
         title: "操作",
-        width: 140,
+        width: 180,
         cellClass: "flex flex-nowrap items-center justify-end gap-1-5 max-900:justify-start",
         render(pipeline) {
           return [
             TextButton({ store: vm$.methods.pipelineActionButton("trigger", pipeline), attributes: { n: `automation-instance-run-${pipeline.id}`, type: "button", "aria-label": `执行配置实例 ${pipeline.name || pipeline.id}` } }, ["执行"]),
+            TextButton({ store: vm$.methods.pipelineActionButton("toggle", pipeline), attributes: { n: `automation-instance-toggle-${pipeline.id}`, type: "button", "aria-label": `${pipeline.disabled ? "启用" : "禁用"}配置实例 ${pipeline.name || pipeline.id}` } }, [pipeline.disabled ? "启用" : "禁用"]),
             DropdownMenu(
               {
                 store: vm$.methods.pipelineActionsMenu(pipeline),

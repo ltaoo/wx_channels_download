@@ -86,7 +86,7 @@ func (s *AutomationService) event_triggered_schedules(event_key string) ([]model
 	defer s.event_schedules_mu.Unlock()
 	if s.event_schedules == nil || time.Since(s.event_schedules_at) > automation_event_schedule_cache_ttl {
 		var schedules []model.FlowSchedule
-		if err := s.db.Where("deleted_at IS NULL").Find(&schedules).Error; err != nil {
+		if err := s.db.Where("deleted_at IS NULL").Where("instance_id IN (?)", s.db.Model(&model.UserFlowInstance{}).Select("id").Where("disabled = ? AND deleted_at IS NULL", false)).Find(&schedules).Error; err != nil {
 			return nil, err
 		}
 		index := map[string][]model.FlowSchedule{}
