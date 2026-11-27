@@ -1292,7 +1292,6 @@
     const last_error_ = ref(null);
     /** @type {Map<string, DownloadTaskModel>} */
     const tasks_by_id = new Map();
-    const socket_status_by_id = new Map();
     const websocket_url = default_web_socket_url();
     const reconnect_interval = Math.max(
       250,
@@ -1308,7 +1307,6 @@
     let ready_promise = null;
     let refresh_sequence = 0;
     let current_refresh_options = null;
-    let paged_refresh_timer = null;
 
     const state = {
       task_list: task_list_,
@@ -1658,10 +1656,6 @@
     }
 
     async function refresh(options) {
-      if (paged_refresh_timer !== null) {
-        global.clearTimeout(paged_refresh_timer);
-        paged_refresh_timer = null;
-      }
       const normalized_options = Object.assign({}, options || {});
       normalized_options.all = normalized_options.all !== false;
       normalized_options.page = Math.max(
@@ -1803,7 +1797,6 @@
       if (!result || result.error) {
         throw (result && result.error) || new Error(fallback);
       }
-      await refresh_current();
       return task_list_;
     }
 
@@ -1828,7 +1821,16 @@
       if (r.error) {
         throw (r && r.error) || new Error("Clear download tasks failed");
       }
-      await refresh_current();
+      const results = (r.data && r.data.results) || [];
+      results.forEach((item) => {
+        if (item.success) {
+          const task = get(item.task_id);
+          if (task) task._update({ id: item.task_id, status: "deleted" });
+          remove_task(item.task_id, false);
+        }
+      });
+      const failure = results.find((item) => item.success === false);
+      if (failure) throw error_value(failure.error, "Clear download tasks failed");
       return task_list_;
     }
 
@@ -1917,79 +1919,13 @@
       );
     }
 
-    function schedule_paged_refresh() {
-      if (!paged_mode_enabled() || destroyed) {
-        return;
-      }
-      if (paged_refresh_timer !== null) {
-        global.clearTimeout(paged_refresh_timer);
-      }
-      paged_refresh_timer = global.setTimeout(() => {
-        paged_refresh_timer = null;
-        refresh_current().catch((error) => last_error_.as(error));
-      }, 80);
-    }
-
-    function socket_status_matches_current_filter(status) {
-      const filter = String(
-        (current_refresh_options && current_refresh_options.status) || "",
-      );
-      if (!filter || !status) {
-        return false;
-      }
-      const status_code = {
-        waiting: "0",
-        preparing: "1",
-        downloading: "2",
-        paused: "3",
-        merging: "4",
-        finished: "5",
-        failed: "6",
-        cancelled: "7",
-      }[status];
-      return !!status_code && filter.split(",").includes(status_code);
-    }
-
     function upsert_socket_task(record, options) {
       if (!paged_mode_enabled()) {
         return upsert(record, options);
       }
       const id = record && (record.id ?? record.task_id);
-      const key = id === undefined || id === null ? "" : String(id);
-      const previous_socket_status = socket_status_by_id.get(key);
-      const socket_status = Object.prototype.hasOwnProperty.call(
-        record || {},
-        "status",
-      )
-        ? normalize_status(record.status)
-        : previous_socket_status;
-      if (key && socket_status) {
-        socket_status_by_id.set(key, socket_status);
-      }
       const task = id === undefined || id === null ? null : get(id);
-      if (!task) {
-        const should_refresh_missing =
-          !options ||
-          options.refresh_missing === true ||
-          typeof options.refresh_missing === "undefined" ||
-          (options.refresh_missing === "status" &&
-            previous_socket_status !== socket_status &&
-            (socket_status_matches_current_filter(previous_socket_status) ||
-              socket_status_matches_current_filter(socket_status)));
-        if (should_refresh_missing) {
-          schedule_paged_refresh();
-        }
-        return null;
-      }
-      const previous_status = task.state.status.value;
-      upsert(record, options);
-      if (
-        (!options || options.refresh_status !== false) &&
-        previous_status !== task.state.status.value
-      ) {
-        schedule_paged_refresh();
-      }
-      return task;
+      return task ? upsert(record, options) : null;
     }
 
     function handle_snapshot(message) {
@@ -2007,7 +1943,6 @@
           size: aggregate.total,
           speed: aggregate.speed,
         },
-        { refresh_missing: false },
       );
     }
 
@@ -2021,19 +1956,15 @@
       }
       if (message.type === "task_create" || message.type === "task_upsert") {
         (Array.isArray(message.tasks) ? message.tasks : []).forEach((task) => {
-          upsert_socket_task(task, {
-            refresh_missing: message.type === "task_create" ? false : "status",
-          });
+          if (message.type === "task_create") upsert(task);
+          else upsert_socket_task(task);
         });
-        if (message.type === "task_create") {
-          schedule_paged_refresh();
-        }
         return;
       }
       if (message.type === "task_update") {
         (Array.isArray(message.updates) ? message.updates : []).forEach(
           (task) => {
-            upsert_socket_task(task, { refresh_missing: "status" });
+            upsert_socket_task(task);
           },
         );
         return;
@@ -2041,7 +1972,6 @@
       if (message.type === "task_delete") {
         (Array.isArray(message.task_ids) ? message.task_ids : []).forEach(
           (id) => {
-            socket_status_by_id.delete(String(id));
             const task = get(id);
             if (task) {
               task._update({ id, status: "deleted" });
@@ -2049,7 +1979,6 @@
             }
           },
         );
-        schedule_paged_refresh();
         return;
       }
       if (message.type === "task_snapshot") {
@@ -2062,7 +1991,6 @@
         (Array.isArray(message.data) ? message.data : []).forEach((task) => {
           upsert_socket_task(task, {
             prepend: false,
-            refresh_missing: false,
           });
         });
         return;
@@ -2075,13 +2003,9 @@
           const id =
             (task_record && (task_record.id ?? task_record.task_id)) ||
             data.task_id;
-          if (id !== undefined && id !== null) {
-            socket_status_by_id.delete(String(id));
-          }
           if (id !== undefined && id !== null && get(id)) {
             remove_task(id, false);
           }
-          schedule_paged_refresh();
           return;
         }
         if (task_record) {
@@ -2163,14 +2087,9 @@
         return;
       }
       destroyed = true;
-      if (paged_refresh_timer !== null) {
-        global.clearTimeout(paged_refresh_timer);
-        paged_refresh_timer = null;
-      }
       channel$.destroy();
       (task_list_.value || []).forEach((task) => task._dispose());
       tasks_by_id.clear();
-      socket_status_by_id.clear();
       task_list_.as([]);
     }
 

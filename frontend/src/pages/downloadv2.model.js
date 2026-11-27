@@ -487,8 +487,9 @@ function DownloadV2Model(props = {}) {
     if (!meta || typeof meta !== "object") return;
     const counts = normalize_server_status_counts(meta.stats);
     const response_total = Math.max(0, Number(meta.total) || 0);
-    const filtered_total =
-      response_total || Math.max(0, Number(counts[active_status_.value]) || 0);
+    const filtered_total = Object.keys(meta.stats || {}).length
+      ? counts[active_status_.value]
+      : response_total;
     const response_page = Math.max(1, Number(meta.page) || page_.value || 1);
     const response_page_size = Math.max(
       1,
@@ -574,7 +575,7 @@ function DownloadV2Model(props = {}) {
     return error;
   }
 
-  async function run_task_action(value, action, fallback, refresh_page = true) {
+  async function run_task_action(value, action, fallback) {
     const task$ = domain_task(value);
     if (
       !task$ ||
@@ -585,9 +586,7 @@ function DownloadV2Model(props = {}) {
       return null;
     }
     try {
-      const result = await task$.methods[action]();
-      if (refresh_page) await load_page(page_.value);
-      return result;
+      return await task$.methods[action]();
     } catch (error) {
       report_error(error, fallback);
       return null;
@@ -649,7 +648,7 @@ function DownloadV2Model(props = {}) {
   }
 
   function open_task(task) {
-    return run_task_action(task, "open", "打开下载文件失败", false);
+    return run_task_action(task, "open", "打开下载文件失败");
   }
 
   async function start_all_tasks() {
@@ -737,7 +736,6 @@ function DownloadV2Model(props = {}) {
     } finally {
       ui.deleteConfirmDialog$.okBtn.setLoading(false);
       deleting_task_.as(false);
-      await load_page(page_.value);
     }
   }
 
@@ -754,7 +752,6 @@ function DownloadV2Model(props = {}) {
       await downloader.clear({ deleteFiles: delete_delete_files_.value });
       selected_task_ids_.as([]);
       ui.clearConfirmDialog$.hide();
-      await load_page(1);
     } catch (error) {
       report_error(error, "清空下载任务失败");
     } finally {
@@ -910,9 +907,15 @@ function DownloadV2Model(props = {}) {
     try {
       const result = await task_update_request.run(body);
       if (result.error) throw result.error;
+      const updated_task = {
+        ...task_detail_.value,
+        name: body.name,
+        files: (task_detail_.value.files || []).map((file, index) => ({ ...file, url: body.files[index].url })),
+      };
+      domain_task(body.id)?.handler.update(updated_task);
+      task_detail_.as(updated_task);
       ui.taskDetailDialog$.hide();
       props.tip({ msg: ["下载任务已保存，可点击重试重新下载"], type: "success" });
-      await load_page(page_.value);
     } catch (error) {
       report_error(error, "保存下载任务失败");
     } finally {
@@ -1107,7 +1110,6 @@ function DownloadV2Model(props = {}) {
         Object.prototype.hasOwnProperty.call(object, "content")
           ? await downloader.create(object.content, object)
           : await downloader.create(object);
-      await load_page(page_.value);
       if (options.hideDialog) options.hideDialog.hide();
       props.tip({ msg: [success_message], type: "success" });
       return task$;

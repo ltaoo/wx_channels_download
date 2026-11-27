@@ -22,6 +22,7 @@
       apiHost: window.location.host,
       apiOrigin: window.location.origin,
       apiProtocol: window.location.protocol.replace(/:$/, ""),
+      downloaderWSURL: window.location.origin.replace(/^http/, "ws") + "/ws/v1/download_task",
       version: "__WX_DOWNLOAD_VERSION__",
       assets_base_url: "/__assets",
     });
